@@ -50,6 +50,11 @@ def nativePlatform = {
 
 ext {
     lwjglNativesJar = file("${lwjglDir}/lwjgl-platform-${lwjglVersion}-${nativePlatform}.jar")
+    // All platform native JARs (for the fat JAR distribution)
+    allNativePlatforms = ['natives-windows', 'natives-linux', 'natives-osx']
+    lwjglAllNativeJars = allNativePlatforms.collectEntries {
+        [(it): file("${lwjglDir}/lwjgl-platform-${lwjglVersion}-${it}.jar")]
+    }
 }
 
 task downloadLwjgl {
@@ -407,6 +412,70 @@ jar {
 }
 
 // =============================================================================
+// Fat JAR Distribution
+// =============================================================================
+// Produces a single self-contained JAR that bundles LWJGL classes and native
+// libraries for all platforms. Run with: java -jar rd-game-*-all.jar
+
+sourceSets {
+    launcher {
+        java { srcDir 'src/launcher/java' }
+        compileClasspath = sourceSets.main.output + files(lwjglJar, lwjglUtilJar)
+    }
+}
+
+task downloadAllNatives {
+    description = 'Downloads LWJGL native JARs for all platforms (Windows, Linux, macOS)'
+    group = 'buildtools'
+    dependsOn downloadLwjgl
+
+    outputs.files(lwjglAllNativeJars.values())
+
+    doLast {
+        lwjglDir.mkdirs()
+        lwjglAllNativeJars.each { platform, destFile ->
+            if (!destFile.exists()) {
+                logger.lifecycle("Downloading lwjgl-platform ${platform}...")
+                project.exec {
+                    commandLine 'curl', '-fSL', '-o', destFile.absolutePath,
+                        "${mavenBase}/lwjgl-platform/${lwjglVersion}/lwjgl-platform-${lwjglVersion}-${platform}.jar"
+                }
+            }
+        }
+    }
+}
+
+task fatJar(type: Jar) {
+    description = 'Builds a self-contained JAR with all dependencies and natives bundled'
+    group = 'build'
+    dependsOn classes, 'launcherClasses', downloadAllNatives
+
+    archiveClassifier = 'all'
+
+    manifest {
+        attributes('Main-Class': 'com.github.martinambrus.rdforward.NativeLauncher')
+    }
+
+    // Game classes + resources
+    from sourceSets.main.output
+    // Launcher bootstrap
+    from sourceSets.launcher.output
+    // LWJGL Java libraries
+    from(zipTree(lwjglJar)) { exclude 'META-INF/**' }
+    from(zipTree(lwjglUtilJar)) { exclude 'META-INF/**' }
+    // Native libraries for all platforms
+    lwjglAllNativeJars.each { platform, nativeJar ->
+        def platformName = platform.replace('natives-', '')
+        from(zipTree(nativeJar)) {
+            exclude 'META-INF/**'
+            into "natives/${platformName}"
+        }
+    }
+
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+// =============================================================================
 // Build Integration
 // =============================================================================
 
@@ -414,6 +483,10 @@ jar {
 // The setupWorkspace task is incremental — it skips steps whose outputs exist.
 compileJava {
     dependsOn applyPatches, extractResources, downloadLwjgl
+}
+
+compileLauncherJava {
+    dependsOn classes, downloadLwjgl
 }
 
 // Include generated sources in the sources JAR

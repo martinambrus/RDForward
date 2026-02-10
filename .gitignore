@@ -33,7 +33,8 @@ libs/lwjgl/
 # Decompiled sources (generated at build time by BuildTools)
 decompiled/
 !decompiled/.gitkeep
-rd-game/src/
+rd-game/src/*
+!rd-game/src/launcher/
 
 # Runtime
 mods/
