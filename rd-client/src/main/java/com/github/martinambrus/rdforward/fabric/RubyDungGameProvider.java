@@ -100,9 +100,16 @@ public class RubyDungGameProvider implements GameProvider {
         this.arguments = new Arguments();
         this.arguments.parse(args);
 
-        // Find the game classes on the classpath by looking for the main class
+        // Find the game classes on the classpath by looking for the main class.
+        // The target classloader may be null during early init (e.g. fat JAR),
+        // so fall back to the system classloader.
+        ClassLoader cl = launcher.getTargetClassLoader();
+        if (cl == null) {
+            cl = ClassLoader.getSystemClassLoader();
+        }
+
         Optional<Path> source = GameProviderHelper.getSource(
-            launcher.getTargetClassLoader(), ENTRYPOINT.replace('.', '/') + ".class");
+            cl, ENTRYPOINT.replace('.', '/') + ".class");
 
         if (!source.isPresent()) {
             return false;
