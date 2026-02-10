@@ -17,7 +17,7 @@
   "mixins": [
     "rdforward.mixins.json"
   ],
-  "depends": {
+  "recommends": {
     "fabricloader": ">=0.16.0"
   }
 }
