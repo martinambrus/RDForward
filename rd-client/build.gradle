@@ -1,5 +1,13 @@
 description = 'RDForward Client - multiplayer networking and UI for the RubyDung game'
 
+// Expand ${version} in fabric.mod.json at build time
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') {
+        expand version: project.version
+    }
+}
+
 dependencies {
     implementation project(':rd-game')
     implementation project(':rd-protocol')
