@@ -3,8 +3,12 @@ package com.github.martinambrus.rdforward.client;
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.codec.PacketDecoder;
 import com.github.martinambrus.rdforward.protocol.codec.PacketEncoder;
+import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.protocol.packet.PacketDirection;
+import com.github.martinambrus.rdforward.protocol.packet.classic.MessagePacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.PlayerIdentificationPacket;
+import com.github.martinambrus.rdforward.protocol.packet.classic.PlayerTeleportPacket;
+import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockClientPacket;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -12,37 +16,40 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 
 /**
- * The RDForward multiplayer client.
+ * Singleton multiplayer client that connects to an RDForward server.
  *
- * Connects to a server via Netty, performs the MC Classic login handshake,
- * and integrates with the RubyDung game loop to send player actions
- * and receive world state updates.
+ * Provides a thread-safe API for the game loop (via Mixins) to:
+ *   - Connect/disconnect from a server
+ *   - Send position updates
+ *   - Send block place/break requests
+ *   - Send chat messages
  *
- * Login sequence (follows MC Classic protocol):
- *   Client: PlayerIdentification (0x00) — protocol version + username
- *   Server: ServerIdentification (0x00) — server info
- *   Server: World data transfer (0x02 + 0x03... + 0x04)
- *   Server: SpawnPlayer (0x07) with ID -1
- *   Normal gameplay begins
+ * The Netty I/O runs on a separate thread. Received packets are
+ * processed by {@link ClientConnectionHandler} which writes to
+ * the shared {@link MultiplayerState} singleton.
  */
 public class RDClient {
 
-    private final ProtocolVersion clientVersion;
-    private final String username;
+    private static final RDClient INSTANCE = new RDClient();
+    public static RDClient getInstance() { return INSTANCE; }
+
     private EventLoopGroup group;
     private Channel channel;
+    private String username;
 
-    public RDClient(ProtocolVersion clientVersion, String username) {
-        this.clientVersion = clientVersion;
-        this.username = username;
-    }
+    private RDClient() {}
 
     /**
-     * Connect to a server at the given host:port.
+     * Connect to a server and send the login packet.
+     * Runs asynchronously — returns immediately.
      */
-    public void connect(String host, int port) throws InterruptedException {
-        group = new NioEventLoopGroup();
+    public void connect(String host, int port, String username) {
+        if (isConnected()) {
+            disconnect();
+        }
+        this.username = username;
 
+        group = new NioEventLoopGroup(1);
         Bootstrap bootstrap = new Bootstrap();
         bootstrap.group(group)
                 .channel(NioSocketChannel.class)
@@ -50,45 +57,84 @@ public class RDClient {
                     @Override
                     protected void initChannel(SocketChannel ch) {
                         ChannelPipeline pipeline = ch.pipeline();
-                        // Client reads SERVER_TO_CLIENT packets
                         pipeline.addLast("decoder", new PacketDecoder(
-                                PacketDirection.SERVER_TO_CLIENT, clientVersion));
+                                PacketDirection.SERVER_TO_CLIENT, ProtocolVersion.RUBYDUNG));
                         pipeline.addLast("encoder", new PacketEncoder());
-                        pipeline.addLast("handler", new ClientConnectionHandler(clientVersion));
+                        pipeline.addLast("handler", new ClientConnectionHandler());
                     }
                 })
+                .option(ChannelOption.TCP_NODELAY, true)
                 .option(ChannelOption.SO_KEEPALIVE, true)
-                .option(ChannelOption.TCP_NODELAY, true);
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000);
 
-        channel = bootstrap.connect(host, port).sync().channel();
+        bootstrap.connect(host, port).addListener((ChannelFutureListener) future -> {
+            if (future.isSuccess()) {
+                channel = future.channel();
+                System.out.println("Connected to " + host + ":" + port + " as " + username);
 
-        // Send Player Identification (Classic 0x00 C->S)
-        PlayerIdentificationPacket identification = new PlayerIdentificationPacket(
-                clientVersion.getVersionNumber(),
-                username,
-                ""  // verification key (empty for offline mode)
-        );
-        channel.writeAndFlush(identification);
-
-        System.out.println("Connected to " + host + ":" + port + " as " + username);
+                sendPacket(new PlayerIdentificationPacket(
+                    ProtocolVersion.RUBYDUNG.getVersionNumber(), username, ""
+                ));
+            } else {
+                System.err.println("Failed to connect to " + host + ":" + port
+                    + ": " + future.cause().getMessage());
+                shutdown();
+            }
+        });
     }
 
     /**
      * Disconnect from the server.
      */
     public void disconnect() {
-        if (channel != null) {
+        if (channel != null && channel.isActive()) {
             channel.close();
         }
-        if (group != null) {
-            group.shutdownGracefully();
-        }
+        shutdown();
     }
 
     /**
-     * Get the Netty channel for sending packets.
+     * Send a position update to the server.
+     * Positions are in MC Classic fixed-point units (blocks * 32).
      */
-    public Channel getChannel() {
-        return channel;
+    public void sendPosition(short x, short y, short z, int yaw, int pitch) {
+        sendPacket(new PlayerTeleportPacket(0xFF, x, y, z, yaw, pitch));
+    }
+
+    /**
+     * Send a block place/destroy request to the server.
+     * @param mode 0 = destroy, 1 = place
+     * @param blockType block ID (only used when mode = 1)
+     */
+    public void sendBlockChange(int x, int y, int z, int mode, int blockType) {
+        sendPacket(new SetBlockClientPacket(x, y, z, mode, blockType));
+    }
+
+    /**
+     * Send a chat message to the server.
+     */
+    public void sendChat(String message) {
+        sendPacket(new MessagePacket(0xFF, message));
+    }
+
+    public boolean isConnected() {
+        return channel != null && channel.isActive();
+    }
+
+    public String getUsername() { return username; }
+
+    private void sendPacket(Packet packet) {
+        if (channel != null && channel.isActive()) {
+            channel.writeAndFlush(packet);
+        }
+    }
+
+    private void shutdown() {
+        if (group != null) {
+            group.shutdownGracefully();
+            group = null;
+        }
+        channel = null;
+        MultiplayerState.getInstance().setConnected(false);
     }
 }

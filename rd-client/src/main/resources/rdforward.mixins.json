@@ -3,7 +3,8 @@
   "package": "com.github.martinambrus.rdforward.mixin",
   "compatibilityLevel": "JAVA_8",
   "client": [
-    "RubyDungMixin"
+    "RubyDungMixin",
+    "PlayerAccessor"
   ],
   "injectors": {
     "defaultRequire": 1

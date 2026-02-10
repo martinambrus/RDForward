@@ -385,6 +385,62 @@ Using Fabric's event pattern, create game events that mods can listen to:
 
 ---
 
+## Phase 8: Android Port (via libGDX)
+
+Android requires replacing LWJGL (desktop-only) with a cross-platform rendering
+backend. **libGDX** is the best fit: it targets Desktop (LWJGL), Android (OpenGL ES),
+and iOS, with a single shared codebase. The multiplayer networking layer (Netty,
+rd-protocol, rd-world) is pure Java and works on Android unchanged.
+
+### Step 8.1: Introduce libGDX Abstraction Layer
+
+- [ ] Add `rd-render` module — rendering interface that abstracts OpenGL calls
+- [ ] Define `RDRenderer` interface: `init()`, `render()`, `resize()`, `dispose()`
+- [ ] Define `RDInput` interface: keyboard polling, mouse/touch input
+- [ ] Extract RubyDung's rendering logic into `RDRenderer` implementations
+- [ ] Create `DesktopRenderer` (LWJGL 3 backend, current code) implementing `RDRenderer`
+
+### Step 8.2: libGDX Desktop Backend
+
+- [ ] Add libGDX core + desktop dependencies to a new `rd-desktop` module
+- [ ] Create `LibGDXRenderer` implementing `RDRenderer` using libGDX's OpenGL wrapper
+- [ ] Port fixed-function GL calls to libGDX equivalents (or raw GLES20 calls)
+- [ ] Verify desktop parity: same rendering output as LWJGL 3 backend
+
+### Step 8.3: Android Module
+
+- [ ] Create `rd-android` module (Android Gradle plugin)
+- [ ] Create `AndroidLauncher` extending `AndroidApplication`
+- [ ] Replace `GL11.glBegin/glEnd` (fixed-function) with vertex buffer objects (VBOs)
+  - OpenGL ES 2.0+ has no fixed-function pipeline — all rendering must use shaders
+  - This is the biggest porting effort: RubyDung uses `glBegin/glVertex3f/glEnd` everywhere
+- [ ] Write minimal vertex + fragment shaders for block rendering
+- [ ] Port `Tesselator` to use VBOs instead of immediate mode
+- [ ] Handle touch input mapping (tap = click, drag = mouse look, on-screen buttons = WASD)
+- [ ] Test on Android emulator and physical device
+
+### Step 8.4: Shared Multiplayer on Android
+
+- [ ] Verify Netty works on Android (it does — used by many Android apps)
+- [ ] Create Android-specific UI for server connect (native Android dialog or libGDX scene2d)
+- [ ] Test full multiplayer flow: Android client connecting to desktop server
+
+### Key Considerations
+
+| Concern | Desktop (current) | Android |
+|---------|-------------------|---------|
+| Rendering API | OpenGL 1.1 (fixed-function) | OpenGL ES 2.0+ (shader-based) |
+| Input | Keyboard + Mouse (GLFW) | Touch screen (libGDX Input) |
+| Networking | Netty (unchanged) | Netty (unchanged) |
+| Window management | GLFW | Android Activity lifecycle |
+| Texture loading | BufferedImage + GL11 | libGDX Texture / Pixmap |
+| Build system | Gradle (Java) | Gradle (Android plugin) |
+
+The fixed-function → shader pipeline conversion is the critical path. All other
+changes (input, lifecycle, UI) are straightforward libGDX patterns.
+
+---
+
 ## Implementation Order (Recommended)
 
 The phases above are organized by domain, but the optimal implementation
@@ -404,3 +460,6 @@ order interleaves them to always have something testable:
 12. **Phase 6.2-6.3** — Mod APIs (commands, permissions, rendering)
 13. **Phase 4.3** — World format upgrader (export to Alpha/Beta)
 14. **Phase 7** — Tests and performance optimization
+15. **Phase 8.1-8.2** — libGDX abstraction + desktop backend (rendering refactor)
+16. **Phase 8.3** — Android module (shader pipeline, touch input)
+17. **Phase 8.4** — Android multiplayer testing

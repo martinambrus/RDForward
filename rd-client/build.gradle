@@ -1,3 +1,5 @@
+import java.util.Random
+
 description = 'RDForward Client - multiplayer networking and UI for the RubyDung game'
 
 // Expand ${version} in fabric.mod.json at build time
@@ -12,6 +14,12 @@ dependencies {
     implementation project(':rd-game')
     implementation project(':rd-protocol')
     implementation project(':rd-world')
+
+    // LWJGL 3 for compile-time access (RemotePlayerRenderer uses GL11)
+    // At runtime, LWJGL classes come from rd-game's classpath
+    compileOnly 'org.lwjgl:lwjgl:3.4.1'
+    compileOnly 'org.lwjgl:lwjgl-opengl:3.4.1'
+    compileOnly 'org.lwjgl:lwjgl-glfw:3.4.1'
 
     // Fabric Loader — mod discovery, dependency resolution, Mixin-based code injection
     implementation 'net.fabricmc:fabric-loader:0.18.4'
@@ -47,6 +55,29 @@ task runModdedClient(type: JavaExec) {
         // Fabric Loader settings
         '-Dfabric.development=true',
         '-Dfabric.gameVersion=rd-132211',
+    ]
+}
+
+// Convenience task: launches the modded client and auto-connects to a local server.
+// Usage: ./gradlew :rd-client:runMultiplayer
+// Or with custom server: ./gradlew :rd-client:runMultiplayer -PmpServer=192.168.1.5:25565 -PmpUsername=Steve
+task runMultiplayer(type: JavaExec) {
+    description = 'Launches RubyDung with multiplayer (auto-connects to server)'
+    group = 'application'
+    dependsOn classes, ':rd-game:classes'
+
+    mainClass = 'net.fabricmc.loader.impl.launch.knot.KnotClient'
+    classpath = sourceSets.main.runtimeClasspath
+
+    def server = findProperty('mpServer') ?: 'localhost:25565'
+    def username = findProperty('mpUsername') ?: 'Player' + new Random().nextInt(1000)
+
+    jvmArgs = [
+        '-Xmx512m',
+        '-Dfabric.development=true',
+        '-Dfabric.gameVersion=rd-132211',
+        "-Drdforward.server=${server}",
+        "-Drdforward.username=${username}",
     ]
 }
 
