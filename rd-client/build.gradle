@@ -7,8 +7,8 @@ dependencies {
 
     // Fabric Loader — mod discovery, dependency resolution, Mixin-based code injection
     implementation 'net.fabricmc:fabric-loader:0.18.4'
-    // Mixin annotations (compile-time only; Fabric Loader bundles the runtime)
-    compileOnly 'net.fabricmc:sponge-mixin:0.17.0+mixin.0.8.7'
+    // Mixin — compile-time annotations + runtime bootstrap (Fabric Loader expects it on the classpath)
+    implementation 'net.fabricmc:sponge-mixin:0.17.0+mixin.0.8.7'
     // ASM bytecode library (required by Fabric Loader + Mixin at runtime)
     runtimeOnly 'org.ow2.asm:asm:9.9.1'
     runtimeOnly 'org.ow2.asm:asm-analysis:9.9.1'
