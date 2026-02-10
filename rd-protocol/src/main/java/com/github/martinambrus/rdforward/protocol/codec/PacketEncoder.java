@@ -8,13 +8,18 @@ import io.netty.handler.codec.MessageToByteEncoder;
 /**
  * Encodes a Packet object into bytes for transmission.
  *
- * Wire format:
- *   [4 bytes] total packet length (excluding this field)
- *   [1 byte]  packet type ID
- *   [N bytes] packet payload
+ * Wire format (Nati framing — our Netty extension over raw MC protocol):
+ *   [4 bytes] total packet length (excluding this field itself)
+ *   [1 byte]  packet ID (matches real MC Classic/Alpha IDs)
+ *   [N bytes] packet payload (MC-compatible field structure)
  *
- * The length prefix enables the decoder to frame messages
- * correctly over the TCP stream.
+ * The 4-byte length prefix is our addition for reliable Netty framing.
+ * The packet ID and payload match the real Minecraft protocol structure,
+ * so the actual content is compatible with MC clients/servers.
+ *
+ * Note: Real MC Classic/Alpha has NO length prefix (the parser must know
+ * each packet's layout). Real MC 1.7+ uses VarInt length prefix + VarInt
+ * packet ID. Our format sits in between for simplicity with Netty.
  */
 public class PacketEncoder extends MessageToByteEncoder<Packet> {
 
@@ -23,7 +28,7 @@ public class PacketEncoder extends MessageToByteEncoder<Packet> {
         // Write payload to a temporary buffer to measure length
         ByteBuf payload = ctx.alloc().buffer();
         try {
-            payload.writeByte(packet.getType().getId());
+            payload.writeByte(packet.getPacketId());
             packet.write(payload);
 
             // Write length prefix + payload

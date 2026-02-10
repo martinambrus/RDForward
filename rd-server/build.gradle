@@ -1,7 +1,6 @@
 description = 'RDForward Server - dedicated server runtime'
 
 dependencies {
-    implementation project(':rd-api')
     implementation project(':rd-protocol')
     implementation project(':rd-world')
 }

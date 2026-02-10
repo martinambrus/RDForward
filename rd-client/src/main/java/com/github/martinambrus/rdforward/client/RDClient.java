@@ -1,34 +1,40 @@
 package com.github.martinambrus.rdforward.client;
 
-import com.github.martinambrus.rdforward.protocol.Capability;
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.codec.PacketDecoder;
 import com.github.martinambrus.rdforward.protocol.codec.PacketEncoder;
-import com.github.martinambrus.rdforward.protocol.packet.HandshakePacket;
+import com.github.martinambrus.rdforward.protocol.packet.PacketDirection;
+import com.github.martinambrus.rdforward.protocol.packet.classic.PlayerIdentificationPacket;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 
-import java.util.ArrayList;
-import java.util.List;
-
 /**
  * The RDForward multiplayer client.
  *
- * Connects to a server via Netty, performs the protocol handshake,
+ * Connects to a server via Netty, performs the MC Classic login handshake,
  * and integrates with the RubyDung game loop to send player actions
  * and receive world state updates.
+ *
+ * Login sequence (follows MC Classic protocol):
+ *   Client: PlayerIdentification (0x00) — protocol version + username
+ *   Server: ServerIdentification (0x00) — server info
+ *   Server: World data transfer (0x02 + 0x03... + 0x04)
+ *   Server: SpawnPlayer (0x07) with ID -1
+ *   Normal gameplay begins
  */
 public class RDClient {
 
     private final ProtocolVersion clientVersion;
+    private final String username;
     private EventLoopGroup group;
     private Channel channel;
 
-    public RDClient(ProtocolVersion clientVersion) {
+    public RDClient(ProtocolVersion clientVersion, String username) {
         this.clientVersion = clientVersion;
+        this.username = username;
     }
 
     /**
@@ -44,7 +50,9 @@ public class RDClient {
                     @Override
                     protected void initChannel(SocketChannel ch) {
                         ChannelPipeline pipeline = ch.pipeline();
-                        pipeline.addLast("decoder", new PacketDecoder());
+                        // Client reads SERVER_TO_CLIENT packets
+                        pipeline.addLast("decoder", new PacketDecoder(
+                                PacketDirection.SERVER_TO_CLIENT, clientVersion));
                         pipeline.addLast("encoder", new PacketEncoder());
                         pipeline.addLast("handler", new ClientConnectionHandler(clientVersion));
                     }
@@ -54,22 +62,15 @@ public class RDClient {
 
         channel = bootstrap.connect(host, port).sync().channel();
 
-        // Send handshake
-        List<Integer> capabilities = new ArrayList<Integer>();
-        for (Capability cap : Capability.values()) {
-            if (cap.isAvailableIn(clientVersion)) {
-                capabilities.add(cap.getId());
-            }
-        }
-
-        HandshakePacket handshake = new HandshakePacket(
+        // Send Player Identification (Classic 0x00 C->S)
+        PlayerIdentificationPacket identification = new PlayerIdentificationPacket(
                 clientVersion.getVersionNumber(),
-                "RDForward/" + clientVersion.getDisplayName(),
-                capabilities
+                username,
+                ""  // verification key (empty for offline mode)
         );
-        channel.writeAndFlush(handshake);
+        channel.writeAndFlush(identification);
 
-        System.out.println("Connected to " + host + ":" + port);
+        System.out.println("Connected to " + host + ":" + port + " as " + username);
     }
 
     /**

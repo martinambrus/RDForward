@@ -3,7 +3,4 @@ description = 'RDForward World - Alpha-format world persistence and NBT serializ
 dependencies {
     // Querz NBT for reading/writing Minecraft NBT format (MIT licensed)
     implementation 'net.querz:nbt:6.1'
-
-    // Shared types from the API
-    implementation project(':rd-api')
 }

@@ -152,9 +152,12 @@ public final class BlockRegistry {
      */
     public static boolean isValidBlock(int blockId, ProtocolVersion version) {
         switch (version) {
-            case RUBYDUNG_1:
+            case RUBYDUNG:
                 return blockId == AIR || blockId == GRASS || blockId == COBBLESTONE;
-            case ALPHA_2:
+            case CLASSIC:
+                return blockId >= 0 && blockId <= 49;
+            case ALPHA_1_0_15:
+            case ALPHA_1_2_6:
                 return blockId >= 0 && blockId <= 91;
             default:
                 return blockId >= 0;

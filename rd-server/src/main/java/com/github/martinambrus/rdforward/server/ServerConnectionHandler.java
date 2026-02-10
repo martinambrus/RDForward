@@ -1,28 +1,36 @@
 package com.github.martinambrus.rdforward.server;
 
-import com.github.martinambrus.rdforward.protocol.Capability;
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
-import com.github.martinambrus.rdforward.protocol.packet.*;
+import com.github.martinambrus.rdforward.protocol.codec.PacketDecoder;
+import com.github.martinambrus.rdforward.protocol.packet.Packet;
+import com.github.martinambrus.rdforward.protocol.packet.classic.*;
 import com.github.martinambrus.rdforward.protocol.translation.VersionTranslator;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Handles individual client connections on the server side.
  *
  * Responsibilities:
- * 1. Process the initial handshake to determine client protocol version
- * 2. Insert the appropriate VersionTranslator into the pipeline
- * 3. Route game packets to the world state manager
+ * 1. Process the initial Player Identification (Classic 0x00) to determine
+ *    the client's protocol version
+ * 2. Send Server Identification (Classic 0x00) in response
+ * 3. Insert the appropriate VersionTranslator into the pipeline if needed
+ * 4. Route game packets to the world state manager
+ *
+ * The login sequence follows the MC Classic protocol:
+ *   Client: PlayerIdentification (0x00) — protocol version, username, key
+ *   Server: ServerIdentification (0x00) — protocol version, name, MOTD, user type
+ *   Server: LevelInitialize (0x02) + LevelDataChunk (0x03)... + LevelFinalize (0x04)
+ *   Server: SpawnPlayer (0x07) with ID -1 (self)
+ *   Normal gameplay begins
  */
 public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet> {
 
     private final ProtocolVersion serverVersion;
     private ProtocolVersion clientVersion;
-    private boolean handshakeComplete = false;
+    private String clientUsername;
+    private boolean loginComplete = false;
 
     public ServerConnectionHandler(ProtocolVersion serverVersion) {
         this.serverVersion = serverVersion;
@@ -30,48 +38,36 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, Packet packet) {
-        if (!handshakeComplete && packet.getType() == PacketType.HANDSHAKE) {
-            handleHandshake(ctx, (HandshakePacket) packet);
+        // First packet must be PlayerIdentification (Classic 0x00)
+        if (!loginComplete && packet instanceof PlayerIdentificationPacket) {
+            handlePlayerIdentification(ctx, (PlayerIdentificationPacket) packet);
             return;
         }
 
-        if (!handshakeComplete) {
-            // Drop packets before handshake
+        if (!loginComplete) {
+            // Drop packets before login is complete
             return;
         }
 
-        // Route game packets
-        switch (packet.getType()) {
-            case BLOCK_CHANGE:
-                handleBlockChange(ctx, (BlockChangePacket) packet);
-                break;
-            case PLAYER_POSITION:
-                handlePlayerPosition(ctx, (PlayerPositionPacket) packet);
-                break;
-            case CHAT_MESSAGE:
-                handleChatMessage(ctx, (ChatMessagePacket) packet);
-                break;
-            default:
-                break;
+        // Route game packets by type
+        if (packet instanceof SetBlockClientPacket) {
+            handleSetBlock(ctx, (SetBlockClientPacket) packet);
+        } else if (packet instanceof PlayerTeleportPacket) {
+            handlePlayerPosition(ctx, (PlayerTeleportPacket) packet);
+        } else if (packet instanceof MessagePacket) {
+            handleMessage(ctx, (MessagePacket) packet);
         }
     }
 
-    private void handleHandshake(ChannelHandlerContext ctx, HandshakePacket handshake) {
-        clientVersion = ProtocolVersion.fromNumber(handshake.getProtocolVersion());
+    private void handlePlayerIdentification(ChannelHandlerContext ctx, PlayerIdentificationPacket identification) {
+        clientVersion = ProtocolVersion.fromNumber(identification.getProtocolVersion());
+        clientUsername = identification.getUsername();
+
         if (clientVersion == null) {
-            // Unknown protocol version — disconnect
+            // Unknown protocol version — disconnect with reason
+            ctx.writeAndFlush(new DisconnectPacket("Unknown protocol version: " + identification.getProtocolVersion()));
             ctx.close();
             return;
-        }
-
-        // Compute active capabilities (intersection)
-        List<Integer> activeCapabilities = new ArrayList<Integer>();
-        for (int capId : handshake.getCapabilityIds()) {
-            for (Capability cap : Capability.values()) {
-                if (cap.getId() == capId && cap.isAvailableIn(clientVersion)) {
-                    activeCapabilities.add(capId);
-                }
-            }
         }
 
         // If client is on a different version, insert version translator
@@ -79,30 +75,45 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
             ctx.pipeline().addBefore("handler", "translator",
                     new VersionTranslator(serverVersion, clientVersion));
 
-            System.out.println("Client connected with " + clientVersion.getDisplayName()
-                    + " protocol — version translator active");
+            // Update the decoder's protocol version so it creates the right packets
+            PacketDecoder decoder = ctx.pipeline().get(PacketDecoder.class);
+            if (decoder != null) {
+                decoder.setProtocolVersion(clientVersion);
+            }
+
+            System.out.println("Client '" + clientUsername + "' connected with "
+                    + clientVersion.getDisplayName() + " protocol — version translator active");
         }
 
-        // Send handshake response
-        HandshakeResponsePacket response = new HandshakeResponsePacket(
-                serverVersion.getVersionNumber(), activeCapabilities
+        // Send Server Identification response (Classic 0x00 S->C)
+        ServerIdentificationPacket response = new ServerIdentificationPacket(
+                serverVersion.getVersionNumber(),
+                "RDForward Server",
+                "Welcome to RDForward!",
+                ServerIdentificationPacket.USER_TYPE_NORMAL
         );
         ctx.writeAndFlush(response);
 
-        handshakeComplete = true;
-        System.out.println("Handshake complete: " + handshake.getClientName()
-                + " (protocol v" + clientVersion.getVersionNumber() + ")");
+        loginComplete = true;
+        System.out.println("Login complete: " + clientUsername
+                + " (protocol: " + clientVersion.getDisplayName()
+                + ", version " + clientVersion.getVersionNumber() + ")");
+
+        // TODO: Send world data (LevelInitialize + LevelDataChunks + LevelFinalize)
+        // TODO: Send SpawnPlayer with ID -1 for self-spawn
+        // TODO: Send SpawnPlayer for each existing player
     }
 
-    private void handleBlockChange(ChannelHandlerContext ctx, BlockChangePacket packet) {
+    private void handleSetBlock(ChannelHandlerContext ctx, SetBlockClientPacket packet) {
         // TODO: validate and apply to world state, then broadcast to all clients
     }
 
-    private void handlePlayerPosition(ChannelHandlerContext ctx, PlayerPositionPacket packet) {
+    private void handlePlayerPosition(ChannelHandlerContext ctx, PlayerTeleportPacket packet) {
         // TODO: validate and broadcast to other clients
     }
 
-    private void handleChatMessage(ChannelHandlerContext ctx, ChatMessagePacket packet) {
+    private void handleMessage(ChannelHandlerContext ctx, MessagePacket packet) {
+        System.out.println("[Chat] " + clientUsername + ": " + packet.getMessage());
         // TODO: broadcast to all clients
     }
 

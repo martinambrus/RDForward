@@ -1,6 +1,9 @@
 package com.github.martinambrus.rdforward.protocol.codec;
 
-import com.github.martinambrus.rdforward.protocol.packet.*;
+import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
+import com.github.martinambrus.rdforward.protocol.packet.Packet;
+import com.github.martinambrus.rdforward.protocol.packet.PacketDirection;
+import com.github.martinambrus.rdforward.protocol.packet.PacketRegistry;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ByteToMessageDecoder;
@@ -10,14 +13,38 @@ import java.util.List;
 /**
  * Decodes bytes from the network into Packet objects.
  *
- * Expects the wire format produced by PacketEncoder:
- *   [4 bytes] total packet length
- *   [1 byte]  packet type ID
- *   [N bytes] packet payload
+ * Uses the PacketRegistry to resolve the correct Packet class based on
+ * the connection's protocol version, read direction, and packet ID.
+ * This is necessary because Classic and Alpha share packet IDs with
+ * different meanings.
  *
- * Unknown packet type IDs are logged and skipped (forward compat).
+ * The protocol version can be updated after handshake if the server
+ * negotiates a different version.
+ *
+ * Wire format (Nati framing):
+ *   [4 bytes] total packet length
+ *   [1 byte]  packet ID (MC-compatible)
+ *   [N bytes] packet payload (MC-compatible)
  */
 public class PacketDecoder extends ByteToMessageDecoder {
+
+    /** Direction of packets we're reading (opposite of what we'd send). */
+    private final PacketDirection readDirection;
+
+    /** Protocol version of the connection (can be updated post-handshake). */
+    private volatile ProtocolVersion protocolVersion;
+
+    /**
+     * Create a decoder for a specific direction and version.
+     *
+     * @param readDirection the direction of packets we'll be decoding
+     *   (CLIENT_TO_SERVER for server-side decoder, SERVER_TO_CLIENT for client-side)
+     * @param protocolVersion the initial protocol version (can be updated later)
+     */
+    public PacketDecoder(PacketDirection readDirection, ProtocolVersion protocolVersion) {
+        this.readDirection = readDirection;
+        this.protocolVersion = protocolVersion;
+    }
 
     @Override
     protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) {
@@ -29,24 +56,27 @@ public class PacketDecoder extends ByteToMessageDecoder {
         in.markReaderIndex();
         int length = in.readInt();
 
+        if (length <= 0 || length > 1048576) {
+            // Invalid length — skip and close
+            in.resetReaderIndex();
+            ctx.close();
+            return;
+        }
+
         // Wait until the full packet has arrived
         if (in.readableBytes() < length) {
             in.resetReaderIndex();
             return;
         }
 
-        // Read the packet type ID
-        int packetTypeId = in.readUnsignedByte();
-        PacketType type = PacketType.fromId(packetTypeId);
+        // Read the packet ID
+        int packetId = in.readUnsignedByte();
 
-        if (type == null) {
-            // Unknown packet type — skip it (forward compatibility)
-            in.skipBytes(length - 1);
-            return;
-        }
+        // Look up the packet in the registry
+        Packet packet = PacketRegistry.createPacket(protocolVersion, readDirection, packetId);
 
-        Packet packet = createPacket(type);
         if (packet == null) {
+            // Unknown packet — skip it (forward compatibility)
             in.skipBytes(length - 1);
             return;
         }
@@ -58,23 +88,18 @@ public class PacketDecoder extends ByteToMessageDecoder {
     }
 
     /**
-     * Factory method to instantiate the correct Packet class
-     * based on the packet type.
+     * Update the protocol version for this decoder.
+     * Called after handshake when the connection version is determined.
      */
-    private Packet createPacket(PacketType type) {
-        switch (type) {
-            case HANDSHAKE:
-                return new HandshakePacket();
-            case HANDSHAKE_RESPONSE:
-                return new HandshakeResponsePacket();
-            case BLOCK_CHANGE:
-                return new BlockChangePacket();
-            case PLAYER_POSITION:
-                return new PlayerPositionPacket();
-            case CHAT_MESSAGE:
-                return new ChatMessagePacket();
-            default:
-                return null;
-        }
+    public void setProtocolVersion(ProtocolVersion version) {
+        this.protocolVersion = version;
+    }
+
+    public ProtocolVersion getProtocolVersion() {
+        return protocolVersion;
+    }
+
+    public PacketDirection getReadDirection() {
+        return readDirection;
     }
 }

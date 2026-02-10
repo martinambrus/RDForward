@@ -3,7 +3,69 @@
 Detailed, step-by-step plan to build a multiplayer, mod-enabled RubyDung
 that's forward-compatible with Minecraft Alpha (and beyond).
 
-**Tech Stack**: Fabric Loader + Mixin, Netty, Alpha-format NBT, custom protocol with capability negotiation.
+**Tech Stack**: Fabric Loader + Mixin, Netty, Alpha-format NBT, MC-compatible protocol.
+
+---
+
+## Protocol Alignment with Minecraft (Nati Protocol)
+
+The RDForward protocol ("Nati protocol") is designed to be as close to the real
+Minecraft server protocol as possible, so that when we progress to MC versions
+with existing Fabric adapters, we can reuse their work directly.
+
+### Protocol Foundation: MC Classic (wiki.vg protocol version 7)
+
+The earliest fully documented MC protocol is **Classic** (c0.0.20a - c0.30),
+with 16 packet types, all fixed-size. Since RubyDung is a pre-Classic prototype,
+Classic is the natural starting point.
+
+**Wire format (Nati framing):**
+- `[4 bytes]` length prefix (our Netty extension — real MC Classic has none)
+- `[1 byte]` packet ID (matches real MC Classic IDs from wiki.vg)
+- `[N bytes]` payload (MC-compatible field structure)
+
+**Classic packet IDs implemented (all 16):**
+
+| ID | C→S | S→C | Name |
+|----|-----|-----|------|
+| 0x00 | PlayerIdentification | ServerIdentification | Login |
+| 0x01 | — | Ping | Keep-alive |
+| 0x02 | — | LevelInitialize | World transfer start |
+| 0x03 | — | LevelDataChunk | World data (1KB chunks) |
+| 0x04 | — | LevelFinalize | World transfer end |
+| 0x05 | SetBlock | — | Block place/break |
+| 0x06 | — | SetBlock | Block change broadcast |
+| 0x07 | — | SpawnPlayer | Player join |
+| 0x08 | PlayerTeleport | PlayerTeleport | Absolute position |
+| 0x09 | — | PosOrientUpdate | Relative pos+rot |
+| 0x0A | — | PositionUpdate | Relative pos only |
+| 0x0B | — | OrientationUpdate | Rotation only |
+| 0x0C | — | DespawnPlayer | Player leave |
+| 0x0D | Message | Message | Chat |
+| 0x0E | — | Disconnect | Kick with reason |
+| 0x0F | — | UpdateUserType | Op status |
+
+### Version Progression Path
+
+1. **RubyDung (version 0)** — uses Classic packet format (our custom version number)
+2. **Classic (version 7)** — real MC Classic protocol, identical packets
+3. **Alpha 1.0.15 (version 10)** — first Alpha SMP, different packet ID space (0x00-0xFF)
+4. **Alpha 1.2.6 (version 14)** — final Alpha, adds health/time/mobs/explosions
+
+The `PacketRegistry` resolves (version, direction, packetId) → Packet class,
+handling the ID overlap between Classic and Alpha. The `VersionTranslator` chain
+converts between protocol versions, matching ViaLegacy's `c0_28_30toa1_0_15`
+translation path.
+
+### Data Type Compatibility
+
+| Era | Strings | Coordinates | Angles | Framing |
+|-----|---------|-------------|--------|---------|
+| Classic | 64-byte fixed, ASCII | Fixed-point shorts (/32) | Byte (0-255) | None (fixed-size) |
+| Alpha/Beta | string16 (short + UTF-16BE) | int/double | float (degrees) | None (known layout) |
+| 1.7+ (future) | VarInt + UTF-8 | double + VarInt | float | VarInt length |
+
+Our `McDataTypes` class supports all three formats for forward compatibility.
 
 ---
 
@@ -71,14 +133,17 @@ Since RubyDung isn't obfuscated, we can target classes by their real names.
 
 ### Step 2.1: Complete the Packet Set
 
-The skeleton already has Handshake, BlockChange, PlayerPosition, and ChatMessage.
-Additional packets needed:
+**DONE** — All 17 MC Classic protocol packet classes are implemented in
+`rd-protocol/src/main/java/.../packet/classic/`. The packet IDs match the
+real MC Classic protocol (wiki.vg protocol version 7).
 
-- [ ] `ChunkDataPacket` — compressed chunk data (blocks + metadata) for initial world sync
-- [ ] `PlayerJoinPacket` — broadcast when a player joins (ID, name, initial position)
-- [ ] `PlayerLeavePacket` — broadcast when a player disconnects
-- [ ] `DisconnectPacket` — sent by either side to terminate connection (with reason string)
-- [ ] `KeepAlivePacket` — periodic ping to detect dead connections
+Remaining for Alpha protocol (when we reach Alpha versions):
+
+- [ ] Alpha login packets (0x01 Login, 0x02 Handshake — different from Classic)
+- [ ] Alpha chunk packets (0x32 PreChunk, 0x33 MapChunk — chunk-based instead of full-world)
+- [ ] Alpha entity packets (0x14 AddPlayer, 0x1D RemoveEntities, etc.)
+- [ ] Alpha block packets (0x35 BlockUpdate — uses int coords instead of short)
+- [ ] Alpha keep-alive (0x00 — different from Classic 0x01 Ping)
 
 ### Step 2.2: Server World State Manager
 
@@ -99,8 +164,8 @@ The server needs to own the authoritative world state.
 
 ### Step 2.4: Client-Server World Sync
 
-- [ ] On connect: server sends all chunks within render distance as `ChunkDataPacket`s
-- [ ] Server sends delta updates via `BlockChangePacket` for subsequent changes
+- [ ] On connect: server sends world via Classic protocol (LevelInitialize + LevelDataChunks + LevelFinalize)
+- [ ] Server sends delta updates via `SetBlockServerPacket` (Classic 0x06) for subsequent changes
 - [ ] Client maintains local world copy for rendering
 - [ ] Client sends block place/break requests; server validates and responds
 - [ ] Implement simple lag compensation: client predicts block changes, reverts if server rejects
@@ -114,9 +179,9 @@ The server needs to own the authoritative world state.
 
 ### Step 2.6: Connection Lifecycle
 
-- [ ] Implement handshake timeout (disconnect if no handshake within 5 seconds)
-- [ ] Implement KeepAlive (server sends every 15 seconds, client responds)
-- [ ] Handle graceful disconnect (send DisconnectPacket before closing)
+- [ ] Implement login timeout (disconnect if no PlayerIdentification within 5 seconds)
+- [ ] Implement Ping (server sends Classic 0x01 PingPacket periodically)
+- [ ] Handle graceful disconnect (send Classic 0x0E DisconnectPacket before closing)
 - [ ] Handle unexpected disconnect (remove player, broadcast leave)
 - [ ] Implement max player count enforcement
 
@@ -126,12 +191,16 @@ The server needs to own the authoritative world state.
 
 ### Step 3.1: Complete Block Translation Tables
 
-The skeleton has Alpha -> RubyDung. We need the reverse too.
+**DONE** — Three translation tables implemented in `BlockTranslator`:
+- Classic (50 blocks) -> RubyDung (3 blocks)
+- Alpha (82 blocks) -> RubyDung (3 blocks)
+- Alpha (82 blocks) -> Classic (50 blocks)
 
-- [ ] Complete Alpha -> RubyDung block translation (all 92 block IDs)
-- [ ] Create RubyDung -> Alpha translation (Grass -> Grass, Cobble -> Cobble, Air -> Air)
+Remaining:
+
 - [ ] Make translation tables data-driven (load from JSON/NBT files, not hardcoded)
 - [ ] Add unit tests for all block translations
+- [ ] Add RubyDung -> Classic (upward translation, mostly pass-through)
 
 ### Step 3.2: Action Translation
 

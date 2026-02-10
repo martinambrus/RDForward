@@ -3,6 +3,7 @@ package com.github.martinambrus.rdforward.server;
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.codec.PacketDecoder;
 import com.github.martinambrus.rdforward.protocol.codec.PacketEncoder;
+import com.github.martinambrus.rdforward.protocol.packet.PacketDirection;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -18,6 +19,10 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
  * The server is authoritative: clients send requests (place block,
  * move), the server validates them, updates world state, and
  * broadcasts the result to all connected clients.
+ *
+ * Uses the MC Classic protocol (wiki.vg protocol version 7) as the
+ * base protocol, with version translation for older (RubyDung) and
+ * newer (Alpha) clients.
  */
 public class RDServer {
 
@@ -48,12 +53,16 @@ public class RDServer {
                         ChannelPipeline pipeline = ch.pipeline();
 
                         // Codec layer: bytes <-> Packet objects
-                        pipeline.addLast("decoder", new PacketDecoder());
+                        // Server reads CLIENT_TO_SERVER packets
+                        // Initial version is the server's version; updated after handshake
+                        // if the client uses a different version
+                        pipeline.addLast("decoder", new PacketDecoder(
+                                PacketDirection.CLIENT_TO_SERVER, protocolVersion));
                         pipeline.addLast("encoder", new PacketEncoder());
 
                         // Version translation is added dynamically after
                         // the handshake reveals the client's protocol version.
-                        // See ServerConnectionHandler for the handshake logic.
+                        // See ServerConnectionHandler for the login logic.
 
                         pipeline.addLast("handler", new ServerConnectionHandler(protocolVersion));
                     }
@@ -64,7 +73,8 @@ public class RDServer {
 
         serverChannel = bootstrap.bind(port).sync().channel();
         System.out.println("RDForward server started on port " + port
-                + " (protocol: " + protocolVersion.getDisplayName() + ")");
+                + " (protocol: " + protocolVersion.getDisplayName()
+                + ", version " + protocolVersion.getVersionNumber() + ")");
     }
 
     /**

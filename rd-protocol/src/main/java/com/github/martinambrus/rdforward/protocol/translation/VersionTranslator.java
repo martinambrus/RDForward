@@ -1,7 +1,10 @@
 package com.github.martinambrus.rdforward.protocol.translation;
 
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
-import com.github.martinambrus.rdforward.protocol.packet.*;
+import com.github.martinambrus.rdforward.protocol.packet.Packet;
+import com.github.martinambrus.rdforward.protocol.packet.PacketRegistry;
+import com.github.martinambrus.rdforward.protocol.packet.PacketDirection;
+import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 
@@ -9,17 +12,20 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
  * Netty channel handler that translates packets between protocol versions.
  *
  * This sits in the Netty pipeline between the codec layer and the
- * game handler. It intercepts packets and modifies them to match
- * the target protocol version.
+ * game handler. It intercepts outbound packets (server -> client)
+ * and translates them to match the client's protocol version.
  *
  * Architecture (inspired by ViaVersion):
- * - One translator handles one version step (e.g., Alpha -> RubyDung)
+ * - One translator handles one version step (e.g., Classic -> RubyDung)
  * - For multi-version gaps, translators are chained in the pipeline
  * - Each translator only needs to know about its adjacent versions
  *
- * Pipeline for a RubyDung client on an Alpha server:
- *   [PacketDecoder] -> [AlphaToRubyDungTranslator] -> [GameHandler]
- *   [GameHandler] -> [RubyDungToAlphaTranslator] -> [PacketEncoder]
+ * Pipeline for a RubyDung client on a Classic server:
+ *   Inbound:  [PacketDecoder] -> [VersionTranslator] -> [GameHandler]
+ *   Outbound: [GameHandler] -> [PacketEncoder]
+ *
+ * The translator filters and transforms inbound packets (from server
+ * perspective, these are the packets being sent TO the client).
  */
 public class VersionTranslator extends ChannelInboundHandlerAdapter {
 
@@ -40,8 +46,8 @@ public class VersionTranslator extends ChannelInboundHandlerAdapter {
 
         Packet packet = (Packet) msg;
 
-        // Check if this packet type exists in the client's version
-        if (!packet.getType().existsIn(clientVersion)) {
+        // Check if this packet ID exists in the client's version
+        if (!PacketRegistry.hasPacket(clientVersion, PacketDirection.SERVER_TO_CLIENT, packet.getPacketId())) {
             // Drop packets the client can't understand
             return;
         }
@@ -58,28 +64,25 @@ public class VersionTranslator extends ChannelInboundHandlerAdapter {
      * Returns null if the packet should be dropped.
      */
     private Packet translatePacket(Packet packet) {
-        switch (packet.getType()) {
-            case BLOCK_CHANGE:
-                return translateBlockChange((BlockChangePacket) packet);
-            default:
-                // Pass through unchanged for packet types that don't need translation
-                return packet;
+        // Classic 0x06: Set Block (Server -> Client)
+        if (packet instanceof SetBlockServerPacket) {
+            return translateSetBlock((SetBlockServerPacket) packet);
         }
+
+        // Pass through unchanged for packet types that don't need translation
+        return packet;
     }
 
     /**
-     * Translate block IDs in a BlockChangePacket.
+     * Translate block IDs in a SetBlockServerPacket.
      */
-    private Packet translateBlockChange(BlockChangePacket packet) {
+    private Packet translateSetBlock(SetBlockServerPacket packet) {
         int translatedBlockId = BlockTranslator.translate(
-                packet.getBlockId(), serverVersion, clientVersion
+                packet.getBlockType(), serverVersion, clientVersion
         );
-        return new BlockChangePacket(
+        return new SetBlockServerPacket(
                 packet.getX(), packet.getY(), packet.getZ(),
-                translatedBlockId,
-                // Strip metadata if client doesn't support it
-                clientVersion.getVersionNumber() >= ProtocolVersion.ALPHA_2.getVersionNumber()
-                        ? packet.getBlockMetadata() : 0
+                translatedBlockId
         );
     }
 

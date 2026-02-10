@@ -1,20 +1,28 @@
 package com.github.martinambrus.rdforward.client;
 
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
-import com.github.martinambrus.rdforward.protocol.packet.*;
+import com.github.martinambrus.rdforward.protocol.packet.Packet;
+import com.github.martinambrus.rdforward.protocol.packet.classic.*;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 
 /**
  * Handles packets received from the server on the client side.
  *
- * Routes incoming packets to the appropriate client-side systems
- * (world renderer, player list, chat display, etc.)
+ * Routes incoming Classic protocol packets to the appropriate
+ * client-side systems (world renderer, player list, chat display, etc.)
+ *
+ * Expected login sequence from server:
+ *   ServerIdentification (0x00) — server info, user type
+ *   LevelInitialize (0x02) — world transfer starting
+ *   LevelDataChunk (0x03)... — world data chunks
+ *   LevelFinalize (0x04) — world transfer complete, dimensions
+ *   SpawnPlayer (0x07) with ID -1 — self-spawn with position
  */
 public class ClientConnectionHandler extends SimpleChannelInboundHandler<Packet> {
 
     private final ProtocolVersion clientVersion;
-    private boolean handshakeComplete = false;
+    private boolean loginComplete = false;
 
     public ClientConnectionHandler(ProtocolVersion clientVersion) {
         this.clientVersion = clientVersion;
@@ -22,44 +30,114 @@ public class ClientConnectionHandler extends SimpleChannelInboundHandler<Packet>
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, Packet packet) {
-        switch (packet.getType()) {
-            case HANDSHAKE_RESPONSE:
-                handleHandshakeResponse((HandshakeResponsePacket) packet);
-                break;
-            case BLOCK_CHANGE:
-                handleBlockChange((BlockChangePacket) packet);
-                break;
-            case PLAYER_POSITION:
-                handlePlayerPosition((PlayerPositionPacket) packet);
-                break;
-            case CHAT_MESSAGE:
-                handleChatMessage((ChatMessagePacket) packet);
-                break;
-            default:
-                // Unknown packet types are silently ignored (forward compat)
-                break;
+        if (packet instanceof ServerIdentificationPacket) {
+            handleServerIdentification((ServerIdentificationPacket) packet);
+        } else if (packet instanceof PingPacket) {
+            // Ping requires no response in Classic
+        } else if (packet instanceof LevelInitializePacket) {
+            handleLevelInitialize();
+        } else if (packet instanceof LevelDataChunkPacket) {
+            handleLevelDataChunk((LevelDataChunkPacket) packet);
+        } else if (packet instanceof LevelFinalizePacket) {
+            handleLevelFinalize((LevelFinalizePacket) packet);
+        } else if (packet instanceof SetBlockServerPacket) {
+            handleSetBlock((SetBlockServerPacket) packet);
+        } else if (packet instanceof SpawnPlayerPacket) {
+            handleSpawnPlayer((SpawnPlayerPacket) packet);
+        } else if (packet instanceof PlayerTeleportPacket) {
+            handlePlayerTeleport((PlayerTeleportPacket) packet);
+        } else if (packet instanceof PositionOrientationUpdatePacket) {
+            handlePositionOrientationUpdate((PositionOrientationUpdatePacket) packet);
+        } else if (packet instanceof PositionUpdatePacket) {
+            handlePositionUpdate((PositionUpdatePacket) packet);
+        } else if (packet instanceof OrientationUpdatePacket) {
+            handleOrientationUpdate((OrientationUpdatePacket) packet);
+        } else if (packet instanceof DespawnPlayerPacket) {
+            handleDespawnPlayer((DespawnPlayerPacket) packet);
+        } else if (packet instanceof MessagePacket) {
+            handleMessage((MessagePacket) packet);
+        } else if (packet instanceof DisconnectPacket) {
+            handleDisconnect(ctx, (DisconnectPacket) packet);
+        } else if (packet instanceof UpdateUserTypePacket) {
+            handleUpdateUserType((UpdateUserTypePacket) packet);
         }
+        // Unknown packet types are silently ignored (forward compatibility)
     }
 
-    private void handleHandshakeResponse(HandshakeResponsePacket response) {
-        handshakeComplete = true;
-        ProtocolVersion serverVersion = ProtocolVersion.fromNumber(response.getServerProtocolVersion());
+    private void handleServerIdentification(ServerIdentificationPacket identification) {
+        loginComplete = true;
+        ProtocolVersion serverVersion = ProtocolVersion.fromNumber(identification.getProtocolVersion());
         String serverName = serverVersion != null ? serverVersion.getDisplayName() : "Unknown";
-        System.out.println("Handshake complete — server protocol: " + serverName
-                + ", active capabilities: " + response.getActiveCapabilityIds().size());
+        System.out.println("Connected to server: " + identification.getServerName()
+                + " (protocol: " + serverName + ")");
+        System.out.println("MOTD: " + identification.getServerMotd());
+        System.out.println("User type: " + (identification.getUserType() == ServerIdentificationPacket.USER_TYPE_OP ? "Op" : "Normal"));
     }
 
-    private void handleBlockChange(BlockChangePacket packet) {
+    private void handleLevelInitialize() {
+        System.out.println("Receiving world data...");
+        // TODO: prepare world buffer for incoming chunk data
+    }
+
+    private void handleLevelDataChunk(LevelDataChunkPacket packet) {
+        System.out.println("World data: " + packet.getPercentComplete() + "% complete");
+        // TODO: append chunk data to world buffer
+    }
+
+    private void handleLevelFinalize(LevelFinalizePacket packet) {
+        System.out.println("World loaded: " + packet.getXSize() + "x"
+                + packet.getYSize() + "x" + packet.getZSize());
+        // TODO: decompress and load the world from accumulated chunk data
+    }
+
+    private void handleSetBlock(SetBlockServerPacket packet) {
         // TODO: update local world state and trigger re-render
     }
 
-    private void handlePlayerPosition(PlayerPositionPacket packet) {
-        // TODO: update remote player position in the local world
+    private void handleSpawnPlayer(SpawnPlayerPacket packet) {
+        if (packet.getPlayerId() == SpawnPlayerPacket.SELF_ID) {
+            System.out.println("Spawned at: (" + (packet.getX() / 32.0) + ", "
+                    + (packet.getY() / 32.0) + ", " + (packet.getZ() / 32.0) + ")");
+        } else {
+            System.out.println("Player joined: " + packet.getPlayerName()
+                    + " (ID " + packet.getPlayerId() + ")");
+        }
+        // TODO: create player entity in world
     }
 
-    private void handleChatMessage(ChatMessagePacket packet) {
-        // TODO: display chat message
-        System.out.println("[Chat] Player " + packet.getSenderId() + ": " + packet.getMessage());
+    private void handlePlayerTeleport(PlayerTeleportPacket packet) {
+        // TODO: update player position (absolute)
+    }
+
+    private void handlePositionOrientationUpdate(PositionOrientationUpdatePacket packet) {
+        // TODO: update player position (relative + rotation)
+    }
+
+    private void handlePositionUpdate(PositionUpdatePacket packet) {
+        // TODO: update player position (relative, no rotation change)
+    }
+
+    private void handleOrientationUpdate(OrientationUpdatePacket packet) {
+        // TODO: update player rotation (no position change)
+    }
+
+    private void handleDespawnPlayer(DespawnPlayerPacket packet) {
+        System.out.println("Player left: ID " + packet.getPlayerId());
+        // TODO: remove player entity from world
+    }
+
+    private void handleMessage(MessagePacket packet) {
+        System.out.println("[Chat] Player " + packet.getPlayerId() + ": " + packet.getMessage());
+        // TODO: display in chat overlay
+    }
+
+    private void handleDisconnect(ChannelHandlerContext ctx, DisconnectPacket packet) {
+        System.out.println("Disconnected: " + packet.getReason());
+        ctx.close();
+    }
+
+    private void handleUpdateUserType(UpdateUserTypePacket packet) {
+        System.out.println("User type updated: " + (packet.getUserType() == UpdateUserTypePacket.USER_TYPE_OP ? "Op" : "Normal"));
     }
 
     @Override
