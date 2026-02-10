@@ -63,8 +63,13 @@ ext {
         'org.junit.platform:junit-platform-commons:1.14.2',
         'org.apiguardian:apiguardian-api:1.1.2',
         'org.opentest4j:opentest4j:1.3.0',
-        // Fabric Loader (rd-client)
+        // Fabric Loader + ASM (rd-client)
         'net.fabricmc:fabric-loader:0.18.4@https://maven.fabricmc.net',
+        'org.ow2.asm:asm:9.9.1',
+        'org.ow2.asm:asm-analysis:9.9.1',
+        'org.ow2.asm:asm-commons:9.9.1',
+        'org.ow2.asm:asm-tree:9.9.1',
+        'org.ow2.asm:asm-util:9.9.1',
     ]
 }
 
