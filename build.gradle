@@ -4,7 +4,7 @@ plugins {
 
 allprojects {
     group = 'com.github.martinambrus.rdforward'
-    version = '0.1.0-SNAPSHOT'
+    version = findProperty('projectVersion') ?: '0.0.0-SNAPSHOT'
 
     repositories {
         mavenCentral()

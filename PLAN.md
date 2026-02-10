@@ -274,10 +274,38 @@ Enable converting worlds between formats:
 
 ### Step 5.1: Integrate Decompiled RubyDung
 
-- [ ] Set up the build to download and decompile RubyDung JAR (from archive.org)
-- [ ] Apply existing patches from RDModded
+**BuildTools approach** (Spigot-style, avoids redistributing Mojang code):
+
+- [x] Create `rd-game` module with BuildTools Gradle tasks
+- [x] `downloadRubyDung` — downloads rd-132211.jar from Mojang CDN, verifies SHA1
+- [x] `decompileRubyDung` — decompiles with Vineflower (Fabric ecosystem standard)
+- [x] `extractSources` / `extractResources` — populates `rd-game/src/`
+- [x] `applyPatches` — applies patches from `rd-game/patches/`
+- [x] `setupWorkspace` — orchestrates full pipeline (one command)
+- [x] `rebuildPatches` — generates patches from modified source (dev workflow)
+- [x] `runClient` — launches the game with LWJGL natives
+- [x] `extractNatives` — extracts platform-specific LWJGL native libraries
+- [x] GitHub Actions CI (build verification on push/PR)
+- [x] GitHub Actions Release (creates GitHub Release on version tags, no JAR artifacts)
+- [x] Versioning via `gradle.properties` + git tags (`vX.Y.Z`)
 - [ ] Verify the game launches in single-player mode
 - [ ] Create Fabric Loader launch wrapper
+
+**Build commands:**
+```bash
+./gradlew :rd-game:setupWorkspace   # First-time: download + decompile + patch
+./gradlew :rd-game:runClient        # Launch the game
+./gradlew :rd-game:rebuildPatches   # Save source changes as patches
+./gradlew build                     # Build all modules
+```
+
+**rd-132211 details:**
+- Source: `https://launcher.mojang.com/v1/objects/<sha1>/client.jar`
+- SHA1: `393e8d4b4d708587e2accd7c5221db65365e1075`
+- Size: 26,704 bytes (~6 classes)
+- Package: `com.mojang.rubydung`
+- Main class: `com.mojang.rubydung.RubyDung`
+- Dependencies: LWJGL 2.9.3 (from Maven Central)
 
 ### Step 5.2: Add Multiplayer Client UI
 
@@ -366,7 +394,7 @@ Using Fabric's event pattern, create game events that mods can listen to:
 The phases above are organized by domain, but the optimal implementation
 order interleaves them to always have something testable:
 
-1. **Phase 5.1** — Get RubyDung launching first (can't test anything without it)
+1. **Phase 5.1** — Get RubyDung launching first (**BuildTools done**, verify launch pending)
 2. **Phase 1.1-1.3** — Fabric Loader integration (mod loading works)
 3. **Phase 2.1-2.2** — Basic Netty server + world state (server starts)
 4. **Phase 2.4** — Client-server world sync (two players see same world)

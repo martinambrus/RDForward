@@ -1,11 +1,7 @@
-description = 'RDForward Client - RubyDung game with multiplayer support'
+description = 'RDForward Client - multiplayer networking and UI for the RubyDung game'
 
 dependencies {
-    implementation project(':rd-api')
+    implementation project(':rd-game')
     implementation project(':rd-protocol')
     implementation project(':rd-world')
-
-    // LWJGL 2.9.3 for the original RubyDung rendering engine
-    implementation files("${rootProject.projectDir}/libs/lwjgl/jar/lwjgl.jar")
-    implementation files("${rootProject.projectDir}/libs/lwjgl/jar/lwjgl_util.jar")
 }

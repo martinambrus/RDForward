@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up workspace
+        run: ./gradlew :rd-game:setupWorkspace
+
+      - name: Build
+        run: ./gradlew build -x :rd-api:compileJava
+
+      - name: Run tests
+        run: ./gradlew test -x :rd-api:compileJava
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            ## Build Instructions
+
+            Due to copyright restrictions, pre-built game JARs are not included.
+            RDForward uses a **BuildTools** approach (like Spigot) where the original
+            RubyDung code is downloaded and decompiled on your machine.
+
+            ### Quick Start
+
+            ```bash
+            git clone https://github.com/martinambrus/RDForward.git
+            cd RDForward
+            git checkout ${{ github.ref_name }}
+
+            # First-time setup: downloads rd-132211 from Mojang, decompiles, applies patches
+            ./gradlew :rd-game:setupWorkspace
+
+            # Build everything
+            ./gradlew build
+
+            # Launch the game
+            ./gradlew :rd-game:runClient
+            ```
+
+            ### Requirements
+            - Java 21+ (for building)
+            - Internet connection (first build only, to download rd-132211.jar from Mojang)

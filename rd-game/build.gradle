@@ -1,0 +1,365 @@
+description = 'RDForward Game - Decompiled RubyDung with multiplayer patches'
+
+// =============================================================================
+// RubyDung BuildTools Configuration
+// =============================================================================
+// This module uses a Spigot BuildTools-style approach:
+//   1. Download the original rd-132211.jar from Mojang CDN
+//   2. Verify SHA1 integrity
+//   3. Decompile with Vineflower
+//   4. Apply patches from patches/ directory
+//   5. Compile the patched source
+//
+// This avoids redistributing Mojang's copyrighted code. Only the patches
+// (our modifications) are tracked in version control.
+// =============================================================================
+
+ext {
+    rubyDungVersion = 'rd-132211'
+    rubyDungSha1 = '393e8d4b4d708587e2accd7c5221db65365e1075'
+    rubyDungUrl = "https://launcher.mojang.com/v1/objects/${rubyDungSha1}/client.jar"
+    downloadDir = file("${buildDir}/download")
+    decompileOutputDir = file("${buildDir}/decompiled")
+    cleanSrcDir = file("${buildDir}/clean-src")
+    generatedSrcDir = file('src/main/java')
+    generatedResDir = file('src/main/resources')
+    patchDir = file('patches')
+    markerFile = file("${buildDir}/.workspace-ready")
+}
+
+// Decompiler dependency (Vineflower - the Fabric ecosystem standard)
+configurations {
+    decompiler
+    lwjglNatives
+}
+
+dependencies {
+    decompiler 'org.vineflower:vineflower:1.10.1'
+
+    // LWJGL 2.9.3 - RubyDung's rendering engine
+    implementation 'org.lwjgl.lwjgl:lwjgl:2.9.3'
+    implementation 'org.lwjgl.lwjgl:lwjgl_util:2.9.3'
+}
+
+// Detect platform for native library extraction
+def nativePlatform = {
+    def os = System.getProperty('os.name').toLowerCase()
+    if (os.contains('windows')) return 'natives-windows'
+    if (os.contains('mac') || os.contains('darwin')) return 'natives-osx'
+    return 'natives-linux'
+}()
+
+dependencies {
+    lwjglNatives "org.lwjgl.lwjgl:lwjgl-platform:2.9.3:${nativePlatform}"
+}
+
+// =============================================================================
+// BuildTools Tasks
+// =============================================================================
+
+task downloadRubyDung {
+    description = 'Downloads the original rd-132211 JAR from Mojang CDN'
+    group = 'buildtools'
+
+    def destFile = file("${downloadDir}/${rubyDungVersion}.jar")
+    outputs.file(destFile)
+
+    doLast {
+        destFile.parentFile.mkdirs()
+        if (!destFile.exists()) {
+            logger.lifecycle("Downloading ${rubyDungVersion}.jar from Mojang CDN...")
+            new URL(rubyDungUrl).withInputStream { input ->
+                destFile.withOutputStream { output -> output << input }
+            }
+        }
+
+        // Verify SHA1
+        def digest = java.security.MessageDigest.getInstance('SHA-1')
+        def hash = digest.digest(destFile.bytes)
+            .collect { String.format('%02x', it) }
+            .join('')
+
+        if (hash != rubyDungSha1) {
+            destFile.delete()
+            throw new GradleException(
+                "SHA1 mismatch for ${rubyDungVersion}.jar!\n" +
+                "  Expected: ${rubyDungSha1}\n" +
+                "  Got:      ${hash}\n" +
+                "The file has been deleted. Please re-run the task.")
+        }
+        logger.lifecycle("SHA1 verified: ${hash}")
+    }
+}
+
+task decompileRubyDung(type: JavaExec) {
+    description = 'Decompiles rd-132211.jar using Vineflower'
+    group = 'buildtools'
+    dependsOn downloadRubyDung
+
+    def inputJar = file("${downloadDir}/${rubyDungVersion}.jar")
+    def outputDir = decompileOutputDir
+
+    inputs.file(inputJar)
+    outputs.dir(outputDir)
+
+    classpath = configurations.decompiler
+    mainClass = 'org.jetbrains.java.decompiler.main.decompiler.ConsoleDecompiler'
+
+    // Vineflower options:
+    //   -dgs=1  decompile generic signatures
+    //   -asc=1  encode non-ASCII chars in string/char literals as escapes
+    //   -rsy=1  remove synthetic class members
+    //   -ind=   use 4-space indentation
+    args = ['-dgs=1', '-asc=1', '-rsy=1', '-ind=    ',
+            inputJar.absolutePath, outputDir.absolutePath]
+
+    doFirst {
+        outputDir.mkdirs()
+    }
+}
+
+task extractCleanSources {
+    description = 'Extracts decompiled sources as a clean reference copy (for patch generation)'
+    group = 'buildtools'
+    dependsOn decompileRubyDung
+
+    def decompiledJar = file("${decompileOutputDir}/${rubyDungVersion}.jar")
+
+    doLast {
+        if (cleanSrcDir.exists()) {
+            delete cleanSrcDir
+        }
+        cleanSrcDir.mkdirs()
+
+        ant.unzip(src: decompiledJar, dest: cleanSrcDir) {
+            patternset {
+                include(name: '**/*.java')
+            }
+        }
+        logger.lifecycle("Extracted clean reference sources to ${cleanSrcDir}")
+    }
+}
+
+task extractSources {
+    description = 'Extracts decompiled sources into the source directory'
+    group = 'buildtools'
+    dependsOn decompileRubyDung
+
+    def decompiledJar = file("${decompileOutputDir}/${rubyDungVersion}.jar")
+
+    doLast {
+        // Only extract if source directory is empty or doesn't exist
+        if (generatedSrcDir.exists() && generatedSrcDir.listFiles()?.length > 0) {
+            logger.lifecycle("Source directory already populated, skipping extraction.")
+            logger.lifecycle("To re-extract, delete ${generatedSrcDir} and re-run.")
+            return
+        }
+
+        generatedSrcDir.mkdirs()
+
+        ant.unzip(src: decompiledJar, dest: generatedSrcDir) {
+            patternset {
+                include(name: '**/*.java')
+            }
+        }
+        logger.lifecycle("Extracted Java sources to ${generatedSrcDir}")
+    }
+}
+
+task extractResources {
+    description = 'Extracts resources (textures, etc.) from the original JAR'
+    group = 'buildtools'
+    dependsOn downloadRubyDung
+
+    def sourceJar = file("${downloadDir}/${rubyDungVersion}.jar")
+
+    doLast {
+        // Only extract if resources directory is empty or doesn't exist
+        if (generatedResDir.exists() && generatedResDir.listFiles()?.length > 0) {
+            logger.lifecycle("Resources directory already populated, skipping extraction.")
+            return
+        }
+
+        generatedResDir.mkdirs()
+
+        ant.unzip(src: sourceJar, dest: generatedResDir) {
+            patternset {
+                exclude(name: '**/*.class')
+                exclude(name: '**/*.java')
+                exclude(name: 'META-INF/**')
+            }
+        }
+        logger.lifecycle("Extracted resources to ${generatedResDir}")
+    }
+}
+
+task applyPatches {
+    description = 'Applies patches from patches/ directory to the decompiled source'
+    group = 'buildtools'
+    dependsOn extractSources, extractCleanSources
+
+    doLast {
+        if (!patchDir.exists()) {
+            logger.lifecycle("No patches directory found.")
+            return
+        }
+
+        def patches = patchDir.listFiles()
+            ?.findAll { it.name.endsWith('.patch') }
+            ?.sort { it.name }
+
+        if (!patches || patches.isEmpty()) {
+            logger.lifecycle("No patches to apply.")
+            return
+        }
+
+        patches.each { patch ->
+            logger.lifecycle("Applying patch: ${patch.name}")
+            def result = project.exec {
+                workingDir generatedSrcDir
+                commandLine 'patch', '-p1', '--forward', '-i', patch.absolutePath
+                ignoreExitValue = true
+            }
+            if (result.exitValue != 0) {
+                logger.warn("Patch ${patch.name} may have already been applied (exit code ${result.exitValue})")
+            }
+        }
+        logger.lifecycle("Patch application complete.")
+    }
+}
+
+task setupWorkspace {
+    description = 'Full BuildTools pipeline: download, decompile, patch, and prepare workspace'
+    group = 'buildtools'
+    dependsOn applyPatches, extractResources
+
+    doLast {
+        markerFile.parentFile.mkdirs()
+        markerFile.text = new Date().toString()
+
+        logger.lifecycle('')
+        logger.lifecycle('========================================')
+        logger.lifecycle(' RDForward Workspace Setup Complete')
+        logger.lifecycle('========================================')
+        logger.lifecycle('')
+        logger.lifecycle("  Game source:    ${generatedSrcDir}")
+        logger.lifecycle("  Game resources: ${generatedResDir}")
+        logger.lifecycle("  Clean sources:  ${cleanSrcDir}")
+        logger.lifecycle('')
+        logger.lifecycle('  Run the game:     ./gradlew :rd-game:runClient')
+        logger.lifecycle('  Build all:        ./gradlew build')
+        logger.lifecycle('  Rebuild patches:  ./gradlew :rd-game:rebuildPatches')
+        logger.lifecycle('')
+    }
+}
+
+// =============================================================================
+// Patch Development Tasks
+// =============================================================================
+
+task rebuildPatches {
+    description = 'Regenerates patch files from changes made to the decompiled source'
+    group = 'buildtools'
+
+    doLast {
+        if (!cleanSrcDir.exists()) {
+            throw new GradleException(
+                "Clean source directory not found at ${cleanSrcDir}.\n" +
+                "Run './gradlew :rd-game:setupWorkspace' first.")
+        }
+
+        if (!generatedSrcDir.exists()) {
+            throw new GradleException(
+                "Source directory not found at ${generatedSrcDir}.\n" +
+                "Run './gradlew :rd-game:setupWorkspace' first.")
+        }
+
+        patchDir.mkdirs()
+
+        // Generate unified diff between clean and modified sources
+        def patchFile = file("${patchDir}/0001-rdforward-modifications.patch")
+        def diffOutput = new ByteArrayOutputStream()
+
+        def result = project.exec {
+            commandLine 'diff', '-ruN',
+                '--label', 'a/',
+                '--label', 'b/',
+                cleanSrcDir.absolutePath,
+                generatedSrcDir.absolutePath
+            standardOutput = diffOutput
+            ignoreExitValue = true
+        }
+
+        if (result.exitValue == 0) {
+            logger.lifecycle("No differences found between clean and modified sources.")
+            if (patchFile.exists()) {
+                patchFile.delete()
+                logger.lifecycle("Removed empty patch file.")
+            }
+        } else if (result.exitValue == 1) {
+            // diff returns 1 when files differ (normal)
+            patchFile.text = diffOutput.toString()
+            logger.lifecycle("Generated patch: ${patchFile.name} (${patchFile.length()} bytes)")
+        } else {
+            throw new GradleException("diff command failed with exit code ${result.exitValue}")
+        }
+    }
+}
+
+// =============================================================================
+// Run Tasks
+// =============================================================================
+
+task extractNatives {
+    description = 'Extracts LWJGL native libraries for the current platform'
+    group = 'buildtools'
+
+    def nativeDir = file("${buildDir}/natives")
+    outputs.dir(nativeDir)
+
+    doLast {
+        nativeDir.mkdirs()
+        configurations.lwjglNatives.each { nativeJar ->
+            ant.unzip(src: nativeJar, dest: nativeDir) {
+                patternset {
+                    exclude(name: 'META-INF/**')
+                }
+            }
+        }
+        logger.lifecycle("Extracted LWJGL natives to ${nativeDir}")
+    }
+}
+
+task runClient(type: JavaExec) {
+    description = 'Launches the RubyDung game client'
+    group = 'application'
+    dependsOn classes, extractNatives
+
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.mojang.rubydung.RubyDung'
+    jvmArgs = [
+        "-Djava.library.path=${buildDir}/natives",
+        '-Xmx512m'
+    ]
+}
+
+// =============================================================================
+// Build Integration
+// =============================================================================
+
+// Ensure workspace is set up before compilation.
+// The setupWorkspace task is incremental — it skips steps whose outputs exist.
+compileJava {
+    dependsOn applyPatches, extractResources
+}
+
+// Include generated sources in the sources JAR
+tasks.named('sourcesJar') {
+    dependsOn applyPatches
+}
+
+// Clean also removes generated sources and resources
+clean.doFirst {
+    delete generatedSrcDir
+    delete generatedResDir
+}

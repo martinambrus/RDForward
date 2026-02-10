@@ -30,9 +30,10 @@ bin/
 # LWJGL (downloaded at build time)
 libs/lwjgl/
 
-# Decompiled sources (generated at build time)
+# Decompiled sources (generated at build time by BuildTools)
 decompiled/
 !decompiled/.gitkeep
+rd-game/src/
 
 # Runtime
 mods/
