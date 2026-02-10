@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "rdforward",
+  "version": "${version}",
+  "name": "RDForward",
+  "description": "Multiplayer and mod support for RubyDung",
+  "authors": [
+    "Martin Ambrus"
+  ],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": [],
+    "client": [],
+    "server": []
+  },
+  "mixins": [
+    "rdforward.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.0"
+  }
+}

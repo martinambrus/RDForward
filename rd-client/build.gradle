@@ -4,4 +4,35 @@ dependencies {
     implementation project(':rd-game')
     implementation project(':rd-protocol')
     implementation project(':rd-world')
+
+    // Fabric Loader — mod discovery, dependency resolution, Mixin-based code injection
+    implementation 'net.fabricmc:fabric-loader:0.16.9'
+    // Mixin annotations (compile-time only; Fabric Loader bundles the runtime)
+    compileOnly 'net.fabricmc:sponge-mixin:0.15.4+mixin.0.8.7'
+}
+
+// =============================================================================
+// Modded Client Launch
+// =============================================================================
+// Launches RubyDung through Fabric Loader's Knot, which applies Mixins and
+// loads mods from the classpath. The RubyDungGameProvider SPI tells Knot
+// how to find and launch the game.
+
+task runModdedClient(type: JavaExec) {
+    description = 'Launches RubyDung with Fabric Loader (mod support enabled)'
+    group = 'application'
+    dependsOn classes, ':rd-game:classes', ':rd-game:extractNatives'
+
+    // Knot discovers RubyDungGameProvider via META-INF/services SPI
+    mainClass = 'net.fabricmc.loader.impl.launch.knot.KnotClient'
+
+    classpath = sourceSets.main.runtimeClasspath
+
+    jvmArgs = [
+        "-Djava.library.path=${project(':rd-game').buildDir}/natives",
+        '-Xmx512m',
+        // Fabric Loader settings
+        '-Dfabric.development=true',
+        '-Dfabric.gameVersion=rd-132211',
+    ]
 }

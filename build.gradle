@@ -16,6 +16,12 @@ allprojects {
         }
         mavenCentral()
         maven {
+            url = 'https://maven.fabricmc.net'
+            content {
+                includeGroup 'net.fabricmc'
+            }
+        }
+        maven {
             url = 'https://jitpack.io'
             content { includeGroup 'com.github.Querz' }
         }
@@ -57,9 +63,8 @@ ext {
         'org.junit.platform:junit-platform-commons:1.10.2',
         'org.apiguardian:apiguardian-api:1.1.2',
         'org.opentest4j:opentest4j:1.3.0',
-        // LWJGL 2.9.3 (rd-api)
-        'org.lwjgl.lwjgl:lwjgl:2.9.3',
-        'org.lwjgl.lwjgl:lwjgl_util:2.9.3',
+        // Fabric Loader (rd-client)
+        'net.fabricmc:fabric-loader:0.16.9@https://maven.fabricmc.net',
     ]
 }
 

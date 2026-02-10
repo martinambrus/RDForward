@@ -1,6 +1,5 @@
 rootProject.name = 'RDForward'
 
-include 'rd-api'
 include 'rd-game'
 include 'rd-protocol'
 include 'rd-world'

@@ -79,11 +79,11 @@ entrypoints, and Mixin-based code injection.
 
 Fabric Loader is game-agnostic — it needs a "game provider" plugin to tell it how to launch our game.
 
-- [ ] Create `RubyDungGameProvider` implementing `net.fabricmc.loader.impl.game.GameProvider`
-- [ ] Implement `locateGame()` — find the RubyDung JAR (or classes directory)
-- [ ] Implement `initialize()` — set up classpaths
-- [ ] Implement `launch()` — call `RubyDung.main()` (the original game entry point)
-- [ ] Register the provider in `META-INF/services/net.fabricmc.loader.impl.game.GameProvider`
+- [x] Create `RubyDungGameProvider` implementing `net.fabricmc.loader.impl.game.GameProvider`
+- [x] Implement `locateGame()` — find the RubyDung JAR (or classes directory)
+- [x] Implement `initialize()` — set up classpaths
+- [x] Implement `launch()` — call `RubyDung.main()` (the original game entry point)
+- [x] Register the provider in `META-INF/services/net.fabricmc.loader.impl.game.GameProvider`
 
 **Key files:**
 - `rd-client/src/main/java/.../fabric/RubyDungGameProvider.java`
@@ -93,8 +93,8 @@ Fabric Loader is game-agnostic — it needs a "game provider" plugin to tell it 
 
 Since RubyDung isn't obfuscated, we can target classes by their real names.
 
-- [ ] Create `rubydung.mixins.json` mixin config
-- [ ] Create `@Mixin(RubyDung.class)` to inject mod initialization into the game's `run()` method
+- [x] Create `rubydung.mixins.json` mixin config
+- [x] Create `@Mixin(RubyDung.class)` to inject mod initialization into the game's `run()` method
 - [ ] Create `@Mixin(Level.class)` to inject world save/load hooks
 - [ ] Create `@Mixin(Player.class)` to inject movement hooks for multiplayer sync
 - [ ] Create `@Mixin(Timer.class)` to inject tick event hooks
@@ -107,25 +107,20 @@ Since RubyDung isn't obfuscated, we can target classes by their real names.
 
 ### Step 1.3: Define Fabric-Style Mod Entrypoints
 
-- [ ] Create `ModInitializer` entrypoint interface (or use Fabric's)
-- [ ] Create `ClientModInitializer` for client-side mods
-- [ ] Create `ServerModInitializer` for server-side mods
-- [ ] Define `fabric.mod.json` schema for RDForward mods
+- [x] Use Fabric's built-in `ModInitializer` / `ClientModInitializer` / `ServerModInitializer`
+- [x] Define `fabric.mod.json` for RDForward (with mixin and entrypoint declarations)
 
 ### Step 1.4: Replace Old ModLoader
 
-- [ ] Remove the old `rd-api/utils/ModLoader.java` reflection-based loader
-- [ ] Replace `Game.java`, `GameInterface.java` with Fabric-compatible event system
-- [ ] Keep keyboard/timer listeners as events within the new system
-- [ ] Deprecate `RDMod*` naming convention in favor of `fabric.mod.json`
+- [x] Remove the entire `rd-api` module (replaced by Fabric Loader)
+- [ ] Create Fabric-compatible event system for keyboard/timer/game events
 
 ### Step 1.5: Build System Updates
 
-- [ ] Add Fabric Loader as a dependency (via Fabric Maven)
-- [ ] Add SpongePowered Mixin as a dependency
-- [ ] Configure Mixin annotation processor in Gradle
-- [ ] Create a Fabric Loom-compatible dev environment (or minimal equivalent)
-- [ ] Ensure the build produces a JAR that Fabric Loader can launch
+- [x] Add Fabric Loader as a dependency (via Fabric Maven)
+- [x] Add SpongePowered Mixin as a compile dependency
+- [x] Create `runModdedClient` task (launches via Fabric Knot)
+- [x] Ensure the build produces a JAR that Fabric Loader can launch
 
 ---
 
@@ -288,8 +283,8 @@ Enable converting worlds between formats:
 - [x] GitHub Actions CI (build verification on push/PR)
 - [x] GitHub Actions Release (creates GitHub Release on version tags, no JAR artifacts)
 - [x] Versioning via `gradle.properties` + git tags (`vX.Y.Z`)
-- [ ] Verify the game launches in single-player mode
-- [ ] Create Fabric Loader launch wrapper
+- [x] Verify the game launches in single-player mode
+- [x] Create Fabric Loader launch wrapper
 
 **Build commands:**
 ```bash
