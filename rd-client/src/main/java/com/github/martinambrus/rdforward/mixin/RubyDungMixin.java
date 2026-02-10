@@ -29,7 +29,7 @@ public class RubyDungMixin {
                 .getModContainer("rdforward")
                 .map(mod -> "v" + mod.getMetadata().getVersion().getFriendlyString())
                 .orElse("(dev)");
-        } catch (Exception e) {
+        } catch (Throwable e) {
             return "(dev)";
         }
     }
