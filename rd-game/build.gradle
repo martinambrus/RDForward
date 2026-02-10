@@ -28,62 +28,24 @@ ext {
 }
 
 // =============================================================================
-// LWJGL 2.9.3 Dependencies
+// LWJGL 3.4.1 Dependencies
 // =============================================================================
-// Downloaded via curl (like Spigot BuildTools) to avoid Maven proxy issues.
-// The JARs are cached in build/libs/ and gitignored.
+// LWJGL 3 replaces LWJGL 2 for Java 21 compatibility on all platforms.
+// Natives are bundled inside classifier JARs and auto-extracted at runtime.
 
 ext {
-    lwjglVersion = '2.9.3'
-    mavenBase = 'https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl'
-    lwjglDir = file("${buildDir}/libs/lwjgl")
-    lwjglJar = file("${lwjglDir}/lwjgl-${lwjglVersion}.jar")
-    lwjglUtilJar = file("${lwjglDir}/lwjgl_util-${lwjglVersion}.jar")
-}
-
-def nativePlatform = {
-    def os = System.getProperty('os.name').toLowerCase()
-    if (os.contains('windows')) return 'natives-windows'
-    if (os.contains('mac') || os.contains('darwin')) return 'natives-osx'
-    return 'natives-linux'
-}()
-
-ext {
-    lwjglNativesJar = file("${lwjglDir}/lwjgl-platform-${lwjglVersion}-${nativePlatform}.jar")
-    // All platform native JARs (for the fat JAR distribution)
-    allNativePlatforms = ['natives-windows', 'natives-linux', 'natives-osx']
-    lwjglAllNativeJars = allNativePlatforms.collectEntries {
-        [(it): file("${lwjglDir}/lwjgl-platform-${lwjglVersion}-${it}.jar")]
-    }
-}
-
-task downloadLwjgl {
-    description = 'Downloads LWJGL 2.9.3 JARs from Maven Central'
-    group = 'buildtools'
-
-    outputs.files(lwjglJar, lwjglUtilJar, lwjglNativesJar)
-
-    doLast {
-        lwjglDir.mkdirs()
-        def downloads = [
-            [lwjglJar,        "${mavenBase}/lwjgl/${lwjglVersion}/lwjgl-${lwjglVersion}.jar"],
-            [lwjglUtilJar,    "${mavenBase}/lwjgl_util/${lwjglVersion}/lwjgl_util-${lwjglVersion}.jar"],
-            [lwjglNativesJar, "${mavenBase}/lwjgl-platform/${lwjglVersion}/lwjgl-platform-${lwjglVersion}-${nativePlatform}.jar"],
-        ]
-        downloads.each { destFile, url ->
-            if (!destFile.exists()) {
-                logger.lifecycle("Downloading ${destFile.name}...")
-                project.exec {
-                    commandLine 'curl', '-fSL', '-o', destFile.absolutePath, url
-                }
-            }
-        }
-    }
+    lwjglVersion = '3.4.1'
+    lwjglModules = ['lwjgl', 'lwjgl-glfw', 'lwjgl-opengl']
+    lwjglNativePlatforms = ['natives-linux', 'natives-macos', 'natives-macos-arm64', 'natives-windows']
 }
 
 dependencies {
-    // LWJGL 2.9.3 - RubyDung's rendering engine (local files, downloaded by BuildTools)
-    implementation files(lwjglJar, lwjglUtilJar)
+    lwjglModules.each { module ->
+        implementation "org.lwjgl:${module}:${lwjglVersion}"
+        lwjglNativePlatforms.each { platform ->
+            runtimeOnly "org.lwjgl:${module}:${lwjglVersion}:${platform}"
+        }
+    }
 }
 
 // =============================================================================
@@ -367,36 +329,14 @@ task rebuildPatches {
 // Run Tasks
 // =============================================================================
 
-task extractNatives {
-    description = 'Extracts LWJGL native libraries for the current platform'
-    group = 'buildtools'
-    dependsOn downloadLwjgl
-
-    def nativeDir = file("${buildDir}/natives")
-    outputs.dir(nativeDir)
-
-    doLast {
-        nativeDir.mkdirs()
-        ant.unzip(src: lwjglNativesJar, dest: nativeDir) {
-            patternset {
-                exclude(name: 'META-INF/**')
-            }
-        }
-        logger.lifecycle("Extracted LWJGL natives to ${nativeDir}")
-    }
-}
-
 task runClient(type: JavaExec) {
     description = 'Launches the RubyDung game client'
     group = 'application'
-    dependsOn classes, extractNatives
+    dependsOn classes
 
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.mojang.rubydung.RubyDung'
-    jvmArgs = [
-        "-Djava.library.path=${buildDir}/natives",
-        '-Xmx512m'
-    ]
+    jvmArgs = ['-Xmx512m']
 }
 
 // =============================================================================
@@ -414,41 +354,20 @@ jar {
 // =============================================================================
 // Fat JAR Distribution
 // =============================================================================
-// Produces a single self-contained JAR that bundles LWJGL classes and native
+// Produces a single self-contained JAR that bundles LWJGL 3 classes and native
 // libraries for all platforms. Run with: java -jar rd-game-*-all.jar
 
 sourceSets {
     launcher {
         java { srcDir 'src/launcher/java' }
-        compileClasspath = sourceSets.main.output + files(lwjglJar, lwjglUtilJar)
-    }
-}
-
-task downloadAllNatives {
-    description = 'Downloads LWJGL native JARs for all platforms (Windows, Linux, macOS)'
-    group = 'buildtools'
-    dependsOn downloadLwjgl
-
-    outputs.files(lwjglAllNativeJars.values())
-
-    doLast {
-        lwjglDir.mkdirs()
-        lwjglAllNativeJars.each { platform, destFile ->
-            if (!destFile.exists()) {
-                logger.lifecycle("Downloading lwjgl-platform ${platform}...")
-                project.exec {
-                    commandLine 'curl', '-fSL', '-o', destFile.absolutePath,
-                        "${mavenBase}/lwjgl-platform/${lwjglVersion}/lwjgl-platform-${lwjglVersion}-${platform}.jar"
-                }
-            }
-        }
+        compileClasspath = sourceSets.main.runtimeClasspath
     }
 }
 
 task fatJar(type: Jar) {
     description = 'Builds a self-contained JAR with all dependencies and natives bundled'
     group = 'build'
-    dependsOn classes, 'launcherClasses', downloadAllNatives
+    dependsOn classes, 'launcherClasses'
 
     archiveClassifier = 'all'
 
@@ -460,16 +379,15 @@ task fatJar(type: Jar) {
     from sourceSets.main.output
     // Launcher bootstrap
     from sourceSets.launcher.output
-    // LWJGL Java libraries
-    from(zipTree(lwjglJar)) { exclude 'META-INF/**' }
-    from(zipTree(lwjglUtilJar)) { exclude 'META-INF/**' }
-    // Native libraries for all platforms
-    lwjglAllNativeJars.each { platform, nativeJar ->
-        def platformName = platform.replace('natives-', '')
-        from(zipTree(nativeJar)) {
-            exclude 'META-INF/**'
-            into "natives/${platformName}"
-        }
+    // All runtime dependency JARs (LWJGL 3 + natives) — wrapped in closure for lazy resolution
+    from({
+        configurations.runtimeClasspath.filter { it.isFile() && it.name.endsWith('.jar') }
+            .collect { zipTree(it) }
+    }) {
+        exclude 'META-INF/MANIFEST.MF'
+        exclude 'META-INF/*.SF'
+        exclude 'META-INF/*.DSA'
+        exclude 'META-INF/*.RSA'
     }
 
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
@@ -482,11 +400,11 @@ task fatJar(type: Jar) {
 // Ensure workspace is set up before compilation.
 // The setupWorkspace task is incremental — it skips steps whose outputs exist.
 compileJava {
-    dependsOn applyPatches, extractResources, downloadLwjgl
+    dependsOn applyPatches, extractResources
 }
 
 compileLauncherJava {
-    dependsOn classes, downloadLwjgl
+    dependsOn classes
 }
 
 // Include generated sources in the sources JAR

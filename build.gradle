@@ -40,9 +40,27 @@ ext {
     mavenBaseUrl = 'https://repo.maven.apache.org/maven2'
 
     // All external Maven dependencies used by any module.
-    // Format: 'group:artifact:version' (Maven Central) or
+    // Format: 'group:artifact:version' (Maven Central)
     //         'group:artifact:version@repoUrl' (custom repos like JitPack)
+    //         'group:artifact:version#classifier' (classifier JARs, e.g. natives)
     externalDeps = [
+        // LWJGL 3 (rd-game) — core + GLFW + OpenGL
+        'org.lwjgl:lwjgl:3.4.1',
+        'org.lwjgl:lwjgl-glfw:3.4.1',
+        'org.lwjgl:lwjgl-opengl:3.4.1',
+        // LWJGL 3 native classifier JARs (all platforms)
+        'org.lwjgl:lwjgl:3.4.1#natives-linux',
+        'org.lwjgl:lwjgl:3.4.1#natives-macos',
+        'org.lwjgl:lwjgl:3.4.1#natives-macos-arm64',
+        'org.lwjgl:lwjgl:3.4.1#natives-windows',
+        'org.lwjgl:lwjgl-glfw:3.4.1#natives-linux',
+        'org.lwjgl:lwjgl-glfw:3.4.1#natives-macos',
+        'org.lwjgl:lwjgl-glfw:3.4.1#natives-macos-arm64',
+        'org.lwjgl:lwjgl-glfw:3.4.1#natives-windows',
+        'org.lwjgl:lwjgl-opengl:3.4.1#natives-linux',
+        'org.lwjgl:lwjgl-opengl:3.4.1#natives-macos',
+        'org.lwjgl:lwjgl-opengl:3.4.1#natives-macos-arm64',
+        'org.lwjgl:lwjgl-opengl:3.4.1#natives-windows',
         // Netty (individual modules, netty-all is empty since 4.1.x)
         'io.netty:netty-buffer:4.1.131.Final',
         'io.netty:netty-codec:4.1.131.Final',
@@ -82,18 +100,28 @@ task downloadDeps {
         externalDeps.each { entry ->
             def repoBaseUrl = mavenBaseUrl
             def coord = entry
+            def classifier = ''
+
+            // Support 'group:artifact:version#classifier' for native JARs
+            if (entry.contains('#')) {
+                coord = entry.split('#')[0]
+                classifier = entry.split('#')[1]
+            }
 
             // Support 'group:artifact:version@repoUrl' for non-Maven-Central repos
-            if (entry.contains('@')) {
-                coord = entry.split('@')[0]
-                repoBaseUrl = entry.split('@')[1]
+            if (coord.contains('@')) {
+                def atSplit = coord.split('@')
+                coord = atSplit[0]
+                repoBaseUrl = atSplit[1]
             }
 
             def parts = coord.split(':')
             def groupPath = parts[0].replace('.', '/')
             def artifactId = parts[1]
             def version = parts[2]
-            def jarName = "${artifactId}-${version}.jar"
+            def jarName = classifier
+                ? "${artifactId}-${version}-${classifier}.jar"
+                : "${artifactId}-${version}.jar"
             def repoPath = "${groupPath}/${artifactId}/${version}"
             def destDir = file("${localRepo}/${repoPath}")
             def destFile = file("${destDir}/${jarName}")
@@ -101,7 +129,7 @@ task downloadDeps {
             if (!destFile.exists()) {
                 destDir.mkdirs()
                 def url = "${repoBaseUrl}/${repoPath}/${jarName}"
-                logger.lifecycle("Downloading ${coord}...")
+                logger.lifecycle("Downloading ${coord}${classifier ? ':' + classifier : ''}...")
                 try {
                     exec {
                         commandLine 'curl', '-fSL', '-o', destFile.absolutePath, url

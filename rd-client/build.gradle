@@ -35,7 +35,7 @@ dependencies {
 task runModdedClient(type: JavaExec) {
     description = 'Launches RubyDung with Fabric Loader (mod support enabled)'
     group = 'application'
-    dependsOn classes, ':rd-game:classes', ':rd-game:extractNatives'
+    dependsOn classes, ':rd-game:classes'
 
     // Knot discovers RubyDungGameProvider via META-INF/services SPI
     mainClass = 'net.fabricmc.loader.impl.launch.knot.KnotClient'
@@ -43,7 +43,6 @@ task runModdedClient(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
 
     jvmArgs = [
-        "-Djava.library.path=${project(':rd-game').buildDir}/natives",
         '-Xmx512m',
         // Fabric Loader settings
         '-Dfabric.development=true',
@@ -72,7 +71,7 @@ compileLauncherJava {
 task fatModdedJar(type: Jar) {
     description = 'Builds a Fabric-enabled self-contained JAR with all dependencies and natives'
     group = 'build'
-    dependsOn classes, 'launcherClasses', ':rd-game:classes', ':rd-game:downloadAllNatives'
+    dependsOn classes, 'launcherClasses', ':rd-game:classes'
 
     archiveClassifier = 'all'
 
@@ -93,25 +92,17 @@ task fatModdedJar(type: Jar) {
     // rd-world classes
     from project(':rd-world').sourceSets.main.output
 
-    // All runtime dependency JARs (Fabric Loader, Mixin, ASM, Netty, etc.)
-    from(configurations.runtimeClasspath.filter { it.isFile() && it.name.endsWith('.jar') }
-        .collect { zipTree(it) }) {
+    // All runtime dependency JARs (Fabric Loader, Mixin, ASM, Netty, etc.) — lazy resolution
+    from({
+        configurations.runtimeClasspath.filter { it.isFile() && it.name.endsWith('.jar') }
+            .collect { zipTree(it) }
+    }) {
         exclude 'META-INF/MANIFEST.MF'
         exclude 'META-INF/*.SF'
         exclude 'META-INF/*.DSA'
         exclude 'META-INF/*.RSA'
         // Exclude Fabric Loader's MinecraftGameProvider service file — ours must win
         exclude 'META-INF/services/net.fabricmc.loader.impl.game.GameProvider'
-    }
-
-    // LWJGL native libraries for all platforms
-    def rdGame = project(':rd-game')
-    rdGame.ext.lwjglAllNativeJars.each { platform, nativeJar ->
-        def platformName = platform.replace('natives-', '')
-        from(zipTree(nativeJar)) {
-            exclude 'META-INF/**'
-            into "natives/${platformName}"
-        }
     }
 
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
