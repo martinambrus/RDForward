@@ -16,8 +16,5 @@
   },
   "mixins": [
     "rdforward.mixins.json"
-  ],
-  "recommends": {
-    "fabricloader": ">=0.16.0"
-  }
+  ]
 }
