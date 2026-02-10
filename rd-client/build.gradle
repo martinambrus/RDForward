@@ -6,9 +6,9 @@ dependencies {
     implementation project(':rd-world')
 
     // Fabric Loader — mod discovery, dependency resolution, Mixin-based code injection
-    implementation 'net.fabricmc:fabric-loader:0.16.9'
+    implementation 'net.fabricmc:fabric-loader:0.18.4'
     // Mixin annotations (compile-time only; Fabric Loader bundles the runtime)
-    compileOnly 'net.fabricmc:sponge-mixin:0.15.4+mixin.0.8.7'
+    compileOnly 'net.fabricmc:sponge-mixin:0.17.0+mixin.0.8.7'
 }
 
 // =============================================================================

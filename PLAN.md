@@ -3,7 +3,8 @@
 Detailed, step-by-step plan to build a multiplayer, mod-enabled RubyDung
 that's forward-compatible with Minecraft Alpha (and beyond).
 
-**Tech Stack**: Fabric Loader + Mixin, Netty, Alpha-format NBT, MC-compatible protocol.
+**Tech Stack**: Fabric Loader 0.18.4 + Mixin 0.8.7, Netty 4.1.131, Alpha-format NBT, MC-compatible protocol.
+**Build**: Gradle 8.14.4, Vineflower 1.11.2, JUnit 5.14.2, Java 21+.
 
 ---
 

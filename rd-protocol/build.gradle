@@ -7,10 +7,10 @@ description = 'RDForward Protocol - networking, packet definitions, and version 
 dependencies {
     // Netty for scalable networking (same library modern MC uses)
     // Exposed as 'api' so modules depending on rd-protocol get Netty on their classpath
-    api 'io.netty:netty-buffer:4.1.107.Final'
-    api 'io.netty:netty-codec:4.1.107.Final'
-    api 'io.netty:netty-common:4.1.107.Final'
-    api 'io.netty:netty-handler:4.1.107.Final'
-    api 'io.netty:netty-resolver:4.1.107.Final'
-    api 'io.netty:netty-transport:4.1.107.Final'
+    api 'io.netty:netty-buffer:4.1.131.Final'
+    api 'io.netty:netty-codec:4.1.131.Final'
+    api 'io.netty:netty-common:4.1.131.Final'
+    api 'io.netty:netty-handler:4.1.131.Final'
+    api 'io.netty:netty-resolver:4.1.131.Final'
+    api 'io.netty:netty-transport:4.1.131.Final'
 }

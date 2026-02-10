@@ -128,7 +128,7 @@ task downloadRubyDung {
 }
 
 ext {
-    vineflowerVersion = '1.10.1'
+    vineflowerVersion = '1.11.2'
     vineflowerUrl = "https://repo.maven.apache.org/maven2/org/vineflower/vineflower/${vineflowerVersion}/vineflower-${vineflowerVersion}.jar"
     vineflowerJar = file("${buildDir}/tools/vineflower-${vineflowerVersion}.jar")
 }

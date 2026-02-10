@@ -16,6 +16,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Fabric Loader GameProvider for RubyDung (rd-132211).
@@ -80,8 +81,8 @@ public class RubyDungGameProvider implements GameProvider {
     }
 
     @Override
-    public boolean isObfuscated() {
-        return false;
+    public Set<BuiltinTransform> getBuiltinTransforms(String namespace) {
+        return Collections.emptySet();
     }
 
     @Override
