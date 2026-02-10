@@ -42,3 +42,69 @@ task runModdedClient(type: JavaExec) {
         '-Dfabric.gameVersion=rd-132211',
     ]
 }
+
+// =============================================================================
+// Fat Modded JAR Distribution
+// =============================================================================
+// Produces a single self-contained JAR that bundles the game, Fabric Loader,
+// Mixin, ASM, Netty, LWJGL (classes + natives for all platforms), and
+// rd-client/rd-protocol/rd-world classes. Run with: java -jar rd-client-*-all.jar
+
+sourceSets {
+    launcher {
+        java { srcDir 'src/launcher/java' }
+        compileClasspath = sourceSets.main.runtimeClasspath
+    }
+}
+
+compileLauncherJava {
+    dependsOn classes
+}
+
+task fatModdedJar(type: Jar) {
+    description = 'Builds a Fabric-enabled self-contained JAR with all dependencies and natives'
+    group = 'build'
+    dependsOn classes, 'launcherClasses', ':rd-game:classes', ':rd-game:downloadAllNatives'
+
+    archiveClassifier = 'all'
+
+    manifest {
+        attributes('Main-Class': 'com.github.martinambrus.rdforward.FabricNativeLauncher')
+    }
+
+    // rd-client classes (GameProvider, Mixins, etc.) — added FIRST so our
+    // META-INF/services/GameProvider file wins over Fabric Loader's
+    from sourceSets.main.output
+    // Launcher bootstrap (FabricNativeLauncher)
+    from sourceSets.launcher.output
+
+    // rd-game classes + resources (the actual game)
+    from project(':rd-game').sourceSets.main.output
+    // rd-protocol classes
+    from project(':rd-protocol').sourceSets.main.output
+    // rd-world classes
+    from project(':rd-world').sourceSets.main.output
+
+    // All runtime dependency JARs (Fabric Loader, Mixin, ASM, Netty, etc.)
+    from(configurations.runtimeClasspath.filter { it.isFile() && it.name.endsWith('.jar') }
+        .collect { zipTree(it) }) {
+        exclude 'META-INF/MANIFEST.MF'
+        exclude 'META-INF/*.SF'
+        exclude 'META-INF/*.DSA'
+        exclude 'META-INF/*.RSA'
+        // Exclude Fabric Loader's MinecraftGameProvider service file — ours must win
+        exclude 'META-INF/services/net.fabricmc.loader.impl.game.GameProvider'
+    }
+
+    // LWJGL native libraries for all platforms
+    def rdGame = project(':rd-game')
+    rdGame.ext.lwjglAllNativeJars.each { platform, nativeJar ->
+        def platformName = platform.replace('natives-', '')
+        from(zipTree(nativeJar)) {
+            exclude 'META-INF/**'
+            into "natives/${platformName}"
+        }
+    }
+
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
