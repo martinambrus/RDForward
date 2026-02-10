@@ -1,0 +1,7 @@
+description = 'RDForward Modding API - event system, mod lifecycle, and extension points'
+
+dependencies {
+    // LWJGL 2.9.3 for keyboard input compatibility with the original RubyDung
+    compileOnly files("${rootProject.projectDir}/libs/lwjgl/jar/lwjgl.jar")
+    compileOnly files("${rootProject.projectDir}/libs/lwjgl/jar/lwjgl_util.jar")
+}

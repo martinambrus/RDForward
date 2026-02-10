@@ -1,0 +1,9 @@
+description = 'RDForward Protocol - networking, packet definitions, and version translation'
+
+dependencies {
+    // Netty for scalable networking (same library modern MC uses)
+    implementation 'io.netty:netty-all:4.1.107.Final'
+
+    // Protocol shared types
+    implementation project(':rd-api')
+}
