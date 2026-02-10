@@ -301,8 +301,6 @@ task rebuildPatches {
 
         def result = project.exec {
             commandLine 'diff', '-ruN',
-                '--label', 'a/',
-                '--label', 'b/',
                 cleanSrcDir.absolutePath,
                 generatedSrcDir.absolutePath
             standardOutput = diffOutput
@@ -317,7 +315,12 @@ task rebuildPatches {
             }
         } else if (result.exitValue == 1) {
             // diff returns 1 when files differ (normal)
-            patchFile.text = diffOutput.toString()
+            // Post-process: replace absolute paths with standard a/ and b/ prefixes
+            // so that 'patch -p1' works portably on any machine
+            def raw = diffOutput.toString()
+            raw = raw.replace("--- ${cleanSrcDir.absolutePath}/", '--- a/')
+            raw = raw.replace("+++ ${generatedSrcDir.absolutePath}/", '+++ b/')
+            patchFile.text = raw
             logger.lifecycle("Generated patch: ${patchFile.name} (${patchFile.length()} bytes)")
         } else {
             throw new GradleException("diff command failed with exit code ${result.exitValue}")
