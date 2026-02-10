@@ -7,7 +7,96 @@ allprojects {
     version = findProperty('projectVersion') ?: '0.0.0-SNAPSHOT'
 
     repositories {
+        // Local Maven repo populated by 'downloadDeps' task (for environments
+        // where Gradle's own HTTP client can't reach Maven Central, e.g. behind
+        // certain corporate proxies). Falls through to Maven Central otherwise.
+        maven {
+            url = file("${rootDir}/build/local-repo")
+            metadataSources { artifact() }
+        }
         mavenCentral()
+        maven {
+            url = 'https://jitpack.io'
+            content { includeGroup 'com.github.Querz' }
+        }
+    }
+}
+
+// =============================================================================
+// Dependency Download Task
+// =============================================================================
+// Downloads Maven dependencies via curl for environments where Gradle's HTTP
+// client can't authenticate through HTTPS proxies. In normal environments
+// (including GitHub Actions CI), Gradle resolves from Maven Central directly.
+
+ext {
+    localRepo = file("${rootDir}/build/local-repo")
+    mavenBaseUrl = 'https://repo.maven.apache.org/maven2'
+
+    // All external Maven dependencies used by any module.
+    // Format: 'group:artifact:version' (Maven Central) or
+    //         'group:artifact:version@repoUrl' (custom repos like JitPack)
+    externalDeps = [
+        // Netty (individual modules, netty-all is empty since 4.1.x)
+        'io.netty:netty-buffer:4.1.107.Final',
+        'io.netty:netty-codec:4.1.107.Final',
+        'io.netty:netty-common:4.1.107.Final',
+        'io.netty:netty-handler:4.1.107.Final',
+        'io.netty:netty-resolver:4.1.107.Final',
+        'io.netty:netty-transport:4.1.107.Final',
+        'io.netty:netty-transport-native-unix-common:4.1.107.Final',
+        // Querz NBT (rd-world) - JitPack
+        'com.github.Querz:NBT:6.1@https://jitpack.io',
+        // JUnit 5
+        'org.junit.jupiter:junit-jupiter:5.10.2',
+        'org.junit.jupiter:junit-jupiter-api:5.10.2',
+        'org.junit.jupiter:junit-jupiter-params:5.10.2',
+        'org.junit.jupiter:junit-jupiter-engine:5.10.2',
+        'org.junit.platform:junit-platform-launcher:1.10.2',
+        'org.junit.platform:junit-platform-engine:1.10.2',
+        'org.junit.platform:junit-platform-commons:1.10.2',
+        'org.apiguardian:apiguardian-api:1.1.2',
+        'org.opentest4j:opentest4j:1.3.0',
+    ]
+}
+
+task downloadDeps {
+    description = 'Downloads Maven dependencies via curl (for proxy-restricted environments)'
+    group = 'buildtools'
+
+    doLast {
+        externalDeps.each { entry ->
+            def repoBaseUrl = mavenBaseUrl
+            def coord = entry
+
+            // Support 'group:artifact:version@repoUrl' for non-Maven-Central repos
+            if (entry.contains('@')) {
+                coord = entry.split('@')[0]
+                repoBaseUrl = entry.split('@')[1]
+            }
+
+            def parts = coord.split(':')
+            def groupPath = parts[0].replace('.', '/')
+            def artifactId = parts[1]
+            def version = parts[2]
+            def jarName = "${artifactId}-${version}.jar"
+            def repoPath = "${groupPath}/${artifactId}/${version}"
+            def destDir = file("${localRepo}/${repoPath}")
+            def destFile = file("${destDir}/${jarName}")
+
+            if (!destFile.exists()) {
+                destDir.mkdirs()
+                def url = "${repoBaseUrl}/${repoPath}/${jarName}"
+                logger.lifecycle("Downloading ${coord}...")
+                try {
+                    exec {
+                        commandLine 'curl', '-fSL', '-o', destFile.absolutePath, url
+                    }
+                } catch (Exception e) {
+                    logger.warn("Failed to download ${coord}: ${e.message}")
+                }
+            }
+        }
     }
 }
 

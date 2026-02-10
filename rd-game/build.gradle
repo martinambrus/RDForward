@@ -27,21 +27,20 @@ ext {
     markerFile = file("${buildDir}/.workspace-ready")
 }
 
-// Decompiler dependency (Vineflower - the Fabric ecosystem standard)
-configurations {
-    decompiler
-    lwjglNatives
+// =============================================================================
+// LWJGL 2.9.3 Dependencies
+// =============================================================================
+// Downloaded via curl (like Spigot BuildTools) to avoid Maven proxy issues.
+// The JARs are cached in build/libs/ and gitignored.
+
+ext {
+    lwjglVersion = '2.9.3'
+    mavenBase = 'https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl'
+    lwjglDir = file("${buildDir}/libs/lwjgl")
+    lwjglJar = file("${lwjglDir}/lwjgl-${lwjglVersion}.jar")
+    lwjglUtilJar = file("${lwjglDir}/lwjgl_util-${lwjglVersion}.jar")
 }
 
-dependencies {
-    decompiler 'org.vineflower:vineflower:1.10.1'
-
-    // LWJGL 2.9.3 - RubyDung's rendering engine
-    implementation 'org.lwjgl.lwjgl:lwjgl:2.9.3'
-    implementation 'org.lwjgl.lwjgl:lwjgl_util:2.9.3'
-}
-
-// Detect platform for native library extraction
 def nativePlatform = {
     def os = System.getProperty('os.name').toLowerCase()
     if (os.contains('windows')) return 'natives-windows'
@@ -49,8 +48,37 @@ def nativePlatform = {
     return 'natives-linux'
 }()
 
+ext {
+    lwjglNativesJar = file("${lwjglDir}/lwjgl-platform-${lwjglVersion}-${nativePlatform}.jar")
+}
+
+task downloadLwjgl {
+    description = 'Downloads LWJGL 2.9.3 JARs from Maven Central'
+    group = 'buildtools'
+
+    outputs.files(lwjglJar, lwjglUtilJar, lwjglNativesJar)
+
+    doLast {
+        lwjglDir.mkdirs()
+        def downloads = [
+            [lwjglJar,        "${mavenBase}/lwjgl/${lwjglVersion}/lwjgl-${lwjglVersion}.jar"],
+            [lwjglUtilJar,    "${mavenBase}/lwjgl_util/${lwjglVersion}/lwjgl_util-${lwjglVersion}.jar"],
+            [lwjglNativesJar, "${mavenBase}/lwjgl-platform/${lwjglVersion}/lwjgl-platform-${lwjglVersion}-${nativePlatform}.jar"],
+        ]
+        downloads.each { destFile, url ->
+            if (!destFile.exists()) {
+                logger.lifecycle("Downloading ${destFile.name}...")
+                project.exec {
+                    commandLine 'curl', '-fSL', '-o', destFile.absolutePath, url
+                }
+            }
+        }
+    }
+}
+
 dependencies {
-    lwjglNatives "org.lwjgl.lwjgl:lwjgl-platform:2.9.3:${nativePlatform}"
+    // LWJGL 2.9.3 - RubyDung's rendering engine (local files, downloaded by BuildTools)
+    implementation files(lwjglJar, lwjglUtilJar)
 }
 
 // =============================================================================
@@ -68,8 +96,11 @@ task downloadRubyDung {
         destFile.parentFile.mkdirs()
         if (!destFile.exists()) {
             logger.lifecycle("Downloading ${rubyDungVersion}.jar from Mojang CDN...")
-            new URL(rubyDungUrl).withInputStream { input ->
-                destFile.withOutputStream { output -> output << input }
+
+            // Use curl for the download — it handles HTTP proxies, redirects,
+            // and TLS more reliably than Java's URL class in diverse environments.
+            project.exec {
+                commandLine 'curl', '-fSL', '-o', destFile.absolutePath, rubyDungUrl
             }
         }
 
@@ -91,10 +122,33 @@ task downloadRubyDung {
     }
 }
 
+ext {
+    vineflowerVersion = '1.10.1'
+    vineflowerUrl = "https://repo.maven.apache.org/maven2/org/vineflower/vineflower/${vineflowerVersion}/vineflower-${vineflowerVersion}.jar"
+    vineflowerJar = file("${buildDir}/tools/vineflower-${vineflowerVersion}.jar")
+}
+
+task downloadVineflower {
+    description = 'Downloads the Vineflower decompiler'
+    group = 'buildtools'
+
+    outputs.file(vineflowerJar)
+
+    doLast {
+        vineflowerJar.parentFile.mkdirs()
+        if (!vineflowerJar.exists()) {
+            logger.lifecycle("Downloading Vineflower ${vineflowerVersion}...")
+            project.exec {
+                commandLine 'curl', '-fSL', '-o', vineflowerJar.absolutePath, vineflowerUrl
+            }
+        }
+    }
+}
+
 task decompileRubyDung(type: JavaExec) {
     description = 'Decompiles rd-132211.jar using Vineflower'
     group = 'buildtools'
-    dependsOn downloadRubyDung
+    dependsOn downloadRubyDung, downloadVineflower
 
     def inputJar = file("${downloadDir}/${rubyDungVersion}.jar")
     def outputDir = decompileOutputDir
@@ -102,7 +156,7 @@ task decompileRubyDung(type: JavaExec) {
     inputs.file(inputJar)
     outputs.dir(outputDir)
 
-    classpath = configurations.decompiler
+    classpath = files(vineflowerJar)
     mainClass = 'org.jetbrains.java.decompiler.main.decompiler.ConsoleDecompiler'
 
     // Vineflower options:
@@ -123,18 +177,18 @@ task extractCleanSources {
     group = 'buildtools'
     dependsOn decompileRubyDung
 
-    def decompiledJar = file("${decompileOutputDir}/${rubyDungVersion}.jar")
-
     doLast {
         if (cleanSrcDir.exists()) {
             delete cleanSrcDir
         }
         cleanSrcDir.mkdirs()
 
-        ant.unzip(src: decompiledJar, dest: cleanSrcDir) {
-            patternset {
-                include(name: '**/*.java')
+        // Vineflower outputs directly to the directory (not a JAR)
+        copy {
+            from(decompileOutputDir) {
+                include '**/*.java'
             }
+            into cleanSrcDir
         }
         logger.lifecycle("Extracted clean reference sources to ${cleanSrcDir}")
     }
@@ -144,8 +198,6 @@ task extractSources {
     description = 'Extracts decompiled sources into the source directory'
     group = 'buildtools'
     dependsOn decompileRubyDung
-
-    def decompiledJar = file("${decompileOutputDir}/${rubyDungVersion}.jar")
 
     doLast {
         // Only extract if source directory is empty or doesn't exist
@@ -157,21 +209,21 @@ task extractSources {
 
         generatedSrcDir.mkdirs()
 
-        ant.unzip(src: decompiledJar, dest: generatedSrcDir) {
-            patternset {
-                include(name: '**/*.java')
+        // Vineflower outputs directly to the directory (not a JAR)
+        copy {
+            from(decompileOutputDir) {
+                include '**/*.java'
             }
+            into generatedSrcDir
         }
         logger.lifecycle("Extracted Java sources to ${generatedSrcDir}")
     }
 }
 
 task extractResources {
-    description = 'Extracts resources (textures, etc.) from the original JAR'
+    description = 'Extracts resources (textures, etc.) from the decompiled output'
     group = 'buildtools'
-    dependsOn downloadRubyDung
-
-    def sourceJar = file("${downloadDir}/${rubyDungVersion}.jar")
+    dependsOn decompileRubyDung
 
     doLast {
         // Only extract if resources directory is empty or doesn't exist
@@ -182,12 +234,12 @@ task extractResources {
 
         generatedResDir.mkdirs()
 
-        ant.unzip(src: sourceJar, dest: generatedResDir) {
-            patternset {
-                exclude(name: '**/*.class')
-                exclude(name: '**/*.java')
-                exclude(name: 'META-INF/**')
+        // Copy non-Java resources from the decompile output
+        copy {
+            from(decompileOutputDir) {
+                exclude '**/*.java'
             }
+            into generatedResDir
         }
         logger.lifecycle("Extracted resources to ${generatedResDir}")
     }
@@ -313,17 +365,16 @@ task rebuildPatches {
 task extractNatives {
     description = 'Extracts LWJGL native libraries for the current platform'
     group = 'buildtools'
+    dependsOn downloadLwjgl
 
     def nativeDir = file("${buildDir}/natives")
     outputs.dir(nativeDir)
 
     doLast {
         nativeDir.mkdirs()
-        configurations.lwjglNatives.each { nativeJar ->
-            ant.unzip(src: nativeJar, dest: nativeDir) {
-                patternset {
-                    exclude(name: 'META-INF/**')
-                }
+        ant.unzip(src: lwjglNativesJar, dest: nativeDir) {
+            patternset {
+                exclude(name: 'META-INF/**')
             }
         }
         logger.lifecycle("Extracted LWJGL natives to ${nativeDir}")
@@ -350,7 +401,7 @@ task runClient(type: JavaExec) {
 // Ensure workspace is set up before compilation.
 // The setupWorkspace task is incremental — it skips steps whose outputs exist.
 compileJava {
-    dependsOn applyPatches, extractResources
+    dependsOn applyPatches, extractResources, downloadLwjgl
 }
 
 // Include generated sources in the sources JAR
