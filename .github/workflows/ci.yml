@@ -22,11 +22,14 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Cache RubyDung download
+      - name: Cache BuildTools downloads
         uses: actions/cache@v4
         with:
-          path: rd-game/build/download
-          key: rubydung-rd-132211
+          path: |
+            rd-game/build/download
+            rd-game/build/tools
+            rd-game/build/libs/lwjgl
+          key: buildtools-rd-132211-vf1.10.1-lwjgl2.9.3
 
       - name: Set up workspace (download + decompile RubyDung)
         run: ./gradlew :rd-game:setupWorkspace

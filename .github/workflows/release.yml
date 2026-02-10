@@ -23,6 +23,15 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Cache BuildTools downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            rd-game/build/download
+            rd-game/build/tools
+            rd-game/build/libs/lwjgl
+          key: buildtools-rd-132211-vf1.10.1-lwjgl2.9.3
+
       - name: Set up workspace
         run: ./gradlew :rd-game:setupWorkspace
 
