@@ -28,14 +28,13 @@ jobs:
           path: |
             rd-game/build/download
             rd-game/build/tools
-            rd-game/build/libs/lwjgl
-          key: buildtools-rd-132211-vf1.10.1-lwjgl2.9.3
+          key: buildtools-rd-132211-vf1.11.2
 
       - name: Set up workspace (download + decompile RubyDung)
         run: ./gradlew :rd-game:setupWorkspace
 
       - name: Build all modules
-        run: ./gradlew build -x :rd-api:compileJava
+        run: ./gradlew build
 
       - name: Run tests
-        run: ./gradlew test -x :rd-api:compileJava
+        run: ./gradlew test
