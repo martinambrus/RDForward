@@ -50,6 +50,9 @@ public class RubyDungMixin {
     /** Edge detection for F6 toggle (key was pressed previous frame). */
     private boolean rdforward$f6WasPressed = false;
 
+    /** Timestamp until which "Server Unavailable" is shown (0 = not showing). */
+    private long rdforward$serverUnavailableUntil = 0;
+
     /** Server connection details (parsed once at startup). */
     private String rdforward$serverHost = "localhost";
     private int rdforward$serverPort = 25565;
@@ -131,6 +134,13 @@ public class RubyDungMixin {
             if (rdforward$multiplayerMode && rdforward$worldApplied) {
                 System.out.println("[RDForward] Server connection lost — switching to single player");
                 rdforward$disconnectFromServer();
+            }
+
+            // Connection attempt failed (server unavailable) — revert to single player
+            if (rdforward$multiplayerMode && !rdforward$worldApplied && client.hasConnectionFailed()) {
+                System.out.println("[RDForward] Server unavailable — returning to single player");
+                rdforward$disconnectFromServer();
+                rdforward$serverUnavailableUntil = System.currentTimeMillis() + 5000;
             }
             return;
         }
@@ -245,6 +255,11 @@ public class RubyDungMixin {
     }
 
     private String rdforward$getHudText() {
+        // Show "Server Unavailable" for 5 seconds after a failed connection attempt
+        if (rdforward$serverUnavailableUntil > System.currentTimeMillis()) {
+            return "rd-132211 - Multiplayer Server Unavailable (F6 to retry)";
+        }
+
         if (rdforward$multiplayerMode) {
             String serverInfo = rdforward$serverHost + ":" + rdforward$serverPort;
             MultiplayerState state = MultiplayerState.getInstance();

@@ -37,6 +37,7 @@ public class RDClient {
     private EventLoopGroup group;
     private Channel channel;
     private String username;
+    private volatile boolean connectionFailed = false;
 
     private RDClient() {}
 
@@ -49,6 +50,7 @@ public class RDClient {
             disconnect();
         }
         this.username = username;
+        this.connectionFailed = false;
 
         // Clear stale world data before new connection to prevent race conditions
         // (old channelInactive callback can fire after new world data arrives)
@@ -83,6 +85,7 @@ public class RDClient {
             } else {
                 System.err.println("Failed to connect to " + host + ":" + port
                     + ": " + future.cause().getMessage());
+                connectionFailed = true;
                 shutdown();
             }
         });
@@ -124,6 +127,10 @@ public class RDClient {
 
     public boolean isConnected() {
         return channel != null && channel.isActive();
+    }
+
+    public boolean hasConnectionFailed() {
+        return connectionFailed;
     }
 
     public String getUsername() { return username; }
