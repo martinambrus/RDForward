@@ -12,6 +12,12 @@ public class FabricNativeLauncher {
         // Fabric Loader settings for fat JAR mode
         System.setProperty("fabric.gameVersion", "rd-132211");
 
+        // Default to connecting to localhost:25565 if no server was specified.
+        // Override with: java -Drdforward.server=host:port -jar rd-client-all.jar
+        if (System.getProperty("rdforward.server") == null) {
+            System.setProperty("rdforward.server", "localhost:25565");
+        }
+
         // Launch through Fabric Loader's Knot (applies Mixins, loads mods)
         net.fabricmc.loader.impl.launch.knot.KnotClient.main(args);
     }
