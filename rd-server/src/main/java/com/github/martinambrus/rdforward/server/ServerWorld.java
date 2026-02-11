@@ -2,6 +2,8 @@ package com.github.martinambrus.rdforward.server;
 
 import com.github.martinambrus.rdforward.world.BlockRegistry;
 
+import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
+
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -9,6 +11,10 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
@@ -27,12 +33,16 @@ import java.util.zip.GZIPOutputStream;
 public class ServerWorld {
 
     private static final String SAVE_FILE = "server-world.dat";
+    private static final String PLAYERS_FILE = "server-players.dat";
 
     private final int width;
     private final int height;
     private final int depth;
     private final byte[] blocks;
     private volatile boolean dirty = false;
+
+    /** Queued block changes from clients, processed during tick loop. */
+    private final Queue<PendingBlockChange> pendingBlockChanges = new ConcurrentLinkedQueue<>();
 
     public ServerWorld(int width, int height, int depth) {
         this.width = width;
@@ -187,7 +197,90 @@ public class ServerWorld {
         return (y * depth + z) * width + x;
     }
 
+    /**
+     * Queue a block change for processing during the next tick.
+     */
+    public void queueBlockChange(int x, int y, int z, byte blockType) {
+        pendingBlockChanges.add(new PendingBlockChange(x, y, z, blockType));
+    }
+
+    /**
+     * Process all queued block changes. Called by the tick loop.
+     * Returns the list of changes that were actually applied (for broadcasting).
+     */
+    public List<SetBlockServerPacket> processPendingBlockChanges() {
+        List<SetBlockServerPacket> applied = new ArrayList<>();
+        PendingBlockChange change;
+        while ((change = pendingBlockChanges.poll()) != null) {
+            if (setBlock(change.x, change.y, change.z, change.blockType)) {
+                applied.add(new SetBlockServerPacket(change.x, change.y, change.z, change.blockType));
+            }
+        }
+        return applied;
+    }
+
+    /**
+     * Save player positions so they can be restored when a player reconnects.
+     * Format: [int count] then for each player: [UTF name] [short x,y,z] [byte yaw,pitch].
+     */
+    public void savePlayers(java.util.Collection<ConnectedPlayer> players) {
+        if (players.isEmpty()) return;
+        try (DataOutputStream dos = new DataOutputStream(new GZIPOutputStream(new FileOutputStream(PLAYERS_FILE)))) {
+            dos.writeInt(players.size());
+            for (ConnectedPlayer p : players) {
+                dos.writeUTF(p.getUsername());
+                dos.writeShort(p.getX());
+                dos.writeShort(p.getY());
+                dos.writeShort(p.getZ());
+                dos.writeByte(p.getYaw());
+                dos.writeByte(p.getPitch());
+            }
+            System.out.println("Saved " + players.size() + " player position(s) to " + PLAYERS_FILE);
+        } catch (IOException e) {
+            System.err.println("Failed to save player data: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Load saved player positions. Returns a map of username -> saved position data.
+     */
+    public java.util.Map<String, short[]> loadPlayerPositions() {
+        java.util.Map<String, short[]> positions = new java.util.HashMap<>();
+        File file = new File(PLAYERS_FILE);
+        if (!file.exists()) return positions;
+
+        try (DataInputStream dis = new DataInputStream(new GZIPInputStream(new FileInputStream(file)))) {
+            int count = dis.readInt();
+            for (int i = 0; i < count; i++) {
+                String name = dis.readUTF();
+                short x = dis.readShort();
+                short y = dis.readShort();
+                short z = dis.readShort();
+                byte yaw = dis.readByte();
+                byte pitch = dis.readByte();
+                positions.put(name, new short[]{x, y, z, yaw, pitch});
+            }
+            System.out.println("Loaded " + count + " saved player position(s) from " + PLAYERS_FILE);
+        } catch (IOException e) {
+            System.err.println("Failed to load player data: " + e.getMessage());
+        }
+        return positions;
+    }
+
     public int getWidth() { return width; }
     public int getHeight() { return height; }
     public int getDepth() { return depth; }
+
+    /** A queued block change waiting to be processed. */
+    static class PendingBlockChange {
+        final int x, y, z;
+        final byte blockType;
+
+        PendingBlockChange(int x, int y, int z, byte blockType) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.blockType = blockType;
+        }
+    }
 }

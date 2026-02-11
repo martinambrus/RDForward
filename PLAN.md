@@ -154,7 +154,7 @@ The server needs to own the authoritative world state.
 ### Step 2.3: Server Tick Loop
 
 - [x] Create `ServerTickLoop` — runs at 20 TPS (50ms per tick)
-- [ ] Each tick: process queued player actions, update world state, broadcast changes (currently pings + auto-save only)
+- [x] Each tick: process queued block changes, broadcast confirmed changes, pings, auto-save
 - [x] Handle player position updates — currently broadcast per-packet in `ServerConnectionHandler`
 - [ ] Handle chunk loading/unloading based on player positions (not needed yet — single flat world)
 
@@ -164,18 +164,18 @@ The server needs to own the authoritative world state.
 - [x] Server sends delta updates via `SetBlockServerPacket` (Classic 0x06) for subsequent changes
 - [x] Client maintains local world copy for rendering (world replacement via LevelAccessor)
 - [x] Client sends block place/break requests; server validates and broadcasts
-- [ ] Implement simple lag compensation: client predicts block changes, reverts if server rejects
+- [x] Implement simple lag compensation: client predicts block changes, reverts after 2s timeout if server doesn't confirm
 
 ### Step 2.5: Player Position Sync
 
 - [x] Client sends position updates at a fixed rate (every 3 frames via RubyDungMixin tick hook)
-- [ ] Server validates movement (no teleporting through blocks — currently trusts client)
+- [x] Server validates movement (max distance check + solid block collision, teleports player back on violation)
 - [x] Server broadcasts other players' positions to each client
 - [x] Client interpolates remote player positions between updates (via `RemotePlayer` prev/current tracking)
 
 ### Step 2.6: Connection Lifecycle
 
-- [ ] Implement login timeout (disconnect if no PlayerIdentification within 5 seconds)
+- [x] Implement login timeout (Netty `ReadTimeoutHandler`, 5 seconds, removed after login)
 - [x] Implement Ping (server sends Classic 0x01 PingPacket every 2 seconds via tick loop)
 - [x] Handle graceful disconnect (send Classic 0x0E DisconnectPacket before closing)
 - [x] Handle unexpected disconnect (remove player, broadcast DespawnPlayerPacket)
@@ -243,7 +243,7 @@ Basic chunk and level.dat serialization is complete. Server world persistence vi
 
 - [ ] Implement entity serialization in chunks (position, type, NBT data)
 - [ ] Implement tile entity serialization (signs, chests, etc.)
-- [ ] Implement player data in level.dat (position, rotation, health, inventory)
+- [x] Implement player data save/restore (`server-players.dat`, GZip — position + rotation per username, restored on reconnect)
 - [x] Handle the session.lock ownership mechanism (8-byte timestamp in `AlphaLevelFormat`)
 - [x] Implement auto-save (every 5 minutes / 6000 ticks in `ServerTickLoop`)
 - [x] Server world save/load (`ServerWorld.save()` / `ServerWorld.load()` via GZip compressed `server-world.dat`)
@@ -323,13 +323,13 @@ The original RubyDung has no multiplayer UI. Minimal functionality added:
 - [x] Create a simple player model (colored cube 0.6x1.8x0.6 with wireframe outline, 8-color rotation)
 - [x] Render remote players at their server-reported positions (correct eye height 1.62)
 - [x] Interpolate movement between position updates (prev/current position tracking in `RemotePlayer`)
-- [ ] Show player names above their heads (simple text rendering)
+- [x] Show player names above their heads (billboarded Java2D→texture name tags via `NameTagRenderer`)
 
 ### Step 5.4: Client-Side Prediction
 
 - [x] Predict local player movement (local player moves instantly, position synced to server)
-- [ ] Predict block placement (show immediately, revert if server rejects — currently no revert)
-- [ ] Handle rubber-banding gracefully
+- [x] Predict block placement (applied immediately, reverted after 2s timeout if server doesn't confirm)
+- [x] Handle rubber-banding gracefully (server teleports player back on invalid movement)
 
 ---
 

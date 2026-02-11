@@ -126,6 +126,8 @@ public class ClientConnectionHandler extends SimpleChannelInboundHandler<Packet>
     }
 
     private void handleSetBlock(SetBlockServerPacket packet) {
+        // Confirm any pending prediction at this position (server accepted the change)
+        state.confirmPrediction(packet.getX(), packet.getY(), packet.getZ());
         state.queueBlockChange(packet.getX(), packet.getY(), packet.getZ(), (byte) packet.getBlockType());
     }
 

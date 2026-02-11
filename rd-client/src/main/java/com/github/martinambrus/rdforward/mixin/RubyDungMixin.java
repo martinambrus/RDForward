@@ -2,6 +2,7 @@ package com.github.martinambrus.rdforward.mixin;
 
 import com.github.martinambrus.rdforward.client.HudRenderer;
 import com.github.martinambrus.rdforward.client.MultiplayerState;
+import com.github.martinambrus.rdforward.client.NameTagRenderer;
 import com.github.martinambrus.rdforward.client.RDClient;
 import com.github.martinambrus.rdforward.client.RemotePlayerRenderer;
 import com.mojang.rubydung.Player;
@@ -160,10 +161,24 @@ public class RubyDungMixin {
             client.sendPosition(x, y, z, yaw, pitch);
         }
 
-        // Send local block changes to the server
+        // Send local block changes to the server + record predictions
         int[] blockEvent;
         while ((blockEvent = RubyDung.blockChangeQueue.poll()) != null) {
-            client.sendBlockChange(blockEvent[0], blockEvent[1], blockEvent[2], blockEvent[3], blockEvent[4]);
+            int bx = blockEvent[0], by = blockEvent[1], bz = blockEvent[2];
+            // Record original block type for revert if server rejects
+            if (level != null) {
+                byte originalType = (byte) level.getTile(bx, by, bz);
+                state.addPrediction(bx, by, bz, originalType);
+            }
+            client.sendBlockChange(bx, by, bz, blockEvent[3], blockEvent[4]);
+        }
+
+        // Revert timed-out predictions (server didn't confirm the block change)
+        java.util.List<MultiplayerState.PendingPrediction> timedOut = state.pollTimedOutPredictions();
+        for (MultiplayerState.PendingPrediction pred : timedOut) {
+            if (level != null) {
+                level.setTile(pred.x, pred.y, pred.z, pred.originalBlockType != 0 ? 1 : 0);
+            }
         }
 
         // Apply pending block changes from the server
@@ -216,6 +231,7 @@ public class RubyDungMixin {
             client.disconnect();
         }
         HudRenderer.cleanup();
+        NameTagRenderer.cleanup();
     }
 
     // -- Internal helpers --

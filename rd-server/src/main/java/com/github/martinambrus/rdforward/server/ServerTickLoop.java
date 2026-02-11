@@ -1,6 +1,10 @@
 package com.github.martinambrus.rdforward.server;
 
+import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.protocol.packet.classic.PingPacket;
+import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
+
+import java.util.List;
 
 /**
  * Server tick loop running at 20 TPS (50ms per tick), matching Minecraft's
@@ -87,14 +91,21 @@ public class ServerTickLoop implements Runnable {
     private void tick() {
         tickCount++;
 
+        // Process queued block changes and broadcast results
+        List<SetBlockServerPacket> blockChanges = world.processPendingBlockChanges();
+        for (Packet packet : blockChanges) {
+            playerManager.broadcastPacket(packet);
+        }
+
         // Send keep-alive pings periodically
         if (tickCount % PING_INTERVAL_TICKS == 0) {
             playerManager.broadcastPacket(new PingPacket());
         }
 
-        // Auto-save world periodically
+        // Auto-save world and player positions periodically
         if (tickCount % SAVE_INTERVAL_TICKS == 0) {
             world.saveIfDirty();
+            world.savePlayers(playerManager.getAllPlayers());
         }
     }
 
