@@ -17,7 +17,6 @@ task fatJar(type: Jar) {
     dependsOn classes, ':rd-protocol:jar', ':rd-world:jar'
 
     archiveClassifier = 'all'
-    outputs.upToDateWhen { false }
 
     manifest {
         attributes('Main-Class': 'com.github.martinambrus.rdforward.server.RDServer')
