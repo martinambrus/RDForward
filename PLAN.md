@@ -134,13 +134,18 @@ Since RubyDung isn't obfuscated, we can target classes by their real names.
 `rd-protocol/src/main/java/.../packet/classic/`. The packet IDs match the
 real MC Classic protocol (wiki.vg protocol version 7).
 
-Remaining for Alpha protocol (when we reach Alpha versions):
+Alpha protocol packets — 26 classes in `rd-protocol/src/main/java/.../packet/alpha/`:
 
-- [ ] Alpha login packets (0x01 Login, 0x02 Handshake — different from Classic)
-- [ ] Alpha chunk packets (0x32 PreChunk, 0x33 MapChunk — chunk-based instead of full-world)
-- [ ] Alpha entity packets (0x14 AddPlayer, 0x1D RemoveEntities, etc.)
-- [ ] Alpha block packets (0x35 BlockUpdate — uses int coords instead of short)
-- [ ] Alpha keep-alive (0x00 — different from Classic 0x01 Ping)
+- [x] Alpha login packets (0x01 LoginC2S/LoginS2C, 0x02 HandshakeC2S/HandshakeS2C, 0xFF Disconnect)
+- [x] Alpha keep-alive (0x00 KeepAlive — empty packet, replaces Classic 0x01 Ping)
+- [x] Alpha chat (0x03 Chat — string16, replaces Classic 0x0D Message)
+- [x] Alpha player movement (0x0A OnGround, 0x0B Position, 0x0C Look, 0x0D PositionAndLook C2S/S2C — note y/stance swap in S2C)
+- [x] Alpha player actions (0x0E Digging, 0x0F BlockPlacement — with conditional item data for protocol 14)
+- [x] Alpha chunk packets (0x32 PreChunk, 0x33 MapChunk — chunk-based instead of full-world)
+- [x] Alpha entity packets (0x14 SpawnPlayer, 0x1D DestroyEntity, 0x1F RelativeMove, 0x20 Look, 0x21 LookAndMove, 0x22 Teleport)
+- [x] Alpha block packet (0x35 BlockChange — int coords + metadata, replaces Classic 0x06 SetBlock)
+- [x] Alpha game state (0x04 TimeUpdate, 0x06 SpawnPosition, 0x08 UpdateHealth)
+- [x] All registered in PacketRegistry for ALPHA_1_0_15 and ALPHA_1_2_6
 
 ### Step 2.2: Server World State Manager
 
