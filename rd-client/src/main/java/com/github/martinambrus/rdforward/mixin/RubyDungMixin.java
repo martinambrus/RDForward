@@ -257,7 +257,7 @@ public class RubyDungMixin {
     private String rdforward$getHudText() {
         // Show "Server Unavailable" for 5 seconds after a failed connection attempt
         if (rdforward$serverUnavailableUntil > System.currentTimeMillis()) {
-            return "rd-132211 - Multiplayer Server Unavailable (F6 to retry)";
+            return "Multiplayer Server Unavailable (F6 to retry)";
         }
 
         if (rdforward$multiplayerMode) {
