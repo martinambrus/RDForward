@@ -53,9 +53,10 @@ public class RubyDungMixin {
                     System.err.println("Invalid port in rdforward.server: " + parts[1]);
                 }
             }
-            String username = System.getProperty("rdforward.username",
-                "Player" + (int)(Math.random() * 1000));
-            System.out.println("Connecting to " + host + ":" + port + " as " + username + "...");
+            // Empty username → server assigns "Player<ID>" automatically
+            String username = System.getProperty("rdforward.username", "");
+            System.out.println("Connecting to " + host + ":" + port
+                + (username.isEmpty() ? " (server will assign name)..." : " as " + username + "..."));
             RDClient.getInstance().connect(host, port, username);
         }
     }

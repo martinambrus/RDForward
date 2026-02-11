@@ -37,12 +37,29 @@ public class PlayerManager {
 
     /**
      * Register a new player. Assigns the next available player ID.
+     * If the username is empty/blank, generates "Player&lt;ID&gt;".
+     * If the username is already taken, appends a number to make it unique.
      * Returns null if the server is full.
      */
     public synchronized ConnectedPlayer addPlayer(String username, Channel channel, ProtocolVersion version) {
         byte id = allocateId();
         if (id == -1) {
             return null; // Server full
+        }
+
+        // Generate a default name if none provided
+        if (username == null || username.trim().isEmpty()) {
+            username = "Player" + (id + 1);
+        } else {
+            username = username.trim();
+        }
+
+        // Ensure uniqueness: if the name is taken, append a number
+        String baseName = username;
+        int suffix = 2;
+        while (isNameTaken(username)) {
+            username = baseName + suffix;
+            suffix++;
         }
 
         ConnectedPlayer player = new ConnectedPlayer(id, username, channel, version);
@@ -134,6 +151,18 @@ public class PlayerManager {
      */
     public void broadcastPlayerDespawn(ConnectedPlayer player) {
         broadcastPacketExcept(new DespawnPlayerPacket(player.getPlayerId()), player);
+    }
+
+    /**
+     * Check if a username is already taken by a connected player.
+     */
+    private boolean isNameTaken(String name) {
+        for (ConnectedPlayer p : playersByChannel.values()) {
+            if (p.getUsername().equalsIgnoreCase(name)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
