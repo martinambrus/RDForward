@@ -11,6 +11,31 @@ jar {
     }
 }
 
+task fatJar(type: Jar) {
+    description = 'Builds a self-contained server JAR with all dependencies bundled'
+    group = 'build'
+    dependsOn classes
+
+    archiveClassifier = 'all'
+
+    manifest {
+        attributes('Main-Class': 'com.github.martinambrus.rdforward.server.RDServer')
+    }
+
+    from sourceSets.main.output
+    from({
+        configurations.runtimeClasspath.filter { it.isFile() && it.name.endsWith('.jar') }
+            .collect { zipTree(it) }
+    }) {
+        exclude 'META-INF/MANIFEST.MF'
+        exclude 'META-INF/*.SF'
+        exclude 'META-INF/*.DSA'
+        exclude 'META-INF/*.RSA'
+    }
+
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
 task runServer(type: JavaExec) {
     description = 'Launches the RDForward dedicated server'
     group = 'application'
