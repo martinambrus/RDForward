@@ -1,5 +1,9 @@
 package com.github.martinambrus.rdforward.world.alpha;
 
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+
 /**
  * Represents a single chunk in the Minecraft Alpha level format.
  *
@@ -41,6 +45,12 @@ public class AlphaChunk {
     /** Tick when this chunk was last saved */
     private long lastUpdate;
 
+    /** Entities within this chunk (mobs, items, projectiles, etc.) */
+    private final List<AlphaEntity> entities;
+
+    /** Tile entities (block entities) within this chunk (chests, furnaces, signs, etc.) */
+    private final List<AlphaTileEntity> tileEntities;
+
     public AlphaChunk(int xPos, int zPos) {
         this.xPos = xPos;
         this.zPos = zPos;
@@ -49,6 +59,8 @@ public class AlphaChunk {
         this.blockLight = new byte[NIBBLE_COUNT];
         this.skyLight = new byte[NIBBLE_COUNT];
         this.heightMap = new byte[WIDTH * DEPTH];
+        this.entities = new ArrayList<AlphaEntity>();
+        this.tileEntities = new ArrayList<AlphaTileEntity>();
         this.terrainPopulated = false;
         this.lastUpdate = 0;
 
@@ -154,4 +166,53 @@ public class AlphaChunk {
     public void setTerrainPopulated(boolean populated) { this.terrainPopulated = populated; }
     public long getLastUpdate() { return lastUpdate; }
     public void setLastUpdate(long lastUpdate) { this.lastUpdate = lastUpdate; }
+
+    // === Entity management ===
+
+    public List<AlphaEntity> getEntities() { return entities; }
+
+    public void addEntity(AlphaEntity entity) {
+        entities.add(entity);
+    }
+
+    public void clearEntities() {
+        entities.clear();
+    }
+
+    // === Tile entity management ===
+
+    public List<AlphaTileEntity> getTileEntities() { return tileEntities; }
+
+    public void addTileEntity(AlphaTileEntity tileEntity) {
+        tileEntities.add(tileEntity);
+    }
+
+    /**
+     * Find the tile entity at the given block coordinates, or null if none exists.
+     */
+    public AlphaTileEntity getTileEntityAt(int x, int y, int z) {
+        for (int i = 0; i < tileEntities.size(); i++) {
+            AlphaTileEntity te = tileEntities.get(i);
+            if (te.getX() == x && te.getY() == y && te.getZ() == z) {
+                return te;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Remove the tile entity at the given block coordinates.
+     * Returns true if a tile entity was removed.
+     */
+    public boolean removeTileEntityAt(int x, int y, int z) {
+        Iterator<AlphaTileEntity> it = tileEntities.iterator();
+        while (it.hasNext()) {
+            AlphaTileEntity te = it.next();
+            if (te.getX() == x && te.getY() == y && te.getZ() == z) {
+                it.remove();
+                return true;
+            }
+        }
+        return false;
+    }
 }

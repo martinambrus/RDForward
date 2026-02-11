@@ -247,8 +247,8 @@ Extend this with finer-grained filtering:
 
 Basic chunk and level.dat serialization is complete. Server world persistence via `server-world.dat` (GZip) is also working.
 
-- [ ] Implement entity serialization in chunks (position, type, NBT data)
-- [ ] Implement tile entity serialization (signs, chests, etc.)
+- [x] Implement entity serialization in chunks — `AlphaEntity` wrapper stores raw NBT CompoundTag for round-trip fidelity; common field helpers (id, Pos, Motion, Rotation, OnGround); entities stored in `AlphaChunk.entities` list; serialized/deserialized in `AlphaLevelFormat`
+- [x] Implement tile entity serialization — `AlphaTileEntity` wrapper stores raw NBT CompoundTag; common field helpers (id, x, y, z); `AlphaChunk` provides `getTileEntityAt()`/`removeTileEntityAt()` for block-level lookup; serialized/deserialized in `AlphaLevelFormat`
 - [x] Implement player data save/restore (`server-players.dat`, GZip — position + rotation per username, restored on reconnect)
 - [x] Handle the session.lock ownership mechanism (8-byte timestamp in `AlphaLevelFormat`)
 - [x] Implement auto-save (every 5 minutes / 6000 ticks in `ServerTickLoop`)
