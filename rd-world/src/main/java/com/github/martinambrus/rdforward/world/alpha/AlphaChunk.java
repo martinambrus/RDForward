@@ -1,8 +1,12 @@
 package com.github.martinambrus.rdforward.world.alpha;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.zip.Deflater;
+import java.util.zip.DeflaterOutputStream;
 
 /**
  * Represents a single chunk in the Minecraft Alpha level format.
@@ -150,6 +154,32 @@ public class AlphaChunk {
             }
             heightMap[hmIndex] = 0;
         }
+    }
+
+    /**
+     * Serialize this chunk's data for the Alpha protocol MapChunkPacket (0x33).
+     *
+     * The compressed payload contains (in order):
+     *   1. Block IDs — 32768 bytes (1 byte per block)
+     *   2. Block metadata — 16384 bytes (nibble array, 4 bits per block)
+     *   3. Block light — 16384 bytes (nibble array)
+     *   4. Sky light — 16384 bytes (nibble array)
+     * Total uncompressed: 81920 bytes, then zlib/deflate compressed.
+     *
+     * The block ordering matches the internal YZX storage, so the raw
+     * arrays can be written directly without reordering.
+     *
+     * @return zlib-compressed chunk data suitable for MapChunkPacket
+     */
+    public byte[] serializeForAlphaProtocol() throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        DeflaterOutputStream dos = new DeflaterOutputStream(baos, new Deflater(Deflater.BEST_SPEED));
+        dos.write(blocks);
+        dos.write(data);
+        dos.write(blockLight);
+        dos.write(skyLight);
+        dos.close();
+        return baos.toByteArray();
     }
 
     // === Raw array access for serialization ===

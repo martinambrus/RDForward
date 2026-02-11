@@ -14,6 +14,7 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.timeout.ReadTimeoutHandler;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.InputStreamReader;
 import java.util.Collection;
 
@@ -41,12 +42,16 @@ public class RDServer {
     /** Default world seed (can be overridden via constructor). */
     private static final long DEFAULT_SEED = 0L;
 
+    /** Default directory for Alpha-format chunk storage. */
+    private static final String DEFAULT_WORLD_DIR = "world";
+
     private final int port;
     private final ProtocolVersion protocolVersion;
     private final WorldGenerator worldGenerator;
     private final long worldSeed;
     private final ServerWorld world;
     private final PlayerManager playerManager;
+    private final ChunkManager chunkManager;
     private final ServerTickLoop tickLoop;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
@@ -68,7 +73,8 @@ public class RDServer {
         this.worldSeed = worldSeed;
         this.world = new ServerWorld(DEFAULT_WORLD_WIDTH, DEFAULT_WORLD_HEIGHT, DEFAULT_WORLD_DEPTH);
         this.playerManager = new PlayerManager();
-        this.tickLoop = new ServerTickLoop(playerManager, world);
+        this.chunkManager = new ChunkManager(worldGenerator, worldSeed, new File(DEFAULT_WORLD_DIR));
+        this.tickLoop = new ServerTickLoop(playerManager, world, chunkManager);
     }
 
     /**
@@ -101,7 +107,7 @@ public class RDServer {
                                 PacketDirection.CLIENT_TO_SERVER, protocolVersion));
                         pipeline.addLast("encoder", new PacketEncoder());
                         pipeline.addLast("handler", new ServerConnectionHandler(
-                                protocolVersion, world, playerManager));
+                                protocolVersion, world, playerManager, chunkManager));
                     }
                 })
                 .option(ChannelOption.SO_BACKLOG, 128)
@@ -127,6 +133,7 @@ public class RDServer {
         System.out.println("Saving world and player data...");
         world.save();
         world.savePlayers(playerManager.getAllPlayers());
+        chunkManager.saveAllDirty();
 
         if (serverChannel != null) {
             serverChannel.close();
@@ -153,6 +160,7 @@ public class RDServer {
     public ProtocolVersion getProtocolVersion() { return protocolVersion; }
     public ServerWorld getWorld() { return world; }
     public PlayerManager getPlayerManager() { return playerManager; }
+    public ChunkManager getChunkManager() { return chunkManager; }
 
     /**
      * Run the interactive console command loop.

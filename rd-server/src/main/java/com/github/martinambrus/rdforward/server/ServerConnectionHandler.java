@@ -41,14 +41,17 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
     private final ProtocolVersion serverVersion;
     private final ServerWorld world;
     private final PlayerManager playerManager;
+    private final ChunkManager chunkManager;
     private ProtocolVersion clientVersion;
     private ConnectedPlayer player;
     private boolean loginComplete = false;
 
-    public ServerConnectionHandler(ProtocolVersion serverVersion, ServerWorld world, PlayerManager playerManager) {
+    public ServerConnectionHandler(ProtocolVersion serverVersion, ServerWorld world,
+                                   PlayerManager playerManager, ChunkManager chunkManager) {
         this.serverVersion = serverVersion;
         this.world = world;
         this.playerManager = playerManager;
+        this.chunkManager = chunkManager;
     }
 
     @Override
@@ -112,6 +115,9 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
                 "Welcome to RDForward!",
                 ServerIdentificationPacket.USER_TYPE_NORMAL
         ));
+
+        // Register player for chunk tracking (used by Alpha-mode clients)
+        chunkManager.addPlayer(player);
 
         // Send world data via Classic level transfer
         sendWorldData(ctx);
@@ -298,6 +304,8 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
                 + " (" + (playerManager.getPlayerCount() - 1) + " online)");
             // Save position before removal so it persists for reconnect
             world.rememberPlayerPosition(player);
+            // Unregister from chunk tracking (unloads chunks no longer needed)
+            chunkManager.removePlayer(player);
             playerManager.broadcastChat((byte) 0, player.getUsername() + " left the game");
             playerManager.broadcastPlayerDespawn(player);
             playerManager.removePlayer(ctx.channel());

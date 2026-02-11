@@ -23,17 +23,20 @@ public class ServerTickLoop implements Runnable {
 
     private static final long TICK_MS = 50; // 20 TPS
     private static final int PING_INTERVAL_TICKS = 40; // Every 2 seconds
+    private static final int CHUNK_UPDATE_INTERVAL_TICKS = 5; // Every 250ms
     private static final int SAVE_INTERVAL_TICKS = 6000; // Every 5 minutes
 
     private final PlayerManager playerManager;
     private final ServerWorld world;
+    private final ChunkManager chunkManager;
     private volatile boolean running;
     private Thread thread;
     private long tickCount;
 
-    public ServerTickLoop(PlayerManager playerManager, ServerWorld world) {
+    public ServerTickLoop(PlayerManager playerManager, ServerWorld world, ChunkManager chunkManager) {
         this.playerManager = playerManager;
         this.world = world;
+        this.chunkManager = chunkManager;
     }
 
     /**
@@ -102,10 +105,18 @@ public class ServerTickLoop implements Runnable {
             playerManager.broadcastPacket(new PingPacket());
         }
 
+        // Update chunk loading/unloading for all players periodically
+        if (tickCount % CHUNK_UPDATE_INTERVAL_TICKS == 0) {
+            for (ConnectedPlayer player : playerManager.getAllPlayers()) {
+                chunkManager.updatePlayerChunks(player);
+            }
+        }
+
         // Auto-save world and player positions periodically
         if (tickCount % SAVE_INTERVAL_TICKS == 0) {
             world.saveIfDirty();
             world.savePlayers(playerManager.getAllPlayers());
+            chunkManager.saveAllDirty();
         }
     }
 

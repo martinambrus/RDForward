@@ -162,7 +162,7 @@ The server needs to own the authoritative world state.
 - [x] Create `ServerTickLoop` — runs at 20 TPS (50ms per tick)
 - [x] Each tick: process queued block changes, broadcast confirmed changes, pings, auto-save
 - [x] Handle player position updates — currently broadcast per-packet in `ServerConnectionHandler`
-- [ ] Handle chunk loading/unloading based on player positions (not needed yet — single flat world)
+- [x] Handle chunk loading/unloading based on player positions — `ChunkManager` tracks loaded chunks per player, generates/loads chunks on demand via `WorldGenerator.generateChunk()` + `AlphaLevelFormat`, sends `PreChunkPacket` + `MapChunkPacket` for newly visible chunks, unloads distant chunks when no player needs them; `ChunkCoord` provides immutable coordinate keys; `AlphaChunk.serializeForAlphaProtocol()` produces zlib-compressed data for the wire; tick loop updates every 5 ticks (250ms); dirty chunks saved to disk on auto-save and server shutdown
 
 ### Step 2.4: Client-Server World Sync
 
