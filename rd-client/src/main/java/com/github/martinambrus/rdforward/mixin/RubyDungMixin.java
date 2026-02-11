@@ -1,5 +1,7 @@
 package com.github.martinambrus.rdforward.mixin;
 
+import com.github.martinambrus.rdforward.client.ChatInput;
+import com.github.martinambrus.rdforward.client.ChatRenderer;
 import com.github.martinambrus.rdforward.client.HudRenderer;
 import com.github.martinambrus.rdforward.client.MultiplayerState;
 import com.github.martinambrus.rdforward.client.NameTagRenderer;
@@ -52,6 +54,9 @@ public class RubyDungMixin {
 
     /** Edge detection for F6 toggle (key was pressed previous frame). */
     private boolean rdforward$f6WasPressed = false;
+
+    /** Edge detection for T key (chat open). */
+    private boolean rdforward$tWasPressed = false;
 
     /** Timestamp until which "Server Unavailable" is shown (0 = not showing). */
     private long rdforward$serverUnavailableUntil = 0;
@@ -123,6 +128,32 @@ public class RubyDungMixin {
 
         MultiplayerState state = MultiplayerState.getInstance();
         RDClient client = RDClient.getInstance();
+
+        // Poll chat messages from server and feed to ChatRenderer
+        String chatMsg;
+        while ((chatMsg = state.pollChatMessage()) != null) {
+            ChatRenderer.addMessage(chatMsg);
+        }
+
+        // T key opens chat input (only when connected and chat isn't already open)
+        if (!ChatInput.isActive()) {
+            boolean tPressed = GLFW.glfwGetKey(RubyDung.window, GLFW.GLFW_KEY_T) == GLFW.GLFW_PRESS;
+            if (tPressed && !rdforward$tWasPressed && client.isConnected()) {
+                ChatInput.open(RubyDung.window);
+            }
+            rdforward$tWasPressed = tPressed;
+        }
+
+        // While chat input is active, force cursor to stay visible every frame.
+        // This counteracts RubyDung's click-to-recapture behavior: even if the
+        // game grabs the cursor on a mouse click, we immediately release it again.
+        // Escape and Enter close chat (handled by ChatInput's GLFW key callback),
+        // which re-grabs the cursor — so Escape does NOT release cursor while
+        // chat is open, it closes chat and recaptures instead.
+        if (ChatInput.isActive()) {
+            GLFW.glfwSetInputMode(RubyDung.window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
+            return;
+        }
 
         // Apply server world data once when it arrives
         if (!rdforward$worldApplied && state.isWorldReady() && level != null) {
@@ -230,6 +261,12 @@ public class RubyDungMixin {
         int[] w = new int[1], h = new int[1];
         GLFW.glfwGetWindowSize(RubyDung.window, w, h);
         HudRenderer.drawText(rdforward$getHudText(), w[0], h[0]);
+
+        // Render chat messages and input box (when connected)
+        if (RDClient.getInstance().isConnected() || !ChatRenderer.isEmpty()) {
+            ChatRenderer.render(w[0], h[0]);
+            ChatInput.render(w[0], h[0]);
+        }
     }
 
     /**
@@ -255,6 +292,8 @@ public class RubyDungMixin {
             client.disconnect();
         }
         HudRenderer.cleanup();
+        ChatRenderer.cleanup();
+        ChatInput.cleanup();
         NameTagRenderer.cleanup();
     }
 

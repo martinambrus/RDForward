@@ -321,10 +321,10 @@ The original RubyDung has no multiplayer UI. Minimal functionality added:
 - [x] CLI-based server connect (`--server` flag, `-PmpServer` Gradle property, or F6 toggle for localhost)
 - [x] CLI-based player name entry (`--username` flag, `-PmpUsername` Gradle property, or server auto-assign)
 - [x] HUD text overlay showing connection status, server address, player count
-- [ ] Server connect screen (graphical text input for host:port)
-- [ ] Server list (hardcoded or file-based initially)
-- [ ] In-game player list (Tab key)
-- [ ] Chat overlay (T key to open, Enter to send)
+- [ ] Server connect screen (graphical text input for host:port) — `GameScreen` interface ready, `ServerListScreen` skeleton defined
+- [ ] Server list (hardcoded or file-based initially) — `ServerListScreen.ServerEntry` model ready
+- [ ] In-game player list (Tab key) — `PlayerListOverlay` abstract class ready, data available via `MultiplayerState.getRemotePlayers()`
+- [x] Chat overlay (T key to open, Enter to send) — `ChatRenderer` displays messages at bottom-left with 10s auto-fade; `ChatInput` captures text via GLFW char callback, T opens (releases cursor), Enter sends + recaptures, Escape cancels + recaptures; `MultiplayerState.pollChatMessage()` now wired to `ChatRenderer.addMessage()` in the mixin render loop; UI groundwork interfaces: `GameOverlay`, `GameScreen`, `PlayerListOverlay`, `ServerListScreen`
 
 ### Step 5.3: Render Remote Players
 
