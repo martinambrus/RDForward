@@ -1,0 +1,40 @@
+description = 'RDForward Android - Android client using libGDX rendering backend'
+
+// ============================================================================
+// NOTE: This module requires the Android SDK to compile. It uses the standard
+// Gradle Java plugin for structure, but actual Android builds need the
+// Android Gradle Plugin (com.android.application) and an installed SDK.
+//
+// To build on a machine with the Android SDK:
+//   1. Set ANDROID_HOME environment variable
+//   2. Replace this build.gradle with the android-specific version
+//   3. Run: ./gradlew :rd-android:assembleDebug
+//
+// The source code is structured to be Android-ready. The Java plugin is used
+// here only so the code compiles and is checked for correctness in CI.
+// ============================================================================
+
+ext {
+    gdxVersion = '1.12.1'
+}
+
+dependencies {
+    // Our rendering abstraction layer
+    compileOnly project(':rd-render')
+    compileOnly project(':rd-desktop')
+
+    // Networking (Netty works unchanged on Android)
+    compileOnly project(':rd-protocol')
+    compileOnly project(':rd-world')
+
+    // libGDX core (compile-only since Android provides its own backend)
+    compileOnly "com.badlogicgames.gdx:gdx:${gdxVersion}"
+    // gdx-backend-android is an AAR that requires the Android SDK to resolve.
+    // The AndroidApplication/AndroidApplicationConfiguration classes come from
+    // it. For CI/desktop builds, we stub the android.os.Bundle import below.
+    // For actual Android builds, switch to the Android Gradle Plugin and
+    // add: implementation "com.badlogicgames.gdx:gdx-backend-android:${gdxVersion}"
+}
+
+// Disable test execution — Android tests require the Android SDK
+test.enabled = false

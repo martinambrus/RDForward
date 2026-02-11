@@ -40,6 +40,9 @@ ext {
 }
 
 dependencies {
+    // Rendering abstraction layer (Phase 8)
+    implementation project(':rd-render')
+
     lwjglModules.each { module ->
         implementation "org.lwjgl:${module}:${lwjglVersion}"
         lwjglNativePlatforms.each { platform ->
