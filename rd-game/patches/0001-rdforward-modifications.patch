@@ -1,6 +1,6 @@
 diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/Player.java /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/Player.java
---- a/com/mojang/rubydung/Player.java	2026-02-11 10:47:30.703519985 +0000
-+++ b/com/mojang/rubydung/Player.java	2026-02-11 10:47:30.948519873 +0000
+--- a/com/mojang/rubydung/Player.java	2026-02-11 10:50:20.000000000 +0000
++++ b/com/mojang/rubydung/Player.java	2026-02-11 10:50:21.000000000 +0000
 @@ -3,7 +3,7 @@
  import com.mojang.rubydung.level.Level;
  import com.mojang.rubydung.phys.AABB;
@@ -100,8 +100,8 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/Playe
              this.zd += za * cos + xa * sin;
          }
 diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/RubyDung.java /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/RubyDung.java
---- a/com/mojang/rubydung/RubyDung.java	2026-02-11 10:47:30.706519984 +0000
-+++ b/com/mojang/rubydung/RubyDung.java	2026-02-11 10:49:16.252471436 +0000
+--- a/com/mojang/rubydung/RubyDung.java	2026-02-11 10:50:20.000000000 +0000
++++ b/com/mojang/rubydung/RubyDung.java	2026-02-11 11:03:16.081095784 +0000
 @@ -4,18 +4,17 @@
  import com.mojang.rubydung.level.Level;
  import com.mojang.rubydung.level.LevelRenderer;
@@ -127,7 +127,7 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/RubyD
  
  public class RubyDung implements Runnable {
      private static final boolean FULLSCREEN_MODE = false;
-@@ -30,39 +29,111 @@
+@@ -30,39 +29,114 @@
      private IntBuffer selectBuffer = BufferUtils.createIntBuffer(2000);
      private HitResult hitResult = null;
  
@@ -142,6 +142,9 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/RubyD
 +
 +    // Mouse grab state — when ungrabbed, player can interact with the OS
 +    private boolean mouseGrabbed = false;
++
++    // Flag set by key event handler when Ctrl+M is pressed — read by mixin
++    public static volatile boolean multiplayerToggleRequested = false;
 +
 +    // Event queues for GLFW callbacks
 +    private final Queue<int[]> mouseEvents = new LinkedList<>();
@@ -258,7 +261,7 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/RubyD
      }
  
      @Override
-@@ -78,7 +149,7 @@
+@@ -78,7 +152,7 @@
          int frames = 0;
  
          try {
@@ -267,7 +270,7 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/RubyD
                  this.timer.advanceTime();
  
                  for (int i = 0; i < this.timer.ticks; i++) {
-@@ -117,44 +188,44 @@
+@@ -117,44 +191,44 @@
      }
  
      private void setupCamera(float a) {
@@ -329,7 +332,7 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/RubyD
              this.selectBuffer.get();
              if (minZ >= closest && i != 0) {
                  for (int j = 0; j < nameCount; j++) {
-@@ -178,82 +249,142 @@
+@@ -178,82 +252,145 @@
      }
  
      public void render(float a) {
@@ -425,6 +428,9 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/RubyD
 +            if (key == GLFW.GLFW_KEY_Q && pressed && (mods & GLFW.GLFW_MOD_CONTROL) != 0) {
 +                GLFW.glfwSetWindowShouldClose(window, true);
 +            }
++            if (key == GLFW.GLFW_KEY_M && pressed && (mods & GLFW.GLFW_MOD_CONTROL) != 0) {
++                multiplayerToggleRequested = true;
++            }
 +            if (key == GLFW.GLFW_KEY_ENTER && pressed) {
                  this.level.save();
              }
@@ -504,8 +510,8 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/RubyD
      }
  }
 diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/Textures.java /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/Textures.java
---- a/com/mojang/rubydung/Textures.java	2026-02-11 10:47:30.708519983 +0000
-+++ b/com/mojang/rubydung/Textures.java	2026-02-11 10:47:30.950519872 +0000
+--- a/com/mojang/rubydung/Textures.java	2026-02-11 10:50:20.000000000 +0000
++++ b/com/mojang/rubydung/Textures.java	2026-02-11 10:50:21.000000000 +0000
 @@ -8,7 +8,7 @@
  import javax.imageio.ImageIO;
  import org.lwjgl.BufferUtils;
@@ -546,8 +552,8 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/Textu
          }
      }
 diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/Timer.java /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/Timer.java
---- a/com/mojang/rubydung/Timer.java	2026-02-11 10:47:30.711519982 +0000
-+++ b/com/mojang/rubydung/Timer.java	2026-02-11 10:47:30.951519871 +0000
+--- a/com/mojang/rubydung/Timer.java	2026-02-11 10:50:20.000000000 +0000
++++ b/com/mojang/rubydung/Timer.java	2026-02-11 10:50:21.000000000 +0000
 @@ -36,7 +36,7 @@
              this.ticks = 100;
          }
@@ -558,8 +564,8 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/Timer
      }
  }
 diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level/Chunk.java /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/level/Chunk.java
---- a/com/mojang/rubydung/level/Chunk.java	2026-02-11 10:47:30.715519980 +0000
-+++ b/com/mojang/rubydung/level/Chunk.java	2026-02-11 10:47:30.952519871 +0000
+--- a/com/mojang/rubydung/level/Chunk.java	2026-02-11 10:50:20.000000000 +0000
++++ b/com/mojang/rubydung/level/Chunk.java	2026-02-11 10:50:21.000000000 +0000
 @@ -15,7 +15,7 @@
      public final int z1;
      private boolean dirty = true;
@@ -601,8 +607,8 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level
          }
      }
 diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level/Frustum.java /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/level/Frustum.java
---- a/com/mojang/rubydung/level/Frustum.java	2026-02-11 10:47:30.718519978 +0000
-+++ b/com/mojang/rubydung/level/Frustum.java	2026-02-11 10:47:30.954519870 +0000
+--- a/com/mojang/rubydung/level/Frustum.java	2026-02-11 10:50:20.000000000 +0000
++++ b/com/mojang/rubydung/level/Frustum.java	2026-02-11 10:50:21.000000000 +0000
 @@ -1,7 +1,6 @@
  package com.mojang.rubydung.level;
  
@@ -645,8 +651,8 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level
          this.clip[0] = this.modl[0] * this.proj[0] + this.modl[1] * this.proj[4] + this.modl[2] * this.proj[8] + this.modl[3] * this.proj[12];
          this.clip[1] = this.modl[0] * this.proj[1] + this.modl[1] * this.proj[5] + this.modl[2] * this.proj[9] + this.modl[3] * this.proj[13];
 diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level/Level.java /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/level/Level.java
---- a/com/mojang/rubydung/level/Level.java	2026-02-11 10:47:30.720519978 +0000
-+++ b/com/mojang/rubydung/level/Level.java	2026-02-11 10:47:30.955519870 +0000
+--- a/com/mojang/rubydung/level/Level.java	2026-02-11 10:50:20.000000000 +0000
++++ b/com/mojang/rubydung/level/Level.java	2026-02-11 10:50:21.000000000 +0000
 @@ -40,7 +40,11 @@
  
      public void load() {
@@ -670,8 +676,8 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level
                  }
              }
 diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level/LevelRenderer.java /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/level/LevelRenderer.java
---- a/com/mojang/rubydung/level/LevelRenderer.java	2026-02-11 10:47:30.724519976 +0000
-+++ b/com/mojang/rubydung/level/LevelRenderer.java	2026-02-11 10:47:30.956519869 +0000
+--- a/com/mojang/rubydung/level/LevelRenderer.java	2026-02-11 10:50:20.000000000 +0000
++++ b/com/mojang/rubydung/level/LevelRenderer.java	2026-02-11 10:50:21.000000000 +0000
 @@ -104,13 +104,13 @@
      }
  
@@ -691,8 +697,8 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level
  
      public void setDirty(int x0, int y0, int z0, int x1, int y1, int z1) {
 diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level/Tesselator.java /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/level/Tesselator.java
---- a/com/mojang/rubydung/level/Tesselator.java	2026-02-11 10:47:30.726519975 +0000
-+++ b/com/mojang/rubydung/level/Tesselator.java	2026-02-11 10:47:30.956519869 +0000
+--- a/com/mojang/rubydung/level/Tesselator.java	2026-02-11 10:50:20.000000000 +0000
++++ b/com/mojang/rubydung/level/Tesselator.java	2026-02-11 10:50:21.000000000 +0000
 @@ -1,6 +1,5 @@
  package com.mojang.rubydung.level;
  
@@ -763,8 +769,8 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level
  
      public void init() {
 diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level/Tile.java /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/level/Tile.java
---- a/com/mojang/rubydung/level/Tile.java	2026-02-11 10:47:30.728519974 +0000
-+++ b/com/mojang/rubydung/level/Tile.java	2026-02-11 10:47:30.957519869 +0000
+--- a/com/mojang/rubydung/level/Tile.java	2026-02-11 10:50:20.000000000 +0000
++++ b/com/mojang/rubydung/level/Tile.java	2026-02-11 10:50:21.000000000 +0000
 @@ -10,19 +10,19 @@
      }
  

@@ -44,8 +44,8 @@ public class RubyDungMixin {
     /** Whether we're currently in multiplayer mode. */
     private boolean rdforward$multiplayerMode = false;
 
-    /** Edge detection for Ctrl+M toggle. */
-    private boolean rdforward$mKeyWasPressed = false;
+    /** Whether we've logged the first render frame (debug). */
+    private boolean rdforward$renderDebugLogged = false;
 
     /** Server connection details (parsed once at startup). */
     private String rdforward$serverHost = "localhost";
@@ -89,18 +89,16 @@ public class RubyDungMixin {
      */
     @Inject(method = "render", at = @At("HEAD"))
     private void onRenderHead(float partialTick, CallbackInfo ci) {
-        // Ctrl+M toggle detection via GLFW polling (check both left and right Ctrl)
-        boolean ctrlDown = GLFW.glfwGetKey(RubyDung.window, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS
-                || GLFW.glfwGetKey(RubyDung.window, GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
-        boolean mPressed = GLFW.glfwGetKey(RubyDung.window, GLFW.GLFW_KEY_M) == GLFW.GLFW_PRESS && ctrlDown;
-        if (mPressed && !rdforward$mKeyWasPressed) {
+        // Ctrl+M toggle — flag is set by key event handler in RubyDung.java
+        if (RubyDung.multiplayerToggleRequested) {
+            RubyDung.multiplayerToggleRequested = false;
+            System.out.println("[RDForward] Ctrl+M pressed — toggling multiplayer mode");
             if (rdforward$multiplayerMode) {
                 rdforward$disconnectFromServer();
             } else {
                 rdforward$connectToServer();
             }
         }
-        rdforward$mKeyWasPressed = mPressed;
 
         MultiplayerState state = MultiplayerState.getInstance();
         RDClient client = RDClient.getInstance();
@@ -143,6 +141,11 @@ public class RubyDungMixin {
     @Inject(method = "render", at = @At(value = "INVOKE",
             target = "Lorg/lwjgl/glfw/GLFW;glfwSwapBuffers(J)V"))
     private void onRenderBeforeSwap(float partialTick, CallbackInfo ci) {
+        if (!rdforward$renderDebugLogged) {
+            System.out.println("[RDForward] Render injection active — HUD and remote player rendering enabled");
+            rdforward$renderDebugLogged = true;
+        }
+
         // Render remote players if in multiplayer
         if (RDClient.getInstance().isConnected()) {
             RemotePlayerRenderer.renderAll(partialTick);
@@ -171,17 +174,18 @@ public class RubyDungMixin {
     // -- Internal helpers --
 
     private void rdforward$connectToServer() {
-        System.out.println("Connecting to " + rdforward$serverHost + ":" + rdforward$serverPort
+        System.out.println("[RDForward] Connecting to " + rdforward$serverHost + ":" + rdforward$serverPort
             + (rdforward$username.isEmpty() ? " (server will assign name)..." : " as " + rdforward$username + "..."));
         RDClient.getInstance().connect(rdforward$serverHost, rdforward$serverPort, rdforward$username);
         rdforward$multiplayerMode = true;
         rdforward$worldApplied = false;
+        System.out.println("[RDForward] Switched to MULTIPLAYER mode");
     }
 
     private void rdforward$disconnectFromServer() {
-        System.out.println("Switching to single player...");
         RDClient.getInstance().disconnect();
         rdforward$multiplayerMode = false;
+        System.out.println("[RDForward] Switched to SINGLE PLAYER mode");
     }
 
     private String rdforward$getHudText() {
