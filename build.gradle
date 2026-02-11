@@ -142,6 +142,22 @@ task downloadDeps {
     }
 }
 
+// =============================================================================
+// Convenience Aggregate Tasks
+// =============================================================================
+
+task fatJars {
+    description = 'Builds all fat JARs (server + game)'
+    group = 'build'
+    dependsOn ':rd-server:fatJar', ':rd-game:fatJar'
+}
+
+task buildAll {
+    description = 'Full build: compile, test, and produce all fat JARs'
+    group = 'build'
+    dependsOn 'build', 'fatJars'
+}
+
 subprojects {
     apply plugin: 'java'
 
