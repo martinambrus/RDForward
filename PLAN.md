@@ -98,13 +98,14 @@ Since RubyDung isn't obfuscated, we can target classes by their real names.
 - [x] Create `@Mixin(RubyDung.class)` to inject mod initialization into the game's `run()` method
 - [x] Create `@Mixin(Level.class)` — implemented as `LevelAccessor` (accessor mixin for block array)
 - [x] Create `@Mixin(Player.class)` — implemented as `PlayerAccessor` (accessor mixin for position fields)
-- [ ] Create `@Mixin(Timer.class)` to inject tick event hooks (currently handled inline in RubyDungMixin)
+- [x] Create `@Mixin(Timer.class)` — implemented as `TimerAccessor` (accessor mixin for tick count, partial tick); RubyDungMixin now uses Timer's actual tick count for frame-rate-independent position updates
 
 **Key files:**
 - `rd-client/src/main/resources/rdforward.mixins.json`
 - `rd-client/src/main/java/.../mixin/RubyDungMixin.java`
 - `rd-client/src/main/java/.../mixin/LevelAccessor.java`
 - `rd-client/src/main/java/.../mixin/PlayerAccessor.java`
+- `rd-client/src/main/java/.../mixin/TimerAccessor.java`
 
 ### Step 1.3: Define Fabric-Style Mod Entrypoints
 

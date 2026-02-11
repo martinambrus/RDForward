@@ -7,6 +7,7 @@ import com.github.martinambrus.rdforward.client.RDClient;
 import com.github.martinambrus.rdforward.client.RemotePlayerRenderer;
 import com.mojang.rubydung.Player;
 import com.mojang.rubydung.RubyDung;
+import com.mojang.rubydung.Timer;
 import com.mojang.rubydung.level.Level;
 import com.mojang.rubydung.phys.AABB;
 import com.mojang.rubydung.level.LevelListener;
@@ -35,10 +36,10 @@ public class RubyDungMixin {
     private Player player;
 
     @Shadow
-    private Level level;
+    private Timer timer;
 
-    /** Frame counter for throttling position updates. */
-    private int rdforward$tickCounter = 0;
+    @Shadow
+    private Level level;
 
     /** Whether the server world has been applied to the local Level. */
     private boolean rdforward$worldApplied = false;
@@ -170,10 +171,8 @@ public class RubyDungMixin {
                 + tx + ", " + ty + ", " + tz + ")");
         }
 
-        // Send position updates every 3 frames (~20/sec at 60 FPS)
-        rdforward$tickCounter++;
-        if (rdforward$tickCounter >= 3 && player != null) {
-            rdforward$tickCounter = 0;
+        // Send position updates once per game tick (20 TPS, frame-rate independent)
+        if (((TimerAccessor) timer).getTicks() > 0 && player != null) {
             PlayerAccessor pa = (PlayerAccessor) player;
             // Convert float block coordinates to fixed-point (blocks * 32)
             // Use Math.round for Y to avoid downward truncation that buries the player
