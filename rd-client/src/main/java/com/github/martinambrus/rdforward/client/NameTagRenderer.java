@@ -2,11 +2,13 @@ package com.github.martinambrus.rdforward.client;
 
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
+import org.lwjgl.system.MemoryStack;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.FloatBuffer;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -28,7 +30,7 @@ public class NameTagRenderer {
      *
      * @param name the player name to render
      * @param x    world X coordinate
-     * @param y    world Y coordinate (bottom of player — tag will be placed above head)
+     * @param y    world Y coordinate (eye level — tag placed above head)
      * @param z    world Z coordinate
      */
     public static void renderNameTag(String name, float x, float y, float z) {
@@ -41,7 +43,7 @@ public class NameTagRenderer {
         }
         if (tag.textureId <= 0) return;
 
-        // Position above the player's head (1.8 blocks tall + 0.3 gap above head, minus eye height)
+        // Position above the player's head (1.8 blocks tall + 0.3 gap, minus 1.62 eye height)
         float tagY = y - 1.62f + 1.8f + 0.3f;
 
         // Scale: 1 pixel = 1/64 blocks (small, readable at close range)
@@ -49,43 +51,26 @@ public class NameTagRenderer {
         float halfWidth = tag.width * scale * 0.5f;
         float halfHeight = tag.height * scale * 0.5f;
 
+        // Billboard technique: translate to world position, then extract the
+        // eye-space translation from the modelview matrix and replace the
+        // full matrix with identity + that translation. This removes all
+        // rotation so the quad always faces the camera.
         GL11.glPushMatrix();
         GL11.glTranslatef(x, tagY, z);
 
-        // Billboard: extract the modelview matrix and cancel the rotation part
-        // so the quad always faces the camera.
-        float[] modelview = new float[16];
-        GL11.glGetFloatv(GL11.GL_MODELVIEW_MATRIX, modelview);
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            FloatBuffer mv = stack.mallocFloat(16);
+            GL11.glGetFloatv(GL11.GL_MODELVIEW_MATRIX, mv);
+            float tx = mv.get(12);
+            float ty = mv.get(13);
+            float tz = mv.get(14);
 
-        // Reset the 3x3 rotation portion to identity (columns 0-2, rows 0-2)
-        // Column 0
-        modelview[0] = 1; modelview[1] = 0; modelview[2] = 0;
-        // Column 1
-        modelview[4] = 0; modelview[5] = 1; modelview[6] = 0;
-        // Column 2
-        modelview[8] = 0; modelview[9] = 0; modelview[10] = 1;
+            // Replace modelview with identity + translation (kills rotation = billboard)
+            GL11.glLoadIdentity();
+            GL11.glTranslatef(tx, ty, tz);
+        }
 
-        // We need to undo the current modelview and apply the billboard version.
-        // Instead, we can use a simpler approach: push identity rotation at this point.
-        GL11.glPopMatrix();
-        GL11.glPushMatrix();
-        GL11.glTranslatef(x, tagY, z);
-
-        // Get camera-facing vectors from the inverse modelview
-        // Simpler approach: scale the quad in clip space using the current matrix
-        // Actually, the cleanest fixed-function billboard:
-        // 1. Get the current modelview
-        // 2. Zero out the rotation columns
-        // 3. Load it
-        float[] mv = new float[16];
-        GL11.glGetFloatv(GL11.GL_MODELVIEW_MATRIX, mv);
-        // Reset rotation (keep translation in column 3)
-        float tx = mv[12], ty = mv[13], tz = mv[14];
-        // Load identity-ish matrix with only translation
-        GL11.glLoadIdentity();
-        GL11.glTranslatef(tx, ty, tz);
-
-        // Draw background quad
+        // Draw semi-transparent background
         GL11.glDisable(GL11.GL_TEXTURE_2D);
         GL11.glColor4f(0.0f, 0.0f, 0.0f, 0.4f);
         GL11.glBegin(GL11.GL_QUADS);
@@ -95,7 +80,7 @@ public class NameTagRenderer {
         GL11.glVertex3f(-halfWidth - 0.01f, halfHeight + 0.01f, 0);
         GL11.glEnd();
 
-        // Draw text quad
+        // Draw text texture
         GL11.glEnable(GL11.GL_TEXTURE_2D);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, tag.textureId);
         GL11.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
