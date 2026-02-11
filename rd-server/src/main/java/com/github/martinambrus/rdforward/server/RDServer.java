@@ -43,6 +43,7 @@ public class RDServer {
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
     private Channel serverChannel;
+    private volatile boolean stopped = false;
 
     public RDServer(int port) {
         this(port, ProtocolVersion.RUBYDUNG);
@@ -100,8 +101,15 @@ public class RDServer {
      * Stop the server and release all resources.
      */
     public void stop() {
+        if (stopped) return;
+        stopped = true;
+
+        System.out.println("Stopping server...");
         tickLoop.stop();
-        world.saveIfDirty();
+
+        System.out.println("Saving world...");
+        world.save();
+
         if (serverChannel != null) {
             serverChannel.close();
         }

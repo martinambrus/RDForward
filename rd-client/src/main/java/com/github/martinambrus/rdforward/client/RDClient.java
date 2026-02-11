@@ -50,6 +50,10 @@ public class RDClient {
         }
         this.username = username;
 
+        // Clear stale world data before new connection to prevent race conditions
+        // (old channelInactive callback can fire after new world data arrives)
+        MultiplayerState.getInstance().resetWorldData();
+
         group = new NioEventLoopGroup(1, new DefaultThreadFactory("rd-client", true));
         Bootstrap bootstrap = new Bootstrap();
         bootstrap.group(group)

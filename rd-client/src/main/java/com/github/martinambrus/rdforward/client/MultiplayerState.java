@@ -118,7 +118,14 @@ public class MultiplayerState {
     public void setConnected(boolean connected) {
         this.connected = connected;
         if (!connected) {
-            reset();
+            // Only clear transient state, NOT world data.
+            // World data is managed explicitly via resetWorldData().
+            // This prevents a race where the old connection's channelInactive
+            // fires after a new connection has already loaded world data.
+            remotePlayers.clear();
+            pendingBlockChanges.clear();
+            pendingChatMessages.clear();
+            localPlayerId = -1;
         }
     }
 
@@ -131,15 +138,12 @@ public class MultiplayerState {
     public void setServerMotd(String motd) { this.serverMotd = motd; }
 
     /**
-     * Reset all state on disconnect.
+     * Clear world data so stale data isn't applied on reconnect.
+     * Called at the start of a new connection before world transfer begins.
      */
-    private void reset() {
+    public void resetWorldData() {
         worldReady = false;
         worldBlocks = null;
-        remotePlayers.clear();
-        pendingBlockChanges.clear();
-        pendingChatMessages.clear();
-        localPlayerId = -1;
         serverName = "";
         serverMotd = "";
     }

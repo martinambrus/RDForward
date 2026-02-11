@@ -262,9 +262,13 @@ public class RubyDungMixin {
         }
 
         // Map server blocks to RubyDung's block system (0=air, non-zero=solid)
+        int solidCount = 0;
         for (int i = 0; i < localBlocks.length; i++) {
             localBlocks[i] = serverBlocks[i] != 0 ? (byte) 1 : (byte) 0;
+            if (localBlocks[i] != 0) solidCount++;
         }
+        System.out.println("[RDForward] Applied " + solidCount + " solid blocks out of " + localBlocks.length
+            + " (" + (solidCount * 100 / localBlocks.length) + "% solid)");
 
         // Recalculate lighting for the entire world
         level.calcLightDepths(0, 0, level.width, level.height);
