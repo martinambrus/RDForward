@@ -89,9 +89,10 @@ public class RubyDungMixin {
      */
     @Inject(method = "render", at = @At("HEAD"))
     private void onRenderHead(float partialTick, CallbackInfo ci) {
-        // Ctrl+M toggle detection via GLFW polling
-        boolean mPressed = GLFW.glfwGetKey(RubyDung.window, GLFW.GLFW_KEY_M) == GLFW.GLFW_PRESS
-                && GLFW.glfwGetKey(RubyDung.window, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS;
+        // Ctrl+M toggle detection via GLFW polling (check both left and right Ctrl)
+        boolean ctrlDown = GLFW.glfwGetKey(RubyDung.window, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS
+                || GLFW.glfwGetKey(RubyDung.window, GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
+        boolean mPressed = GLFW.glfwGetKey(RubyDung.window, GLFW.GLFW_KEY_M) == GLFW.GLFW_PRESS && ctrlDown;
         if (mPressed && !rdforward$mKeyWasPressed) {
             if (rdforward$multiplayerMode) {
                 rdforward$disconnectFromServer();

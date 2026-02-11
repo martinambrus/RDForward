@@ -31,6 +31,21 @@ public class HudRenderer {
     public static void drawText(String text, int screenWidth, int screenHeight) {
         if (text == null || text.isEmpty()) return;
 
+        try {
+            drawTextInternal(text, screenWidth, screenHeight);
+        } catch (Throwable t) {
+            // Don't let HUD errors crash the game
+            if (!errorReported) {
+                System.err.println("[HUD] Rendering error: " + t.getMessage());
+                t.printStackTrace();
+                errorReported = true;
+            }
+        }
+    }
+
+    private static boolean errorReported = false;
+
+    private static void drawTextInternal(String text, int screenWidth, int screenHeight) {
         // Regenerate texture if text changed
         if (!text.equals(lastText) || textureId == -1) {
             updateTexture(text);
