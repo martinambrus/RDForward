@@ -4,7 +4,9 @@ import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.codec.PacketDecoder;
 import com.github.martinambrus.rdforward.protocol.codec.PacketEncoder;
 import com.github.martinambrus.rdforward.protocol.packet.PacketDirection;
+import com.github.martinambrus.rdforward.world.AlphaWorldGenerator;
 import com.github.martinambrus.rdforward.world.FlatWorldGenerator;
+import com.github.martinambrus.rdforward.world.RubyDungWorldGenerator;
 import com.github.martinambrus.rdforward.world.WorldGenerator;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
@@ -67,11 +69,17 @@ public class RDServer {
     }
 
     public RDServer(int port, ProtocolVersion protocolVersion, WorldGenerator worldGenerator, long worldSeed) {
+        this(port, protocolVersion, worldGenerator, worldSeed,
+             DEFAULT_WORLD_WIDTH, DEFAULT_WORLD_HEIGHT, DEFAULT_WORLD_DEPTH);
+    }
+
+    public RDServer(int port, ProtocolVersion protocolVersion, WorldGenerator worldGenerator, long worldSeed,
+                    int worldWidth, int worldHeight, int worldDepth) {
         this.port = port;
         this.protocolVersion = protocolVersion;
         this.worldGenerator = worldGenerator;
         this.worldSeed = worldSeed;
-        this.world = new ServerWorld(DEFAULT_WORLD_WIDTH, DEFAULT_WORLD_HEIGHT, DEFAULT_WORLD_DEPTH);
+        this.world = new ServerWorld(worldWidth, worldHeight, worldDepth);
         this.playerManager = new PlayerManager();
         this.chunkManager = new ChunkManager(worldGenerator, worldSeed, new File(DEFAULT_WORLD_DIR));
         this.tickLoop = new ServerTickLoop(playerManager, world, chunkManager);
@@ -214,8 +222,16 @@ public class RDServer {
 
     /**
      * Server entry point.
+     *
      * Usage: java -cp rd-server.jar com.github.martinambrus.rdforward.server.RDServer [port]
      * Default port: 25565
+     *
+     * System properties for world configuration:
+     *   -Drdforward.world.width=256    World X dimension (default: 256)
+     *   -Drdforward.world.height=64    World Y/vertical dimension (default: 64)
+     *   -Drdforward.world.depth=256    World Z dimension (default: 256)
+     *   -Drdforward.generator=flat     Generator: flat, rubydung, alpha (default: flat)
+     *   -Drdforward.seed=12345         World seed (default: 0)
      */
     public static void main(String[] args) {
         int port = 25565;
@@ -228,7 +244,35 @@ public class RDServer {
             }
         }
 
-        RDServer server = new RDServer(port);
+        // Parse world dimensions from system properties
+        int worldWidth = getIntProperty("rdforward.world.width", DEFAULT_WORLD_WIDTH);
+        int worldHeight = getIntProperty("rdforward.world.height", DEFAULT_WORLD_HEIGHT);
+        int worldDepth = getIntProperty("rdforward.world.depth", DEFAULT_WORLD_DEPTH);
+        long seed = getLongProperty("rdforward.seed", DEFAULT_SEED);
+
+        // Select world generator
+        String generatorName = System.getProperty("rdforward.generator", "flat").toLowerCase();
+        WorldGenerator generator;
+        switch (generatorName) {
+            case "rubydung":
+            case "classic":
+                generator = new RubyDungWorldGenerator();
+                break;
+            case "alpha":
+            case "terrain":
+                generator = new AlphaWorldGenerator();
+                break;
+            case "flat":
+            default:
+                generator = new FlatWorldGenerator();
+                break;
+        }
+
+        System.out.println("[RDForward] World config: " + worldWidth + "x" + worldHeight + "x" + worldDepth
+            + ", generator=" + generator.getName() + ", seed=" + seed);
+
+        RDServer server = new RDServer(port, ProtocolVersion.RUBYDUNG, generator, seed,
+            worldWidth, worldHeight, worldDepth);
         Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "RDForward-Shutdown"));
 
         try {
@@ -236,6 +280,28 @@ public class RDServer {
             server.runConsole();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    private static int getIntProperty(String key, int defaultValue) {
+        String value = System.getProperty(key);
+        if (value == null) return defaultValue;
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            System.err.println("Invalid value for " + key + ": " + value + ", using default " + defaultValue);
+            return defaultValue;
+        }
+    }
+
+    private static long getLongProperty(String key, long defaultValue) {
+        String value = System.getProperty(key);
+        if (value == null) return defaultValue;
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            System.err.println("Invalid value for " + key + ": " + value + ", using default " + defaultValue);
+            return defaultValue;
         }
     }
 }

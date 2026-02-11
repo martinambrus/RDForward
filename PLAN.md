@@ -263,9 +263,9 @@ RubyDung's original world is a simple flat terrain with random blocks:
 - [x] Create `WorldGenerator` interface — supports both finite-world generation (`generate(blocks, w, h, d, seed)`) and chunk-based generation (`generateChunk(chunkX, chunkZ, seed)`) via `supportsChunkGeneration()` flag; includes static `blockIndex()` helper
 - [x] Create `FlatWorldGenerator` implementing the RubyDung flat terrain (cobblestone + grass surface at height*2/3)
 - [x] Wire into `ServerWorld.generate(WorldGenerator, long seed)` and `RDServer` — generator and seed are passed through constructor, logged at startup
-- [ ] Port the original RubyDung terrain generator from decompiled source (random height variation)
-- [ ] Add a simple Alpha-style terrain generator option (hills, caves, ores) — implement `supportsChunkGeneration()` = true, generate 16x128x16 AlphaChunks
-- [ ] Make world size configurable via server properties
+- [x] Port the original RubyDung terrain generator — `RubyDungWorldGenerator` faithfully replicates the Level constructor (grass surface at height*2/3, cobblestone subsurface, air above); selectable via `-Drdforward.generator=rubydung`
+- [x] Add Alpha-style terrain generator shell — `AlphaWorldGenerator` with 7-phase pipeline (terrain/caves/surface/ores/fluids/trees/lighting); `PerlinNoise` utility for heightmaps; `supportsChunkGeneration()` = true; phases 2/4/6 (caves, ores, trees) are documented stubs ready for Alpha-accurate logic; selectable via `-Drdforward.generator=alpha`
+- [x] Make world size configurable via server properties — `-Drdforward.world.width`, `.height`, `.depth`, `-Drdforward.generator=flat|rubydung|alpha`, `-Drdforward.seed`; `RDServer` constructor accepts custom dimensions
 
 ### Step 4.3: World Upgrade Path
 
