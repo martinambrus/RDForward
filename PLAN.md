@@ -271,9 +271,9 @@ RubyDung's original world is a simple flat terrain with random blocks:
 
 Enable converting worlds between formats:
 
-- [ ] RubyDung world -> Alpha format: add missing NBT fields with defaults
-- [ ] Alpha format -> Region format (.mcr): implement McRegion writer for Beta+ compat
-- [ ] Create a CLI tool: `java -jar rd-world.jar convert <input-dir> <output-dir> <target-format>`
+- [x] RubyDung world → Alpha format — `RubyDungToAlphaConverter` reads server-world.dat, splits into 16x128x16 AlphaChunks, adds default NBT fields (entities, tile entities, terrain populated, lighting), writes via `AlphaLevelFormat`, creates level.dat with spawn at world center
+- [x] Alpha format → Region format (.mcr) — `McRegionWriter` scans Alpha chunk directory, groups by 32x32 region, writes .mcr files with 4KB sector-aligned layout (location table + timestamp table + zlib-compressed chunk NBT); handles two-step RubyDung→Region conversion via temp Alpha dir
+- [x] CLI tool — `WorldConverter` main class in rd-world: `java -jar rd-world.jar convert <input> <output-dir> <format>` with auto-detection of input format (.dat = RubyDung, directory = Alpha), `--seed` option, supports `alpha` and `region`/`mcr` targets; rd-world.gradle configured with fatJar task
 
 ---
 
