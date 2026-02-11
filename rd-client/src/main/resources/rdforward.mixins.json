@@ -4,7 +4,8 @@
   "compatibilityLevel": "JAVA_8",
   "client": [
     "RubyDungMixin",
-    "PlayerAccessor"
+    "PlayerAccessor",
+    "LevelAccessor"
   ],
   "injectors": {
     "defaultRequire": 1

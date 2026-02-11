@@ -5,11 +5,15 @@ import com.github.martinambrus.rdforward.client.RDClient;
 import com.github.martinambrus.rdforward.client.RemotePlayerRenderer;
 import com.mojang.rubydung.Player;
 import com.mojang.rubydung.RubyDung;
+import com.mojang.rubydung.level.Level;
+import com.mojang.rubydung.level.LevelListener;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+import java.util.ArrayList;
 
 /**
  * Injects RDForward multiplayer functionality into the RubyDung game loop.
@@ -25,8 +29,14 @@ public class RubyDungMixin {
     @Shadow
     private Player player;
 
+    @Shadow
+    private Level level;
+
     /** Frame counter for throttling position updates. */
     private int rdforward$tickCounter = 0;
+
+    /** Whether the server world has been applied to the local Level. */
+    private boolean rdforward$worldApplied = false;
 
     @Inject(method = "run", at = @At("HEAD"))
     private void onGameStart(CallbackInfo ci) {
@@ -63,11 +73,18 @@ public class RubyDungMixin {
 
     /**
      * Called at the start of each render frame.
-     * Sends position updates and applies pending block changes from the server.
+     * Applies server world data, sends position updates, and applies block changes.
      */
     @Inject(method = "render", at = @At("HEAD"))
     private void onRenderHead(float partialTick, CallbackInfo ci) {
+        MultiplayerState state = MultiplayerState.getInstance();
         RDClient client = RDClient.getInstance();
+
+        // Apply server world data once when it arrives
+        if (!rdforward$worldApplied && state.isWorldReady() && level != null) {
+            rdforward$applyServerWorld(state);
+        }
+
         if (!client.isConnected()) return;
 
         // Send position updates every 3 frames (~20/sec at 60 FPS)
@@ -86,12 +103,48 @@ public class RubyDungMixin {
         }
 
         // Apply pending block changes from the server
-        MultiplayerState state = MultiplayerState.getInstance();
         MultiplayerState.BlockChange change;
         while ((change = state.pollBlockChange()) != null) {
-            // Block changes from the server are tracked in MultiplayerState.
-            // Full level integration will be added when Level Mixin is implemented.
+            if (level != null) {
+                // RubyDung only knows block types 0 (air) and 1 (solid)
+                level.setTile(change.x, change.y, change.z, change.blockType != 0 ? 1 : 0);
+            }
         }
+    }
+
+    /**
+     * Replaces the local Level's block data with the server's world.
+     * Maps server block types to RubyDung's binary solid/air system.
+     */
+    private void rdforward$applyServerWorld(MultiplayerState state) {
+        LevelAccessor la = (LevelAccessor) level;
+        byte[] localBlocks = la.getBlocks();
+        byte[] serverBlocks = state.getWorldBlocks();
+
+        if (serverBlocks == null || localBlocks.length != serverBlocks.length) {
+            System.err.println("World size mismatch: local=" + localBlocks.length
+                + " server=" + (serverBlocks != null ? serverBlocks.length : "null"));
+            rdforward$worldApplied = true;
+            return;
+        }
+
+        // Map server blocks to RubyDung's block system (0=air, non-zero=solid)
+        for (int i = 0; i < localBlocks.length; i++) {
+            localBlocks[i] = serverBlocks[i] != 0 ? (byte) 1 : (byte) 0;
+        }
+
+        // Recalculate lighting for the entire world
+        level.calcLightDepths(0, 0, level.width, level.height);
+
+        // Notify all listeners (LevelRenderer) to rebuild all chunks
+        ArrayList<LevelListener> listeners = la.getLevelListeners();
+        for (int i = 0; i < listeners.size(); i++) {
+            listeners.get(i).allChanged();
+        }
+
+        rdforward$worldApplied = true;
+        System.out.println("Server world applied to local Level ("
+            + level.width + "x" + level.depth + "x" + level.height + ")");
     }
 
     /**

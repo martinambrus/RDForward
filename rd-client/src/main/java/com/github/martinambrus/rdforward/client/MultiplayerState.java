@@ -65,6 +65,7 @@ public class MultiplayerState {
         return worldBlocks[(y * worldDepth + z) * worldWidth + x];
     }
 
+    public byte[] getWorldBlocks() { return worldBlocks; }
     public boolean isWorldReady() { return worldReady; }
     public int getWorldWidth() { return worldWidth; }
     public int getWorldHeight() { return worldHeight; }
