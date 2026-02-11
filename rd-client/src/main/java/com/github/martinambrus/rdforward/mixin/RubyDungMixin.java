@@ -161,10 +161,10 @@ public class RubyDungMixin {
             ChatRenderer.addMessage(chatMsg);
         }
 
-        // T key opens chat input (only when connected and chat isn't already open)
+        // T key opens chat input (works in both single player and multiplayer)
         if (!ChatInput.isActive()) {
             boolean tPressed = GLFW.glfwGetKey(RubyDung.window, GLFW.GLFW_KEY_T) == GLFW.GLFW_PRESS;
-            if (tPressed && !rdforward$tWasPressed && client.isConnected()) {
+            if (tPressed && !rdforward$tWasPressed) {
                 ChatInput.open(RubyDung.window);
             }
             rdforward$tWasPressed = tPressed;
@@ -314,11 +314,9 @@ public class RubyDungMixin {
         GLFW.glfwGetWindowSize(RubyDung.window, w, h);
         HudRenderer.drawText(rdforward$getHudText(), w[0], h[0]);
 
-        // Render chat messages and input box (when connected)
-        if (RDClient.getInstance().isConnected() || !ChatRenderer.isEmpty()) {
-            ChatRenderer.render(w[0], h[0]);
-            ChatInput.render(w[0], h[0]);
-        }
+        // Render chat messages and input box (always — supports single player commands)
+        ChatRenderer.render(w[0], h[0]);
+        ChatInput.render(w[0], h[0]);
     }
 
     /**
