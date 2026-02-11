@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, 'claude/**' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Cache BuildTools downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            rd-game/build/download
+            rd-game/build/tools
+          key: buildtools-rd-132211-vf1.11.2
+
+      - name: Set up workspace (download + decompile RubyDung)
+        run: ./gradlew :rd-game:setupWorkspace
+
+      - name: Build all modules
+        run: ./gradlew build
+
+      - name: Run tests
+        run: ./gradlew test

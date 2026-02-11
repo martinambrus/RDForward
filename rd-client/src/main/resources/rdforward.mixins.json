@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "package": "com.github.martinambrus.rdforward.mixin",
+  "compatibilityLevel": "JAVA_8",
+  "client": [
+    "RubyDungMixin",
+    "PlayerAccessor",
+    "LevelAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

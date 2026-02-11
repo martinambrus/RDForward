@@ -1,0 +1,179 @@
+plugins {
+    id 'java'
+}
+
+allprojects {
+    group = 'com.github.martinambrus.rdforward'
+    version = findProperty('projectVersion') ?: '0.0.0-SNAPSHOT'
+
+    repositories {
+        // Local Maven repo populated by 'downloadDeps' task (for environments
+        // where Gradle's own HTTP client can't reach Maven Central, e.g. behind
+        // certain corporate proxies). Falls through to Maven Central otherwise.
+        maven {
+            url = file("${rootDir}/build/local-repo")
+            metadataSources { artifact() }
+        }
+        mavenCentral()
+        maven {
+            url = 'https://maven.fabricmc.net'
+            content {
+                includeGroup 'net.fabricmc'
+            }
+        }
+        maven {
+            url = 'https://jitpack.io'
+            content { includeGroup 'com.github.Querz' }
+        }
+    }
+}
+
+// =============================================================================
+// Dependency Download Task
+// =============================================================================
+// Downloads Maven dependencies via curl for environments where Gradle's HTTP
+// client can't authenticate through HTTPS proxies. In normal environments
+// (including GitHub Actions CI), Gradle resolves from Maven Central directly.
+
+ext {
+    localRepo = file("${rootDir}/build/local-repo")
+    mavenBaseUrl = 'https://repo.maven.apache.org/maven2'
+
+    // All external Maven dependencies used by any module.
+    // Format: 'group:artifact:version' (Maven Central)
+    //         'group:artifact:version@repoUrl' (custom repos like JitPack)
+    //         'group:artifact:version#classifier' (classifier JARs, e.g. natives)
+    externalDeps = [
+        // LWJGL 3 (rd-game) — core + GLFW + OpenGL
+        'org.lwjgl:lwjgl:3.4.1',
+        'org.lwjgl:lwjgl-glfw:3.4.1',
+        'org.lwjgl:lwjgl-opengl:3.4.1',
+        // LWJGL 3 native classifier JARs (all platforms)
+        'org.lwjgl:lwjgl:3.4.1#natives-linux',
+        'org.lwjgl:lwjgl:3.4.1#natives-macos',
+        'org.lwjgl:lwjgl:3.4.1#natives-macos-arm64',
+        'org.lwjgl:lwjgl:3.4.1#natives-windows',
+        'org.lwjgl:lwjgl-glfw:3.4.1#natives-linux',
+        'org.lwjgl:lwjgl-glfw:3.4.1#natives-macos',
+        'org.lwjgl:lwjgl-glfw:3.4.1#natives-macos-arm64',
+        'org.lwjgl:lwjgl-glfw:3.4.1#natives-windows',
+        'org.lwjgl:lwjgl-opengl:3.4.1#natives-linux',
+        'org.lwjgl:lwjgl-opengl:3.4.1#natives-macos',
+        'org.lwjgl:lwjgl-opengl:3.4.1#natives-macos-arm64',
+        'org.lwjgl:lwjgl-opengl:3.4.1#natives-windows',
+        // Netty (individual modules, netty-all is empty since 4.1.x)
+        'io.netty:netty-buffer:4.1.131.Final',
+        'io.netty:netty-codec:4.1.131.Final',
+        'io.netty:netty-common:4.1.131.Final',
+        'io.netty:netty-handler:4.1.131.Final',
+        'io.netty:netty-resolver:4.1.131.Final',
+        'io.netty:netty-transport:4.1.131.Final',
+        'io.netty:netty-transport-native-unix-common:4.1.131.Final',
+        // Querz NBT (rd-world) - JitPack
+        'com.github.Querz:NBT:6.1@https://jitpack.io',
+        // JUnit 5
+        'org.junit.jupiter:junit-jupiter:5.14.2',
+        'org.junit.jupiter:junit-jupiter-api:5.14.2',
+        'org.junit.jupiter:junit-jupiter-params:5.14.2',
+        'org.junit.jupiter:junit-jupiter-engine:5.14.2',
+        'org.junit.platform:junit-platform-launcher:1.14.2',
+        'org.junit.platform:junit-platform-engine:1.14.2',
+        'org.junit.platform:junit-platform-commons:1.14.2',
+        'org.apiguardian:apiguardian-api:1.1.2',
+        'org.opentest4j:opentest4j:1.3.0',
+        // Fabric Loader + Mixin + ASM (rd-client)
+        'net.fabricmc:fabric-loader:0.18.4@https://maven.fabricmc.net',
+        'net.fabricmc:sponge-mixin:0.17.0+mixin.0.8.7@https://maven.fabricmc.net',
+        'org.ow2.asm:asm:9.9.1',
+        'org.ow2.asm:asm-analysis:9.9.1',
+        'org.ow2.asm:asm-commons:9.9.1',
+        'org.ow2.asm:asm-tree:9.9.1',
+        'org.ow2.asm:asm-util:9.9.1',
+    ]
+}
+
+task downloadDeps {
+    description = 'Downloads Maven dependencies via curl (for proxy-restricted environments)'
+    group = 'buildtools'
+
+    doLast {
+        externalDeps.each { entry ->
+            def repoBaseUrl = mavenBaseUrl
+            def coord = entry
+            def classifier = ''
+
+            // Support 'group:artifact:version#classifier' for native JARs
+            if (entry.contains('#')) {
+                coord = entry.split('#')[0]
+                classifier = entry.split('#')[1]
+            }
+
+            // Support 'group:artifact:version@repoUrl' for non-Maven-Central repos
+            if (coord.contains('@')) {
+                def atSplit = coord.split('@')
+                coord = atSplit[0]
+                repoBaseUrl = atSplit[1]
+            }
+
+            def parts = coord.split(':')
+            def groupPath = parts[0].replace('.', '/')
+            def artifactId = parts[1]
+            def version = parts[2]
+            def jarName = classifier
+                ? "${artifactId}-${version}-${classifier}.jar"
+                : "${artifactId}-${version}.jar"
+            def repoPath = "${groupPath}/${artifactId}/${version}"
+            def destDir = file("${localRepo}/${repoPath}")
+            def destFile = file("${destDir}/${jarName}")
+
+            if (!destFile.exists()) {
+                destDir.mkdirs()
+                def url = "${repoBaseUrl}/${repoPath}/${jarName}"
+                logger.lifecycle("Downloading ${coord}${classifier ? ':' + classifier : ''}...")
+                try {
+                    exec {
+                        commandLine 'curl', '-fSL', '-o', destFile.absolutePath, url
+                    }
+                } catch (Exception e) {
+                    logger.warn("Failed to download ${coord}: ${e.message}")
+                }
+            }
+        }
+    }
+}
+
+// =============================================================================
+// Convenience Aggregate Tasks
+// =============================================================================
+
+task fatJars {
+    description = 'Builds all fat JARs (server + game + modded client)'
+    group = 'build'
+    dependsOn ':rd-server:fatJar', ':rd-game:fatJar', ':rd-client:fatModdedJar'
+}
+
+task buildAll {
+    description = 'Full build: compile, test, and produce all fat JARs'
+    group = 'build'
+    dependsOn 'build', 'fatJars'
+}
+
+subprojects {
+    apply plugin: 'java'
+
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+
+    java {
+        withSourcesJar()
+    }
+
+    test {
+        useJUnitPlatform()
+    }
+
+    dependencies {
+        testImplementation 'org.junit.jupiter:junit-jupiter:5.14.2'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    }
+}

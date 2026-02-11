@@ -1,0 +1,139 @@
+description = 'RDForward Client - multiplayer networking and UI for the RubyDung game'
+
+// Expand ${version} in fabric.mod.json at build time
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') {
+        expand version: project.version
+    }
+}
+
+dependencies {
+    implementation project(':rd-game')
+    implementation project(':rd-protocol')
+    implementation project(':rd-world')
+
+    // LWJGL 3 for compile-time access (RemotePlayerRenderer uses GL11)
+    // At runtime, LWJGL classes come from rd-game's classpath
+    compileOnly 'org.lwjgl:lwjgl:3.4.1'
+    compileOnly 'org.lwjgl:lwjgl-opengl:3.4.1'
+    compileOnly 'org.lwjgl:lwjgl-glfw:3.4.1'
+
+    // Fabric Loader — mod discovery, dependency resolution, Mixin-based code injection
+    implementation 'net.fabricmc:fabric-loader:0.18.4'
+    // Mixin — compile-time annotations + runtime bootstrap (Fabric Loader expects it on the classpath)
+    implementation 'net.fabricmc:sponge-mixin:0.17.0+mixin.0.8.7'
+    // ASM bytecode library (required by Fabric Loader + Mixin at runtime)
+    runtimeOnly 'org.ow2.asm:asm:9.9.1'
+    runtimeOnly 'org.ow2.asm:asm-analysis:9.9.1'
+    runtimeOnly 'org.ow2.asm:asm-commons:9.9.1'
+    runtimeOnly 'org.ow2.asm:asm-tree:9.9.1'
+    runtimeOnly 'org.ow2.asm:asm-util:9.9.1'
+}
+
+// =============================================================================
+// Modded Client Launch
+// =============================================================================
+// Launches RubyDung through Fabric Loader's Knot, which applies Mixins and
+// loads mods from the classpath. The RubyDungGameProvider SPI tells Knot
+// how to find and launch the game.
+
+task runModdedClient(type: JavaExec) {
+    description = 'Launches RubyDung with Fabric Loader (mod support enabled)'
+    group = 'application'
+    dependsOn classes, ':rd-game:classes'
+
+    // Knot discovers RubyDungGameProvider via META-INF/services SPI
+    mainClass = 'net.fabricmc.loader.impl.launch.knot.KnotClient'
+
+    classpath = sourceSets.main.runtimeClasspath
+
+    jvmArgs = [
+        '-Xmx512m',
+        // Fabric Loader settings
+        '-Dfabric.development=true',
+        '-Dfabric.gameVersion=rd-132211',
+    ]
+}
+
+// Convenience task: launches the modded client and auto-connects to a local server.
+// Usage: ./gradlew :rd-client:runMultiplayer
+// Or with custom server: ./gradlew :rd-client:runMultiplayer -PmpServer=192.168.1.5:25565 -PmpUsername=Steve
+task runMultiplayer(type: JavaExec) {
+    description = 'Launches RubyDung with multiplayer (auto-connects to server)'
+    group = 'application'
+    dependsOn classes, ':rd-game:classes'
+
+    mainClass = 'net.fabricmc.loader.impl.launch.knot.KnotClient'
+    classpath = sourceSets.main.runtimeClasspath
+
+    def server = findProperty('mpServer') ?: 'localhost:25565'
+    // If no username specified, server assigns "Player<ID>" automatically
+    def username = findProperty('mpUsername') ?: ''
+
+    jvmArgs = [
+        '-Xmx512m',
+        '-Dfabric.development=true',
+        '-Dfabric.gameVersion=rd-132211',
+        "-Drdforward.server=${server}",
+        "-Drdforward.username=${username}",
+    ]
+}
+
+// =============================================================================
+// Fat Modded JAR Distribution
+// =============================================================================
+// Produces a single self-contained JAR that bundles the game, Fabric Loader,
+// Mixin, ASM, Netty, LWJGL (classes + natives for all platforms), and
+// rd-client/rd-protocol/rd-world classes. Run with: java -jar rd-client-*-all.jar
+
+sourceSets {
+    launcher {
+        java { srcDir 'src/launcher/java' }
+        compileClasspath = sourceSets.main.runtimeClasspath
+    }
+}
+
+compileLauncherJava {
+    dependsOn classes
+}
+
+task fatModdedJar(type: Jar) {
+    description = 'Builds a Fabric-enabled self-contained JAR with all dependencies and natives'
+    group = 'build'
+    dependsOn classes, 'launcherClasses', ':rd-game:classes', ':rd-game:jar', ':rd-protocol:jar', ':rd-world:jar'
+
+    archiveClassifier = 'all'
+
+    manifest {
+        attributes('Main-Class': 'com.github.martinambrus.rdforward.FabricNativeLauncher')
+    }
+
+    // rd-client classes (GameProvider, Mixins, etc.) — added FIRST so our
+    // META-INF/services/GameProvider file wins over Fabric Loader's
+    from sourceSets.main.output
+    // Launcher bootstrap (FabricNativeLauncher)
+    from sourceSets.launcher.output
+
+    // rd-game classes + resources (the actual game)
+    from project(':rd-game').sourceSets.main.output
+    // rd-protocol classes
+    from project(':rd-protocol').sourceSets.main.output
+    // rd-world classes
+    from project(':rd-world').sourceSets.main.output
+
+    // All runtime dependency JARs (Fabric Loader, Mixin, ASM, Netty, etc.) — lazy resolution
+    from({
+        configurations.runtimeClasspath.filter { it.isFile() && it.name.endsWith('.jar') }
+            .collect { zipTree(it) }
+    }) {
+        exclude 'META-INF/MANIFEST.MF'
+        exclude 'META-INF/*.SF'
+        exclude 'META-INF/*.DSA'
+        exclude 'META-INF/*.RSA'
+        // Exclude Fabric Loader's MinecraftGameProvider service file — ours must win
+        exclude 'META-INF/services/net.fabricmc.loader.impl.game.GameProvider'
+    }
+
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}

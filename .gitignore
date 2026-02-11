@@ -1,0 +1,43 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build outputs
+out/
+bin/
+*.class
+*.jar
+!libs/**/*.jar
+
+# LWJGL (downloaded at build time)
+libs/lwjgl/
+
+# Decompiled sources (generated at build time by BuildTools)
+decompiled/
+!decompiled/.gitkeep
+rd-game/src/*
+!rd-game/src/launcher/
+
+# Runtime
+mods/
+logs/
+crash-reports/
+*.log

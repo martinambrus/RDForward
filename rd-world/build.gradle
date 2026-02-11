@@ -1,0 +1,10 @@
+description = 'RDForward World - Alpha-format world persistence and NBT serialization'
+
+dependencies {
+    // Protocol version definitions (for BlockRegistry version checks)
+    implementation project(':rd-protocol')
+
+    // Querz NBT for reading/writing Minecraft NBT format (MIT licensed)
+    // Hosted on JitPack (com.github.Querz:NBT)
+    implementation 'com.github.Querz:NBT:6.1'
+}

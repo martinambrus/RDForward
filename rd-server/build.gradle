@@ -1,0 +1,50 @@
+description = 'RDForward Server - dedicated server runtime'
+
+dependencies {
+    implementation project(':rd-protocol')
+    implementation project(':rd-world')
+}
+
+jar {
+    manifest {
+        attributes('Main-Class': 'com.github.martinambrus.rdforward.server.RDServer')
+    }
+}
+
+task fatJar(type: Jar) {
+    description = 'Builds a self-contained server JAR with all dependencies bundled'
+    group = 'build'
+    dependsOn classes, ':rd-protocol:jar', ':rd-world:jar'
+
+    archiveClassifier = 'all'
+
+    manifest {
+        attributes('Main-Class': 'com.github.martinambrus.rdforward.server.RDServer')
+    }
+
+    from sourceSets.main.output
+    from({
+        configurations.runtimeClasspath.filter { it.isFile() && it.name.endsWith('.jar') }
+            .collect { zipTree(it) }
+    }) {
+        exclude 'META-INF/MANIFEST.MF'
+        exclude 'META-INF/*.SF'
+        exclude 'META-INF/*.DSA'
+        exclude 'META-INF/*.RSA'
+    }
+
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+task runServer(type: JavaExec) {
+    description = 'Launches the RDForward dedicated server'
+    group = 'application'
+    dependsOn classes
+
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.github.martinambrus.rdforward.server.RDServer'
+    jvmArgs = ['-Xmx512m']
+
+    // Default port 25565, can be overridden with --args='<port>'
+    args = ['25565']
+}
