@@ -260,10 +260,12 @@ Basic chunk and level.dat serialization is complete. Server world persistence vi
 
 RubyDung's original world is a simple flat terrain with random blocks:
 
-- [ ] Port the original RubyDung terrain generator (from decompiled source)
-- [ ] Wrap it in a `WorldGenerator` interface so mods can replace it
-- [ ] Add a simple Alpha-style terrain generator option (hills, caves, ores)
-- [ ] Make world size configurable (default 200x200x200 for RubyDung mode)
+- [x] Create `WorldGenerator` interface — supports both finite-world generation (`generate(blocks, w, h, d, seed)`) and chunk-based generation (`generateChunk(chunkX, chunkZ, seed)`) via `supportsChunkGeneration()` flag; includes static `blockIndex()` helper
+- [x] Create `FlatWorldGenerator` implementing the RubyDung flat terrain (cobblestone + grass surface at height*2/3)
+- [x] Wire into `ServerWorld.generate(WorldGenerator, long seed)` and `RDServer` — generator and seed are passed through constructor, logged at startup
+- [ ] Port the original RubyDung terrain generator from decompiled source (random height variation)
+- [ ] Add a simple Alpha-style terrain generator option (hills, caves, ores) — implement `supportsChunkGeneration()` = true, generate 16x128x16 AlphaChunks
+- [ ] Make world size configurable via server properties
 
 ### Step 4.3: World Upgrade Path
 

@@ -4,6 +4,8 @@ import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.codec.PacketDecoder;
 import com.github.martinambrus.rdforward.protocol.codec.PacketEncoder;
 import com.github.martinambrus.rdforward.protocol.packet.PacketDirection;
+import com.github.martinambrus.rdforward.world.FlatWorldGenerator;
+import com.github.martinambrus.rdforward.world.WorldGenerator;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -36,8 +38,13 @@ public class RDServer {
     public static final int DEFAULT_WORLD_HEIGHT = 64;
     public static final int DEFAULT_WORLD_DEPTH = 256;
 
+    /** Default world seed (can be overridden via constructor). */
+    private static final long DEFAULT_SEED = 0L;
+
     private final int port;
     private final ProtocolVersion protocolVersion;
+    private final WorldGenerator worldGenerator;
+    private final long worldSeed;
     private final ServerWorld world;
     private final PlayerManager playerManager;
     private final ServerTickLoop tickLoop;
@@ -47,12 +54,18 @@ public class RDServer {
     private volatile boolean stopped = false;
 
     public RDServer(int port) {
-        this(port, ProtocolVersion.RUBYDUNG);
+        this(port, ProtocolVersion.RUBYDUNG, new FlatWorldGenerator(), DEFAULT_SEED);
     }
 
     public RDServer(int port, ProtocolVersion protocolVersion) {
+        this(port, protocolVersion, new FlatWorldGenerator(), DEFAULT_SEED);
+    }
+
+    public RDServer(int port, ProtocolVersion protocolVersion, WorldGenerator worldGenerator, long worldSeed) {
         this.port = port;
         this.protocolVersion = protocolVersion;
+        this.worldGenerator = worldGenerator;
+        this.worldSeed = worldSeed;
         this.world = new ServerWorld(DEFAULT_WORLD_WIDTH, DEFAULT_WORLD_HEIGHT, DEFAULT_WORLD_DEPTH);
         this.playerManager = new PlayerManager();
         this.tickLoop = new ServerTickLoop(playerManager, world);
@@ -64,8 +77,9 @@ public class RDServer {
     public void start() throws InterruptedException {
         if (!world.load()) {
             System.out.println("Generating world (" + DEFAULT_WORLD_WIDTH + "x"
-                    + DEFAULT_WORLD_HEIGHT + "x" + DEFAULT_WORLD_DEPTH + ")...");
-            world.generateFlatWorld();
+                    + DEFAULT_WORLD_HEIGHT + "x" + DEFAULT_WORLD_DEPTH
+                    + ") using " + worldGenerator.getName() + " generator...");
+            world.generate(worldGenerator, worldSeed);
             System.out.println("World generated.");
         }
 
