@@ -7,6 +7,7 @@ import com.github.martinambrus.rdforward.protocol.packet.classic.*;
 import com.github.martinambrus.rdforward.protocol.translation.VersionTranslator;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.handler.timeout.ReadTimeoutException;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -33,6 +34,9 @@ import java.util.Arrays;
  *   Normal gameplay begins
  */
 public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet> {
+
+    /** Seconds to wait for PlayerIdentification before disconnecting. */
+    static final int LOGIN_TIMEOUT_SECONDS = 5;
 
     private final ProtocolVersion serverVersion;
     private final ServerWorld world;
@@ -112,16 +116,38 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
         // Send world data via Classic level transfer
         sendWorldData(ctx);
 
-        // Set spawn position (center of world, on top of terrain)
-        // Surface is at y = height*2/3, so spawn 1 block above
-        short spawnX = (short) ((world.getWidth() / 2) * 32 + 16);
-        short spawnY = (short) ((world.getHeight() * 2 / 3 + 1) * 32);
-        short spawnZ = (short) ((world.getDepth() / 2) * 32 + 16);
-        player.updatePosition(spawnX, spawnY, spawnZ, (byte) 0, (byte) 0);
+        // Restore saved position if available, otherwise spawn at world center
+        // Use the assigned username (player.getUsername()), not the raw packet name,
+        // because empty names get renamed to "Player<ID>" by addPlayer().
+        java.util.Map<String, short[]> savedPositions = world.loadPlayerPositions();
+        short[] savedPos = savedPositions.get(player.getUsername());
+
+        short spawnX, spawnY, spawnZ;
+        byte spawnYaw = 0, spawnPitch = 0;
+        if (savedPos != null) {
+            spawnX = savedPos[0];
+            spawnY = savedPos[1];
+            spawnZ = savedPos[2];
+            spawnYaw = (byte) savedPos[3];
+            spawnPitch = (byte) savedPos[4];
+            System.out.println("Restored position for " + player.getUsername());
+        } else {
+            // Default: center of world, on top of terrain
+            // Surface is at y = height*2/3, feet at +1 block above.
+            // Y is eye-level (feet + 1.62) to match the client convention.
+            // Compute feet as exact fixed-point, then add ceil(1.62*32) to avoid
+            // truncation placing feet inside the surface block.
+            spawnX = (short) ((world.getWidth() / 2) * 32 + 16);
+            int feetFixedPoint = (world.getHeight() * 2 / 3 + 1) * 32;
+            int eyeOffset = (int) Math.ceil(1.62 * 32);  // 52 (not 51)
+            spawnY = (short) (feetFixedPoint + eyeOffset);
+            spawnZ = (short) ((world.getDepth() / 2) * 32 + 16);
+        }
+        player.updatePosition(spawnX, spawnY, spawnZ, spawnYaw, spawnPitch);
 
         // Spawn self (player ID -1 = "this is you")
         ctx.writeAndFlush(new SpawnPlayerPacket(
-            -1, username, spawnX, spawnY, spawnZ, 0, 0
+            -1, username, spawnX, spawnY, spawnZ, spawnYaw & 0xFF, spawnPitch & 0xFF
         ));
 
         // Send existing players to the new client
@@ -139,6 +165,12 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
         playerManager.broadcastPlayerSpawn(player);
 
         loginComplete = true;
+
+        // Remove the login timeout — normal gameplay uses keep-alive pings instead
+        if (ctx.pipeline().get("loginTimeout") != null) {
+            ctx.pipeline().remove("loginTimeout");
+        }
+
         System.out.println("Login complete: " + username
                 + " (protocol: " + clientVersion.getDisplayName()
                 + ", version " + clientVersion.getVersionNumber()
@@ -193,11 +225,18 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
             return;
         }
 
-        if (world.setBlock(x, y, z, blockType)) {
-            // Broadcast to all clients (including sender for confirmation)
-            playerManager.broadcastPacket(new SetBlockServerPacket(x, y, z, blockType));
-        }
+        // Queue for tick loop processing instead of applying immediately.
+        // This ensures block changes are processed at a consistent rate
+        // and allows the tick loop to batch/validate them.
+        world.queueBlockChange(x, y, z, blockType);
     }
+
+    /**
+     * Maximum distance (in fixed-point units) a player can move per position update.
+     * 10 blocks * 32 fixed-point units = 320. Generous to allow fast movement
+     * without false positives, but catches blatant teleporting.
+     */
+    private static final int MAX_MOVE_DISTANCE_SQUARED = 320 * 320;
 
     private void handlePlayerPosition(ChannelHandlerContext ctx, PlayerTeleportPacket packet) {
         if (player == null) return;
@@ -207,6 +246,35 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
         short z = packet.getZ();
         byte yaw = (byte) packet.getYaw();
         byte pitch = (byte) packet.getPitch();
+
+        // Validate movement distance (anti-teleport)
+        int dx = x - player.getX();
+        int dy = y - player.getY();
+        int dz = z - player.getZ();
+        int distSq = dx * dx + dy * dy + dz * dz;
+
+        if (distSq > MAX_MOVE_DISTANCE_SQUARED) {
+            // Reject — teleport player back to their last known position
+            ctx.writeAndFlush(new PlayerTeleportPacket(
+                -1, player.getX(), player.getY(), player.getZ(),
+                player.getYaw() & 0xFF, player.getPitch() & 0xFF
+            ));
+            return;
+        }
+
+        // Validate destination isn't inside a solid block
+        int blockX = x / 32;
+        int blockY = y / 32;
+        int blockZ = z / 32;
+        // Check feet and head positions (player is ~2 blocks tall)
+        if (world.inBounds(blockX, blockY, blockZ) && world.getBlock(blockX, blockY, blockZ) != 0) {
+            // Feet are inside solid — reject
+            ctx.writeAndFlush(new PlayerTeleportPacket(
+                -1, player.getX(), player.getY(), player.getZ(),
+                player.getYaw() & 0xFF, player.getPitch() & 0xFF
+            ));
+            return;
+        }
 
         player.updatePosition(x, y, z, yaw, pitch);
 
@@ -228,6 +296,8 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
         if (player != null) {
             System.out.println(player.getUsername() + " disconnected"
                 + " (" + (playerManager.getPlayerCount() - 1) + " online)");
+            // Save position before removal so it persists for reconnect
+            world.rememberPlayerPosition(player);
             playerManager.broadcastChat((byte) 0, player.getUsername() + " left the game");
             playerManager.broadcastPlayerDespawn(player);
             playerManager.removePlayer(ctx.channel());
@@ -237,9 +307,18 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        System.err.println("Connection error"
-            + (player != null ? " (" + player.getUsername() + ")" : "")
-            + ": " + cause.getMessage());
+        if (cause instanceof ReadTimeoutException) {
+            if (!loginComplete) {
+                System.err.println("Login timeout — client did not send PlayerIdentification within "
+                    + LOGIN_TIMEOUT_SECONDS + " seconds");
+                ctx.writeAndFlush(new DisconnectPacket("Login timed out"));
+            }
+            // Post-login timeouts are handled by keep-alive pings, not read timeouts
+        } else {
+            System.err.println("Connection error"
+                + (player != null ? " (" + player.getUsername() + ")" : "")
+                + ": " + cause.getMessage());
+        }
         ctx.close();
     }
 }

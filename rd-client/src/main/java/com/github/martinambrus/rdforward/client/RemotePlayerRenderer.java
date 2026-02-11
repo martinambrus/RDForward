@@ -50,6 +50,18 @@ public class RemotePlayerRenderer {
         GL11.glDisable(GL11.GL_BLEND);
         GL11.glEnable(GL11.GL_TEXTURE_2D);
         GL11.glPopMatrix();
+
+        // Render name tags in a second pass (needs texture + blend + billboard)
+        GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
+        GL11.glEnable(GL11.GL_BLEND);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        for (RemotePlayer player : players) {
+            float x = player.getInterpolatedX(partialTick);
+            float y = player.getInterpolatedY(partialTick);
+            float z = player.getInterpolatedZ(partialTick);
+            NameTagRenderer.renderNameTag(player.getName(), x, y, z);
+        }
+        GL11.glPopAttrib();
     }
 
     private static void renderPlayer(RemotePlayer player, float partialTick) {

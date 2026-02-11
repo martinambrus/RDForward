@@ -1,6 +1,9 @@
 package com.github.martinambrus.rdforward.client;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,8 +40,17 @@ public class MultiplayerState {
     /** Queued block changes from the server to apply on the game thread. */
     private final Queue<BlockChange> pendingBlockChanges = new ConcurrentLinkedQueue<>();
 
+    /** Predicted block changes awaiting server confirmation or timeout. */
+    private final Queue<PendingPrediction> pendingPredictions = new ConcurrentLinkedQueue<>();
+
+    /** How long (ms) to wait for server confirmation before reverting a prediction. */
+    private static final long PREDICTION_TIMEOUT_MS = 2000;
+
     /** Queued chat messages from the server. */
     private final Queue<String> pendingChatMessages = new ConcurrentLinkedQueue<>();
+
+    /** Pending self-teleport from server (spawn or correction). Null if none pending. */
+    private volatile short[] pendingSelfTeleport = null;
 
     /** Our assigned player ID from the server. */
     private volatile byte localPlayerId = -1;
@@ -124,9 +136,31 @@ public class MultiplayerState {
             // fires after a new connection has already loaded world data.
             remotePlayers.clear();
             pendingBlockChanges.clear();
+            pendingPredictions.clear();
             pendingChatMessages.clear();
+            pendingSelfTeleport = null;
             localPlayerId = -1;
         }
+    }
+
+    // -- Self-teleport (server spawn / correction) --
+
+    /**
+     * Queue a self-teleport. Called when server sends SpawnPlayer ID=-1 or
+     * PlayerTeleport ID=-1 to set/correct our position.
+     */
+    public void queueSelfTeleport(short x, short y, short z) {
+        pendingSelfTeleport = new short[]{x, y, z};
+    }
+
+    /**
+     * Poll the pending self-teleport. Returns {x, y, z} in fixed-point
+     * or null if no teleport is pending. Clears the pending teleport.
+     */
+    public short[] pollSelfTeleport() {
+        short[] result = pendingSelfTeleport;
+        pendingSelfTeleport = null;
+        return result;
     }
 
     public boolean isConnected() { return connected; }
@@ -148,6 +182,49 @@ public class MultiplayerState {
         serverMotd = "";
     }
 
+    // -- Block predictions --
+
+    /**
+     * Record a block prediction (client placed/broke a block locally, awaiting server confirmation).
+     * @param originalBlockType the block type BEFORE the client's change (for reverting)
+     */
+    public void addPrediction(int x, int y, int z, byte originalBlockType) {
+        pendingPredictions.add(new PendingPrediction(x, y, z, originalBlockType, System.currentTimeMillis()));
+    }
+
+    /**
+     * Called when a server SetBlockServer packet arrives.
+     * Removes the matching prediction (server confirmed the change).
+     */
+    public void confirmPrediction(int x, int y, int z) {
+        Iterator<PendingPrediction> it = pendingPredictions.iterator();
+        while (it.hasNext()) {
+            PendingPrediction p = it.next();
+            if (p.x == x && p.y == y && p.z == z) {
+                it.remove();
+                return;
+            }
+        }
+    }
+
+    /**
+     * Returns predictions that have timed out (server never confirmed them).
+     * These should be reverted by the game thread.
+     */
+    public List<PendingPrediction> pollTimedOutPredictions() {
+        List<PendingPrediction> timedOut = new ArrayList<>();
+        long now = System.currentTimeMillis();
+        Iterator<PendingPrediction> it = pendingPredictions.iterator();
+        while (it.hasNext()) {
+            PendingPrediction p = it.next();
+            if (now - p.timestamp > PREDICTION_TIMEOUT_MS) {
+                timedOut.add(p);
+                it.remove();
+            }
+        }
+        return timedOut;
+    }
+
     /**
      * A block change to be applied on the game thread.
      */
@@ -160,6 +237,23 @@ public class MultiplayerState {
             this.y = y;
             this.z = z;
             this.blockType = blockType;
+        }
+    }
+
+    /**
+     * A predicted block change awaiting server confirmation.
+     */
+    public static class PendingPrediction {
+        public final int x, y, z;
+        public final byte originalBlockType;
+        public final long timestamp;
+
+        public PendingPrediction(int x, int y, int z, byte originalBlockType, long timestamp) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.originalBlockType = originalBlockType;
+            this.timestamp = timestamp;
         }
     }
 }

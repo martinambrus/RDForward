@@ -9,6 +9,7 @@ import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.timeout.ReadTimeoutHandler;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -80,6 +81,8 @@ public class RDServer {
                     @Override
                     protected void initChannel(SocketChannel ch) {
                         ChannelPipeline pipeline = ch.pipeline();
+                        pipeline.addLast("loginTimeout", new ReadTimeoutHandler(
+                                ServerConnectionHandler.LOGIN_TIMEOUT_SECONDS));
                         pipeline.addLast("decoder", new PacketDecoder(
                                 PacketDirection.CLIENT_TO_SERVER, protocolVersion));
                         pipeline.addLast("encoder", new PacketEncoder());
@@ -107,8 +110,9 @@ public class RDServer {
         System.out.println("Stopping server...");
         tickLoop.stop();
 
-        System.out.println("Saving world...");
+        System.out.println("Saving world and player data...");
         world.save();
+        world.savePlayers(playerManager.getAllPlayers());
 
         if (serverChannel != null) {
             serverChannel.close();
