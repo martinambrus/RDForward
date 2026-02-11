@@ -12,7 +12,8 @@ import java.util.List;
  * Usage:
  *   java -jar rd-client-all.jar [--server=host:port] [--username=Name]
  *
- * Defaults to localhost:25565 if no server is specified.
+ * Starts in single player by default. Press Ctrl+M in-game to toggle multiplayer.
+ * If --server is provided, the game starts in multiplayer mode automatically.
  * JVM properties (-Drdforward.server, -Drdforward.username) also work
  * but must be placed before -jar on the command line.
  */
@@ -32,12 +33,6 @@ public class FabricNativeLauncher {
             } else {
                 remaining.add(arg);
             }
-        }
-
-        // Default to connecting to localhost:25565 if no server was specified
-        // via --server= flag or -Drdforward.server= JVM property.
-        if (System.getProperty("rdforward.server") == null) {
-            System.setProperty("rdforward.server", "localhost:25565");
         }
 
         // Launch through Fabric Loader's Knot (applies Mixins, loads mods)
