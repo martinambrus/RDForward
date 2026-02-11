@@ -1,5 +1,6 @@
 package com.github.martinambrus.rdforward.server;
 
+import com.github.martinambrus.rdforward.world.BlockRegistry;
 import com.github.martinambrus.rdforward.world.WorldGenerator;
 
 import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
