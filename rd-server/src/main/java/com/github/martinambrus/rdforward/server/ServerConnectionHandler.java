@@ -117,8 +117,10 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
         sendWorldData(ctx);
 
         // Restore saved position if available, otherwise spawn at world center
+        // Use the assigned username (player.getUsername()), not the raw packet name,
+        // because empty names get renamed to "Player<ID>" by addPlayer().
         java.util.Map<String, short[]> savedPositions = world.loadPlayerPositions();
-        short[] savedPos = savedPositions.get(username);
+        short[] savedPos = savedPositions.get(player.getUsername());
 
         short spawnX, spawnY, spawnZ;
         byte spawnYaw = 0, spawnPitch = 0;
@@ -128,7 +130,7 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
             spawnZ = savedPos[2];
             spawnYaw = (byte) savedPos[3];
             spawnPitch = (byte) savedPos[4];
-            System.out.println("Restored position for " + username);
+            System.out.println("Restored position for " + player.getUsername());
         } else {
             // Default: center of world, on top of terrain
             // Surface is at y = height*2/3, feet at +1 block above.
