@@ -49,6 +49,9 @@ public class MultiplayerState {
     /** Queued chat messages from the server. */
     private final Queue<String> pendingChatMessages = new ConcurrentLinkedQueue<>();
 
+    /** Pending self-teleport from server (spawn or correction). Null if none pending. */
+    private volatile short[] pendingSelfTeleport = null;
+
     /** Our assigned player ID from the server. */
     private volatile byte localPlayerId = -1;
 
@@ -135,8 +138,29 @@ public class MultiplayerState {
             pendingBlockChanges.clear();
             pendingPredictions.clear();
             pendingChatMessages.clear();
+            pendingSelfTeleport = null;
             localPlayerId = -1;
         }
+    }
+
+    // -- Self-teleport (server spawn / correction) --
+
+    /**
+     * Queue a self-teleport. Called when server sends SpawnPlayer ID=-1 or
+     * PlayerTeleport ID=-1 to set/correct our position.
+     */
+    public void queueSelfTeleport(short x, short y, short z) {
+        pendingSelfTeleport = new short[]{x, y, z};
+    }
+
+    /**
+     * Poll the pending self-teleport. Returns {x, y, z} in fixed-point
+     * or null if no teleport is pending. Clears the pending teleport.
+     */
+    public short[] pollSelfTeleport() {
+        short[] result = pendingSelfTeleport;
+        pendingSelfTeleport = null;
+        return result;
     }
 
     public boolean isConnected() { return connected; }

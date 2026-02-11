@@ -131,9 +131,10 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
             System.out.println("Restored position for " + username);
         } else {
             // Default: center of world, on top of terrain
-            // Surface is at y = height*2/3, so spawn 1 block above
+            // Surface is at y = height*2/3, feet at +1 block above.
+            // Y is eye-level (feet + 1.62) to match the client convention.
             spawnX = (short) ((world.getWidth() / 2) * 32 + 16);
-            spawnY = (short) ((world.getHeight() * 2 / 3 + 1) * 32);
+            spawnY = (short) ((world.getHeight() * 2 / 3 + 1 + 1.62f) * 32);
             spawnZ = (short) ((world.getDepth() / 2) * 32 + 16);
         }
         player.updatePosition(spawnX, spawnY, spawnZ, spawnYaw, spawnPitch);

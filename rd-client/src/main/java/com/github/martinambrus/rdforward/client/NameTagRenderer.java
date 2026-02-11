@@ -86,10 +86,11 @@ public class NameTagRenderer {
         GL11.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
         GL11.glDisable(GL11.GL_DEPTH_TEST);
         GL11.glBegin(GL11.GL_QUADS);
-        GL11.glTexCoord2f(0, 0); GL11.glVertex3f(-halfWidth, -halfHeight, 0);
-        GL11.glTexCoord2f(1, 0); GL11.glVertex3f(halfWidth, -halfHeight, 0);
-        GL11.glTexCoord2f(1, 1); GL11.glVertex3f(halfWidth, halfHeight, 0);
-        GL11.glTexCoord2f(0, 1); GL11.glVertex3f(-halfWidth, halfHeight, 0);
+        // V coordinates flipped: Java2D pixel origin is top-left, OpenGL texture origin is bottom-left
+        GL11.glTexCoord2f(0, 1); GL11.glVertex3f(-halfWidth, -halfHeight, 0);
+        GL11.glTexCoord2f(1, 1); GL11.glVertex3f(halfWidth, -halfHeight, 0);
+        GL11.glTexCoord2f(1, 0); GL11.glVertex3f(halfWidth, halfHeight, 0);
+        GL11.glTexCoord2f(0, 0); GL11.glVertex3f(-halfWidth, halfHeight, 0);
         GL11.glEnd();
         GL11.glEnable(GL11.GL_DEPTH_TEST);
 

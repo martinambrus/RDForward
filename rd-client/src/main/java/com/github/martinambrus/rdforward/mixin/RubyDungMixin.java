@@ -8,6 +8,7 @@ import com.github.martinambrus.rdforward.client.RemotePlayerRenderer;
 import com.mojang.rubydung.Player;
 import com.mojang.rubydung.RubyDung;
 import com.mojang.rubydung.level.Level;
+import com.mojang.rubydung.phys.AABB;
 import com.mojang.rubydung.level.LevelListener;
 import org.lwjgl.glfw.GLFW;
 import org.spongepowered.asm.mixin.Mixin;
@@ -144,6 +145,27 @@ public class RubyDungMixin {
                 rdforward$serverUnavailableUntil = System.currentTimeMillis() + 5000;
             }
             return;
+        }
+
+        // Apply self-teleport from server (initial spawn or position correction)
+        short[] selfTeleport = state.pollSelfTeleport();
+        if (selfTeleport != null && player != null) {
+            float tx = selfTeleport[0] / 32.0f;
+            float ty = selfTeleport[1] / 32.0f;  // eye level
+            float tz = selfTeleport[2] / 32.0f;
+            // Set position directly — y is eye level (bb.y0 + 1.62)
+            player.x = tx;
+            player.y = ty;
+            player.z = tz;
+            player.xo = tx;
+            player.yo = ty;
+            player.zo = tz;
+            // Reconstruct bounding box: half-width 0.3, feet at eye-1.62, head at feet+1.8
+            float w = 0.3f;
+            float feetY = ty - 1.62f;
+            player.bb = new AABB(tx - w, feetY, tz - w, tx + w, feetY + 1.8f, tz + w);
+            System.out.println("[RDForward] Teleported to server position: ("
+                + tx + ", " + ty + ", " + tz + ")");
         }
 
         // Send position updates every 3 frames (~20/sec at 60 FPS)

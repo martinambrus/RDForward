@@ -136,6 +136,8 @@ public class ClientConnectionHandler extends SimpleChannelInboundHandler<Packet>
         if (id == SpawnPlayerPacket.SELF_ID) {
             System.out.println("Spawned at: (" + (packet.getX() / 32.0) + ", "
                     + (packet.getY() / 32.0) + ", " + (packet.getZ() / 32.0) + ")");
+            // Queue self-teleport so the mixin moves the local player to the server's spawn
+            state.queueSelfTeleport(packet.getX(), packet.getY(), packet.getZ());
             return;
         }
 
@@ -148,7 +150,13 @@ public class ClientConnectionHandler extends SimpleChannelInboundHandler<Packet>
     }
 
     private void handlePlayerTeleport(PlayerTeleportPacket packet) {
-        byte id = (byte) packet.getPlayerId();
+        int rawId = packet.getPlayerId();
+        // Server correcting our position (ID -1 = self)
+        if (rawId == -1) {
+            state.queueSelfTeleport(packet.getX(), packet.getY(), packet.getZ());
+            return;
+        }
+        byte id = (byte) rawId;
         RemotePlayer player = state.getRemotePlayer(id);
         if (player != null) {
             player.updatePosition(
