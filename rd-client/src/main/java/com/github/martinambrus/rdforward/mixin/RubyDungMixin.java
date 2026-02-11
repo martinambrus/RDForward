@@ -167,7 +167,7 @@ public class RubyDungMixin {
             int bx = blockEvent[0], by = blockEvent[1], bz = blockEvent[2];
             // Record original block type for revert if server rejects
             if (level != null) {
-                byte originalType = (byte) level.getTile(bx, by, bz);
+                byte originalType = level.isTile(bx, by, bz) ? (byte) 1 : (byte) 0;
                 state.addPrediction(bx, by, bz, originalType);
             }
             client.sendBlockChange(bx, by, bz, blockEvent[3], blockEvent[4]);
