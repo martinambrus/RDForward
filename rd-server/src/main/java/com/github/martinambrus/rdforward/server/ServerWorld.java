@@ -1,6 +1,7 @@
 package com.github.martinambrus.rdforward.server;
 
 import com.github.martinambrus.rdforward.world.BlockRegistry;
+import com.github.martinambrus.rdforward.world.WorldGenerator;
 
 import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
 
@@ -56,28 +57,18 @@ public class ServerWorld {
     }
 
     /**
-     * Generate a simple flat world matching RubyDung's default terrain.
-     * RubyDung fills y=0 to y=depth*2/3 as solid and renders the surface
-     * texture at exactly y=depth*2/3. We must match this height so the
-     * client's hardcoded surface rendering looks correct.
+     * Generate the world using the given generator.
+     *
+     * For finite-world generators, this fills the entire block array in one
+     * pass. For chunk-based generators (Alpha-style), the server would call
+     * {@link WorldGenerator#generateChunk} on demand instead — that path
+     * will be wired when the chunk-based ServerWorld is implemented.
+     *
+     * @param generator the world generator to use
+     * @param seed      world seed for reproducible generation
      */
-    public void generateFlatWorld() {
-        int surfaceY = height * 2 / 3;
-        for (int x = 0; x < width; x++) {
-            for (int z = 0; z < depth; z++) {
-                for (int y = 0; y < height; y++) {
-                    byte blockType;
-                    if (y < surfaceY) {
-                        blockType = (byte) BlockRegistry.COBBLESTONE;
-                    } else if (y == surfaceY) {
-                        blockType = (byte) BlockRegistry.GRASS;
-                    } else {
-                        blockType = (byte) BlockRegistry.AIR;
-                    }
-                    blocks[blockIndex(x, y, z)] = blockType;
-                }
-            }
-        }
+    public void generate(WorldGenerator generator, long seed) {
+        generator.generate(blocks, width, height, depth, seed);
         dirty = true;
     }
 

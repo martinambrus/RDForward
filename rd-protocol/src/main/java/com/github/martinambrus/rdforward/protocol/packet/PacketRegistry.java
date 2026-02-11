@@ -2,6 +2,10 @@ package com.github.martinambrus.rdforward.protocol.packet;
 
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.packet.classic.*;
+import com.github.martinambrus.rdforward.protocol.packet.alpha.*;
+// Explicit imports resolve classic/alpha name collisions (explicit beats wildcard)
+import com.github.martinambrus.rdforward.protocol.packet.classic.SpawnPlayerPacket;
+import com.github.martinambrus.rdforward.protocol.packet.classic.DisconnectPacket;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -31,7 +35,7 @@ public class PacketRegistry {
 
     static {
         registerClassicPackets();
-        // TODO: registerAlphaPackets() — will be added when Alpha packet classes are implemented
+        registerAlphaPackets();
     }
 
     /**
@@ -101,6 +105,121 @@ public class PacketRegistry {
             });
             register(v, PacketDirection.SERVER_TO_CLIENT, 0x0F, new PacketFactory() {
                 public Packet create() { return new UpdateUserTypePacket(); }
+            });
+        }
+    }
+
+    /**
+     * Register all Alpha protocol packets for both Alpha versions.
+     * Alpha uses different packet IDs from Classic (e.g., 0x00 = KeepAlive,
+     * not PlayerIdentification; 0x03 = Chat, not LevelDataChunk).
+     */
+    private static void registerAlphaPackets() {
+        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_2_6};
+
+        for (ProtocolVersion v : alphaVersions) {
+            // === Bidirectional packets ===
+            // 0x00 Keep Alive
+            register(v, PacketDirection.CLIENT_TO_SERVER, 0x00, new PacketFactory() {
+                public Packet create() { return new KeepAlivePacket(); }
+            });
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0x00, new PacketFactory() {
+                public Packet create() { return new KeepAlivePacket(); }
+            });
+            // 0x03 Chat
+            register(v, PacketDirection.CLIENT_TO_SERVER, 0x03, new PacketFactory() {
+                public Packet create() { return new ChatPacket(); }
+            });
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0x03, new PacketFactory() {
+                public Packet create() { return new ChatPacket(); }
+            });
+            // 0xFF Disconnect (FQN to avoid collision with classic.DisconnectPacket)
+            register(v, PacketDirection.CLIENT_TO_SERVER, 0xFF, new PacketFactory() {
+                public Packet create() { return new com.github.martinambrus.rdforward.protocol.packet.alpha.DisconnectPacket(); }
+            });
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0xFF, new PacketFactory() {
+                public Packet create() { return new com.github.martinambrus.rdforward.protocol.packet.alpha.DisconnectPacket(); }
+            });
+
+            // === Client -> Server packets ===
+            // Login flow
+            register(v, PacketDirection.CLIENT_TO_SERVER, 0x01, new PacketFactory() {
+                public Packet create() { return new LoginC2SPacket(); }
+            });
+            register(v, PacketDirection.CLIENT_TO_SERVER, 0x02, new PacketFactory() {
+                public Packet create() { return new HandshakeC2SPacket(); }
+            });
+            // Player movement
+            register(v, PacketDirection.CLIENT_TO_SERVER, 0x0A, new PacketFactory() {
+                public Packet create() { return new PlayerOnGroundPacket(); }
+            });
+            register(v, PacketDirection.CLIENT_TO_SERVER, 0x0B, new PacketFactory() {
+                public Packet create() { return new PlayerPositionPacket(); }
+            });
+            register(v, PacketDirection.CLIENT_TO_SERVER, 0x0C, new PacketFactory() {
+                public Packet create() { return new PlayerLookPacket(); }
+            });
+            register(v, PacketDirection.CLIENT_TO_SERVER, 0x0D, new PacketFactory() {
+                public Packet create() { return new PlayerPositionAndLookC2SPacket(); }
+            });
+            // Player actions
+            register(v, PacketDirection.CLIENT_TO_SERVER, 0x0E, new PacketFactory() {
+                public Packet create() { return new PlayerDiggingPacket(); }
+            });
+            register(v, PacketDirection.CLIENT_TO_SERVER, 0x0F, new PacketFactory() {
+                public Packet create() { return new PlayerBlockPlacementPacket(); }
+            });
+
+            // === Server -> Client packets ===
+            // Login flow
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0x01, new PacketFactory() {
+                public Packet create() { return new LoginS2CPacket(); }
+            });
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0x02, new PacketFactory() {
+                public Packet create() { return new HandshakeS2CPacket(); }
+            });
+            // Game state
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0x04, new PacketFactory() {
+                public Packet create() { return new TimeUpdatePacket(); }
+            });
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0x06, new PacketFactory() {
+                public Packet create() { return new SpawnPositionPacket(); }
+            });
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0x08, new PacketFactory() {
+                public Packet create() { return new UpdateHealthPacket(); }
+            });
+            // Player position (S->C uses swapped y/stance field order)
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0x0D, new PacketFactory() {
+                public Packet create() { return new PlayerPositionAndLookS2CPacket(); }
+            });
+            // Entity packets (FQN to avoid collision with classic.SpawnPlayerPacket)
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0x14, new PacketFactory() {
+                public Packet create() { return new com.github.martinambrus.rdforward.protocol.packet.alpha.SpawnPlayerPacket(); }
+            });
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0x1D, new PacketFactory() {
+                public Packet create() { return new DestroyEntityPacket(); }
+            });
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0x1F, new PacketFactory() {
+                public Packet create() { return new EntityRelativeMovePacket(); }
+            });
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0x20, new PacketFactory() {
+                public Packet create() { return new EntityLookPacket(); }
+            });
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0x21, new PacketFactory() {
+                public Packet create() { return new EntityLookAndMovePacket(); }
+            });
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0x22, new PacketFactory() {
+                public Packet create() { return new EntityTeleportPacket(); }
+            });
+            // World packets
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0x32, new PacketFactory() {
+                public Packet create() { return new PreChunkPacket(); }
+            });
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0x33, new PacketFactory() {
+                public Packet create() { return new MapChunkPacket(); }
+            });
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0x35, new PacketFactory() {
+                public Packet create() { return new BlockChangePacket(); }
             });
         }
     }

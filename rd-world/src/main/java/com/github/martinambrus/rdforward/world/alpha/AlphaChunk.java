@@ -1,5 +1,13 @@
 package com.github.martinambrus.rdforward.world.alpha;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.zip.Deflater;
+import java.util.zip.DeflaterOutputStream;
+
 /**
  * Represents a single chunk in the Minecraft Alpha level format.
  *
@@ -41,6 +49,12 @@ public class AlphaChunk {
     /** Tick when this chunk was last saved */
     private long lastUpdate;
 
+    /** Entities within this chunk (mobs, items, projectiles, etc.) */
+    private final List<AlphaEntity> entities;
+
+    /** Tile entities (block entities) within this chunk (chests, furnaces, signs, etc.) */
+    private final List<AlphaTileEntity> tileEntities;
+
     public AlphaChunk(int xPos, int zPos) {
         this.xPos = xPos;
         this.zPos = zPos;
@@ -49,6 +63,8 @@ public class AlphaChunk {
         this.blockLight = new byte[NIBBLE_COUNT];
         this.skyLight = new byte[NIBBLE_COUNT];
         this.heightMap = new byte[WIDTH * DEPTH];
+        this.entities = new ArrayList<AlphaEntity>();
+        this.tileEntities = new ArrayList<AlphaTileEntity>();
         this.terrainPopulated = false;
         this.lastUpdate = 0;
 
@@ -140,6 +156,32 @@ public class AlphaChunk {
         }
     }
 
+    /**
+     * Serialize this chunk's data for the Alpha protocol MapChunkPacket (0x33).
+     *
+     * The compressed payload contains (in order):
+     *   1. Block IDs — 32768 bytes (1 byte per block)
+     *   2. Block metadata — 16384 bytes (nibble array, 4 bits per block)
+     *   3. Block light — 16384 bytes (nibble array)
+     *   4. Sky light — 16384 bytes (nibble array)
+     * Total uncompressed: 81920 bytes, then zlib/deflate compressed.
+     *
+     * The block ordering matches the internal YZX storage, so the raw
+     * arrays can be written directly without reordering.
+     *
+     * @return zlib-compressed chunk data suitable for MapChunkPacket
+     */
+    public byte[] serializeForAlphaProtocol() throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        DeflaterOutputStream dos = new DeflaterOutputStream(baos, new Deflater(Deflater.BEST_SPEED));
+        dos.write(blocks);
+        dos.write(data);
+        dos.write(blockLight);
+        dos.write(skyLight);
+        dos.close();
+        return baos.toByteArray();
+    }
+
     // === Raw array access for serialization ===
 
     public byte[] getBlocks() { return blocks; }
@@ -154,4 +196,53 @@ public class AlphaChunk {
     public void setTerrainPopulated(boolean populated) { this.terrainPopulated = populated; }
     public long getLastUpdate() { return lastUpdate; }
     public void setLastUpdate(long lastUpdate) { this.lastUpdate = lastUpdate; }
+
+    // === Entity management ===
+
+    public List<AlphaEntity> getEntities() { return entities; }
+
+    public void addEntity(AlphaEntity entity) {
+        entities.add(entity);
+    }
+
+    public void clearEntities() {
+        entities.clear();
+    }
+
+    // === Tile entity management ===
+
+    public List<AlphaTileEntity> getTileEntities() { return tileEntities; }
+
+    public void addTileEntity(AlphaTileEntity tileEntity) {
+        tileEntities.add(tileEntity);
+    }
+
+    /**
+     * Find the tile entity at the given block coordinates, or null if none exists.
+     */
+    public AlphaTileEntity getTileEntityAt(int x, int y, int z) {
+        for (int i = 0; i < tileEntities.size(); i++) {
+            AlphaTileEntity te = tileEntities.get(i);
+            if (te.getX() == x && te.getY() == y && te.getZ() == z) {
+                return te;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Remove the tile entity at the given block coordinates.
+     * Returns true if a tile entity was removed.
+     */
+    public boolean removeTileEntityAt(int x, int y, int z) {
+        Iterator<AlphaTileEntity> it = tileEntities.iterator();
+        while (it.hasNext()) {
+            AlphaTileEntity te = it.next();
+            if (te.getX() == x && te.getY() == y && te.getZ() == z) {
+                it.remove();
+                return true;
+            }
+        }
+        return false;
+    }
 }

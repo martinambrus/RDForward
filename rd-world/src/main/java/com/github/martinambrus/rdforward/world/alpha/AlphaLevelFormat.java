@@ -43,8 +43,20 @@ public class AlphaLevelFormat {
         level.putByteArray("BlockLight", chunk.getBlockLight());
         level.putByteArray("SkyLight", chunk.getSkyLight());
         level.putByteArray("HeightMap", chunk.getHeightMap());
-        level.put("Entities", new ListTag<CompoundTag>(CompoundTag.class));
-        level.put("TileEntities", new ListTag<CompoundTag>(CompoundTag.class));
+
+        // Serialize entities (mobs, items, projectiles, etc.)
+        ListTag<CompoundTag> entitiesTag = new ListTag<CompoundTag>(CompoundTag.class);
+        for (int i = 0; i < chunk.getEntities().size(); i++) {
+            entitiesTag.add(chunk.getEntities().get(i).toNbt());
+        }
+        level.put("Entities", entitiesTag);
+
+        // Serialize tile entities (chests, furnaces, signs, etc.)
+        ListTag<CompoundTag> tileEntitiesTag = new ListTag<CompoundTag>(CompoundTag.class);
+        for (int i = 0; i < chunk.getTileEntities().size(); i++) {
+            tileEntitiesTag.add(chunk.getTileEntities().get(i).toNbt());
+        }
+        level.put("TileEntities", tileEntitiesTag);
 
         root.put("Level", level);
 
@@ -85,6 +97,22 @@ public class AlphaLevelFormat {
         System.arraycopy(blockLight, 0, chunk.getBlockLight(), 0, blockLight.length);
         System.arraycopy(skyLight, 0, chunk.getSkyLight(), 0, skyLight.length);
         System.arraycopy(heightMap, 0, chunk.getHeightMap(), 0, heightMap.length);
+
+        // Deserialize entities
+        ListTag<?> entitiesTag = level.getListTag("Entities");
+        if (entitiesTag != null) {
+            for (int i = 0; i < entitiesTag.size(); i++) {
+                chunk.addEntity(new AlphaEntity((CompoundTag) entitiesTag.get(i)));
+            }
+        }
+
+        // Deserialize tile entities
+        ListTag<?> tileEntitiesTag = level.getListTag("TileEntities");
+        if (tileEntitiesTag != null) {
+            for (int i = 0; i < tileEntitiesTag.size(); i++) {
+                chunk.addTileEntity(new AlphaTileEntity((CompoundTag) tileEntitiesTag.get(i)));
+            }
+        }
 
         return chunk;
     }

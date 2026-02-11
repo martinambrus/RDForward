@@ -2,9 +2,12 @@ package com.github.martinambrus.rdforward.server;
 
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.codec.PacketDecoder;
+import com.github.martinambrus.rdforward.protocol.event.EventResult;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.protocol.packet.classic.*;
 import com.github.martinambrus.rdforward.protocol.translation.VersionTranslator;
+import com.github.martinambrus.rdforward.server.api.CommandRegistry;
+import com.github.martinambrus.rdforward.server.event.ServerEvents;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.timeout.ReadTimeoutException;
@@ -41,14 +44,17 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
     private final ProtocolVersion serverVersion;
     private final ServerWorld world;
     private final PlayerManager playerManager;
+    private final ChunkManager chunkManager;
     private ProtocolVersion clientVersion;
     private ConnectedPlayer player;
     private boolean loginComplete = false;
 
-    public ServerConnectionHandler(ProtocolVersion serverVersion, ServerWorld world, PlayerManager playerManager) {
+    public ServerConnectionHandler(ProtocolVersion serverVersion, ServerWorld world,
+                                   PlayerManager playerManager, ChunkManager chunkManager) {
         this.serverVersion = serverVersion;
         this.world = world;
         this.playerManager = playerManager;
+        this.chunkManager = chunkManager;
     }
 
     @Override
@@ -112,6 +118,9 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
                 "Welcome to RDForward!",
                 ServerIdentificationPacket.USER_TYPE_NORMAL
         ));
+
+        // Register player for chunk tracking (used by Alpha-mode clients)
+        chunkManager.addPlayer(player);
 
         // Send world data via Classic level transfer
         sendWorldData(ctx);
@@ -178,6 +187,9 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
                 + ", " + playerManager.getPlayerCount() + " online)");
 
         playerManager.broadcastChat((byte) 0, username + " joined the game");
+
+        // Fire player join event
+        ServerEvents.PLAYER_JOIN.invoker().onPlayerJoin(player.getUsername(), clientVersion);
     }
 
     /**
@@ -223,6 +235,20 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
 
         if (!world.inBounds(x, y, z)) {
             return;
+        }
+
+        // Fire cancellable block events
+        if (blockType == 0) {
+            // Breaking: mode 0 = destroy
+            byte existingBlock = world.getBlock(x, y, z);
+            EventResult result = ServerEvents.BLOCK_BREAK.invoker()
+                    .onBlockBreak(player.getUsername(), x, y, z, existingBlock & 0xFF);
+            if (result == EventResult.CANCEL) return;
+        } else {
+            // Placing
+            EventResult result = ServerEvents.BLOCK_PLACE.invoker()
+                    .onBlockPlace(player.getUsername(), x, y, z, blockType & 0xFF);
+            if (result == EventResult.CANCEL) return;
         }
 
         // Queue for tick loop processing instead of applying immediately.
@@ -278,6 +304,9 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
 
         player.updatePosition(x, y, z, yaw, pitch);
 
+        // Fire player move event
+        ServerEvents.PLAYER_MOVE.invoker().onPlayerMove(player.getUsername(), x, y, z, yaw, pitch);
+
         // Broadcast absolute position to all other players
         playerManager.broadcastPacketExcept(
             new PlayerTeleportPacket(player.getPlayerId(), x, y, z, yaw & 0xFF, pitch & 0xFF),
@@ -287,8 +316,27 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
 
     private void handleMessage(ChannelHandlerContext ctx, MessagePacket packet) {
         if (player == null) return;
-        System.out.println("[Chat] " + player.getUsername() + ": " + packet.getMessage());
-        playerManager.broadcastChat(player.getPlayerId(), player.getUsername() + ": " + packet.getMessage());
+
+        String message = packet.getMessage();
+
+        // Route commands (messages starting with "/")
+        if (message.startsWith("/")) {
+            String command = message.substring(1);
+            // Reply sender: sends a private chat message back to the player
+            boolean handled = CommandRegistry.dispatch(command, player.getUsername(), false,
+                    reply -> playerManager.sendChat(player, reply));
+            if (!handled) {
+                playerManager.sendChat(player, "Unknown command: " + command.split("\\s+")[0]);
+            }
+            return;
+        }
+
+        // Fire cancellable chat event
+        EventResult result = ServerEvents.CHAT.invoker().onChat(player.getUsername(), message);
+        if (result == EventResult.CANCEL) return;
+
+        System.out.println("[Chat] " + player.getUsername() + ": " + message);
+        playerManager.broadcastChat(player.getPlayerId(), player.getUsername() + ": " + message);
     }
 
     @Override
@@ -296,8 +344,12 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
         if (player != null) {
             System.out.println(player.getUsername() + " disconnected"
                 + " (" + (playerManager.getPlayerCount() - 1) + " online)");
+            // Fire player leave event before cleanup
+            ServerEvents.PLAYER_LEAVE.invoker().onPlayerLeave(player.getUsername());
             // Save position before removal so it persists for reconnect
             world.rememberPlayerPosition(player);
+            // Unregister from chunk tracking (unloads chunks no longer needed)
+            chunkManager.removePlayer(player);
             playerManager.broadcastChat((byte) 0, player.getUsername() + " left the game");
             playerManager.broadcastPlayerDespawn(player);
             playerManager.removePlayer(ctx.channel());

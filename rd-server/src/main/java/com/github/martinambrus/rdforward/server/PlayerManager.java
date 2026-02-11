@@ -135,6 +135,13 @@ public class PlayerManager {
     }
 
     /**
+     * Send a chat message to a specific player (e.g., command response).
+     */
+    public void sendChat(ConnectedPlayer player, String message) {
+        player.sendPacket(new MessagePacket((byte) 0, message));
+    }
+
+    /**
      * Send a spawn packet for the given player to all other players.
      */
     public void broadcastPlayerSpawn(ConnectedPlayer player) {

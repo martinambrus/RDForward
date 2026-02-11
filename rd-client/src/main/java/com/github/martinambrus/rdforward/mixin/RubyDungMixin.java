@@ -1,16 +1,22 @@
 package com.github.martinambrus.rdforward.mixin;
 
+import com.github.martinambrus.rdforward.client.ChatInput;
+import com.github.martinambrus.rdforward.client.ChatRenderer;
 import com.github.martinambrus.rdforward.client.HudRenderer;
 import com.github.martinambrus.rdforward.client.MultiplayerState;
 import com.github.martinambrus.rdforward.client.NameTagRenderer;
 import com.github.martinambrus.rdforward.client.RDClient;
 import com.github.martinambrus.rdforward.client.RemotePlayerRenderer;
+import com.github.martinambrus.rdforward.client.api.KeyBindingRegistry;
+import com.github.martinambrus.rdforward.client.api.OverlayRegistry;
 import com.mojang.rubydung.Player;
 import com.mojang.rubydung.RubyDung;
+import com.mojang.rubydung.Timer;
 import com.mojang.rubydung.level.Level;
 import com.mojang.rubydung.phys.AABB;
 import com.mojang.rubydung.level.LevelListener;
 import org.lwjgl.glfw.GLFW;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -18,6 +24,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.ArrayList;
+import java.util.Queue;
 
 /**
  * Injects RDForward multiplayer functionality into the RubyDung game loop.
@@ -35,10 +42,31 @@ public class RubyDungMixin {
     private Player player;
 
     @Shadow
+    private Timer timer;
+
+    @Shadow
     private Level level;
 
-    /** Frame counter for throttling position updates. */
-    private int rdforward$tickCounter = 0;
+    // -- Game input state (shadowed for chat input management) --
+    @Shadow
+    private boolean mouseGrabbed;
+
+    @Shadow
+    private double mouseDX;
+
+    @Shadow
+    private double mouseDY;
+
+    @Shadow
+    private boolean firstMouse;
+
+    @Shadow
+    @Final
+    private Queue<int[]> mouseEvents;
+
+    @Shadow
+    @Final
+    private Queue<int[]> keyEvents;
 
     /** Whether the server world has been applied to the local Level. */
     private boolean rdforward$worldApplied = false;
@@ -51,6 +79,12 @@ public class RubyDungMixin {
 
     /** Edge detection for F6 toggle (key was pressed previous frame). */
     private boolean rdforward$f6WasPressed = false;
+
+    /** Edge detection for T key (chat open). */
+    private boolean rdforward$tWasPressed = false;
+
+    /** Whether chat was active on the previous frame (for detecting transitions). */
+    private boolean rdforward$chatWasActive = false;
 
     /** Timestamp until which "Server Unavailable" is shown (0 = not showing). */
     private long rdforward$serverUnavailableUntil = 0;
@@ -123,6 +157,61 @@ public class RubyDungMixin {
         MultiplayerState state = MultiplayerState.getInstance();
         RDClient client = RDClient.getInstance();
 
+        // Poll chat messages from server and feed to ChatRenderer
+        String chatMsg;
+        while ((chatMsg = state.pollChatMessage()) != null) {
+            ChatRenderer.addMessage(chatMsg);
+        }
+
+        // T key opens chat input (works in both single player and multiplayer)
+        if (!ChatInput.isActive()) {
+            boolean tPressed = GLFW.glfwGetKey(RubyDung.window, GLFW.GLFW_KEY_T) == GLFW.GLFW_PRESS;
+            if (tPressed && !rdforward$tWasPressed) {
+                ChatInput.open(RubyDung.window);
+            }
+            rdforward$tWasPressed = tPressed;
+        }
+
+        // Chat state transitions — manage the game's internal input state so that:
+        //   1. Mouse look stops while chat is open (mouseGrabbed = false)
+        //   2. Click-to-recapture is neutralized (mouseEvents cleared)
+        //   3. Mouse tracking resets cleanly on close (firstMouse = true, no delta jump)
+        boolean chatActive = ChatInput.isActive();
+        if (chatActive && !rdforward$chatWasActive) {
+            // Chat just opened — release cursor and stop mouse tracking
+            mouseGrabbed = false;
+            GLFW.glfwSetInputMode(RubyDung.window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
+        }
+        if (!chatActive && rdforward$chatWasActive) {
+            // Chat just closed — re-grab cursor and reset mouse tracking so
+            // the view doesn't jump to a new position
+            GLFW.glfwSetInputMode(RubyDung.window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_DISABLED);
+            mouseGrabbed = true;
+            firstMouse = true;
+            mouseDX = 0;
+            mouseDY = 0;
+        }
+        rdforward$chatWasActive = chatActive;
+
+        if (chatActive) {
+            // Neutralize ALL game input while chat is open:
+            // - mouseGrabbed=false prevents camera rotation from mouse deltas
+            // - Zero deltas so nothing accumulates for the next frame
+            // - Clear event queues to prevent click-to-recapture and stale key events
+            // The game's render() continues (so blocks/players still render) but
+            // all input is suppressed. Keyboard movement (WASD) is suppressed by
+            // the tick() cancellation inject below.
+            mouseGrabbed = false;
+            mouseDX = 0;
+            mouseDY = 0;
+            mouseEvents.clear();
+            keyEvents.clear();
+            return;
+        }
+
+        // Poll mod key bindings
+        KeyBindingRegistry.tick(RubyDung.window);
+
         // Apply server world data once when it arrives
         if (!rdforward$worldApplied && state.isWorldReady() && level != null) {
             rdforward$applyServerWorld(state);
@@ -170,10 +259,8 @@ public class RubyDungMixin {
                 + tx + ", " + ty + ", " + tz + ")");
         }
 
-        // Send position updates every 3 frames (~20/sec at 60 FPS)
-        rdforward$tickCounter++;
-        if (rdforward$tickCounter >= 3 && player != null) {
-            rdforward$tickCounter = 0;
+        // Send position updates once per game tick (20 TPS, frame-rate independent)
+        if (((TimerAccessor) timer).getTicks() > 0 && player != null) {
             PlayerAccessor pa = (PlayerAccessor) player;
             // Convert float block coordinates to fixed-point (blocks * 32)
             // Use Math.round for Y to avoid downward truncation that buries the player
@@ -231,6 +318,13 @@ public class RubyDungMixin {
         int[] w = new int[1], h = new int[1];
         GLFW.glfwGetWindowSize(RubyDung.window, w, h);
         HudRenderer.drawText(rdforward$getHudText(), w[0], h[0]);
+
+        // Render chat messages and input box (always — supports single player commands)
+        ChatRenderer.render(w[0], h[0]);
+        ChatInput.render(w[0], h[0]);
+
+        // Render mod overlays
+        OverlayRegistry.renderAll(w[0], h[0]);
     }
 
     /**
@@ -256,7 +350,23 @@ public class RubyDungMixin {
             client.disconnect();
         }
         HudRenderer.cleanup();
+        ChatRenderer.cleanup();
+        ChatInput.cleanup();
         NameTagRenderer.cleanup();
+        OverlayRegistry.cleanupAll();
+    }
+
+    /**
+     * Cancel player ticking while chat input is active.
+     * Player.tick() uses GLFW.glfwGetKey() polling for WASD/Space/R,
+     * which bypasses our key callback replacement. Cancelling tick()
+     * prevents all movement while typing.
+     */
+    @Inject(method = "tick", at = @At("HEAD"), cancellable = true)
+    private void onTick(CallbackInfo ci) {
+        if (ChatInput.isActive()) {
+            ci.cancel();
+        }
     }
 
     // -- Internal helpers --
