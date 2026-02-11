@@ -183,6 +183,17 @@ public class RubyDungMixin {
      */
     @Inject(method = "destroy", at = @At("HEAD"))
     private void onDestroy(CallbackInfo ci) {
+        // Restore local blocks before the game saves level.dat,
+        // otherwise the server world overwrites the single-player save
+        if (rdforward$multiplayerMode && rdforward$savedLocalBlocks != null && level != null) {
+            LevelAccessor la = (LevelAccessor) level;
+            byte[] localBlocks = la.getBlocks();
+            System.arraycopy(rdforward$savedLocalBlocks, 0, localBlocks, 0, localBlocks.length);
+            rdforward$savedLocalBlocks = null;
+            RubyDung.suppressLocalSave = false; // Allow saving the restored local world
+            System.out.println("[RDForward] Restored local world before saving");
+        }
+
         RDClient client = RDClient.getInstance();
         if (client.isConnected()) {
             System.out.println("Disconnecting from server...");
@@ -199,12 +210,14 @@ public class RubyDungMixin {
         RDClient.getInstance().connect(rdforward$serverHost, rdforward$serverPort, rdforward$username);
         rdforward$multiplayerMode = true;
         rdforward$worldApplied = false;
+        RubyDung.suppressLocalSave = true;
         System.out.println("[RDForward] Switched to MULTIPLAYER mode");
     }
 
     private void rdforward$disconnectFromServer() {
         RDClient.getInstance().disconnect();
         rdforward$multiplayerMode = false;
+        RubyDung.suppressLocalSave = false;
 
         // Restore the original single-player world
         if (rdforward$savedLocalBlocks != null && level != null) {
