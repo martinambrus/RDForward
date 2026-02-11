@@ -3,8 +3,13 @@ package com.github.martinambrus.rdforward.server;
 import com.github.martinambrus.rdforward.world.BlockRegistry;
 
 import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
 /**
@@ -21,10 +26,13 @@ import java.util.zip.GZIPOutputStream;
  */
 public class ServerWorld {
 
+    private static final String SAVE_FILE = "server-world.dat";
+
     private final int width;
     private final int height;
     private final int depth;
     private final byte[] blocks;
+    private volatile boolean dirty = false;
 
     public ServerWorld(int width, int height, int depth) {
         this.width = width;
@@ -82,6 +90,7 @@ public class ServerWorld {
             return false;
         }
         blocks[index] = blockType;
+        dirty = true;
         return true;
     }
 
@@ -119,6 +128,58 @@ public class ServerWorld {
             }
         }
         return baos.toByteArray();
+    }
+
+    /**
+     * Load world from disk. Returns true if a saved world was loaded.
+     */
+    public boolean load() {
+        File file = new File(SAVE_FILE);
+        if (!file.exists()) {
+            return false;
+        }
+        try (DataInputStream dis = new DataInputStream(new GZIPInputStream(new FileInputStream(file)))) {
+            int savedWidth = dis.readInt();
+            int savedHeight = dis.readInt();
+            int savedDepth = dis.readInt();
+            if (savedWidth != width || savedHeight != height || savedDepth != depth) {
+                System.err.println("Saved world dimensions (" + savedWidth + "x" + savedHeight + "x" + savedDepth
+                    + ") don't match server (" + width + "x" + height + "x" + depth + "), generating fresh world");
+                return false;
+            }
+            dis.readFully(blocks);
+            dirty = false;
+            System.out.println("Loaded world from " + SAVE_FILE);
+            return true;
+        } catch (IOException e) {
+            System.err.println("Failed to load world from " + SAVE_FILE + ": " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Save world to disk (GZip compressed).
+     */
+    public synchronized void save() {
+        try (DataOutputStream dos = new DataOutputStream(new GZIPOutputStream(new FileOutputStream(SAVE_FILE)))) {
+            dos.writeInt(width);
+            dos.writeInt(height);
+            dos.writeInt(depth);
+            dos.write(blocks);
+            dirty = false;
+            System.out.println("World saved to " + SAVE_FILE);
+        } catch (IOException e) {
+            System.err.println("Failed to save world: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Save only if the world has been modified since last save.
+     */
+    public void saveIfDirty() {
+        if (dirty) {
+            save();
+        }
     }
 
     private int blockIndex(int x, int y, int z) {

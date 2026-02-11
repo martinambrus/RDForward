@@ -67,14 +67,15 @@ public class RemotePlayerRenderer {
         GL11.glPushMatrix();
         GL11.glTranslatef(x, y, z);
 
-        // Draw a solid colored cube
+        // Draw a solid colored cube centered on Y (player Y = center of bounding box)
+        float halfHeight = height / 2;
         GL11.glColor4f(color[0], color[1], color[2], 0.8f);
-        drawBox(-halfWidth, 0, -halfWidth, halfWidth, height, halfWidth);
+        drawBox(-halfWidth, -halfHeight, -halfWidth, halfWidth, halfHeight, halfWidth);
 
         // Draw a darker wireframe outline
         GL11.glColor4f(color[0] * 0.5f, color[1] * 0.5f, color[2] * 0.5f, 1.0f);
         GL11.glLineWidth(2.0f);
-        drawBoxOutline(-halfWidth, 0, -halfWidth, halfWidth, height, halfWidth);
+        drawBoxOutline(-halfWidth, -halfHeight, -halfWidth, halfWidth, halfHeight, halfWidth);
 
         GL11.glPopMatrix();
 

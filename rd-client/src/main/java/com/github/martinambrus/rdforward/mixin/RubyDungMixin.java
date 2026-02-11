@@ -50,9 +50,6 @@ public class RubyDungMixin {
     /** Edge detection for F6 toggle (key was pressed previous frame). */
     private boolean rdforward$f6WasPressed = false;
 
-    /** One-shot debug: log first time Ctrl is detected via polling. */
-    private boolean rdforward$ctrlDebugDone = false;
-
     /** Server connection details (parsed once at startup). */
     private String rdforward$serverHost = "localhost";
     private int rdforward$serverPort = 25565;
@@ -118,18 +115,6 @@ public class RubyDungMixin {
             }
         }
 
-        // Debug: log once when Ctrl is detected to diagnose Ctrl+M issue on Windows
-        if (!rdforward$ctrlDebugDone) {
-            boolean ctrlHeld = GLFW.glfwGetKey(RubyDung.window, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS
-                    || GLFW.glfwGetKey(RubyDung.window, GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
-            if (ctrlHeld) {
-                int mState = GLFW.glfwGetKey(RubyDung.window, GLFW.GLFW_KEY_M);
-                System.out.println("[RDForward-DEBUG] Ctrl detected via polling. M key state=" + mState
-                    + " (0=RELEASE, 1=PRESS)");
-                rdforward$ctrlDebugDone = true;
-            }
-        }
-
         MultiplayerState state = MultiplayerState.getInstance();
         RDClient client = RDClient.getInstance();
 
@@ -138,7 +123,11 @@ public class RubyDungMixin {
             rdforward$applyServerWorld(state);
         }
 
-        if (!client.isConnected()) return;
+        if (!client.isConnected()) {
+            // Drain block change queue so it doesn't grow in single player
+            RubyDung.blockChangeQueue.clear();
+            return;
+        }
 
         // Send position updates every 3 frames (~20/sec at 60 FPS)
         rdforward$tickCounter++;
@@ -153,6 +142,12 @@ public class RubyDungMixin {
             int yaw = (int) (pa.getYRot() * 256.0f / 360.0f) & 0xFF;
             int pitch = (int) (pa.getXRot() * 256.0f / 360.0f) & 0xFF;
             client.sendPosition(x, y, z, yaw, pitch);
+        }
+
+        // Send local block changes to the server
+        int[] blockEvent;
+        while ((blockEvent = RubyDung.blockChangeQueue.poll()) != null) {
+            client.sendBlockChange(blockEvent[0], blockEvent[1], blockEvent[2], blockEvent[3], blockEvent[4]);
         }
 
         // Apply pending block changes from the server

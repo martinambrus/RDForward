@@ -10,6 +10,10 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.util.Collection;
+
 /**
  * The RDForward dedicated server.
  *
@@ -49,17 +53,19 @@ public class RDServer {
         this.protocolVersion = protocolVersion;
         this.world = new ServerWorld(DEFAULT_WORLD_WIDTH, DEFAULT_WORLD_HEIGHT, DEFAULT_WORLD_DEPTH);
         this.playerManager = new PlayerManager();
-        this.tickLoop = new ServerTickLoop(playerManager);
+        this.tickLoop = new ServerTickLoop(playerManager, world);
     }
 
     /**
      * Start the server: generate world, start tick loop, begin accepting connections.
      */
     public void start() throws InterruptedException {
-        System.out.println("Generating world (" + DEFAULT_WORLD_WIDTH + "x"
-                + DEFAULT_WORLD_HEIGHT + "x" + DEFAULT_WORLD_DEPTH + ")...");
-        world.generateFlatWorld();
-        System.out.println("World generated.");
+        if (!world.load()) {
+            System.out.println("Generating world (" + DEFAULT_WORLD_WIDTH + "x"
+                    + DEFAULT_WORLD_HEIGHT + "x" + DEFAULT_WORLD_DEPTH + ")...");
+            world.generateFlatWorld();
+            System.out.println("World generated.");
+        }
 
         tickLoop.start();
 
@@ -95,6 +101,7 @@ public class RDServer {
      */
     public void stop() {
         tickLoop.stop();
+        world.saveIfDirty();
         if (serverChannel != null) {
             serverChannel.close();
         }
@@ -122,6 +129,56 @@ public class RDServer {
     public PlayerManager getPlayerManager() { return playerManager; }
 
     /**
+     * Run the interactive console command loop.
+     * Reads commands from stdin until "stop" or EOF.
+     */
+    private void runConsole() {
+        System.out.println("Type 'help' for a list of commands.");
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                line = line.trim();
+                if (line.isEmpty()) continue;
+
+                switch (line.toLowerCase()) {
+                    case "help":
+                        System.out.println("Commands:");
+                        System.out.println("  list     - Show connected players");
+                        System.out.println("  save     - Save the world to disk");
+                        System.out.println("  stop     - Save and stop the server");
+                        System.out.println("  help     - Show this help message");
+                        break;
+
+                    case "list":
+                        Collection<ConnectedPlayer> players = playerManager.getAllPlayers();
+                        System.out.println("Players online: " + players.size() + "/" + PlayerManager.MAX_PLAYERS);
+                        for (ConnectedPlayer p : players) {
+                            System.out.println("  [" + p.getPlayerId() + "] " + p.getUsername()
+                                + " (" + (p.getX() / 32.0) + ", " + (p.getY() / 32.0) + ", " + (p.getZ() / 32.0) + ")");
+                        }
+                        break;
+
+                    case "save":
+                        world.save();
+                        break;
+
+                    case "stop":
+                    case "shutdown":
+                        System.out.println("Stopping server...");
+                        stop();
+                        return;
+
+                    default:
+                        System.out.println("Unknown command: " + line + " (type 'help' for commands)");
+                        break;
+                }
+            }
+        } catch (Exception e) {
+            // stdin closed (e.g. running without a terminal) — just wait for shutdown
+        }
+    }
+
+    /**
      * Server entry point.
      * Usage: java -cp rd-server.jar com.github.martinambrus.rdforward.server.RDServer [port]
      * Default port: 25565
@@ -142,7 +199,7 @@ public class RDServer {
 
         try {
             server.start();
-            server.awaitShutdown();
+            server.runConsole();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }

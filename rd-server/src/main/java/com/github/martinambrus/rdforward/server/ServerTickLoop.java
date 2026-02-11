@@ -19,14 +19,17 @@ public class ServerTickLoop implements Runnable {
 
     private static final long TICK_MS = 50; // 20 TPS
     private static final int PING_INTERVAL_TICKS = 40; // Every 2 seconds
+    private static final int SAVE_INTERVAL_TICKS = 6000; // Every 5 minutes
 
     private final PlayerManager playerManager;
+    private final ServerWorld world;
     private volatile boolean running;
     private Thread thread;
     private long tickCount;
 
-    public ServerTickLoop(PlayerManager playerManager) {
+    public ServerTickLoop(PlayerManager playerManager, ServerWorld world) {
         this.playerManager = playerManager;
+        this.world = world;
     }
 
     /**
@@ -87,6 +90,11 @@ public class ServerTickLoop implements Runnable {
         // Send keep-alive pings periodically
         if (tickCount % PING_INTERVAL_TICKS == 0) {
             playerManager.broadcastPacket(new PingPacket());
+        }
+
+        // Auto-save world periodically
+        if (tickCount % SAVE_INTERVAL_TICKS == 0) {
+            world.saveIfDirty();
         }
     }
 
