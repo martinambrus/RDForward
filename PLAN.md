@@ -200,44 +200,36 @@ The server needs to own the authoritative world state.
 
 Remaining:
 
-- [ ] Make translation tables data-driven (load from JSON/NBT files, not hardcoded)
-- [ ] Add unit tests for all block translations
-- [ ] Add RubyDung -> Classic (upward translation, mostly pass-through)
+- [x] Make translation tables data-driven (load from JSON/NBT files, not hardcoded) — `BlockTranslator` now loads `.properties` files from `block-mappings/` classpath resources at class initialization; 4 mapping files: `classic-to-rubydung.properties`, `alpha-to-rubydung.properties`, `alpha-to-classic.properties`, `rubydung-to-classic.properties`
+- [x] Add unit tests for all block translations — `BlockTranslatorTest` with 16 tests covering all directions (Classic→RubyDung, Alpha→RubyDung, Alpha→Classic, RubyDung→Classic, same-version), bulk `translateArray()`, and table existence checks
+- [x] Add RubyDung -> Classic (upward translation, mostly pass-through) — `rubydung-to-classic.properties` maps Air→Air, Grass→Grass, Cobblestone→Cobblestone
 
 ### Step 3.2: Action Translation
 
 Implement the "interrupt signal" concept for cross-version actions:
 
-- [ ] Mining adapter: RubyDung has instant break, Alpha requires multiple hits
-  - Server tracks mining progress per player per block
-  - Older client's break request starts the timer instead of instant-breaking
-  - Server sends break confirmation only after mining timer completes
-  - Optional: send mining progress particles/animation to clients that support it
+- [x] Mining adapter: RubyDung has instant break, Alpha requires multiple hits — `MiningTracker` (rd-server) tracks per-player mining state via `ConcurrentHashMap`; `startMining()` begins server-side timer for legacy clients, returns true for instant-break blocks (air, flowers); `tick()` advances progress, `checkComplete()` polls completion; hardness table (stone=30, dirt=10, obsidian=500 ticks); skips tracking for MINING_PROGRESS-capable clients
 
-- [ ] Inventory adapter: RubyDung has no inventory, Alpha does
-  - Server tracks inventory for all players
-  - Inventory packets are only sent to clients that advertise the INVENTORY capability
-  - Item drops from blocks are only visible to inventory-capable clients
-  - Non-inventory clients get instant block placement (no item consumption)
+- [x] Inventory adapter: RubyDung has no inventory, Alpha does — `InventoryAdapter` (rd-server) manages 44-slot server-side inventory per player; `handleBlockPlace()` is free for legacy clients, deducts items for inventory-capable; `handleBlockBreak()` skips drops for legacy; `supportsInventory()` checks INVENTORY capability; `ItemStack` inner class with itemId, count, damage
 
 ### Step 3.3: Chunk Data Translation
 
 When sending chunk data to an older client:
 
-- [ ] Run every block ID through the BlockTranslator before sending
-- [ ] Strip metadata nibble array for clients that don't support BLOCK_METADATA
-- [ ] Adjust chunk height if the world exceeds the client's Y limit
-- [ ] Compress chunks with GZip before sending (reduces bandwidth for all versions)
+- [x] Run every block ID through the BlockTranslator before sending — `ChunkTranslator.translateBlocks()` copies and translates the entire block array via `BlockTranslator.translateArray()`
+- [x] Strip metadata nibble array for clients that don't support BLOCK_METADATA — `ChunkTranslator.translateChunk()` returns `TranslatedChunk` with null metadata when `Capability.BLOCK_METADATA.isAvailableIn(clientVersion)` is false
+- [x] Adjust chunk height if the world exceeds the client's Y limit — `ChunkTranslator.adjustHeight()` truncates column-major block arrays; `getHeightLimit()` returns 64 for Classic, 128 for Alpha
+- [x] Compress chunks with GZip before sending (reduces bandwidth for all versions) — `ChunkTranslator.compressGzip()` wraps data in `GZIPOutputStream` for both Classic level transfer and Alpha chunk packets
 
 ### Step 3.4: Outbound Packet Filtering
 
 The VersionTranslator already drops packets the client can't understand.
 Extend this with finer-grained filtering:
 
-- [ ] Filter entity packets for pre-entity clients
-- [ ] Filter time/day-night packets for pre-Alpha clients
-- [ ] Filter health/damage packets for pre-survival clients
-- [ ] Log filtered packets at debug level for development
+- [x] Filter entity packets for pre-entity clients — `VersionTranslator.passesCapabilityFilter()` checks `ENTITY_SPAWN` capability for `SpawnPlayerPacket`, `DestroyEntityPacket`, `EntityRelativeMovePacket`, `EntityLookPacket`, `EntityLookAndMovePacket`, `EntityTeleportPacket`
+- [x] Filter time/day-night packets for pre-Alpha clients — `TimeUpdatePacket` filtered by `DAY_NIGHT_CYCLE` capability (introduced in Alpha 1.2.6)
+- [x] Filter health/damage packets for pre-survival clients — `UpdateHealthPacket` filtered by `PLAYER_HEALTH` capability (introduced in Alpha 1.0.15)
+- [x] Log filtered packets at debug level for development — `logFiltered()` prints packet class, ID, client version, and reason when `-Drdforward.debug.packets=true`; also added `BlockChangePacket` content translation (block ID rewriting)
 
 ---
 
