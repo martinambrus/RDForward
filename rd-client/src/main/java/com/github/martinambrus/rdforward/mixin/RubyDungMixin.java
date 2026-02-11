@@ -22,7 +22,7 @@ import java.util.ArrayList;
  *
  * Hooks:
  *   1. run() HEAD — print banner, auto-connect if --server was given
- *   2. render(float) HEAD — Ctrl+M toggle, position sync, block changes
+ *   2. render(float) HEAD — F6 toggle, position sync, block changes
  *   3. render(float) before glfwSwapBuffers — HUD text + remote players
  *   4. destroy() HEAD — disconnect Netty + cleanup HUD texture
  */
@@ -44,6 +44,12 @@ public class RubyDungMixin {
     /** Whether we're currently in multiplayer mode. */
     private boolean rdforward$multiplayerMode = false;
 
+    /** Edge detection for F6 toggle (key was pressed previous frame). */
+    private boolean rdforward$f6WasPressed = false;
+
+    /** One-shot debug: log first time Ctrl is detected via polling. */
+    private boolean rdforward$ctrlDebugDone = false;
+
     /** Server connection details (parsed once at startup). */
     private String rdforward$serverHost = "localhost";
     private int rdforward$serverPort = 25565;
@@ -55,7 +61,7 @@ public class RubyDungMixin {
         System.out.println("========================================");
         System.out.println(" RDForward " + getVersion());
         System.out.println(" Fabric Loader initialized");
-        System.out.println(" Single player (Ctrl+M for multiplayer)");
+        System.out.println(" Single player (F6 for multiplayer)");
         System.out.println("========================================");
         System.out.println();
 
@@ -82,11 +88,23 @@ public class RubyDungMixin {
 
     /**
      * Called at the start of each render frame.
-     * Handles Ctrl+M toggle, applies server world, sends position, applies block changes.
+     * Handles F6 toggle, applies server world, sends position, applies block changes.
      */
     @Inject(method = "render", at = @At("HEAD"))
     private void onRenderHead(float partialTick, CallbackInfo ci) {
-        // Ctrl+M toggle — flag is set by key event handler / polling in RubyDung.java
+        // F6 toggle — poll key state directly (reliable on all platforms)
+        boolean f6Pressed = GLFW.glfwGetKey(RubyDung.window, GLFW.GLFW_KEY_F6) == GLFW.GLFW_PRESS;
+        if (f6Pressed && !rdforward$f6WasPressed) {
+            System.out.println("[RDForward] F6 pressed — toggling multiplayer mode");
+            if (rdforward$multiplayerMode) {
+                rdforward$disconnectFromServer();
+            } else {
+                rdforward$connectToServer();
+            }
+        }
+        rdforward$f6WasPressed = f6Pressed;
+
+        // Ctrl+M fallback — flag set by key callback/polling in RubyDung.java
         if (RubyDung.multiplayerToggleRequested) {
             RubyDung.multiplayerToggleRequested = false;
             System.out.println("[RDForward] Ctrl+M pressed — toggling multiplayer mode");
@@ -94,6 +112,18 @@ public class RubyDungMixin {
                 rdforward$disconnectFromServer();
             } else {
                 rdforward$connectToServer();
+            }
+        }
+
+        // Debug: log once when Ctrl is detected to diagnose Ctrl+M issue on Windows
+        if (!rdforward$ctrlDebugDone) {
+            boolean ctrlHeld = GLFW.glfwGetKey(RubyDung.window, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS
+                    || GLFW.glfwGetKey(RubyDung.window, GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
+            if (ctrlHeld) {
+                int mState = GLFW.glfwGetKey(RubyDung.window, GLFW.GLFW_KEY_M);
+                System.out.println("[RDForward-DEBUG] Ctrl detected via polling. M key state=" + mState
+                    + " (0=RELEASE, 1=PRESS)");
+                rdforward$ctrlDebugDone = true;
             }
         }
 
@@ -188,9 +218,9 @@ public class RubyDungMixin {
             if (serverName != null && !serverName.isEmpty()) {
                 serverInfo = serverName;
             }
-            return "rd-132211 multiplayer - " + serverInfo + " (Ctrl+M for single player)";
+            return "rd-132211 multiplayer - " + serverInfo + " (F6 for single player)";
         } else {
-            return "rd-132211 single player (Ctrl+M for multiplayer)";
+            return "rd-132211 single player (F6 for multiplayer)";
         }
     }
 
