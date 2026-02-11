@@ -96,15 +96,15 @@ Since RubyDung isn't obfuscated, we can target classes by their real names.
 
 - [x] Create `rubydung.mixins.json` mixin config
 - [x] Create `@Mixin(RubyDung.class)` to inject mod initialization into the game's `run()` method
-- [ ] Create `@Mixin(Level.class)` to inject world save/load hooks
-- [ ] Create `@Mixin(Player.class)` to inject movement hooks for multiplayer sync
-- [ ] Create `@Mixin(Timer.class)` to inject tick event hooks
+- [x] Create `@Mixin(Level.class)` — implemented as `LevelAccessor` (accessor mixin for block array)
+- [x] Create `@Mixin(Player.class)` — implemented as `PlayerAccessor` (accessor mixin for position fields)
+- [ ] Create `@Mixin(Timer.class)` to inject tick event hooks (currently handled inline in RubyDungMixin)
 
 **Key files:**
-- `rd-client/src/main/resources/rubydung.mixins.json`
+- `rd-client/src/main/resources/rdforward.mixins.json`
 - `rd-client/src/main/java/.../mixin/RubyDungMixin.java`
-- `rd-client/src/main/java/.../mixin/LevelMixin.java`
-- `rd-client/src/main/java/.../mixin/PlayerMixin.java`
+- `rd-client/src/main/java/.../mixin/LevelAccessor.java`
+- `rd-client/src/main/java/.../mixin/PlayerAccessor.java`
 
 ### Step 1.3: Define Fabric-Style Mod Entrypoints
 
@@ -114,7 +114,7 @@ Since RubyDung isn't obfuscated, we can target classes by their real names.
 ### Step 1.4: Replace Old ModLoader
 
 - [x] Remove the entire `rd-api` module (replaced by Fabric Loader)
-- [ ] Create Fabric-compatible event system for keyboard/timer/game events
+- [ ] Create Fabric-compatible event system for keyboard/timer/game events (deferred to Phase 6.1)
 
 ### Step 1.5: Build System Updates
 
@@ -145,41 +145,41 @@ Remaining for Alpha protocol (when we reach Alpha versions):
 
 The server needs to own the authoritative world state.
 
-- [ ] Create `ServerWorld` class — holds the full block array for the world
-- [ ] Implement block get/set with bounds checking
-- [ ] Implement player tracking (connected players, positions, protocol versions)
-- [ ] Implement tick loop (20 TPS, matching Minecraft standard)
-- [ ] Implement block change validation (is the position valid? is the block type valid for this version?)
+- [x] Create `ServerWorld` class — holds the full block array (256x64x256) for the world
+- [x] Implement block get/set with bounds checking
+- [x] Implement player tracking (connected players, positions, protocol versions) — via `PlayerManager`
+- [x] Implement tick loop (20 TPS, matching Minecraft standard) — via `ServerTickLoop`
+- [x] Implement block change validation (bounds checking in `ServerWorld.setBlock()`)
 
 ### Step 2.3: Server Tick Loop
 
-- [ ] Create `ServerTickLoop` — runs at 20 TPS (50ms per tick)
-- [ ] Each tick: process queued player actions, update world state, broadcast changes
-- [ ] Handle player position updates (aggregate and broadcast at tick rate, not per-packet)
-- [ ] Handle chunk loading/unloading based on player positions
+- [x] Create `ServerTickLoop` — runs at 20 TPS (50ms per tick)
+- [ ] Each tick: process queued player actions, update world state, broadcast changes (currently pings + auto-save only)
+- [x] Handle player position updates — currently broadcast per-packet in `ServerConnectionHandler`
+- [ ] Handle chunk loading/unloading based on player positions (not needed yet — single flat world)
 
 ### Step 2.4: Client-Server World Sync
 
-- [ ] On connect: server sends world via Classic protocol (LevelInitialize + LevelDataChunks + LevelFinalize)
-- [ ] Server sends delta updates via `SetBlockServerPacket` (Classic 0x06) for subsequent changes
-- [ ] Client maintains local world copy for rendering
-- [ ] Client sends block place/break requests; server validates and responds
+- [x] On connect: server sends world via Classic protocol (LevelInitialize + LevelDataChunks + LevelFinalize)
+- [x] Server sends delta updates via `SetBlockServerPacket` (Classic 0x06) for subsequent changes
+- [x] Client maintains local world copy for rendering (world replacement via LevelAccessor)
+- [x] Client sends block place/break requests; server validates and broadcasts
 - [ ] Implement simple lag compensation: client predicts block changes, reverts if server rejects
 
 ### Step 2.5: Player Position Sync
 
-- [ ] Client sends position updates at a fixed rate (e.g., every 50ms)
-- [ ] Server validates movement (no teleporting through blocks)
-- [ ] Server broadcasts other players' positions to each client
-- [ ] Client interpolates remote player positions between updates
+- [x] Client sends position updates at a fixed rate (every 3 frames via RubyDungMixin tick hook)
+- [ ] Server validates movement (no teleporting through blocks — currently trusts client)
+- [x] Server broadcasts other players' positions to each client
+- [x] Client interpolates remote player positions between updates (via `RemotePlayer` prev/current tracking)
 
 ### Step 2.6: Connection Lifecycle
 
 - [ ] Implement login timeout (disconnect if no PlayerIdentification within 5 seconds)
-- [ ] Implement Ping (server sends Classic 0x01 PingPacket periodically)
-- [ ] Handle graceful disconnect (send Classic 0x0E DisconnectPacket before closing)
-- [ ] Handle unexpected disconnect (remove player, broadcast leave)
-- [ ] Implement max player count enforcement
+- [x] Implement Ping (server sends Classic 0x01 PingPacket every 2 seconds via tick loop)
+- [x] Handle graceful disconnect (send Classic 0x0E DisconnectPacket before closing)
+- [x] Handle unexpected disconnect (remove player, broadcast DespawnPlayerPacket)
+- [x] Implement max player count enforcement (127-player limit from Classic protocol ID space)
 
 ---
 
@@ -239,13 +239,16 @@ Extend this with finer-grained filtering:
 
 ### Step 4.1: Complete Alpha-Format Save/Load
 
-The skeleton has basic chunk and level.dat serialization. Complete it:
+Basic chunk and level.dat serialization is complete. Server world persistence via `server-world.dat` (GZip) is also working.
 
 - [ ] Implement entity serialization in chunks (position, type, NBT data)
 - [ ] Implement tile entity serialization (signs, chests, etc.)
 - [ ] Implement player data in level.dat (position, rotation, health, inventory)
-- [ ] Handle the session.lock ownership mechanism
-- [ ] Implement auto-save (configurable interval, default every 5 minutes)
+- [x] Handle the session.lock ownership mechanism (8-byte timestamp in `AlphaLevelFormat`)
+- [x] Implement auto-save (every 5 minutes / 6000 ticks in `ServerTickLoop`)
+- [x] Server world save/load (`ServerWorld.save()` / `ServerWorld.load()` via GZip compressed `server-world.dat`)
+- [x] Alpha-format chunk save/load (`AlphaChunk` + `AlphaLevelFormat` with NBT)
+- [x] `level.dat` serialization (seed, spawn position, time, lastPlayed)
 
 ### Step 4.2: World Generation
 
@@ -305,25 +308,27 @@ Enable converting worlds between formats:
 
 ### Step 5.2: Add Multiplayer Client UI
 
-The original RubyDung has no multiplayer UI. Add minimal functionality:
+The original RubyDung has no multiplayer UI. Minimal functionality added:
 
-- [ ] Server connect screen (text input for host:port)
-- [ ] Player name entry
+- [x] CLI-based server connect (`--server` flag, `-PmpServer` Gradle property, or F6 toggle for localhost)
+- [x] CLI-based player name entry (`--username` flag, `-PmpUsername` Gradle property, or server auto-assign)
+- [x] HUD text overlay showing connection status, server address, player count
+- [ ] Server connect screen (graphical text input for host:port)
 - [ ] Server list (hardcoded or file-based initially)
 - [ ] In-game player list (Tab key)
 - [ ] Chat overlay (T key to open, Enter to send)
 
 ### Step 5.3: Render Remote Players
 
-- [ ] Create a simple player model (colored cube or wireframe)
-- [ ] Render remote players at their server-reported positions
-- [ ] Interpolate movement between position updates
+- [x] Create a simple player model (colored cube 0.6x1.8x0.6 with wireframe outline, 8-color rotation)
+- [x] Render remote players at their server-reported positions (correct eye height 1.62)
+- [x] Interpolate movement between position updates (prev/current position tracking in `RemotePlayer`)
 - [ ] Show player names above their heads (simple text rendering)
 
 ### Step 5.4: Client-Side Prediction
 
-- [ ] Predict local player movement (render immediately, reconcile with server)
-- [ ] Predict block placement (show immediately, revert if server rejects)
+- [x] Predict local player movement (local player moves instantly, position synced to server)
+- [ ] Predict block placement (show immediately, revert if server rejects — currently no revert)
 - [ ] Handle rubber-banding gracefully
 
 ---
@@ -441,18 +446,35 @@ changes (input, lifecycle, UI) are straightforward libGDX patterns.
 
 ---
 
+## Additional Features Implemented (Beyond Original Plan)
+
+These features were built during development but weren't in the original plan:
+
+- [x] **LWJGL 2 → LWJGL 3 migration** — all 7 game source files ported (Display→GLFW, Keyboard→glfwGetKey, GLU→manual matrix math, etc.)
+- [x] **Fat JAR tasks** — `fatJar`, `fatModdedJar`, `fatJars`, `buildAll` Gradle tasks for self-contained distribution
+- [x] **CLI flags** — `--server` and `--username` for fat JAR clients, `-PmpServer` and `-PmpUsername` for Gradle
+- [x] **F6 multiplayer toggle** — in-game key to connect/disconnect from localhost server
+- [x] **Server auto-naming** — unique player names with duplicate prevention (suffix numbering)
+- [x] **Server console commands** — `list`, `save`, `stop` interactive commands
+- [x] **Single-player fallback** — auto-reverts to single-player when server is unavailable
+- [x] **World backup/restore** — client backs up local world before multiplayer, restores on disconnect
+- [x] **Escape key mouse release** — press Escape to release mouse grab, click to re-grab
+- [x] **Server unavailable HUD** — detects server down, shows message, graceful fallback
+
+---
+
 ## Implementation Order (Recommended)
 
 The phases above are organized by domain, but the optimal implementation
 order interleaves them to always have something testable:
 
-1. **Phase 5.1** — Get RubyDung launching first (**BuildTools done**, verify launch pending)
-2. **Phase 1.1-1.3** — Fabric Loader integration (mod loading works)
-3. **Phase 2.1-2.2** — Basic Netty server + world state (server starts)
-4. **Phase 2.4** — Client-server world sync (two players see same world)
-5. **Phase 2.5** — Player position sync (players can see each other)
-6. **Phase 4.1** — World save/load (worlds persist across restarts)
-7. **Phase 3.1-3.3** — Version translation (RubyDung client on Alpha server)
+1. ~~**Phase 5.1** — Get RubyDung launching first~~ ✅ **DONE**
+2. ~~**Phase 1.1-1.3** — Fabric Loader integration (mod loading works)~~ ✅ **DONE**
+3. ~~**Phase 2.1-2.2** — Basic Netty server + world state (server starts)~~ ✅ **DONE**
+4. ~~**Phase 2.4** — Client-server world sync (two players see same world)~~ ✅ **DONE**
+5. ~~**Phase 2.5** — Player position sync (players can see each other)~~ ✅ **DONE**
+6. ~~**Phase 4.1** — World save/load (worlds persist across restarts)~~ ✅ **DONE** (basic — entity/player data TBD)
+7. **Phase 3.1-3.3** — Version translation (RubyDung client on Alpha server) ⬅️ **NEXT**
 8. **Phase 6.1** — Event system (mods can react to game events)
 9. **Phase 5.2-5.3** — Multiplayer UI (chat, player list, server browser)
 10. **Phase 4.2** — World generation (procedural worlds)
