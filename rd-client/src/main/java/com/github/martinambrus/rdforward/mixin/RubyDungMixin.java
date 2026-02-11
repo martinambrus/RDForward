@@ -151,7 +151,9 @@ public class RubyDungMixin {
         short[] selfTeleport = state.pollSelfTeleport();
         if (selfTeleport != null && player != null) {
             float tx = selfTeleport[0] / 32.0f;
-            float ty = selfTeleport[1] / 32.0f;  // eye level
+            // Add 1/32 block upward nudge to compensate for fixed-point truncation
+            // that can place feet inside the ground block
+            float ty = selfTeleport[1] / 32.0f + (1.0f / 32.0f);
             float tz = selfTeleport[2] / 32.0f;
             // Set position directly — y is eye level (bb.y0 + 1.62)
             player.x = tx;
@@ -174,8 +176,9 @@ public class RubyDungMixin {
             rdforward$tickCounter = 0;
             PlayerAccessor pa = (PlayerAccessor) player;
             // Convert float block coordinates to fixed-point (blocks * 32)
+            // Use Math.round for Y to avoid downward truncation that buries the player
             short x = (short) (pa.getX() * 32);
-            short y = (short) (pa.getY() * 32);
+            short y = (short) Math.round(pa.getY() * 32);
             short z = (short) (pa.getZ() * 32);
             // Convert degrees to byte rotation (0-255 maps to 0-360)
             int yaw = (int) (pa.getYRot() * 256.0f / 360.0f) & 0xFF;
