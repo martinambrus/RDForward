@@ -4,6 +4,8 @@ import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.protocol.packet.classic.PingPacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
 
+import com.github.martinambrus.rdforward.server.event.ServerEvents;
+
 import java.util.List;
 
 /**
@@ -114,10 +116,14 @@ public class ServerTickLoop implements Runnable {
 
         // Auto-save world and player positions periodically
         if (tickCount % SAVE_INTERVAL_TICKS == 0) {
+            ServerEvents.WORLD_SAVE.invoker().onWorldSave();
             world.saveIfDirty();
             world.savePlayers(playerManager.getAllPlayers());
             chunkManager.saveAllDirty();
         }
+
+        // Fire tick event for mods
+        ServerEvents.SERVER_TICK.invoker().onServerTick(tickCount);
     }
 
     public long getTickCount() {

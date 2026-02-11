@@ -4,6 +4,9 @@ import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.codec.PacketDecoder;
 import com.github.martinambrus.rdforward.protocol.codec.PacketEncoder;
 import com.github.martinambrus.rdforward.protocol.packet.PacketDirection;
+import com.github.martinambrus.rdforward.server.api.CommandRegistry;
+import com.github.martinambrus.rdforward.server.api.PermissionManager;
+import com.github.martinambrus.rdforward.server.api.Scheduler;
 import com.github.martinambrus.rdforward.world.AlphaWorldGenerator;
 import com.github.martinambrus.rdforward.world.FlatWorldGenerator;
 import com.github.martinambrus.rdforward.world.RubyDungWorldGenerator;
@@ -89,6 +92,11 @@ public class RDServer {
      * Start the server: generate world, start tick loop, begin accepting connections.
      */
     public void start() throws InterruptedException {
+        // Initialize mod APIs
+        PermissionManager.load();
+        Scheduler.init();
+        registerBuiltInCommands();
+
         if (!world.load()) {
             System.out.println("Generating world (" + DEFAULT_WORLD_WIDTH + "x"
                     + DEFAULT_WORLD_HEIGHT + "x" + DEFAULT_WORLD_DEPTH
@@ -171,6 +179,59 @@ public class RDServer {
     public ChunkManager getChunkManager() { return chunkManager; }
 
     /**
+     * Register built-in server commands with the command registry.
+     */
+    private void registerBuiltInCommands() {
+        CommandRegistry.register("help", "Show available commands", ctx -> {
+            ctx.reply("Commands:");
+            for (CommandRegistry.RegisteredCommand cmd : CommandRegistry.getCommands().values()) {
+                ctx.reply("  " + cmd.name + " - " + cmd.description
+                    + (cmd.requiresOp ? " (op)" : ""));
+            }
+        });
+
+        CommandRegistry.register("list", "Show connected players", ctx -> {
+            Collection<ConnectedPlayer> players = playerManager.getAllPlayers();
+            ctx.reply("Players online: " + players.size() + "/" + PlayerManager.MAX_PLAYERS);
+            for (ConnectedPlayer p : players) {
+                ctx.reply("  [" + p.getPlayerId() + "] " + p.getUsername()
+                    + " (" + String.format("%.1f, %.1f, %.1f",
+                        p.getX() / 32.0, p.getY() / 32.0, p.getZ() / 32.0) + ")");
+            }
+        });
+
+        CommandRegistry.register("save", "Save the world to disk", ctx -> {
+            world.save();
+            world.savePlayers(playerManager.getAllPlayers());
+            chunkManager.saveAllDirty();
+            ctx.reply("World saved.");
+        });
+
+        CommandRegistry.register("stop", "Save and stop the server", ctx -> {
+            ctx.reply("Stopping server...");
+            stop();
+        });
+
+        CommandRegistry.registerOp("op", "Grant operator status to a player", ctx -> {
+            if (ctx.getArgs().length == 0) {
+                ctx.reply("Usage: op <player>");
+                return;
+            }
+            PermissionManager.addOp(ctx.getArgs()[0]);
+            ctx.reply("Made " + ctx.getArgs()[0] + " an operator.");
+        });
+
+        CommandRegistry.registerOp("deop", "Revoke operator status from a player", ctx -> {
+            if (ctx.getArgs().length == 0) {
+                ctx.reply("Usage: deop <player>");
+                return;
+            }
+            PermissionManager.removeOp(ctx.getArgs()[0]);
+            ctx.reply("Removed " + ctx.getArgs()[0] + " from operators.");
+        });
+    }
+
+    /**
      * Run the interactive console command loop.
      * Reads commands from stdin until "stop" or EOF.
      */
@@ -182,38 +243,11 @@ public class RDServer {
                 line = line.trim();
                 if (line.isEmpty()) continue;
 
-                switch (line.toLowerCase()) {
-                    case "help":
-                        System.out.println("Commands:");
-                        System.out.println("  list     - Show connected players");
-                        System.out.println("  save     - Save the world to disk");
-                        System.out.println("  stop     - Save and stop the server");
-                        System.out.println("  help     - Show this help message");
-                        break;
-
-                    case "list":
-                        Collection<ConnectedPlayer> players = playerManager.getAllPlayers();
-                        System.out.println("Players online: " + players.size() + "/" + PlayerManager.MAX_PLAYERS);
-                        for (ConnectedPlayer p : players) {
-                            System.out.println("  [" + p.getPlayerId() + "] " + p.getUsername()
-                                + " (" + (p.getX() / 32.0) + ", " + (p.getY() / 32.0) + ", " + (p.getZ() / 32.0) + ")");
-                        }
-                        break;
-
-                    case "save":
-                        world.save();
-                        break;
-
-                    case "stop":
-                    case "shutdown":
-                        System.out.println("Stopping server...");
-                        stop();
-                        return;
-
-                    default:
-                        System.out.println("Unknown command: " + line + " (type 'help' for commands)");
-                        break;
+                if (!CommandRegistry.dispatch(line, "CONSOLE", true, System.out::println)) {
+                    System.out.println("Unknown command: " + line + " (type 'help' for commands)");
                 }
+
+                if (stopped) return;
             }
         } catch (Exception e) {
             // stdin closed (e.g. running without a terminal) — just wait for shutdown

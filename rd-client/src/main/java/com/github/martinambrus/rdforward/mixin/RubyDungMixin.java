@@ -7,6 +7,8 @@ import com.github.martinambrus.rdforward.client.MultiplayerState;
 import com.github.martinambrus.rdforward.client.NameTagRenderer;
 import com.github.martinambrus.rdforward.client.RDClient;
 import com.github.martinambrus.rdforward.client.RemotePlayerRenderer;
+import com.github.martinambrus.rdforward.client.api.KeyBindingRegistry;
+import com.github.martinambrus.rdforward.client.api.OverlayRegistry;
 import com.mojang.rubydung.Player;
 import com.mojang.rubydung.RubyDung;
 import com.mojang.rubydung.Timer;
@@ -207,6 +209,9 @@ public class RubyDungMixin {
             return;
         }
 
+        // Poll mod key bindings
+        KeyBindingRegistry.tick(RubyDung.window);
+
         // Apply server world data once when it arrives
         if (!rdforward$worldApplied && state.isWorldReady() && level != null) {
             rdforward$applyServerWorld(state);
@@ -317,6 +322,9 @@ public class RubyDungMixin {
         // Render chat messages and input box (always — supports single player commands)
         ChatRenderer.render(w[0], h[0]);
         ChatInput.render(w[0], h[0]);
+
+        // Render mod overlays
+        OverlayRegistry.renderAll(w[0], h[0]);
     }
 
     /**
@@ -345,6 +353,7 @@ public class RubyDungMixin {
         ChatRenderer.cleanup();
         ChatInput.cleanup();
         NameTagRenderer.cleanup();
+        OverlayRegistry.cleanupAll();
     }
 
     /**

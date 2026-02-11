@@ -115,7 +115,7 @@ Since RubyDung isn't obfuscated, we can target classes by their real names.
 ### Step 1.4: Replace Old ModLoader
 
 - [x] Remove the entire `rd-api` module (replaced by Fabric Loader)
-- [ ] Create Fabric-compatible event system for keyboard/timer/game events (deferred to Phase 6.1)
+- [x] Create Fabric-compatible event system for keyboard/timer/game events — `Event<T>` class in rd-protocol with `register()`/`invoker()` pattern matching Fabric API; `EventResult` enum (PASS/SUCCESS/CANCEL); `ServerEvents` registry with 8 event types (BLOCK_BREAK, BLOCK_PLACE, PLAYER_JOIN, PLAYER_LEAVE, PLAYER_MOVE, CHAT, SERVER_TICK, WORLD_SAVE); `ClientEvents` via `KeyBindingRegistry` and `OverlayRegistry`; all wired into existing game loop
 
 ### Step 1.5: Build System Updates
 
@@ -339,27 +339,29 @@ The original RubyDung has no multiplayer UI. Minimal functionality added:
 
 Using Fabric's event pattern, create game events that mods can listen to:
 
-- [ ] `BlockBreakEvent` — fired before a block is broken, cancellable
-- [ ] `BlockPlaceEvent` — fired before a block is placed, cancellable
-- [ ] `PlayerJoinEvent` — fired when a player connects
-- [ ] `PlayerLeaveEvent` — fired when a player disconnects
-- [ ] `PlayerMoveEvent` — fired on position update
-- [ ] `ChatEvent` — fired on chat message, cancellable/modifiable
-- [ ] `ServerTickEvent` — fired every server tick
-- [ ] `WorldSaveEvent` — fired before world save
+Core infrastructure in rd-protocol: `Event<T>` class with `register()`/`invoker()` pattern (CopyOnWriteArrayList for thread safety, Function-based invoker factory); `EventResult` enum (PASS/SUCCESS/CANCEL) for cancellable events.
+
+- [x] `BlockBreakEvent` — `ServerEvents.BLOCK_BREAK` (Event\<BlockBreakCallback\>), fired in `ServerConnectionHandler.handleSetBlock()` when mode=0; returns player name, coordinates, existing block type; cancellable
+- [x] `BlockPlaceEvent` — `ServerEvents.BLOCK_PLACE` (Event\<BlockPlaceCallback\>), fired in `ServerConnectionHandler.handleSetBlock()` when mode=1; returns player name, coordinates, new block type; cancellable
+- [x] `PlayerJoinEvent` — `ServerEvents.PLAYER_JOIN` (Event\<PlayerJoinCallback\>), fired at end of `handlePlayerIdentification()` after login is complete; provides player name and protocol version
+- [x] `PlayerLeaveEvent` — `ServerEvents.PLAYER_LEAVE` (Event\<PlayerLeaveCallback\>), fired at start of `channelInactive()` before cleanup; provides player name
+- [x] `PlayerMoveEvent` — `ServerEvents.PLAYER_MOVE` (Event\<PlayerMoveCallback\>), fired in `handlePlayerPosition()` after validation; provides player name, fixed-point coordinates, yaw/pitch
+- [x] `ChatEvent` — `ServerEvents.CHAT` (Event\<ChatCallback\>), fired in `handleMessage()` before broadcast; cancellable; commands (starting with "/") are routed to CommandRegistry instead
+- [x] `ServerTickEvent` — `ServerEvents.SERVER_TICK` (Event\<ServerTickCallback\>), fired at end of each tick in `ServerTickLoop.tick()`; provides tick count
+- [x] `WorldSaveEvent` — `ServerEvents.WORLD_SAVE` (Event\<WorldSaveCallback\>), fired in `ServerTickLoop.tick()` before auto-save
 
 ### Step 6.2: Server-Side Mod API
 
-- [ ] Command system: register custom commands (e.g., `/spawn`, `/tp`)
-- [ ] Permission system: basic op/non-op distinction
-- [ ] Configuration API: per-mod config files
-- [ ] Scheduler API: run tasks on future ticks
+- [x] Command system: register custom commands (e.g., `/spawn`, `/tp`) — `Command` functional interface + `CommandContext` (sender, args, reply); `CommandRegistry` with `register()`/`registerOp()`/`dispatch()`; chat messages starting with "/" route through CommandRegistry; console commands also route through same registry; built-in commands: help, list, save, stop, op, deop
+- [x] Permission system: basic op/non-op distinction — `PermissionManager` loads/saves `ops.txt` (one username per line); `isOp()`/`addOp()`/`removeOp()`; `registerOp()` commands auto-check permissions; console always has op
+- [x] Configuration API: per-mod config files — `ModConfig` reads/writes `config/<modId>.properties`; `setDefault()`/`load()`/`save()`; typed getters: `getString()`, `getInt()`, `getLong()`, `getBoolean()`; auto-creates config directory and writes defaults on first load
+- [x] Scheduler API: run tasks on future ticks — `Scheduler` with `runLater(delayTicks, Runnable)` and `runRepeating(initialDelay, periodTicks, Runnable)`; hooks into SERVER_TICK event; tasks run on tick loop thread (safe for world mutation); returns `ScheduledTask` handle with `cancel()`
 
 ### Step 6.3: Client-Side Mod API
 
-- [ ] Keyboard binding API: register custom key handlers
-- [ ] Render overlay API: draw 2D elements on screen
-- [ ] Block texture replacement API (already proven with the chocolate blocks mod)
+- [x] Keyboard binding API: register custom key handlers — `KeyBinding` class with name, GLFW key code, and press callback (edge-triggered); `KeyBindingRegistry.register()` + `tick(window)` called every frame in RubyDungMixin render HEAD; direct GLFW key state polling
+- [x] Render overlay API: draw 2D elements on screen — `OverlayRegistry` holds `GameOverlay` instances; `renderAll(w, h)` called in RubyDungMixin before buffer swap; `cleanupAll()` on shutdown; overlays rendered in registration order after built-in HUD/chat
+- [x] Block texture replacement API (already proven with the chocolate blocks mod) — no additional work needed; Mixin-based texture injection already functional
 
 ---
 
@@ -474,13 +476,13 @@ order interleaves them to always have something testable:
 4. ~~**Phase 2.4** — Client-server world sync (two players see same world)~~ ✅ **DONE**
 5. ~~**Phase 2.5** — Player position sync (players can see each other)~~ ✅ **DONE**
 6. ~~**Phase 4.1** — World save/load (worlds persist across restarts)~~ ✅ **DONE** (basic — entity/player data TBD)
-7. **Phase 3.1-3.3** — Version translation (RubyDung client on Alpha server) ⬅️ **NEXT**
-8. **Phase 6.1** — Event system (mods can react to game events)
-9. **Phase 5.2-5.3** — Multiplayer UI (chat, player list, server browser)
-10. **Phase 4.2** — World generation (procedural worlds)
-11. **Phase 3.2** — Action translation (mining, inventory cross-version)
-12. **Phase 6.2-6.3** — Mod APIs (commands, permissions, rendering)
-13. **Phase 4.3** — World format upgrader (export to Alpha/Beta)
+7. ~~**Phase 3.1-3.3** — Version translation (RubyDung client on Alpha server)~~ ✅ **DONE**
+8. ~~**Phase 6.1** — Event system (mods can react to game events)~~ ✅ **DONE**
+9. **Phase 5.2-5.3** — Multiplayer UI (chat, player list, server browser) — chat done, rest deferred to Alpha
+10. ~~**Phase 4.2** — World generation (procedural worlds)~~ ✅ **DONE**
+11. ~~**Phase 3.2** — Action translation (mining, inventory cross-version)~~ ✅ **DONE**
+12. ~~**Phase 6.2-6.3** — Mod APIs (commands, permissions, rendering)~~ ✅ **DONE**
+13. ~~**Phase 4.3** — World format upgrader (export to Alpha/Beta)~~ ✅ **DONE**
 14. **Phase 7** — Tests and performance optimization
 15. **Phase 8.1-8.2** — libGDX abstraction + desktop backend (rendering refactor)
 16. **Phase 8.3** — Android module (shader pipeline, touch input)
