@@ -60,6 +60,7 @@ public class RemotePlayerRenderer {
         // Player dimensions (roughly matching MC player hitbox)
         float halfWidth = 0.3f;
         float height = 1.8f;
+        float eyeHeight = 1.62f;  // Player.y = bb.y0 + 1.62 (eye level, not center)
 
         // Color based on player ID
         float[] color = COLORS[(player.getPlayerId() & 0xFF) % COLORS.length];
@@ -67,15 +68,15 @@ public class RemotePlayerRenderer {
         GL11.glPushMatrix();
         GL11.glTranslatef(x, y, z);
 
-        // Draw a solid colored cube centered on Y (player Y = center of bounding box)
-        float halfHeight = height / 2;
+        // Draw cube from feet to head, relative to eye position
+        // feet = y - eyeHeight, head = y - eyeHeight + height
         GL11.glColor4f(color[0], color[1], color[2], 0.8f);
-        drawBox(-halfWidth, -halfHeight, -halfWidth, halfWidth, halfHeight, halfWidth);
+        drawBox(-halfWidth, -eyeHeight, -halfWidth, halfWidth, -eyeHeight + height, halfWidth);
 
         // Draw a darker wireframe outline
         GL11.glColor4f(color[0] * 0.5f, color[1] * 0.5f, color[2] * 0.5f, 1.0f);
         GL11.glLineWidth(2.0f);
-        drawBoxOutline(-halfWidth, -halfHeight, -halfWidth, halfWidth, halfHeight, halfWidth);
+        drawBoxOutline(-halfWidth, -eyeHeight, -halfWidth, halfWidth, -eyeHeight + height, halfWidth);
 
         GL11.glPopMatrix();
 
