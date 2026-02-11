@@ -47,6 +47,9 @@ public class RubyDungMixin {
     /** Whether we've logged the first render frame (debug). */
     private boolean rdforward$renderDebugLogged = false;
 
+    /** Whether we've logged the onRenderHead debug (one-time). */
+    private boolean rdforward$headDebugLogged = false;
+
     /** Server connection details (parsed once at startup). */
     private String rdforward$serverHost = "localhost";
     private int rdforward$serverPort = 25565;
@@ -89,6 +92,11 @@ public class RubyDungMixin {
      */
     @Inject(method = "render", at = @At("HEAD"))
     private void onRenderHead(float partialTick, CallbackInfo ci) {
+        if (!rdforward$headDebugLogged) {
+            System.out.println("[RDForward] onRenderHead injection active");
+            rdforward$headDebugLogged = true;
+        }
+
         // Ctrl+M toggle — flag is set by key event handler in RubyDung.java
         if (RubyDung.multiplayerToggleRequested) {
             RubyDung.multiplayerToggleRequested = false;
