@@ -133,8 +133,12 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
             // Default: center of world, on top of terrain
             // Surface is at y = height*2/3, feet at +1 block above.
             // Y is eye-level (feet + 1.62) to match the client convention.
+            // Compute feet as exact fixed-point, then add ceil(1.62*32) to avoid
+            // truncation placing feet inside the surface block.
             spawnX = (short) ((world.getWidth() / 2) * 32 + 16);
-            spawnY = (short) ((world.getHeight() * 2 / 3 + 1 + 1.62f) * 32);
+            int feetFixedPoint = (world.getHeight() * 2 / 3 + 1) * 32;
+            int eyeOffset = (int) Math.ceil(1.62 * 32);  // 52 (not 51)
+            spawnY = (short) (feetFixedPoint + eyeOffset);
             spawnZ = (short) ((world.getDepth() / 2) * 32 + 16);
         }
         player.updatePosition(spawnX, spawnY, spawnZ, spawnYaw, spawnPitch);
@@ -290,6 +294,8 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
         if (player != null) {
             System.out.println(player.getUsername() + " disconnected"
                 + " (" + (playerManager.getPlayerCount() - 1) + " online)");
+            // Save position before removal so it persists for reconnect
+            world.rememberPlayerPosition(player);
             playerManager.broadcastChat((byte) 0, player.getUsername() + " left the game");
             playerManager.broadcastPlayerDespawn(player);
             playerManager.removePlayer(ctx.channel());

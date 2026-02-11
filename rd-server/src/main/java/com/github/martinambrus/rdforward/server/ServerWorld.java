@@ -44,6 +44,10 @@ public class ServerWorld {
     /** Queued block changes from clients, processed during tick loop. */
     private final Queue<PendingBlockChange> pendingBlockChanges = new ConcurrentLinkedQueue<>();
 
+    /** In-memory cache of all known player positions (online + disconnected). */
+    private final java.util.concurrent.ConcurrentHashMap<String, short[]> playerPositionCache =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     public ServerWorld(int width, int height, int depth) {
         this.width = width;
         this.height = height;
@@ -220,34 +224,54 @@ public class ServerWorld {
     }
 
     /**
+     * Remember a player's position in the in-memory cache.
+     * Called when a player disconnects so their position survives until the next save.
+     */
+    public void rememberPlayerPosition(ConnectedPlayer player) {
+        playerPositionCache.put(player.getUsername(), new short[]{
+            player.getX(), player.getY(), player.getZ(),
+            player.getYaw(), player.getPitch()
+        });
+    }
+
+    /**
      * Save player positions so they can be restored when a player reconnects.
+     * Merges the in-memory cache (disconnected players) with currently online players.
      * Format: [int count] then for each player: [UTF name] [short x,y,z] [byte yaw,pitch].
      */
     public void savePlayers(java.util.Collection<ConnectedPlayer> players) {
-        if (players.isEmpty()) return;
+        // Update cache with current online player positions
+        for (ConnectedPlayer p : players) {
+            playerPositionCache.put(p.getUsername(), new short[]{
+                p.getX(), p.getY(), p.getZ(), p.getYaw(), p.getPitch()
+            });
+        }
+
+        if (playerPositionCache.isEmpty()) return;
+
         try (DataOutputStream dos = new DataOutputStream(new GZIPOutputStream(new FileOutputStream(PLAYERS_FILE)))) {
-            dos.writeInt(players.size());
-            for (ConnectedPlayer p : players) {
-                dos.writeUTF(p.getUsername());
-                dos.writeShort(p.getX());
-                dos.writeShort(p.getY());
-                dos.writeShort(p.getZ());
-                dos.writeByte(p.getYaw());
-                dos.writeByte(p.getPitch());
+            dos.writeInt(playerPositionCache.size());
+            for (java.util.Map.Entry<String, short[]> entry : playerPositionCache.entrySet()) {
+                dos.writeUTF(entry.getKey());
+                short[] pos = entry.getValue();
+                dos.writeShort(pos[0]);
+                dos.writeShort(pos[1]);
+                dos.writeShort(pos[2]);
+                dos.writeByte(pos[3]);
+                dos.writeByte(pos[4]);
             }
-            System.out.println("Saved " + players.size() + " player position(s) to " + PLAYERS_FILE);
+            System.out.println("Saved " + playerPositionCache.size() + " player position(s) to " + PLAYERS_FILE);
         } catch (IOException e) {
             System.err.println("Failed to save player data: " + e.getMessage());
         }
     }
 
     /**
-     * Load saved player positions. Returns a map of username -> saved position data.
+     * Load saved player positions into the in-memory cache and return it.
      */
     public java.util.Map<String, short[]> loadPlayerPositions() {
-        java.util.Map<String, short[]> positions = new java.util.HashMap<>();
         File file = new File(PLAYERS_FILE);
-        if (!file.exists()) return positions;
+        if (!file.exists()) return playerPositionCache;
 
         try (DataInputStream dis = new DataInputStream(new GZIPInputStream(new FileInputStream(file)))) {
             int count = dis.readInt();
@@ -258,13 +282,15 @@ public class ServerWorld {
                 short z = dis.readShort();
                 byte yaw = dis.readByte();
                 byte pitch = dis.readByte();
-                positions.put(name, new short[]{x, y, z, yaw, pitch});
+                // putIfAbsent: in-memory positions (from rememberPlayerPosition) take
+                // priority over stale file data
+                playerPositionCache.putIfAbsent(name, new short[]{x, y, z, yaw, pitch});
             }
             System.out.println("Loaded " + count + " saved player position(s) from " + PLAYERS_FILE);
         } catch (IOException e) {
             System.err.println("Failed to load player data: " + e.getMessage());
         }
-        return positions;
+        return playerPositionCache;
     }
 
     public int getWidth() { return width; }
