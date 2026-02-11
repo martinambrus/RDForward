@@ -14,6 +14,7 @@ import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.util.concurrent.DefaultThreadFactory;
 
 /**
  * Singleton multiplayer client that connects to an RDForward server.
@@ -49,7 +50,7 @@ public class RDClient {
         }
         this.username = username;
 
-        group = new NioEventLoopGroup(1);
+        group = new NioEventLoopGroup(1, new DefaultThreadFactory("rd-client", true));
         Bootstrap bootstrap = new Bootstrap();
         bootstrap.group(group)
                 .channel(NioSocketChannel.class)

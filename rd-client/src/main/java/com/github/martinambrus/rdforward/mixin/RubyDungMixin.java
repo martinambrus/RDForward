@@ -95,6 +95,19 @@ public class RubyDungMixin {
     }
 
     /**
+     * Called when the game is shutting down (window closed).
+     * Disconnects the multiplayer client so Netty threads don't keep the JVM alive.
+     */
+    @Inject(method = "destroy", at = @At("HEAD"))
+    private void onDestroy(CallbackInfo ci) {
+        RDClient client = RDClient.getInstance();
+        if (client.isConnected()) {
+            System.out.println("Disconnecting from server...");
+            client.disconnect();
+        }
+    }
+
+    /**
      * Called just before glfwSwapBuffers — render remote players.
      * Remote players appear as colored cubes after the world is rendered
      * but before the frame is presented.

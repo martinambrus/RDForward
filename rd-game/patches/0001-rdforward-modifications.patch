@@ -1,6 +1,6 @@
 diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/Player.java /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/Player.java
---- a/com/mojang/rubydung/Player.java	2026-02-11 09:03:53.365981505 +0000
-+++ b/com/mojang/rubydung/Player.java	2026-02-11 08:46:06.000000000 +0000
+--- a/com/mojang/rubydung/Player.java	2026-02-11 09:15:18.551328313 +0000
++++ b/com/mojang/rubydung/Player.java	2026-02-11 09:14:12.266346609 +0000
 @@ -3,7 +3,7 @@
  import com.mojang.rubydung.level.Level;
  import com.mojang.rubydung.phys.AABB;
@@ -99,113 +99,9 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/Playe
              this.xd += xa * cos - za * sin;
              this.zd += za * cos + xa * sin;
          }
-diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/Player.java.rej /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/Player.java.rej
---- a/com/mojang/rubydung/Player.java.rej	1970-01-01 00:00:00.000000000 +0000
-+++ b/com/mojang/rubydung/Player.java.rej	2026-02-11 09:03:53.432981507 +0000
-@@ -0,0 +1,100 @@
-+--- com/mojang/rubydung/Player.java	2026-02-11 08:27:02.237648659 +0000
-++++ com/mojang/rubydung/Player.java	2026-02-10 20:59:21.000000000 +0000
-+@@ -3,7 +3,7 @@
-+ import com.mojang.rubydung.level.Level;
-+ import com.mojang.rubydung.phys.AABB;
-+ import java.util.List;
-+-import org.lwjgl.input.Keyboard;
-++import org.lwjgl.glfw.GLFW;
-+ 
-+ public class Player {
-+     private Level level;
-+@@ -27,9 +27,9 @@
-+     }
-+ 
-+     private void resetPos() {
-+-        float x = (float)Math.random() * this.level.width;
-+-        float y = this.level.depth + 10;
-+-        float z = (float)Math.random() * this.level.height;
-++        float x = (float)Math.random() * (float)this.level.width;
-++        float y = (float)(this.level.depth + 10);
-++        float z = (float)Math.random() * (float)this.level.height;
-+         this.setPos(x, y, z);
-+     }
-+ 
-+@@ -43,8 +43,8 @@
-+     }
-+ 
-+     public void turn(float xo, float yo) {
-+-        this.yRot = (float)(this.yRot + xo * 0.15);
-+-        this.xRot = (float)(this.xRot - yo * 0.15);
-++        this.yRot = (float)((double)this.yRot + (double)xo * 0.15);
-++        this.xRot = (float)((double)this.xRot - (double)yo * 0.15);
-+         if (this.xRot < -90.0F) {
-+             this.xRot = -90.0F;
-+         }
-+@@ -54,38 +54,42 @@
-+         }
-+     }
-+ 
-++    private static boolean isKeyDown(int key) {
-++        return GLFW.glfwGetKey(RubyDung.window, key) == GLFW.GLFW_PRESS;
-++    }
-++
-+     public void tick() {
-+         this.xo = this.x;
-+         this.yo = this.y;
-+         this.zo = this.z;
-+         float xa = 0.0F;
-+         float ya = 0.0F;
-+-        if (Keyboard.isKeyDown(19)) {
-++        if (isKeyDown(GLFW.GLFW_KEY_R)) {
-+             this.resetPos();
-+         }
-+ 
-+-        if (Keyboard.isKeyDown(200) || Keyboard.isKeyDown(17)) {
-++        if (isKeyDown(GLFW.GLFW_KEY_UP) || isKeyDown(GLFW.GLFW_KEY_W)) {
-+             ya--;
-+         }
-+ 
-+-        if (Keyboard.isKeyDown(208) || Keyboard.isKeyDown(31)) {
-++        if (isKeyDown(GLFW.GLFW_KEY_DOWN) || isKeyDown(GLFW.GLFW_KEY_S)) {
-+             ya++;
-+         }
-+ 
-+-        if (Keyboard.isKeyDown(203) || Keyboard.isKeyDown(30)) {
-++        if (isKeyDown(GLFW.GLFW_KEY_LEFT) || isKeyDown(GLFW.GLFW_KEY_A)) {
-+             xa--;
-+         }
-+ 
-+-        if (Keyboard.isKeyDown(205) || Keyboard.isKeyDown(32)) {
-++        if (isKeyDown(GLFW.GLFW_KEY_RIGHT) || isKeyDown(GLFW.GLFW_KEY_D)) {
-+             xa++;
-+         }
-+ 
-+-        if ((Keyboard.isKeyDown(57) || Keyboard.isKeyDown(219)) && this.onGround) {
-++        if ((isKeyDown(GLFW.GLFW_KEY_SPACE) || isKeyDown(GLFW.GLFW_KEY_LEFT_SUPER)) && this.onGround) {
-+             this.yd = 0.12F;
-+         }
-+ 
-+         this.moveRelative(xa, ya, this.onGround ? 0.02F : 0.005F);
-+-        this.yd = (float)(this.yd - 0.005);
-++        this.yd = (float)((double)this.yd - 0.005);
-+         this.move(this.xd, this.yd, this.zd);
-+         this.xd *= 0.91F;
-+         this.yd *= 0.98F;
-+@@ -140,11 +144,11 @@
-+     public void moveRelative(float xa, float za, float speed) {
-+         float dist = xa * xa + za * za;
-+         if (!(dist < 0.01F)) {
-+-            dist = speed / (float)Math.sqrt(dist);
-++            dist = speed / (float)Math.sqrt((double)dist);
-+             xa *= dist;
-+             za *= dist;
-+-            float sin = (float)Math.sin(this.yRot * Math.PI / 180.0);
-+-            float cos = (float)Math.cos(this.yRot * Math.PI / 180.0);
-++            float sin = (float)Math.sin((double)this.yRot * Math.PI / 180.0);
-++            float cos = (float)Math.cos((double)this.yRot * Math.PI / 180.0);
-+             this.xd += xa * cos - za * sin;
-+             this.zd += za * cos + xa * sin;
-+         }
 diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/RubyDung.java /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/RubyDung.java
---- a/com/mojang/rubydung/RubyDung.java	2026-02-11 09:03:53.369981505 +0000
-+++ b/com/mojang/rubydung/RubyDung.java	2026-02-11 09:03:33.901981015 +0000
+--- a/com/mojang/rubydung/RubyDung.java	2026-02-11 09:15:18.552328312 +0000
++++ b/com/mojang/rubydung/RubyDung.java	2026-02-11 09:14:12.269346608 +0000
 @@ -4,18 +4,17 @@
  import com.mojang.rubydung.level.Level;
  import com.mojang.rubydung.level.LevelRenderer;
@@ -603,381 +499,9 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/RubyD
          new Thread(new RubyDung()).start();
      }
  }
-diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/RubyDung.java.rej /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/RubyDung.java.rej
---- a/com/mojang/rubydung/RubyDung.java.rej	1970-01-01 00:00:00.000000000 +0000
-+++ b/com/mojang/rubydung/RubyDung.java.rej	2026-02-11 09:03:53.435981507 +0000
-@@ -0,0 +1,368 @@
-+--- com/mojang/rubydung/RubyDung.java	2026-02-11 08:27:02.238648659 +0000
-++++ com/mojang/rubydung/RubyDung.java	2026-02-10 20:58:30.000000000 +0000
-+@@ -4,18 +4,17 @@
-+ import com.mojang.rubydung.level.Level;
-+ import com.mojang.rubydung.level.LevelRenderer;
-+ import java.io.IOException;
-+-import java.nio.Buffer;
-+ import java.nio.FloatBuffer;
-+ import java.nio.IntBuffer;
-++import java.util.LinkedList;
-++import java.util.Queue;
-+ import javax.swing.JOptionPane;
-+ import org.lwjgl.BufferUtils;
-+-import org.lwjgl.LWJGLException;
-+-import org.lwjgl.input.Keyboard;
-+-import org.lwjgl.input.Mouse;
-+-import org.lwjgl.opengl.Display;
-+-import org.lwjgl.opengl.DisplayMode;
-++import org.lwjgl.glfw.GLFW;
-++import org.lwjgl.glfw.GLFWErrorCallback;
-++import org.lwjgl.opengl.GL;
-+ import org.lwjgl.opengl.GL11;
-+-import org.lwjgl.util.glu.GLU;
-++import org.lwjgl.system.MemoryUtil;
-+ 
-+ public class RubyDung implements Runnable {
-+     private static final boolean FULLSCREEN_MODE = false;
-+@@ -30,39 +29,95 @@
-+     private IntBuffer selectBuffer = BufferUtils.createIntBuffer(2000);
-+     private HitResult hitResult = null;
-+ 
-+-    public void init() throws LWJGLException, IOException {
-++    // GLFW window handle — accessible by Player for input polling
-++    public static long window;
-++
-++    // Mouse delta tracking (GLFW cursor callback)
-++    private double lastMouseX, lastMouseY;
-++    private double mouseDX, mouseDY;
-++    private boolean firstMouse = true;
-++
-++    // Event queues for GLFW callbacks
-++    private final Queue<int[]> mouseEvents = new LinkedList<>();
-++    private final Queue<int[]> keyEvents = new LinkedList<>();
-++
-++    public void init() throws IOException {
-+         int col = 920330;
-+         float fr = 0.5F;
-+         float fg = 0.8F;
-+         float fb = 1.0F;
-+-        this.fogColor.put(new float[]{(col >> 16 & 0xFF) / 255.0F, (col >> 8 & 0xFF) / 255.0F, (col & 0xFF) / 255.0F, 1.0F});
-+-        ((Buffer)this.fogColor).flip();
-+-        Display.setDisplayMode(new DisplayMode(1024, 768));
-+-        Display.create();
-+-        Keyboard.create();
-+-        Mouse.create();
-+-        this.width = Display.getDisplayMode().getWidth();
-+-        this.height = Display.getDisplayMode().getHeight();
-+-        GL11.glEnable(3553);
-+-        GL11.glShadeModel(7425);
-++        this.fogColor.put(new float[]{(float)(col >> 16 & 0xFF) / 255.0F, (float)(col >> 8 & 0xFF) / 255.0F, (float)(col & 0xFF) / 255.0F, 1.0F});
-++        this.fogColor.flip();
-++
-++        // Initialize GLFW
-++        GLFWErrorCallback.createPrint(System.err).set();
-++        if (!GLFW.glfwInit()) {
-++            throw new IllegalStateException("Unable to initialize GLFW");
-++        }
-++
-++        GLFW.glfwDefaultWindowHints();
-++        GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GLFW.GLFW_FALSE);
-++        GLFW.glfwWindowHint(GLFW.GLFW_RESIZABLE, GLFW.GLFW_FALSE);
-++
-++        window = GLFW.glfwCreateWindow(1024, 768, "RubyDung", MemoryUtil.NULL, MemoryUtil.NULL);
-++        if (window == MemoryUtil.NULL) {
-++            throw new RuntimeException("Failed to create the GLFW window");
-++        }
-++
-++        // Set up input callbacks
-++        GLFW.glfwSetCursorPosCallback(window, (win, xpos, ypos) -> {
-++            if (firstMouse) {
-++                lastMouseX = xpos;
-++                lastMouseY = ypos;
-++                firstMouse = false;
-++            }
-++            mouseDX += xpos - lastMouseX;
-++            mouseDY += ypos - lastMouseY;
-++            lastMouseX = xpos;
-++            lastMouseY = ypos;
-++        });
-++
-++        GLFW.glfwSetMouseButtonCallback(window, (win, button, action, mods) -> {
-++            mouseEvents.add(new int[]{button, action == GLFW.GLFW_PRESS ? 1 : 0});
-++        });
-++
-++        GLFW.glfwSetKeyCallback(window, (win, key, scancode, action, mods) -> {
-++            if (action == GLFW.GLFW_PRESS || action == GLFW.GLFW_RELEASE) {
-++                keyEvents.add(new int[]{key, action == GLFW.GLFW_PRESS ? 1 : 0});
-++            }
-++        });
-++
-++        GLFW.glfwMakeContextCurrent(window);
-++        GL.createCapabilities();
-++        GLFW.glfwSwapInterval(1);
-++        GLFW.glfwShowWindow(window);
-++
-++        this.width = 1024;
-++        this.height = 768;
-++
-++        GL11.glEnable(GL11.GL_TEXTURE_2D);
-++        GL11.glShadeModel(GL11.GL_SMOOTH);
-+         GL11.glClearColor(fr, fg, fb, 0.0F);
-+         GL11.glClearDepth(1.0);
-+-        GL11.glEnable(2929);
-+-        GL11.glDepthFunc(515);
-+-        GL11.glMatrixMode(5889);
-++        GL11.glEnable(GL11.GL_DEPTH_TEST);
-++        GL11.glDepthFunc(GL11.GL_LEQUAL);
-++        GL11.glMatrixMode(GL11.GL_PROJECTION);
-+         GL11.glLoadIdentity();
-+-        GL11.glMatrixMode(5888);
-++        GL11.glMatrixMode(GL11.GL_MODELVIEW);
-+         this.level = new Level(256, 256, 64);
-+         this.levelRenderer = new LevelRenderer(this.level);
-+         this.player = new Player(this.level);
-+-        Mouse.setGrabbed(true);
-++
-++        // Grab the mouse cursor
-++        GLFW.glfwSetInputMode(window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_DISABLED);
-+     }
-+ 
-+     public void destroy() {
-+         this.level.save();
-+-        Mouse.destroy();
-+-        Keyboard.destroy();
-+-        Display.destroy();
-++        GLFW.glfwDestroyWindow(window);
-++        GLFW.glfwTerminate();
-++        GLFWErrorCallback ec = GLFW.glfwSetErrorCallback(null);
-++        if (ec != null) ec.free();
-+     }
-+ 
-+     @Override
-+@@ -78,7 +133,8 @@
-+         int frames = 0;
-+ 
-+         try {
-+-            while (!Keyboard.isKeyDown(1) && !Display.isCloseRequested()) {
-++            while (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_ESCAPE) != GLFW.GLFW_PRESS
-++                    && !GLFW.glfwWindowShouldClose(window)) {
-+                 this.timer.advanceTime();
-+ 
-+                 for (int i = 0; i < this.timer.ticks; i++) {
-+@@ -117,44 +173,44 @@
-+     }
-+ 
-+     private void setupCamera(float a) {
-+-        GL11.glMatrixMode(5889);
-++        GL11.glMatrixMode(GL11.GL_PROJECTION);
-+         GL11.glLoadIdentity();
-+-        GLU.gluPerspective(70.0F, (float)this.width / this.height, 0.05F, 1000.0F);
-+-        GL11.glMatrixMode(5888);
-++        gluPerspective(70.0F, (float)this.width / (float)this.height, 0.05F, 1000.0F);
-++        GL11.glMatrixMode(GL11.GL_MODELVIEW);
-+         GL11.glLoadIdentity();
-+         this.moveCameraToPlayer(a);
-+     }
-+ 
-+     private void setupPickCamera(float a, int x, int y) {
-+-        GL11.glMatrixMode(5889);
-++        GL11.glMatrixMode(GL11.GL_PROJECTION);
-+         GL11.glLoadIdentity();
-+-        ((Buffer)this.viewportBuffer).clear();
-+-        GL11.glGetInteger(2978, this.viewportBuffer);
-+-        ((Buffer)this.viewportBuffer).flip();
-+-        ((Buffer)this.viewportBuffer).limit(16);
-+-        GLU.gluPickMatrix(x, y, 5.0F, 5.0F, this.viewportBuffer);
-+-        GLU.gluPerspective(70.0F, (float)this.width / this.height, 0.05F, 1000.0F);
-+-        GL11.glMatrixMode(5888);
-++        this.viewportBuffer.clear();
-++        GL11.glGetIntegerv(GL11.GL_VIEWPORT, this.viewportBuffer);
-++        this.viewportBuffer.flip();
-++        this.viewportBuffer.limit(16);
-++        gluPickMatrix((float)x, (float)y, 5.0F, 5.0F, this.viewportBuffer);
-++        gluPerspective(70.0F, (float)this.width / (float)this.height, 0.05F, 1000.0F);
-++        GL11.glMatrixMode(GL11.GL_MODELVIEW);
-+         GL11.glLoadIdentity();
-+         this.moveCameraToPlayer(a);
-+     }
-+ 
-+     private void pick(float a) {
-+-        ((Buffer)this.selectBuffer).clear();
-++        this.selectBuffer.clear();
-+         GL11.glSelectBuffer(this.selectBuffer);
-+-        GL11.glRenderMode(7170);
-++        GL11.glRenderMode(GL11.GL_SELECT);
-+         this.setupPickCamera(a, this.width / 2, this.height / 2);
-+         this.levelRenderer.pick(this.player);
-+-        int hits = GL11.glRenderMode(7168);
-+-        ((Buffer)this.selectBuffer).flip();
-+-        ((Buffer)this.selectBuffer).limit(this.selectBuffer.capacity());
-++        int hits = GL11.glRenderMode(GL11.GL_RENDER);
-++        this.selectBuffer.flip();
-++        this.selectBuffer.limit(this.selectBuffer.capacity());
-+         long closest = 0L;
-+         int[] names = new int[10];
-+         int hitNameCount = 0;
-+ 
-+         for (int i = 0; i < hits; i++) {
-+             int nameCount = this.selectBuffer.get();
-+-            long minZ = this.selectBuffer.get();
-++            long minZ = (long)this.selectBuffer.get();
-+             this.selectBuffer.get();
-+             if (minZ >= closest && i != 0) {
-+                 for (int j = 0; j < nameCount; j++) {
-+@@ -178,82 +234,123 @@
-+     }
-+ 
-+     public void render(float a) {
-+-        float xo = Mouse.getDX();
-+-        float yo = Mouse.getDY();
-++        // Consume accumulated mouse deltas
-++        float xo = (float)mouseDX;
-++        float yo = (float)mouseDY;
-++        mouseDX = 0;
-++        mouseDY = 0;
-+         this.player.turn(xo, yo);
-+         this.pick(a);
-+ 
-+-        while (Mouse.next()) {
-+-            if (Mouse.getEventButton() == 1 && Mouse.getEventButtonState() && this.hitResult != null) {
-++        // Process mouse button events
-++        while (!mouseEvents.isEmpty()) {
-++            int[] event = mouseEvents.poll();
-++            int button = event[0];
-++            boolean pressed = event[1] == 1;
-++
-++            if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT && pressed && this.hitResult != null) {
-+                 this.level.setTile(this.hitResult.x, this.hitResult.y, this.hitResult.z, 0);
-+             }
-+ 
-+-            if (Mouse.getEventButton() == 0 && Mouse.getEventButtonState() && this.hitResult != null) {
-+-                int x = this.hitResult.x;
-+-                int y = this.hitResult.y;
-+-                int z = this.hitResult.z;
-++            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && pressed && this.hitResult != null) {
-++                int bx = this.hitResult.x;
-++                int by = this.hitResult.y;
-++                int bz = this.hitResult.z;
-+                 if (this.hitResult.f == 0) {
-+-                    y--;
-++                    by--;
-+                 }
-+ 
-+                 if (this.hitResult.f == 1) {
-+-                    y++;
-++                    by++;
-+                 }
-+ 
-+                 if (this.hitResult.f == 2) {
-+-                    z--;
-++                    bz--;
-+                 }
-+ 
-+                 if (this.hitResult.f == 3) {
-+-                    z++;
-++                    bz++;
-+                 }
-+ 
-+                 if (this.hitResult.f == 4) {
-+-                    x--;
-++                    bx--;
-+                 }
-+ 
-+                 if (this.hitResult.f == 5) {
-+-                    x++;
-++                    bx++;
-+                 }
-+ 
-+-                this.level.setTile(x, y, z, 1);
-++                this.level.setTile(bx, by, bz, 1);
-+             }
-+         }
-+ 
-+-        while (Keyboard.next()) {
-+-            if (Keyboard.getEventKey() == 28 && Keyboard.getEventKeyState()) {
-++        // Process keyboard events
-++        while (!keyEvents.isEmpty()) {
-++            int[] event = keyEvents.poll();
-++            int key = event[0];
-++            boolean pressed = event[1] == 1;
-++            if (key == GLFW.GLFW_KEY_ENTER && pressed) {
-+                 this.level.save();
-+             }
-+         }
-+ 
-+-        GL11.glClear(16640);
-++        GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
-+         this.setupCamera(a);
-+-        GL11.glEnable(2884);
-+-        GL11.glEnable(2912);
-+-        GL11.glFogi(2917, 2048);
-+-        GL11.glFogf(2914, 0.2F);
-+-        GL11.glFog(2918, this.fogColor);
-+-        GL11.glDisable(2912);
-++        GL11.glEnable(GL11.GL_CULL_FACE);
-++        GL11.glEnable(GL11.GL_FOG);
-++        GL11.glFogi(GL11.GL_FOG_MODE, GL11.GL_EXP2);
-++        GL11.glFogf(GL11.GL_FOG_DENSITY, 0.2F);
-++        GL11.glFogfv(GL11.GL_FOG_COLOR, this.fogColor);
-++        GL11.glDisable(GL11.GL_FOG);
-+         this.levelRenderer.render(this.player, 0);
-+-        GL11.glEnable(2912);
-++        GL11.glEnable(GL11.GL_FOG);
-+         this.levelRenderer.render(this.player, 1);
-+-        GL11.glDisable(3553);
-++        GL11.glDisable(GL11.GL_TEXTURE_2D);
-+         if (this.hitResult != null) {
-+             this.levelRenderer.renderHit(this.hitResult);
-+         }
-+ 
-+-        GL11.glDisable(2912);
-+-        Display.update();
-++        GL11.glDisable(GL11.GL_FOG);
-++        GLFW.glfwSwapBuffers(window);
-++        GLFW.glfwPollEvents();
-+     }
-+ 
-+     public static void checkError() {
-+         int e = GL11.glGetError();
-+         if (e != 0) {
-+-            throw new IllegalStateException(GLU.gluErrorString(e));
-++            throw new IllegalStateException("OpenGL error: " + e);
-+         }
-+     }
-+ 
-+-    public static void main(String[] args) throws LWJGLException {
-++    // GLU replacements — LWJGL 3 removed the GLU utility library
-++
-++    private static void gluPerspective(float fovy, float aspect, float zNear, float zFar) {
-++        float f = (float)(1.0 / Math.tan(Math.toRadians(fovy) / 2.0));
-++        float rangeReciprocal = 1.0f / (zNear - zFar);
-++
-++        FloatBuffer matrix = BufferUtils.createFloatBuffer(16);
-++        matrix.put(new float[]{
-++            f / aspect, 0, 0, 0,
-++            0, f, 0, 0,
-++            0, 0, (zFar + zNear) * rangeReciprocal, -1,
-++            0, 0, 2 * zFar * zNear * rangeReciprocal, 0
-++        });
-++        matrix.flip();
-++        GL11.glMultMatrixf(matrix);
-++    }
-++
-++    private static void gluPickMatrix(float x, float y, float deltaX, float deltaY, IntBuffer viewport) {
-++        if (deltaX <= 0 || deltaY <= 0) return;
-++
-++        GL11.glTranslatef(
-++            (viewport.get(2) - 2 * (x - viewport.get(0))) / deltaX,
-++            (viewport.get(3) - 2 * (y - viewport.get(1))) / deltaY,
-++            0
-++        );
-++        GL11.glScalef(viewport.get(2) / deltaX, viewport.get(3) / deltaY, 1.0f);
-++    }
-++
-++    public static void main(String[] args) {
-+         new Thread(new RubyDung()).start();
-+     }
-+ }
 diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/Textures.java /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/Textures.java
---- a/com/mojang/rubydung/Textures.java	2026-02-11 09:03:53.362981505 +0000
-+++ b/com/mojang/rubydung/Textures.java	2026-02-11 08:46:06.000000000 +0000
+--- a/com/mojang/rubydung/Textures.java	2026-02-11 09:15:18.547328314 +0000
++++ b/com/mojang/rubydung/Textures.java	2026-02-11 09:14:12.271346607 +0000
 @@ -8,7 +8,7 @@
  import javax.imageio.ImageIO;
  import org.lwjgl.BufferUtils;
@@ -1017,54 +541,9 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/Textu
              lastId = id;
          }
      }
-diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/Textures.java.rej /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/Textures.java.rej
---- a/com/mojang/rubydung/Textures.java.rej	1970-01-01 00:00:00.000000000 +0000
-+++ b/com/mojang/rubydung/Textures.java.rej	2026-02-11 09:03:53.438981507 +0000
-@@ -0,0 +1,41 @@
-+--- com/mojang/rubydung/Textures.java	2026-02-11 08:27:02.239648659 +0000
-++++ com/mojang/rubydung/Textures.java	2026-02-10 20:59:29.000000000 +0000
-+@@ -8,7 +8,7 @@
-+ import javax.imageio.ImageIO;
-+ import org.lwjgl.BufferUtils;
-+ import org.lwjgl.opengl.GL11;
-+-import org.lwjgl.util.glu.GLU;
-++import org.lwjgl.opengl.GL30;
-+ 
-+ public class Textures {
-+     private static HashMap<String, Integer> idMap = new HashMap<>();
-+@@ -23,8 +23,8 @@
-+                 GL11.glGenTextures(ib);
-+                 int id = ib.get(0);
-+                 bind(id);
-+-                GL11.glTexParameteri(3553, 10241, mode);
-+-                GL11.glTexParameteri(3553, 10240, mode);
-++                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, mode);
-++                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, mode);
-+                 BufferedImage img = ImageIO.read(Textures.class.getResourceAsStream(resourceName));
-+                 int w = img.getWidth();
-+                 int h = img.getHeight();
-+@@ -41,7 +41,8 @@
-+                 }
-+ 
-+                 pixels.asIntBuffer().put(rawPixels);
-+-                GLU.gluBuild2DMipmaps(3553, 6408, w, h, 6408, 5121, pixels);
-++                GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, w, h, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixels);
-++                GL30.glGenerateMipmap(GL11.GL_TEXTURE_2D);
-+                 return id;
-+             }
-+         } catch (IOException var14) {
-+@@ -51,7 +52,7 @@
-+ 
-+     public static void bind(int id) {
-+         if (id != lastId) {
-+-            GL11.glBindTexture(3553, id);
-++            GL11.glBindTexture(GL11.GL_TEXTURE_2D, id);
-+             lastId = id;
-+         }
-+     }
 diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/Timer.java /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/Timer.java
---- a/com/mojang/rubydung/Timer.java	2026-02-11 09:03:53.360981505 +0000
-+++ b/com/mojang/rubydung/Timer.java	2026-02-11 08:46:06.000000000 +0000
+--- a/com/mojang/rubydung/Timer.java	2026-02-11 09:15:18.554328312 +0000
++++ b/com/mojang/rubydung/Timer.java	2026-02-11 09:14:12.272346607 +0000
 @@ -36,7 +36,7 @@
              this.ticks = 100;
          }
@@ -1074,24 +553,9 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/Timer
          this.a = this.passedTime;
      }
  }
-diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/Timer.java.rej /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/Timer.java.rej
---- a/com/mojang/rubydung/Timer.java.rej	1970-01-01 00:00:00.000000000 +0000
-+++ b/com/mojang/rubydung/Timer.java.rej	2026-02-11 09:03:53.440981507 +0000
-@@ -0,0 +1,11 @@
-+--- com/mojang/rubydung/Timer.java	2026-02-11 08:27:02.241648659 +0000
-++++ com/mojang/rubydung/Timer.java	2026-02-10 18:13:43.000000000 +0000
-+@@ -36,7 +36,7 @@
-+             this.ticks = 100;
-+         }
-+ 
-+-        this.passedTime = this.passedTime - this.ticks;
-++        this.passedTime = this.passedTime - (float)this.ticks;
-+         this.a = this.passedTime;
-+     }
-+ }
 diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level/Chunk.java /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/level/Chunk.java
---- a/com/mojang/rubydung/level/Chunk.java	2026-02-11 09:03:53.350981505 +0000
-+++ b/com/mojang/rubydung/level/Chunk.java	2026-02-11 08:46:06.000000000 +0000
+--- a/com/mojang/rubydung/level/Chunk.java	2026-02-11 09:15:18.541328315 +0000
++++ b/com/mojang/rubydung/level/Chunk.java	2026-02-11 09:14:12.274346606 +0000
 @@ -15,7 +15,7 @@
      public final int z1;
      private boolean dirty = true;
@@ -1132,55 +596,9 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level
              GL11.glEndList();
          }
      }
-diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level/Chunk.java.rej /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/level/Chunk.java.rej
---- a/com/mojang/rubydung/level/Chunk.java.rej	1970-01-01 00:00:00.000000000 +0000
-+++ b/com/mojang/rubydung/level/Chunk.java.rej	2026-02-11 09:03:53.443981507 +0000
-@@ -0,0 +1,42 @@
-+--- com/mojang/rubydung/level/Chunk.java	2026-02-11 08:27:02.244648658 +0000
-++++ com/mojang/rubydung/level/Chunk.java	2026-02-10 21:00:22.000000000 +0000
-+@@ -15,7 +15,7 @@
-+     public final int z1;
-+     private boolean dirty = true;
-+     private int lists = -1;
-+-    private static int texture = Textures.loadTexture("/terrain.png", 9728);
-++    private static int texture = Textures.loadTexture("/terrain.png", GL11.GL_NEAREST);
-+     private static Tesselator t = new Tesselator();
-+     public static int rebuiltThisFrame = 0;
-+     public static int updates = 0;
-+@@ -28,7 +28,7 @@
-+         this.x1 = x1;
-+         this.y1 = y1;
-+         this.z1 = z1;
-+-        this.aabb = new AABB(x0, y0, z0, x1, y1, z1);
-++        this.aabb = new AABB((float)x0, (float)y0, (float)z0, (float)x1, (float)y1, (float)z1);
-+         this.lists = GL11.glGenLists(2);
-+     }
-+ 
-+@@ -37,9 +37,9 @@
-+             this.dirty = false;
-+             updates++;
-+             rebuiltThisFrame++;
-+-            GL11.glNewList(this.lists + layer, 4864);
-+-            GL11.glEnable(3553);
-+-            GL11.glBindTexture(3553, texture);
-++            GL11.glNewList(this.lists + layer, GL11.GL_COMPILE);
-++            GL11.glEnable(GL11.GL_TEXTURE_2D);
-++            GL11.glBindTexture(GL11.GL_TEXTURE_2D, texture);
-+             t.init();
-+             int tiles = 0;
-+ 
-+@@ -60,7 +60,7 @@
-+             }
-+ 
-+             t.flush();
-+-            GL11.glDisable(3553);
-++            GL11.glDisable(GL11.GL_TEXTURE_2D);
-+             GL11.glEndList();
-+         }
-+     }
 diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level/Frustum.java /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/level/Frustum.java
---- a/com/mojang/rubydung/level/Frustum.java	2026-02-11 09:03:53.358981505 +0000
-+++ b/com/mojang/rubydung/level/Frustum.java	2026-02-11 08:46:06.000000000 +0000
+--- a/com/mojang/rubydung/level/Frustum.java	2026-02-11 09:15:18.537328317 +0000
++++ b/com/mojang/rubydung/level/Frustum.java	2026-02-11 09:14:12.276346606 +0000
 @@ -1,7 +1,6 @@
  package com.mojang.rubydung.level;
  
@@ -1222,56 +640,9 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level
          this._modl.get(this.modl);
          this.clip[0] = this.modl[0] * this.proj[0] + this.modl[1] * this.proj[4] + this.modl[2] * this.proj[8] + this.modl[3] * this.proj[12];
          this.clip[1] = this.modl[0] * this.proj[1] + this.modl[1] * this.proj[5] + this.modl[2] * this.proj[9] + this.modl[3] * this.proj[13];
-diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level/Frustum.java.rej /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/level/Frustum.java.rej
---- a/com/mojang/rubydung/level/Frustum.java.rej	1970-01-01 00:00:00.000000000 +0000
-+++ b/com/mojang/rubydung/level/Frustum.java.rej	2026-02-11 09:03:53.446981507 +0000
-@@ -0,0 +1,43 @@
-+--- com/mojang/rubydung/level/Frustum.java	2026-02-11 08:27:02.246648658 +0000
-++++ com/mojang/rubydung/level/Frustum.java	2026-02-10 21:00:12.000000000 +0000
-+@@ -1,7 +1,6 @@
-+ package com.mojang.rubydung.level;
-+ 
-+ import com.mojang.rubydung.phys.AABB;
-+-import java.nio.Buffer;
-+ import java.nio.FloatBuffer;
-+ import org.lwjgl.BufferUtils;
-+ import org.lwjgl.opengl.GL11;
-+@@ -35,7 +34,9 @@
-+     }
-+ 
-+     private void normalizePlane(float[][] frustum, int side) {
-+-        float magnitude = (float)Math.sqrt(frustum[side][0] * frustum[side][0] + frustum[side][1] * frustum[side][1] + frustum[side][2] * frustum[side][2]);
-++        float magnitude = (float)Math.sqrt(
-++            (double)(frustum[side][0] * frustum[side][0] + frustum[side][1] * frustum[side][1] + frustum[side][2] * frustum[side][2])
-++        );
-+         frustum[side][0] = frustum[side][0] / magnitude;
-+         frustum[side][1] = frustum[side][1] / magnitude;
-+         frustum[side][2] = frustum[side][2] / magnitude;
-+@@ -43,14 +44,14 @@
-+     }
-+ 
-+     private void calculateFrustum() {
-+-        ((Buffer)this._proj).clear();
-+-        ((Buffer)this._modl).clear();
-+-        ((Buffer)this._clip).clear();
-+-        GL11.glGetFloat(2983, this._proj);
-+-        GL11.glGetFloat(2982, this._modl);
-+-        ((Buffer)this._proj).flip().limit(16);
-++        this._proj.clear();
-++        this._modl.clear();
-++        this._clip.clear();
-++        GL11.glGetFloatv(GL11.GL_PROJECTION_MATRIX, this._proj);
-++        GL11.glGetFloatv(GL11.GL_MODELVIEW_MATRIX, this._modl);
-++        this._proj.flip().limit(16);
-+         this._proj.get(this.proj);
-+-        ((Buffer)this._modl).flip().limit(16);
-++        this._modl.flip().limit(16);
-+         this._modl.get(this.modl);
-+         this.clip[0] = this.modl[0] * this.proj[0] + this.modl[1] * this.proj[4] + this.modl[2] * this.proj[8] + this.modl[3] * this.proj[12];
-+         this.clip[1] = this.modl[0] * this.proj[1] + this.modl[1] * this.proj[5] + this.modl[2] * this.proj[9] + this.modl[3] * this.proj[13];
 diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level/Level.java /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/level/Level.java
---- a/com/mojang/rubydung/level/Level.java	2026-02-11 09:03:53.355981505 +0000
-+++ b/com/mojang/rubydung/level/Level.java	2026-02-11 08:46:06.000000000 +0000
+--- a/com/mojang/rubydung/level/Level.java	2026-02-11 09:15:18.535328317 +0000
++++ b/com/mojang/rubydung/level/Level.java	2026-02-11 09:14:12.279346605 +0000
 @@ -40,7 +40,11 @@
  
      public void load() {
@@ -1294,37 +665,9 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level
                      }
                  }
              }
-diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level/Level.java.rej /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/level/Level.java.rej
---- a/com/mojang/rubydung/level/Level.java.rej	1970-01-01 00:00:00.000000000 +0000
-+++ b/com/mojang/rubydung/level/Level.java.rej	2026-02-11 09:03:53.449981507 +0000
-@@ -0,0 +1,24 @@
-+--- com/mojang/rubydung/level/Level.java	2026-02-11 08:27:02.248648658 +0000
-++++ com/mojang/rubydung/level/Level.java	2026-02-11 08:31:41.975622091 +0000
-+@@ -40,7 +40,11 @@
-+ 
-+     public void load() {
-+         try {
-+-            DataInputStream dis = new DataInputStream(new GZIPInputStream(new FileInputStream(new File("level.dat"))));
-++            File levelFile = new File("level.dat");
-++            if (!levelFile.exists()) {
-++                return;
-++            }
-++            DataInputStream dis = new DataInputStream(new GZIPInputStream(new FileInputStream(levelFile)));
-+             dis.readFully(this.blocks);
-+             this.calcLightDepths(0, 0, this.width, this.height);
-+ 
-+@@ -145,7 +149,7 @@
-+             for (int y = y0; y < y1; y++) {
-+                 for (int z = z0; z < z1; z++) {
-+                     if (this.isSolidTile(x, y, z)) {
-+-                        aABBs.add(new AABB(x, y, z, x + 1, y + 1, z + 1));
-++                        aABBs.add(new AABB((float)x, (float)y, (float)z, (float)(x + 1), (float)(y + 1), (float)(z + 1)));
-+                     }
-+                 }
-+             }
 diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level/LevelRenderer.java /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/level/LevelRenderer.java
---- a/com/mojang/rubydung/level/LevelRenderer.java	2026-02-11 09:03:53.345981505 +0000
-+++ b/com/mojang/rubydung/level/LevelRenderer.java	2026-02-11 08:46:06.000000000 +0000
+--- a/com/mojang/rubydung/level/LevelRenderer.java	2026-02-11 09:15:18.531328318 +0000
++++ b/com/mojang/rubydung/level/LevelRenderer.java	2026-02-11 09:14:12.287346603 +0000
 @@ -104,13 +104,13 @@
      }
  
@@ -1343,33 +686,9 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level
      }
  
      public void setDirty(int x0, int y0, int z0, int x1, int y1, int z1) {
-diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level/LevelRenderer.java.rej /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/level/LevelRenderer.java.rej
---- a/com/mojang/rubydung/level/LevelRenderer.java.rej	1970-01-01 00:00:00.000000000 +0000
-+++ b/com/mojang/rubydung/level/LevelRenderer.java.rej	2026-02-11 09:03:53.451981507 +0000
-@@ -0,0 +1,20 @@
-+--- com/mojang/rubydung/level/LevelRenderer.java	2026-02-11 08:27:02.251648658 +0000
-++++ com/mojang/rubydung/level/LevelRenderer.java	2026-02-10 21:00:41.000000000 +0000
-+@@ -104,13 +104,13 @@
-+     }
-+ 
-+     public void renderHit(HitResult h) {
-+-        GL11.glEnable(3042);
-+-        GL11.glBlendFunc(770, 1);
-+-        GL11.glColor4f(1.0F, 1.0F, 1.0F, (float)Math.sin(System.currentTimeMillis() / 100.0) * 0.2F + 0.4F);
-++        GL11.glEnable(GL11.GL_BLEND);
-++        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
-++        GL11.glColor4f(1.0F, 1.0F, 1.0F, (float)Math.sin((double)System.currentTimeMillis() / 100.0) * 0.2F + 0.4F);
-+         this.t.init();
-+         Tile.rock.renderFace(this.t, h.x, h.y, h.z, h.f);
-+         this.t.flush();
-+-        GL11.glDisable(3042);
-++        GL11.glDisable(GL11.GL_BLEND);
-+     }
-+ 
-+     public void setDirty(int x0, int y0, int z0, int x1, int y1, int z1) {
 diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level/Tesselator.java /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/level/Tesselator.java
---- a/com/mojang/rubydung/level/Tesselator.java	2026-02-11 09:03:53.352981505 +0000
-+++ b/com/mojang/rubydung/level/Tesselator.java	2026-02-11 08:46:06.000000000 +0000
+--- a/com/mojang/rubydung/level/Tesselator.java	2026-02-11 09:15:18.539328316 +0000
++++ b/com/mojang/rubydung/level/Tesselator.java	2026-02-11 09:14:12.290346602 +0000
 @@ -1,6 +1,5 @@
  package com.mojang.rubydung.level;
  
@@ -1439,84 +758,9 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level
      }
  
      public void init() {
-diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level/Tesselator.java.rej /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/level/Tesselator.java.rej
---- a/com/mojang/rubydung/level/Tesselator.java.rej	1970-01-01 00:00:00.000000000 +0000
-+++ b/com/mojang/rubydung/level/Tesselator.java.rej	2026-02-11 09:03:53.454981507 +0000
-@@ -0,0 +1,71 @@
-+--- com/mojang/rubydung/level/Tesselator.java	2026-02-11 08:27:02.253648657 +0000
-++++ com/mojang/rubydung/level/Tesselator.java	2026-02-10 21:05:48.000000000 +0000
-+@@ -1,6 +1,5 @@
-+ package com.mojang.rubydung.level;
-+ 
-+-import java.nio.Buffer;
-+ import java.nio.FloatBuffer;
-+ import org.lwjgl.BufferUtils;
-+ import org.lwjgl.opengl.GL11;
-+@@ -20,35 +19,35 @@
-+     private boolean hasTexture = false;
-+ 
-+     public void flush() {
-+-        ((Buffer)this.vertexBuffer).flip();
-+-        ((Buffer)this.texCoordBuffer).flip();
-+-        ((Buffer)this.colorBuffer).flip();
-+-        GL11.glVertexPointer(3, 0, this.vertexBuffer);
-++        this.vertexBuffer.flip();
-++        this.texCoordBuffer.flip();
-++        this.colorBuffer.flip();
-++        GL11.glVertexPointer(3, GL11.GL_FLOAT, 0, this.vertexBuffer);
-+         if (this.hasTexture) {
-+-            GL11.glTexCoordPointer(2, 0, this.texCoordBuffer);
-++            GL11.glTexCoordPointer(2, GL11.GL_FLOAT, 0, this.texCoordBuffer);
-+         }
-+ 
-+         if (this.hasColor) {
-+-            GL11.glColorPointer(3, 0, this.colorBuffer);
-++            GL11.glColorPointer(3, GL11.GL_FLOAT, 0, this.colorBuffer);
-+         }
-+ 
-+-        GL11.glEnableClientState(32884);
-++        GL11.glEnableClientState(GL11.GL_VERTEX_ARRAY);
-+         if (this.hasTexture) {
-+-            GL11.glEnableClientState(32888);
-++            GL11.glEnableClientState(GL11.GL_TEXTURE_COORD_ARRAY);
-+         }
-+ 
-+         if (this.hasColor) {
-+-            GL11.glEnableClientState(32886);
-++            GL11.glEnableClientState(GL11.GL_COLOR_ARRAY);
-+         }
-+ 
-+-        GL11.glDrawArrays(7, 0, this.vertices);
-+-        GL11.glDisableClientState(32884);
-++        GL11.glDrawArrays(GL11.GL_QUADS, 0, this.vertices);
-++        GL11.glDisableClientState(GL11.GL_VERTEX_ARRAY);
-+         if (this.hasTexture) {
-+-            GL11.glDisableClientState(32888);
-++            GL11.glDisableClientState(GL11.GL_TEXTURE_COORD_ARRAY);
-+         }
-+ 
-+         if (this.hasColor) {
-+-            GL11.glDisableClientState(32886);
-++            GL11.glDisableClientState(GL11.GL_COLOR_ARRAY);
-+         }
-+ 
-+         this.clear();
-+@@ -56,9 +55,9 @@
-+ 
-+     private void clear() {
-+         this.vertices = 0;
-+-        ((Buffer)this.vertexBuffer).clear();
-+-        ((Buffer)this.texCoordBuffer).clear();
-+-        ((Buffer)this.colorBuffer).clear();
-++        this.vertexBuffer.clear();
-++        this.texCoordBuffer.clear();
-++        this.colorBuffer.clear();
-+     }
-+ 
-+     public void init() {
 diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level/Tile.java /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/level/Tile.java
---- a/com/mojang/rubydung/level/Tile.java	2026-02-11 09:03:53.347981505 +0000
-+++ b/com/mojang/rubydung/level/Tile.java	2026-02-11 08:46:06.000000000 +0000
+--- a/com/mojang/rubydung/level/Tile.java	2026-02-11 09:15:18.533328318 +0000
++++ b/com/mojang/rubydung/level/Tile.java	2026-02-11 09:14:12.292346601 +0000
 @@ -10,19 +10,19 @@
      }
  
@@ -1563,55 +807,3 @@ diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level
          if (face == 0) {
              t.vertex(x0, y0, z1);
              t.vertex(x0, y0, z0);
-diff -ruN /home/user/RDForward/rd-game/build/clean-src/com/mojang/rubydung/level/Tile.java.rej /home/user/RDForward/rd-game/src/main/java/com/mojang/rubydung/level/Tile.java.rej
---- a/com/mojang/rubydung/level/Tile.java.rej	1970-01-01 00:00:00.000000000 +0000
-+++ b/com/mojang/rubydung/level/Tile.java.rej	2026-02-11 09:03:53.456981507 +0000
-@@ -0,0 +1,48 @@
-+--- com/mojang/rubydung/level/Tile.java	2026-02-11 08:27:02.254648657 +0000
-++++ com/mojang/rubydung/level/Tile.java	2026-02-10 18:13:43.000000000 +0000
-+@@ -10,19 +10,19 @@
-+     }
-+ 
-+     public void render(Tesselator t, Level level, int layer, int x, int y, int z) {
-+-        float u0 = this.tex / 16.0F;
-++        float u0 = (float)this.tex / 16.0F;
-+         float u1 = u0 + 0.0624375F;
-+         float v0 = 0.0F;
-+         float v1 = v0 + 0.0624375F;
-+         float c1 = 1.0F;
-+         float c2 = 0.8F;
-+         float c3 = 0.6F;
-+-        float x0 = x + 0.0F;
-+-        float x1 = x + 1.0F;
-+-        float y0 = y + 0.0F;
-+-        float y1 = y + 1.0F;
-+-        float z0 = z + 0.0F;
-+-        float z1 = z + 1.0F;
-++        float x0 = (float)x + 0.0F;
-++        float x1 = (float)x + 1.0F;
-++        float y0 = (float)y + 0.0F;
-++        float y1 = (float)y + 1.0F;
-++        float z0 = (float)z + 0.0F;
-++        float z1 = (float)z + 1.0F;
-+         if (!level.isSolidTile(x, y - 1, z)) {
-+             float br = level.getBrightness(x, y - 1, z) * c1;
-+             if (br == c1 ^ layer == 1) {
-+@@ -115,12 +115,12 @@
-+     }
-+ 
-+     public void renderFace(Tesselator t, int x, int y, int z, int face) {
-+-        float x0 = x + 0.0F;
-+-        float x1 = x + 1.0F;
-+-        float y0 = y + 0.0F;
-+-        float y1 = y + 1.0F;
-+-        float z0 = z + 0.0F;
-+-        float z1 = z + 1.0F;
-++        float x0 = (float)x + 0.0F;
-++        float x1 = (float)x + 1.0F;
-++        float y0 = (float)y + 0.0F;
-++        float y1 = (float)y + 1.0F;
-++        float z0 = (float)z + 0.0F;
-++        float z1 = (float)z + 1.0F;
-+         if (face == 0) {
-+             t.vertex(x0, y0, z1);
-+             t.vertex(x0, y0, z0);

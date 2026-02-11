@@ -215,7 +215,12 @@ task extractResources {
 task applyPatches {
     description = 'Applies patches from patches/ directory to the decompiled source'
     group = 'buildtools'
-    dependsOn extractSources, extractCleanSources
+    dependsOn extractCleanSources
+
+    // Track patch changes so Gradle re-runs when patches are updated (e.g. after git pull)
+    def patchHashFile = file("${buildDir}/.patch-hash")
+    inputs.dir(patchDir).optional()
+    outputs.file(patchHashFile)
 
     doLast {
         if (!patchDir.exists()) {
@@ -232,6 +237,30 @@ task applyPatches {
             return
         }
 
+        // Compute a hash of all patch files to detect changes
+        def digest = java.security.MessageDigest.getInstance('SHA-1')
+        patches.each { digest.update(it.bytes) }
+        def currentHash = digest.digest().collect { String.format('%02x', it) }.join('')
+
+        def previousHash = patchHashFile.exists() ? patchHashFile.text.trim() : ''
+
+        if (currentHash == previousHash && generatedSrcDir.exists() && generatedSrcDir.listFiles()?.length > 0) {
+            logger.lifecycle("Patches unchanged, skipping re-application.")
+            return
+        }
+
+        // Patches changed (or first run) — restore clean source before applying
+        if (cleanSrcDir.exists()) {
+            logger.lifecycle("Restoring clean sources before applying patches...")
+            if (generatedSrcDir.exists()) {
+                delete generatedSrcDir
+            }
+            copy {
+                from cleanSrcDir
+                into generatedSrcDir
+            }
+        }
+
         patches.each { patch ->
             logger.lifecycle("Applying patch: ${patch.name}")
             def result = project.exec {
@@ -243,6 +272,10 @@ task applyPatches {
                 logger.warn("Patch ${patch.name} may have already been applied (exit code ${result.exitValue})")
             }
         }
+
+        // Store hash so we can skip next time if patches haven't changed
+        patchHashFile.parentFile.mkdirs()
+        patchHashFile.text = currentHash
         logger.lifecycle("Patch application complete.")
     }
 }
