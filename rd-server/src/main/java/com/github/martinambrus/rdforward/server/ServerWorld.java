@@ -35,17 +35,19 @@ public class ServerWorld {
 
     /**
      * Generate a simple flat world matching RubyDung's default terrain.
-     * Bottom half is cobblestone with a grass layer on top, upper half is air.
+     * RubyDung fills y=0 to y=depth*2/3 as solid and renders the surface
+     * texture at exactly y=depth*2/3. We must match this height so the
+     * client's hardcoded surface rendering looks correct.
      */
     public void generateFlatWorld() {
-        int halfHeight = height / 2;
+        int surfaceY = height * 2 / 3;
         for (int x = 0; x < width; x++) {
             for (int z = 0; z < depth; z++) {
                 for (int y = 0; y < height; y++) {
                     byte blockType;
-                    if (y < halfHeight - 1) {
+                    if (y < surfaceY) {
                         blockType = (byte) BlockRegistry.COBBLESTONE;
-                    } else if (y == halfHeight - 1) {
+                    } else if (y == surfaceY) {
                         blockType = (byte) BlockRegistry.GRASS;
                     } else {
                         blockType = (byte) BlockRegistry.AIR;

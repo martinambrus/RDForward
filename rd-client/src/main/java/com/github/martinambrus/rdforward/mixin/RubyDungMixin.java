@@ -41,6 +41,9 @@ public class RubyDungMixin {
     /** Whether the server world has been applied to the local Level. */
     private boolean rdforward$worldApplied = false;
 
+    /** Backup of local single-player blocks (saved before server world is applied). */
+    private byte[] rdforward$savedLocalBlocks = null;
+
     /** Whether we're currently in multiplayer mode. */
     private boolean rdforward$multiplayerMode = false;
 
@@ -207,6 +210,23 @@ public class RubyDungMixin {
     private void rdforward$disconnectFromServer() {
         RDClient.getInstance().disconnect();
         rdforward$multiplayerMode = false;
+
+        // Restore the original single-player world
+        if (rdforward$savedLocalBlocks != null && level != null) {
+            LevelAccessor la = (LevelAccessor) level;
+            byte[] localBlocks = la.getBlocks();
+            System.arraycopy(rdforward$savedLocalBlocks, 0, localBlocks, 0, localBlocks.length);
+            rdforward$savedLocalBlocks = null;
+
+            // Recalculate lighting and trigger full chunk rebuild
+            level.calcLightDepths(0, 0, level.width, level.height);
+            ArrayList<LevelListener> listeners = la.getLevelListeners();
+            for (int i = 0; i < listeners.size(); i++) {
+                listeners.get(i).allChanged();
+            }
+            System.out.println("[RDForward] Restored local single-player world");
+        }
+
         System.out.println("[RDForward] Switched to SINGLE PLAYER mode");
     }
 
@@ -232,6 +252,12 @@ public class RubyDungMixin {
         LevelAccessor la = (LevelAccessor) level;
         byte[] localBlocks = la.getBlocks();
         byte[] serverBlocks = state.getWorldBlocks();
+
+        // Save local blocks before overwriting (for restore on disconnect)
+        if (rdforward$savedLocalBlocks == null) {
+            rdforward$savedLocalBlocks = new byte[localBlocks.length];
+            System.arraycopy(localBlocks, 0, rdforward$savedLocalBlocks, 0, localBlocks.length);
+        }
 
         if (serverBlocks == null || localBlocks.length != serverBlocks.length) {
             System.err.println("World size mismatch: local=" + localBlocks.length

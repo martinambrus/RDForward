@@ -113,8 +113,9 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
         sendWorldData(ctx);
 
         // Set spawn position (center of world, on top of terrain)
+        // Surface is at y = height*2/3, so spawn 1 block above
         short spawnX = (short) ((world.getWidth() / 2) * 32 + 16);
-        short spawnY = (short) ((world.getHeight() / 2 + 1) * 32);
+        short spawnY = (short) ((world.getHeight() * 2 / 3 + 1) * 32);
         short spawnZ = (short) ((world.getDepth() / 2) * 32 + 16);
         player.updatePosition(spawnX, spawnY, spawnZ, (byte) 0, (byte) 0);
 
