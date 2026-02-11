@@ -14,6 +14,7 @@ import com.mojang.rubydung.level.Level;
 import com.mojang.rubydung.phys.AABB;
 import com.mojang.rubydung.level.LevelListener;
 import org.lwjgl.glfw.GLFW;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -21,6 +22,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.ArrayList;
+import java.util.Queue;
 
 /**
  * Injects RDForward multiplayer functionality into the RubyDung game loop.
@@ -43,6 +45,27 @@ public class RubyDungMixin {
     @Shadow
     private Level level;
 
+    // -- Game input state (shadowed for chat input management) --
+    @Shadow
+    private boolean mouseGrabbed;
+
+    @Shadow
+    private double mouseDX;
+
+    @Shadow
+    private double mouseDY;
+
+    @Shadow
+    private boolean firstMouse;
+
+    @Shadow
+    @Final
+    private Queue<int[]> mouseEvents;
+
+    @Shadow
+    @Final
+    private Queue<int[]> keyEvents;
+
     /** Whether the server world has been applied to the local Level. */
     private boolean rdforward$worldApplied = false;
 
@@ -57,6 +80,9 @@ public class RubyDungMixin {
 
     /** Edge detection for T key (chat open). */
     private boolean rdforward$tWasPressed = false;
+
+    /** Whether chat was active on the previous frame (for detecting transitions). */
+    private boolean rdforward$chatWasActive = false;
 
     /** Timestamp until which "Server Unavailable" is shown (0 = not showing). */
     private long rdforward$serverUnavailableUntil = 0;
@@ -144,14 +170,40 @@ public class RubyDungMixin {
             rdforward$tWasPressed = tPressed;
         }
 
-        // While chat input is active, force cursor to stay visible every frame.
-        // This counteracts RubyDung's click-to-recapture behavior: even if the
-        // game grabs the cursor on a mouse click, we immediately release it again.
-        // Escape and Enter close chat (handled by ChatInput's GLFW key callback),
-        // which re-grabs the cursor — so Escape does NOT release cursor while
-        // chat is open, it closes chat and recaptures instead.
-        if (ChatInput.isActive()) {
+        // Chat state transitions — manage the game's internal input state so that:
+        //   1. Mouse look stops while chat is open (mouseGrabbed = false)
+        //   2. Click-to-recapture is neutralized (mouseEvents cleared)
+        //   3. Mouse tracking resets cleanly on close (firstMouse = true, no delta jump)
+        boolean chatActive = ChatInput.isActive();
+        if (chatActive && !rdforward$chatWasActive) {
+            // Chat just opened — release cursor and stop mouse tracking
+            mouseGrabbed = false;
             GLFW.glfwSetInputMode(RubyDung.window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
+        }
+        if (!chatActive && rdforward$chatWasActive) {
+            // Chat just closed — re-grab cursor and reset mouse tracking so
+            // the view doesn't jump to a new position
+            GLFW.glfwSetInputMode(RubyDung.window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_DISABLED);
+            mouseGrabbed = true;
+            firstMouse = true;
+            mouseDX = 0;
+            mouseDY = 0;
+        }
+        rdforward$chatWasActive = chatActive;
+
+        if (chatActive) {
+            // Neutralize ALL game input while chat is open:
+            // - mouseGrabbed=false prevents camera rotation from mouse deltas
+            // - Zero deltas so nothing accumulates for the next frame
+            // - Clear event queues to prevent click-to-recapture and stale key events
+            // The game's render() continues (so blocks/players still render) but
+            // all input is suppressed. Keyboard movement (WASD) is suppressed by
+            // the tick() cancellation inject below.
+            mouseGrabbed = false;
+            mouseDX = 0;
+            mouseDY = 0;
+            mouseEvents.clear();
+            keyEvents.clear();
             return;
         }
 
@@ -295,6 +347,19 @@ public class RubyDungMixin {
         ChatRenderer.cleanup();
         ChatInput.cleanup();
         NameTagRenderer.cleanup();
+    }
+
+    /**
+     * Cancel player ticking while chat input is active.
+     * Player.tick() uses GLFW.glfwGetKey() polling for WASD/Space/R,
+     * which bypasses our key callback replacement. Cancelling tick()
+     * prevents all movement while typing.
+     */
+    @Inject(method = "tick", at = @At("HEAD"), cancellable = true)
+    private void onTick(CallbackInfo ci) {
+        if (ChatInput.isActive()) {
+            ci.cancel();
+        }
     }
 
     // -- Internal helpers --

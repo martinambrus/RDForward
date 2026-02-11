@@ -47,7 +47,8 @@ public class ChatInput {
 
     /**
      * Open the chat input box.
-     * Installs GLFW callbacks for text input and releases the mouse cursor.
+     * Installs GLFW callbacks for text input. Cursor management is handled
+     * by the mixin which has access to the game's internal input state.
      *
      * @param window the GLFW window handle
      */
@@ -67,15 +68,15 @@ public class ChatInput {
             }
         });
 
-        // Release mouse cursor so the camera stops moving
-        GLFW.glfwSetInputMode(window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
+        // Cursor release is handled by the mixin (which manages the game's
+        // internal mouseGrabbed/firstMouse state for clean transitions).
 
         ChatRenderer.setInputOpen(true);
     }
 
     /**
      * Close the chat input box without sending.
-     * Restores previous GLFW callbacks and re-grabs the mouse cursor.
+     * Restores previous GLFW callbacks. Cursor re-grab is handled by the mixin.
      */
     public static void close() {
         if (!active) return;
@@ -88,8 +89,8 @@ public class ChatInput {
             previousCharCallback = null;
             previousKeyCallback = null;
 
-            // Re-grab mouse cursor for camera control
-            GLFW.glfwSetInputMode(windowHandle, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_DISABLED);
+            // Cursor re-grab is handled by the mixin on the next frame
+            // (it detects the active→inactive transition and calls grabMouse).
         }
 
         ChatRenderer.setInputOpen(false);
