@@ -126,6 +126,12 @@ public class RubyDungMixin {
         if (!client.isConnected()) {
             // Drain block change queue so it doesn't grow in single player
             RubyDung.blockChangeQueue.clear();
+
+            // Auto-switch to single player if server disconnected while we were playing
+            if (rdforward$multiplayerMode && rdforward$worldApplied) {
+                System.out.println("[RDForward] Server connection lost — switching to single player");
+                rdforward$disconnectFromServer();
+            }
             return;
         }
 
