@@ -14,7 +14,7 @@ jar {
 task fatJar(type: Jar) {
     description = 'Builds a self-contained server JAR with all dependencies bundled'
     group = 'build'
-    dependsOn classes
+    dependsOn classes, ':rd-protocol:jar', ':rd-world:jar'
 
     archiveClassifier = 'all'
 

@@ -147,9 +147,9 @@ task downloadDeps {
 // =============================================================================
 
 task fatJars {
-    description = 'Builds all fat JARs (server + game)'
+    description = 'Builds all fat JARs (server + game + modded client)'
     group = 'build'
-    dependsOn ':rd-server:fatJar', ':rd-game:fatJar'
+    dependsOn ':rd-server:fatJar', ':rd-game:fatJar', ':rd-client:fatModdedJar'
 }
 
 task buildAll {

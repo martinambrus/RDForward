@@ -101,7 +101,7 @@ compileLauncherJava {
 task fatModdedJar(type: Jar) {
     description = 'Builds a Fabric-enabled self-contained JAR with all dependencies and natives'
     group = 'build'
-    dependsOn classes, 'launcherClasses', ':rd-game:classes'
+    dependsOn classes, 'launcherClasses', ':rd-game:classes', ':rd-game:jar', ':rd-protocol:jar', ':rd-world:jar'
 
     archiveClassifier = 'all'
 
