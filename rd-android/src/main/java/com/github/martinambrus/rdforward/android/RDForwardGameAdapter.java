@@ -53,6 +53,9 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
     private int positionSyncCounter = 0;
     private long serverUnavailableUntil = 0;
 
+    // Chat overlay (messages + chat button)
+    private ChatOverlay chatOverlay;
+
     // Fog color (sky color)
     private static final float FOG_R = 0.5f;
     private static final float FOG_G = 0.8f;
@@ -88,6 +91,8 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
 
         // Load terrain texture (needed for game rendering)
         textureId = graphics.loadTexture("/terrain.png", TextureFilter.NEAREST);
+
+        chatOverlay = new ChatOverlay(spriteBatch, font, glyphLayout, whitePixel);
     }
 
     @Override
@@ -221,6 +226,8 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
             float ty = Gdx.graphics.getHeight() - Gdx.input.getY(); // flip to y-up
             if (tx <= hudBannerRight && ty >= hudBannerBottom) {
                 toggleMP = true;
+            } else if (chatOverlay.isChatButtonTapped(Gdx.input.getX(), Gdx.input.getY())) {
+                chatOverlay.openChatInput();
             }
         }
         if (toggleMP) {
@@ -242,6 +249,9 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
         if (multiplayerMode) {
             syncMultiplayer();
         }
+
+        // Poll chat messages from server
+        chatOverlay.pollMessages();
 
         // Camera look from touch input
         float xo = touchInput.consumeMouseDX();
@@ -283,11 +293,19 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
         }
         graphics.disableFog();
 
+        // Render remote players (while still in 3D camera space)
+        if (multiplayerMode && RDClient.getInstance().isConnected()) {
+            RemotePlayerRenderer.renderAll(graphics, timer.a);
+        }
+
         // Crosshair overlay
         renderCrosshair();
 
         // HUD banner (top-left)
         renderHud();
+
+        // Chat overlay (messages + chat button)
+        chatOverlay.render(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
 
         // Reset color for next frame
         graphics.setColor(1, 1, 1, 1);
@@ -611,6 +629,7 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
     public void dispose() {
         if (multiplayerMode) disconnectFromServer();
         if (level != null) level.save();
+        if (chatOverlay != null) chatOverlay.dispose();
         if (spriteBatch != null) spriteBatch.dispose();
         if (font != null) font.dispose();
         if (whitePixel != null) whitePixel.dispose();

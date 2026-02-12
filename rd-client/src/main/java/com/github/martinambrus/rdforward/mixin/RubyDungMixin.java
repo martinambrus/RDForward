@@ -248,23 +248,19 @@ public class RubyDungMixin {
         rdforward$chatWasActive = chatActive;
 
         if (chatActive) {
-            // Neutralize ALL game input while chat is open:
-            // - mouseGrabbed=false prevents camera rotation from mouse deltas
-            // - Zero deltas so nothing accumulates for the next frame
-            // - Clear event queues to prevent click-to-recapture and stale key events
-            // The game's render() continues (so blocks/players still render) but
-            // all input is suppressed. Keyboard movement (WASD) is suppressed by
-            // the tick() cancellation inject below.
+            // Neutralize game input while chat is open, but do NOT return early —
+            // multiplayer sync (server block changes, teleports, position sends,
+            // etc.) must continue running below. WASD is suppressed by the
+            // tick() cancellation inject.
             mouseGrabbed = false;
             mouseDX = 0;
             mouseDY = 0;
             mouseEvents.clear();
             keyEvents.clear();
-            return;
+        } else {
+            // Poll mod key bindings (only when not chatting)
+            KeyBindingRegistry.tick(RubyDung.window);
         }
-
-        // Poll mod key bindings
-        KeyBindingRegistry.tick(RubyDung.window);
 
         // Apply server world data once when it arrives
         if (!rdforward$worldApplied && state.isWorldReady() && level != null) {
