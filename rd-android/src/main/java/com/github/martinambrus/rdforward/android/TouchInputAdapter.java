@@ -12,11 +12,10 @@ import com.github.martinambrus.rdforward.render.RDInput;
  * <ul>
  *   <li>Right-side drag → camera look (mouse look)</li>
  *   <li>Left-side drag → movement (WASD)</li>
- *   <li>Tap → block break (left click)</li>
- *   <li>Long press → block place (right click)</li>
+ *   <li>Tap (short, still touch) → place block (button 0)</li>
+ *   <li>Long press (long, still touch) → destroy block (button 1)</li>
  *   <li>Two-finger tap → jump (space)</li>
  * </ul>
- * The on-screen D-pad and buttons are rendered as overlays.
  */
 public class TouchInputAdapter extends InputAdapter implements RDInput {
 
@@ -41,7 +40,9 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
     private boolean tapDetected;
     private boolean longPressDetected;
     private long touchDownTime;
-    private static final long LONG_PRESS_MS = 400;
+    private float lookDragDist; // accumulated drag distance in pixels
+    private static final float DRAG_THRESHOLD = 15f; // px — beyond this it's a look, not a tap
+    private static final long LONG_PRESS_MS = 500;
 
     @Override
     public boolean touchDown(int screenX, int screenY, int pointer, int button) {
@@ -54,11 +55,12 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
             moveStartX = screenX;
             moveStartY = screenY;
         } else if (lookTouchId == -1) {
-            // Right zone: camera look
+            // Right zone: camera look / block interaction
             lookTouchId = pointer;
             lookLastX = screenX;
             lookLastY = screenY;
             touchDownTime = System.currentTimeMillis();
+            lookDragDist = 0;
         }
         return true;
     }
@@ -70,11 +72,15 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
             keyW = keyA = keyS = keyD = false;
         }
         if (pointer == lookTouchId) {
-            long elapsed = System.currentTimeMillis() - touchDownTime;
-            if (elapsed < 200) {
-                tapDetected = true; // short tap = block break
-            } else if (elapsed >= LONG_PRESS_MS) {
-                longPressDetected = true; // long press = block place
+            // Only register tap/long-press if the finger stayed mostly still.
+            // If the user dragged to look around, it's not a block interaction.
+            if (lookDragDist < DRAG_THRESHOLD) {
+                long elapsed = System.currentTimeMillis() - touchDownTime;
+                if (elapsed < LONG_PRESS_MS) {
+                    tapDetected = true; // short still touch = place block
+                } else {
+                    longPressDetected = true; // long still touch = destroy block
+                }
             }
             lookTouchId = -1;
         }
@@ -92,8 +98,11 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
             keyD = dx > MOVE_DEADZONE;
         }
         if (pointer == lookTouchId) {
-            lookDX += (screenX - lookLastX) * LOOK_SENSITIVITY;
-            lookDY += (screenY - lookLastY) * LOOK_SENSITIVITY;
+            float dx = screenX - lookLastX;
+            float dy = screenY - lookLastY;
+            lookDragDist += (float) Math.sqrt(dx * dx + dy * dy);
+            lookDX += dx * LOOK_SENSITIVITY;
+            lookDY += dy * LOOK_SENSITIVITY;
             lookLastX = screenX;
             lookLastY = screenY;
         }
