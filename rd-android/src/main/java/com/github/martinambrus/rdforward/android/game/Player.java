@@ -14,7 +14,7 @@ public class Player {
     public boolean onGround = false;
 
     // Auto-jump state
-    private static final int AUTO_JUMP_DELAY_TICKS = 8; // ~133ms at 60 TPS
+    private static final int AUTO_JUMP_DELAY_TICKS = 4; // ~67ms at 60 TPS
     private int autoJumpBlockedTicks;
     private float lastXaOrg, lastXa, lastZaOrg, lastZa;
 
