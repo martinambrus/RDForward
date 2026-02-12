@@ -13,12 +13,15 @@ import com.github.martinambrus.rdforward.render.RDInput;
  *   <li>Right-side drag → camera look (only starts after finger moves past drag threshold)</li>
  *   <li>Left-side drag → movement (WASD)</li>
  *   <li>Tap (short, still touch on right side) → place block (button 0)</li>
- *   <li>Hold (still touch held ≥ 500 ms) → continuously destroy blocks (button 1)</li>
+ *   <li>Hold (still touch held ≥ 500 ms) → continuously destroy blocks (button 1);
+ *       once active, continues even while dragging to look</li>
  *   <li>Two-finger tap → jump (space)</li>
  * </ul>
  * Movement and block interaction work simultaneously via multi-touch.
  */
 public class TouchInputAdapter extends InputAdapter implements RDInput {
+
+    private static final String TAG = "TouchInput";
 
     // Virtual key states (set by touch zones)
     private boolean keyW, keyA, keyS, keyD, keySpace;
@@ -43,6 +46,7 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
     private long touchDownTime;
     private float lookDragDist; // accumulated drag distance in pixels
     private boolean isLookDrag; // true once drag exceeds threshold
+    private boolean holdDestroyActive; // latched true once hold-to-destroy fires, until touchUp
     private long lastDestroyTime;
 
     // Thresholds
@@ -55,11 +59,17 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
         float screenWidth = Gdx.graphics.getWidth();
         float zoneWidth = screenWidth * MOVE_ZONE_FRACTION;
 
+        Gdx.app.log(TAG, "touchDown ptr=" + pointer + " btn=" + button
+                + " x=" + screenX + " y=" + screenY
+                + " zoneW=" + (int) zoneWidth + " screenW=" + (int) screenWidth
+                + " moveTouchId=" + moveTouchId + " lookTouchId=" + lookTouchId);
+
         if (screenX < zoneWidth && moveTouchId == -1) {
             // Left zone: movement
             moveTouchId = pointer;
             moveStartX = screenX;
             moveStartY = screenY;
+            Gdx.app.log(TAG, "  → assigned to MOVE zone");
         } else if (lookTouchId == -1) {
             // Right zone: camera look / block interaction
             lookTouchId = pointer;
@@ -68,28 +78,40 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
             touchDownTime = System.currentTimeMillis();
             lookDragDist = 0;
             isLookDrag = false;
+            holdDestroyActive = false;
+            Gdx.app.log(TAG, "  → assigned to LOOK zone");
+        } else {
+            Gdx.app.log(TAG, "  → IGNORED (both zones occupied)");
         }
         return true;
     }
 
     @Override
     public boolean touchUp(int screenX, int screenY, int pointer, int button) {
+        Gdx.app.log(TAG, "touchUp ptr=" + pointer + " btn=" + button
+                + " moveTouchId=" + moveTouchId + " lookTouchId=" + lookTouchId
+                + " isLookDrag=" + isLookDrag + " holdDestroy=" + holdDestroyActive
+                + " dragDist=" + (int) lookDragDist);
+
         if (pointer == moveTouchId) {
             moveTouchId = -1;
             keyW = keyA = keyS = keyD = false;
+            Gdx.app.log(TAG, "  → released MOVE zone");
         }
         if (pointer == lookTouchId) {
-            // Only fire a tap if the finger stayed still (not a look drag)
-            // and was held for less than the long-press threshold.
-            // Long-press (destroy) is handled continuously in update(), not here.
-            if (!isLookDrag) {
-                long elapsed = System.currentTimeMillis() - touchDownTime;
-                if (elapsed < LONG_PRESS_MS) {
-                    tapDetected = true; // short still touch = place block
-                }
+            long elapsed = System.currentTimeMillis() - touchDownTime;
+            // Only fire a tap if the finger stayed still (not a look drag,
+            // not already in hold-destroy mode) and was quick enough.
+            if (!isLookDrag && !holdDestroyActive && elapsed < LONG_PRESS_MS) {
+                tapDetected = true;
+                Gdx.app.log(TAG, "  → TAP detected (elapsed=" + elapsed + "ms)");
+            } else {
+                Gdx.app.log(TAG, "  → no tap: isLookDrag=" + isLookDrag
+                        + " holdDestroy=" + holdDestroyActive + " elapsed=" + elapsed);
             }
             lookTouchId = -1;
             isLookDrag = false;
+            holdDestroyActive = false;
         }
         return true;
     }
@@ -111,11 +133,13 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
 
             if (!isLookDrag && lookDragDist >= DRAG_THRESHOLD) {
                 isLookDrag = true;
+                Gdx.app.log(TAG, "touchDragged → isLookDrag activated (dist=" + (int) lookDragDist + ")");
             }
 
-            // Only rotate camera once we know this is a look drag,
-            // so taps don't jitter the camera.
-            if (isLookDrag) {
+            // Rotate camera when:
+            // - this is a confirmed look drag, OR
+            // - hold-to-destroy is active (user wants to look while destroying)
+            if (isLookDrag || holdDestroyActive) {
                 lookDX += dx * LOOK_SENSITIVITY;
                 lookDY += dy * LOOK_SENSITIVITY;
             }
@@ -132,14 +156,19 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
         keySpace = Gdx.input.isTouched(0) && Gdx.input.isTouched(1);
 
         // Continuous hold-to-destroy: fires periodically while the finger
-        // is held still on the right side for >= LONG_PRESS_MS.
-        // This works alongside movement (different pointer).
-        if (lookTouchId != -1 && !isLookDrag) {
+        // is held on the right side for >= LONG_PRESS_MS.
+        // Once activated (holdDestroyActive), keeps firing even if the finger
+        // moves (so you can look around while destroying).
+        if (lookTouchId != -1 && (!isLookDrag || holdDestroyActive)) {
             long now = System.currentTimeMillis();
             long elapsed = now - touchDownTime;
             if (elapsed >= LONG_PRESS_MS && now - lastDestroyTime >= DESTROY_INTERVAL_MS) {
                 longPressDetected = true;
                 lastDestroyTime = now;
+                if (!holdDestroyActive) {
+                    holdDestroyActive = true;
+                    Gdx.app.log(TAG, "update → hold-destroy ACTIVATED (elapsed=" + elapsed + "ms)");
+                }
             }
         }
     }
@@ -188,6 +217,9 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
         if (button == 0) {
             boolean t = tapDetected;
             tapDetected = false;
+            if (t) {
+                Gdx.app.log(TAG, "isMouseButtonDown(0) → TRUE (tap consumed)");
+            }
             return t;
         }
         if (button == 1) {

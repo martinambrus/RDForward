@@ -178,21 +178,32 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
 
     private void handleInput() {
         // Tap = left click = place block adjacent to hit face
-        if (touchInput.isMouseButtonDown(0) && hitResult != null) {
-            int bx = hitResult.x, by = hitResult.y, bz = hitResult.z;
-            switch (hitResult.f) {
-                case 0: by--; break;
-                case 1: by++; break;
-                case 2: bz--; break;
-                case 3: bz++; break;
-                case 4: bx--; break;
-                case 5: bx++; break;
+        boolean tap = touchInput.isMouseButtonDown(0);
+        if (tap) {
+            if (hitResult != null) {
+                int bx = hitResult.x, by = hitResult.y, bz = hitResult.z;
+                Gdx.app.log("GameInput", "TAP place: hit=(" + bx + "," + by + "," + bz
+                        + ") face=" + hitResult.f);
+                switch (hitResult.f) {
+                    case 0: by--; break;
+                    case 1: by++; break;
+                    case 2: bz--; break;
+                    case 3: bz++; break;
+                    case 4: bx--; break;
+                    case 5: bx++; break;
+                }
+                Gdx.app.log("GameInput", "  → placing at (" + bx + "," + by + "," + bz + ")");
+                level.setTile(bx, by, bz, 1);
+            } else {
+                Gdx.app.log("GameInput", "TAP but hitResult is NULL — no block in crosshair");
             }
-            level.setTile(bx, by, bz, 1);
         }
 
         // Long press = right click = destroy block at hit point
-        if (touchInput.isMouseButtonDown(1) && hitResult != null) {
+        boolean hold = touchInput.isMouseButtonDown(1);
+        if (hold && hitResult != null) {
+            Gdx.app.log("GameInput", "HOLD destroy: (" + hitResult.x + ","
+                    + hitResult.y + "," + hitResult.z + ")");
             level.setTile(hitResult.x, hitResult.y, hitResult.z, 0);
         }
     }
