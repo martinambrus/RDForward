@@ -13,9 +13,9 @@ import com.github.martinambrus.rdforward.render.RDInput;
  *   <li>Right-side drag → camera look (only starts after finger moves past drag threshold)</li>
  *   <li>Left-side drag → movement (WASD)</li>
  *   <li>Tap (short, still touch on right side) → place block (button 0)</li>
+ *   <li>Double-tap → jump (space)</li>
  *   <li>Hold (still touch held ≥ 500 ms) → continuously destroy blocks (button 1);
  *       once active, continues even while dragging to look</li>
- *   <li>Two-finger tap → jump (space)</li>
  * </ul>
  * Movement and block interaction work simultaneously via multi-touch.
  */
@@ -49,10 +49,15 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
     private boolean holdDestroyActive; // latched true once hold-to-destroy fires, until touchUp
     private long lastDestroyTime;
 
+    // Double-tap jump state
+    private long lastTapTime; // time of last single tap (for double-tap detection)
+    private int jumpFramesRemaining; // how many frames to keep keySpace true
+
     // Thresholds
     private static final float DRAG_THRESHOLD = 40f; // px — beyond this it's a look, not a tap
     private static final long LONG_PRESS_MS = 500;
     private static final long DESTROY_INTERVAL_MS = 250; // continuous destroy rate
+    private static final long DOUBLE_TAP_MS = 300; // max gap between taps for double-tap
 
     @Override
     public boolean touchDown(int screenX, int screenY, int pointer, int button) {
@@ -99,12 +104,23 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
             Gdx.app.log(TAG, "  → released MOVE zone");
         }
         if (pointer == lookTouchId) {
-            long elapsed = System.currentTimeMillis() - touchDownTime;
+            long now = System.currentTimeMillis();
+            long elapsed = now - touchDownTime;
             // Only fire a tap if the finger stayed still (not a look drag,
             // not already in hold-destroy mode) and was quick enough.
             if (!isLookDrag && !holdDestroyActive && elapsed < LONG_PRESS_MS) {
-                tapDetected = true;
-                Gdx.app.log(TAG, "  → TAP detected (elapsed=" + elapsed + "ms)");
+                if (now - lastTapTime < DOUBLE_TAP_MS) {
+                    // Double-tap → jump
+                    keySpace = true;
+                    jumpFramesRemaining = 5;
+                    lastTapTime = 0; // reset so triple-tap doesn't re-trigger
+                    Gdx.app.log(TAG, "  → DOUBLE-TAP → jump");
+                } else {
+                    // Single tap → place block
+                    tapDetected = true;
+                    lastTapTime = now;
+                    Gdx.app.log(TAG, "  → TAP detected (elapsed=" + elapsed + "ms)");
+                }
             } else {
                 Gdx.app.log(TAG, "  → no tap: isLookDrag=" + isLookDrag
                         + " holdDestroy=" + holdDestroyActive + " elapsed=" + elapsed);
@@ -152,8 +168,13 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
 
     /** Called once per frame to process touch state. */
     public void update() {
-        // Two-finger tap → jump
-        keySpace = Gdx.input.isTouched(0) && Gdx.input.isTouched(1);
+        // Jump: double-tap holds keySpace for a few frames so player.tick() sees it
+        if (jumpFramesRemaining > 0) {
+            keySpace = true;
+            jumpFramesRemaining--;
+        } else {
+            keySpace = false;
+        }
 
         // Continuous hold-to-destroy: fires periodically while the finger
         // is held on the right side for >= LONG_PRESS_MS.
