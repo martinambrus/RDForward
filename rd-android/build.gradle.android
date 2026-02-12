@@ -1,0 +1,163 @@
+// ============================================================================
+// Android build file for rd-android.
+//
+// SETUP (one-time):
+//
+//   1. Install Android Studio (https://developer.android.com/studio)
+//      It bundles the SDK, emulator, build tools, and AVD manager.
+//
+//   2. Open Android Studio → SDK Manager (Settings → Android SDK):
+//      - SDK Platforms tab: check "Android 14.0 (API 34)"
+//      - SDK Tools tab: check "Android SDK Build-Tools 34"
+//      - Click Apply / OK to install
+//
+//      Or from the command line:
+//        export ANDROID_HOME=~/Android/Sdk   (or wherever the SDK lives)
+//        sdkmanager "platforms;android-34" "build-tools;34.0.0"
+//
+//   3. Edit settings.gradle — add this block at the TOP (before rootProject.name):
+//
+//        pluginManagement {
+//            repositories {
+//                google()
+//                mavenCentral()
+//                gradlePluginPortal()
+//            }
+//        }
+//
+//   4. Copy this file over the CI build file:
+//
+//        cp rd-android/build.gradle.android rd-android/build.gradle
+//
+//   5. Delete the 3 CI stub files (the real Android SDK provides these classes):
+//
+//        rm rd-android/src/main/java/android/os/Bundle.java
+//        rm rd-android/src/main/java/com/badlogic/gdx/backends/android/AndroidApplication.java
+//        rm rd-android/src/main/java/com/badlogic/gdx/backends/android/AndroidApplicationConfiguration.java
+//
+// BUILD & RUN:
+//
+//   ./gradlew :rd-android:assembleDebug          # Build the APK
+//   ./gradlew :rd-android:installDebug            # Install on connected device/emulator
+//
+//   APK location: rd-android/build/outputs/apk/debug/rd-android-debug.apk
+//
+// NOTES:
+//   - The root build.gradle already skips rd-android from the Java plugin block
+//     (the Android plugin and Java plugin conflict), so no root edits are needed.
+//   - The root build.gradle already has the google() repo — but the AGP plugin
+//     resolution needs it in pluginManagement (step 3 above).
+//   - rd-render, rd-desktop, rd-protocol, rd-world use Java 21 but Android only
+//     supports up to Java 17 at compile time. The current code uses no Java 21
+//     APIs so this works. If you add Java 21 features to those modules later,
+//     you'll need to provide Android-compatible variants.
+// ============================================================================
+
+plugins {
+    id 'com.android.application' version '8.5.0'
+}
+
+ext {
+    gdxVersion = '1.12.1'
+}
+
+android {
+    namespace 'com.github.martinambrus.rdforward.android'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.github.martinambrus.rdforward.android'
+        minSdk 21          // Android 5.0 — libGDX minimum
+        targetSdk 34
+        versionCode 1
+        versionName project.version
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    // Multiple JARs (Netty, etc.) each contain META-INF/INDEX.LIST and similar
+    // metadata files. pickFirsts resolves the duplicate-file merge conflict.
+    packaging {
+        resources {
+            pickFirsts += ['META-INF/INDEX.LIST', 'META-INF/io.netty.versions.properties']
+            excludes += ['META-INF/macos/**', 'META-INF/linux/**', 'META-INF/windows/**']
+        }
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'src/main/AndroidManifest.xml'
+            java.srcDirs = ['src/main/java']
+            res.srcDirs = ['src/main/res']
+            assets.srcDirs = ['src/main/assets']
+        }
+    }
+}
+
+configurations { natives }
+
+dependencies {
+    // transitive=false on project deps prevents desktop-only libraries (LWJGL,
+    // gdx-backend-lwjgl3) from leaking in. rd-android declares its own Android-
+    // specific libGDX deps below, and Netty is pulled in explicitly.
+    implementation(project(':rd-render'))   { transitive = false }
+    implementation(project(':rd-desktop'))  { transitive = false }
+    implementation(project(':rd-protocol')) { transitive = false }
+    implementation(project(':rd-world'))    { transitive = false }
+
+    // Netty — rd-protocol needs it at runtime on Android too
+    implementation 'io.netty:netty-buffer:4.1.131.Final'
+    implementation 'io.netty:netty-codec:4.1.131.Final'
+    implementation 'io.netty:netty-common:4.1.131.Final'
+    implementation 'io.netty:netty-handler:4.1.131.Final'
+    implementation 'io.netty:netty-resolver:4.1.131.Final'
+    implementation 'io.netty:netty-transport:4.1.131.Final'
+    implementation 'io.netty:netty-transport-native-unix-common:4.1.131.Final'
+
+    // Querz NBT — rd-world needs it at runtime
+    implementation 'com.github.Querz:NBT:6.1'
+
+    // libGDX core + Android backend
+    implementation "com.badlogicgames.gdx:gdx:${gdxVersion}"
+    implementation "com.badlogicgames.gdx:gdx-backend-android:${gdxVersion}"
+
+    // libGDX Android native libraries (OpenGL ES, one per ABI)
+    natives "com.badlogicgames.gdx:gdx-platform:${gdxVersion}:natives-armeabi-v7a"
+    natives "com.badlogicgames.gdx:gdx-platform:${gdxVersion}:natives-arm64-v8a"
+    natives "com.badlogicgames.gdx:gdx-platform:${gdxVersion}:natives-x86"
+    natives "com.badlogicgames.gdx:gdx-platform:${gdxVersion}:natives-x86_64"
+}
+
+// Extract .so files from the native JARs into jniLibs/ so they get packaged in the APK
+task copyAndroidNatives {
+    doFirst {
+        configurations.natives.files.each { jar ->
+            def outputDir = null
+            if (jar.name.contains("armeabi-v7a"))      outputDir = file("src/main/jniLibs/armeabi-v7a")
+            else if (jar.name.contains("arm64-v8a"))    outputDir = file("src/main/jniLibs/arm64-v8a")
+            else if (jar.name.contains("x86_64"))       outputDir = file("src/main/jniLibs/x86_64")
+            else if (jar.name.contains("x86"))          outputDir = file("src/main/jniLibs/x86")
+
+            if (outputDir != null) {
+                copy {
+                    from zipTree(jar)
+                    into outputDir
+                    include "*.so"
+                }
+            }
+        }
+    }
+}
+
+tasks.matching { it.name.contains("merge") && it.name.contains("JniLibFolders") }.configureEach {
+    dependsOn copyAndroidNatives
+}

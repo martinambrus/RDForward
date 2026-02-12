@@ -3,9 +3,10 @@ package com.github.martinambrus.rdforward.mixin;
 import com.github.martinambrus.rdforward.client.ChatInput;
 import com.github.martinambrus.rdforward.client.ChatRenderer;
 import com.github.martinambrus.rdforward.client.HudRenderer;
-import com.github.martinambrus.rdforward.client.MultiplayerState;
+import com.github.martinambrus.rdforward.client.MenuRenderer;
+import com.github.martinambrus.rdforward.multiplayer.MultiplayerState;
 import com.github.martinambrus.rdforward.client.NameTagRenderer;
-import com.github.martinambrus.rdforward.client.RDClient;
+import com.github.martinambrus.rdforward.multiplayer.RDClient;
 import com.github.martinambrus.rdforward.client.RemotePlayerRenderer;
 import com.github.martinambrus.rdforward.client.api.KeyBindingRegistry;
 import com.github.martinambrus.rdforward.client.api.OverlayRegistry;
@@ -23,6 +24,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import javax.swing.JOptionPane;
 import java.util.ArrayList;
 import java.util.Queue;
 
@@ -68,6 +70,9 @@ public class RubyDungMixin {
     @Final
     private Queue<int[]> keyEvents;
 
+    /** Whether the welcome menu is currently shown (true at startup). */
+    private boolean rdforward$showMenu = true;
+
     /** Whether the server world has been applied to the local Level. */
     private boolean rdforward$worldApplied = false;
 
@@ -100,12 +105,18 @@ public class RubyDungMixin {
         System.out.println("========================================");
         System.out.println(" RDForward " + getVersion());
         System.out.println(" Fabric Loader initialized");
-        System.out.println(" Single player (F6 for multiplayer)");
         System.out.println("========================================");
         System.out.println();
 
+        // Load saved connection settings (CLI flags override these below)
+        rdforward$loadSettings();
+
         // Parse server settings from system properties (set by CLI flags or -D)
         String serverProp = System.getProperty("rdforward.server", "");
+        String usernameProp = System.getProperty("rdforward.username");
+        if (usernameProp != null) {
+            rdforward$username = usernameProp;
+        }
         if (!serverProp.isEmpty()) {
             if (serverProp.contains(":")) {
                 String[] parts = serverProp.split(":", 2);
@@ -118,11 +129,10 @@ public class RubyDungMixin {
             } else {
                 rdforward$serverHost = serverProp;
             }
-            // Auto-connect when --server flag was explicitly provided
-            rdforward$username = System.getProperty("rdforward.username", "");
+            // Auto-connect when --server flag was explicitly provided (skip menu)
+            rdforward$showMenu = false;
             rdforward$connectToServer();
         }
-        rdforward$username = System.getProperty("rdforward.username", "");
     }
 
     /**
@@ -131,6 +141,56 @@ public class RubyDungMixin {
      */
     @Inject(method = "render", at = @At("HEAD"))
     private void onRenderHead(float partialTick, CallbackInfo ci) {
+        // --- Welcome menu state ---
+        if (rdforward$showMenu) {
+            // Keep mouse ungrabbed during menu
+            if (mouseGrabbed) {
+                GLFW.glfwSetInputMode(RubyDung.window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
+                mouseGrabbed = false;
+            }
+
+            // Sync interpolation positions so the camera stays stable.
+            // tick() is cancelled during menu (to block WASD), but that
+            // also skips the xo=x/yo=y/zo=z sync at the start of
+            // Player.tick(), causing moveCameraToPlayer() to jitter.
+            if (player != null) {
+                player.xo = player.x;
+                player.yo = player.y;
+                player.zo = player.z;
+            }
+
+            // Process key events for menu selection
+            while (!keyEvents.isEmpty()) {
+                int[] event = keyEvents.poll();
+                int key = event[0];
+                boolean pressed = event[1] == 1;
+                int mods = event.length > 2 ? event[2] : 0;
+
+                // Ctrl+Q to quit from menu
+                if (pressed && key == GLFW.GLFW_KEY_Q && (mods & GLFW.GLFW_MOD_CONTROL) != 0) {
+                    GLFW.glfwSetWindowShouldClose(RubyDung.window, true);
+                }
+
+                if (pressed && key == GLFW.GLFW_KEY_1) {
+                    // Single Player — dismiss menu, grab mouse
+                    rdforward$showMenu = false;
+                    rdforward$grabMouseClean();
+                    System.out.println("[RDForward] Menu: Single Player selected");
+                }
+
+                if (pressed && key == GLFW.GLFW_KEY_2) {
+                    // Multiplayer — show server address dialog
+                    rdforward$showMultiplayerDialog();
+                }
+            }
+
+            // Suppress all game input during menu
+            mouseEvents.clear();
+            mouseDX = 0;
+            mouseDY = 0;
+            return;
+        }
+
         // F6 toggle — poll key state directly (reliable on all platforms)
         boolean f6Pressed = GLFW.glfwGetKey(RubyDung.window, GLFW.GLFW_KEY_F6) == GLFW.GLFW_PRESS;
         if (f6Pressed && !rdforward$f6WasPressed) {
@@ -194,23 +254,19 @@ public class RubyDungMixin {
         rdforward$chatWasActive = chatActive;
 
         if (chatActive) {
-            // Neutralize ALL game input while chat is open:
-            // - mouseGrabbed=false prevents camera rotation from mouse deltas
-            // - Zero deltas so nothing accumulates for the next frame
-            // - Clear event queues to prevent click-to-recapture and stale key events
-            // The game's render() continues (so blocks/players still render) but
-            // all input is suppressed. Keyboard movement (WASD) is suppressed by
-            // the tick() cancellation inject below.
+            // Neutralize game input while chat is open, but do NOT return early —
+            // multiplayer sync (server block changes, teleports, position sends,
+            // etc.) must continue running below. WASD is suppressed by the
+            // tick() cancellation inject.
             mouseGrabbed = false;
             mouseDX = 0;
             mouseDY = 0;
             mouseEvents.clear();
             keyEvents.clear();
-            return;
+        } else {
+            // Poll mod key bindings (only when not chatting)
+            KeyBindingRegistry.tick(RubyDung.window);
         }
-
-        // Poll mod key bindings
-        KeyBindingRegistry.tick(RubyDung.window);
 
         // Apply server world data once when it arrives
         if (!rdforward$worldApplied && state.isWorldReady() && level != null) {
@@ -309,14 +365,21 @@ public class RubyDungMixin {
     @Inject(method = "render", at = @At(value = "INVOKE",
             target = "Lorg/lwjgl/glfw/GLFW;glfwSwapBuffers(J)V"))
     private void onRenderBeforeSwap(float partialTick, CallbackInfo ci) {
+        int[] w = new int[1], h = new int[1];
+        GLFW.glfwGetWindowSize(RubyDung.window, w, h);
+
+        // Render menu overlay if in menu state
+        if (rdforward$showMenu) {
+            MenuRenderer.render(w[0], h[0]);
+            return;
+        }
+
         // Render remote players if in multiplayer
         if (RDClient.getInstance().isConnected()) {
             RemotePlayerRenderer.renderAll(partialTick);
         }
 
         // Always render HUD text
-        int[] w = new int[1], h = new int[1];
-        GLFW.glfwGetWindowSize(RubyDung.window, w, h);
         HudRenderer.drawText(rdforward$getHudText(), w[0], h[0]);
 
         // Render chat messages and input box (always — supports single player commands)
@@ -349,6 +412,7 @@ public class RubyDungMixin {
             System.out.println("Disconnecting from server...");
             client.disconnect();
         }
+        MenuRenderer.cleanup();
         HudRenderer.cleanup();
         ChatRenderer.cleanup();
         ChatInput.cleanup();
@@ -357,14 +421,14 @@ public class RubyDungMixin {
     }
 
     /**
-     * Cancel player ticking while chat input is active.
+     * Cancel player ticking while the menu or chat input is active.
      * Player.tick() uses GLFW.glfwGetKey() polling for WASD/Space/R,
-     * which bypasses our key callback replacement. Cancelling tick()
-     * prevents all movement while typing.
+     * which bypasses our event-based input suppression. Cancelling tick()
+     * prevents all movement while the menu is shown or while typing.
      */
     @Inject(method = "tick", at = @At("HEAD"), cancellable = true)
     private void onTick(CallbackInfo ci) {
-        if (ChatInput.isActive()) {
+        if (rdforward$showMenu || ChatInput.isActive()) {
             ci.cancel();
         }
     }
@@ -467,6 +531,97 @@ public class RubyDungMixin {
         rdforward$worldApplied = true;
         System.out.println("Server world applied to local Level ("
             + level.width + "x" + level.depth + "x" + level.height + ")");
+    }
+
+    /** Grab mouse and reset tracking state cleanly. */
+    private void rdforward$grabMouseClean() {
+        GLFW.glfwSetInputMode(RubyDung.window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_DISABLED);
+        mouseGrabbed = true;
+        firstMouse = true;
+        mouseDX = 0;
+        mouseDY = 0;
+        // Clear any stale events accumulated during dialogs
+        mouseEvents.clear();
+        keyEvents.clear();
+    }
+
+    /** Show JOptionPane dialogs to get server address and username, then connect. */
+    private void rdforward$showMultiplayerDialog() {
+        Object addrResult = JOptionPane.showInputDialog(null,
+                "Enter server address:",
+                "Connect to Server",
+                JOptionPane.PLAIN_MESSAGE,
+                null, null,
+                rdforward$serverHost + ":" + rdforward$serverPort);
+        String address = addrResult instanceof String ? (String) addrResult : null;
+
+        if (address == null || address.trim().isEmpty()) {
+            // User cancelled — stay on menu
+            return;
+        }
+
+        // Parse host:port
+        String trimmed = address.trim();
+        int colonIdx = trimmed.lastIndexOf(':');
+        if (colonIdx > 0) {
+            rdforward$serverHost = trimmed.substring(0, colonIdx);
+            try {
+                rdforward$serverPort = Integer.parseInt(trimmed.substring(colonIdx + 1));
+            } catch (NumberFormatException e) {
+                rdforward$serverHost = trimmed;
+                rdforward$serverPort = 25565;
+            }
+        } else {
+            rdforward$serverHost = trimmed;
+            rdforward$serverPort = 25565;
+        }
+
+        // Ask for username
+        String username = (String) JOptionPane.showInputDialog(null,
+                "Enter player name (leave blank for auto-assign):",
+                "Player Name",
+                JOptionPane.PLAIN_MESSAGE,
+                null, null, rdforward$username);
+
+        rdforward$username = (username != null) ? username.trim() : "";
+
+        // Save for next session
+        rdforward$saveSettings();
+
+        // Dismiss menu, grab mouse, connect
+        rdforward$showMenu = false;
+        rdforward$grabMouseClean();
+        rdforward$connectToServer();
+        System.out.println("[RDForward] Menu: Multiplayer selected → "
+                + rdforward$serverHost + ":" + rdforward$serverPort);
+    }
+
+    private void rdforward$loadSettings() {
+        java.io.File file = new java.io.File("rdforward-settings.properties");
+        if (!file.exists()) return;
+        try (java.io.FileInputStream fis = new java.io.FileInputStream(file)) {
+            java.util.Properties props = new java.util.Properties();
+            props.load(fis);
+            rdforward$serverHost = props.getProperty("server.host", rdforward$serverHost);
+            try {
+                rdforward$serverPort = Integer.parseInt(props.getProperty("server.port", ""));
+            } catch (NumberFormatException ignored) {}
+            rdforward$username = props.getProperty("username", rdforward$username);
+        } catch (Exception e) {
+            System.err.println("[RDForward] Failed to load settings: " + e.getMessage());
+        }
+    }
+
+    private void rdforward$saveSettings() {
+        try (java.io.FileOutputStream fos = new java.io.FileOutputStream("rdforward-settings.properties")) {
+            java.util.Properties props = new java.util.Properties();
+            props.setProperty("server.host", rdforward$serverHost);
+            props.setProperty("server.port", String.valueOf(rdforward$serverPort));
+            props.setProperty("username", rdforward$username);
+            props.store(fos, null);
+        } catch (Exception e) {
+            System.err.println("[RDForward] Failed to save settings: " + e.getMessage());
+        }
     }
 
     private static String getVersion() {

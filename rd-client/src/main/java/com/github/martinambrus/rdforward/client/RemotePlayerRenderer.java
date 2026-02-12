@@ -1,5 +1,7 @@
 package com.github.martinambrus.rdforward.client;
 
+import com.github.martinambrus.rdforward.multiplayer.MultiplayerState;
+import com.github.martinambrus.rdforward.multiplayer.RemotePlayer;
 import org.lwjgl.opengl.GL11;
 
 import java.util.Collection;
@@ -56,18 +58,20 @@ public class RemotePlayerRenderer {
         GL11.glEnable(GL11.GL_BLEND);
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
         for (RemotePlayer player : players) {
-            float x = player.getInterpolatedX(partialTick);
-            float y = player.getInterpolatedY(partialTick);
-            float z = player.getInterpolatedZ(partialTick);
+            float x = player.getRenderX();
+            float y = player.getRenderY();
+            float z = player.getRenderZ();
             NameTagRenderer.renderNameTag(player.getName(), x, y, z);
         }
         GL11.glPopAttrib();
     }
 
     private static void renderPlayer(RemotePlayer player, float partialTick) {
-        float x = player.getInterpolatedX(partialTick);
-        float y = player.getInterpolatedY(partialTick);
-        float z = player.getInterpolatedZ(partialTick);
+        // Time-based interpolation: smoothly lerps from previous to current
+        // position over 100ms since the last network update arrived.
+        float x = player.getRenderX();
+        float y = player.getRenderY();
+        float z = player.getRenderZ();
 
         // Player dimensions (roughly matching MC player hitbox)
         float halfWidth = 0.3f;

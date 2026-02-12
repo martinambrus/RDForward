@@ -1,4 +1,4 @@
-package com.github.martinambrus.rdforward.client;
+package com.github.martinambrus.rdforward.multiplayer;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * and the game's render thread.
  *
  * This is the bridge between the network layer (ClientConnectionHandler)
- * and the game's Mixin-injected code. All fields are thread-safe.
+ * and the game's rendering code. All fields are thread-safe.
  *
  * World data flow:
  *   Network thread writes world blocks → game thread reads them for rendering

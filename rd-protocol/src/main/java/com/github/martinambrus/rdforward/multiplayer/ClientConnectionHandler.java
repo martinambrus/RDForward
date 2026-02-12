@@ -1,4 +1,4 @@
-package com.github.martinambrus.rdforward.client;
+package com.github.martinambrus.rdforward.multiplayer;
 
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.protocol.packet.classic.*;
@@ -136,7 +136,7 @@ public class ClientConnectionHandler extends SimpleChannelInboundHandler<Packet>
         if (id == SpawnPlayerPacket.SELF_ID) {
             System.out.println("Spawned at: (" + (packet.getX() / 32.0) + ", "
                     + (packet.getY() / 32.0) + ", " + (packet.getZ() / 32.0) + ")");
-            // Queue self-teleport so the mixin moves the local player to the server's spawn
+            // Queue self-teleport so the game moves the local player to the server's spawn
             state.queueSelfTeleport(packet.getX(), packet.getY(), packet.getZ());
             return;
         }

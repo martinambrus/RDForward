@@ -12,9 +12,21 @@ allprojects {
         // certain corporate proxies). Falls through to Maven Central otherwise.
         maven {
             url = file("${rootDir}/build/local-repo")
-            metadataSources { artifact() }
+            metadataSources {
+                mavenPom()
+                artifact()
+            }
         }
         mavenCentral()
+        // Android build tools (aapt2, etc.) — required by rd-android when
+        // building with the Android Gradle Plugin.
+        google {
+            content {
+                includeGroupByRegex 'com\\.android.*'
+                includeGroupByRegex 'com\\.google\\.android.*'
+                includeGroupByRegex 'androidx\\..*'
+            }
+        }
         maven {
             url = 'https://maven.fabricmc.net'
             content {
@@ -24,6 +36,15 @@ allprojects {
         maven {
             url = 'https://jitpack.io'
             content { includeGroup 'com.github.Querz' }
+        }
+        // libGDX releases (rd-desktop, rd-android)
+        maven {
+            url = 'https://oss.sonatype.org/content/repositories/releases/'
+            content { includeGroup 'com.badlogicgames.gdx' }
+        }
+        maven {
+            url = 'https://oss.sonatype.org/content/repositories/snapshots/'
+            content { includeGroup 'com.badlogicgames.gdx' }
         }
     }
 }
@@ -89,6 +110,15 @@ ext {
         'org.ow2.asm:asm-commons:9.9.1',
         'org.ow2.asm:asm-tree:9.9.1',
         'org.ow2.asm:asm-util:9.9.1',
+        // libGDX (rd-desktop, rd-android)
+        'com.badlogicgames.gdx:gdx:1.12.1',
+        'com.badlogicgames.gdx:gdx-backend-lwjgl3:1.12.1',
+        'com.badlogicgames.gdx:gdx-platform:1.12.1#natives-desktop',
+        'com.badlogicgames.gdx:gdx-backend-android:1.12.1',
+        'com.badlogicgames.gdx:gdx-platform:1.12.1#natives-armeabi-v7a',
+        'com.badlogicgames.gdx:gdx-platform:1.12.1#natives-arm64-v8a',
+        'com.badlogicgames.gdx:gdx-platform:1.12.1#natives-x86',
+        'com.badlogicgames.gdx:gdx-platform:1.12.1#natives-x86_64',
     ]
 }
 
@@ -159,6 +189,11 @@ task buildAll {
 }
 
 subprojects {
+    // rd-android uses the Android Gradle Plugin instead of the Java plugin.
+    // When building for Android, rd-android applies 'com.android.application'
+    // in its own build.gradle, which conflicts with 'java'. Skip it here.
+    if (project.name == 'rd-android') return
+
     apply plugin: 'java'
 
     sourceCompatibility = JavaVersion.VERSION_21

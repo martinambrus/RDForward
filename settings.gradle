@@ -1,3 +1,11 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
 rootProject.name = 'RDForward'
 
 include 'rd-game'
@@ -5,3 +13,6 @@ include 'rd-protocol'
 include 'rd-world'
 include 'rd-client'
 include 'rd-server'
+include 'rd-render'
+include 'rd-desktop'
+include 'rd-android'

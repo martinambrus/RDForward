@@ -1,4 +1,4 @@
-package com.github.martinambrus.rdforward.client;
+package com.github.martinambrus.rdforward.multiplayer;
 
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.codec.PacketDecoder;
@@ -19,7 +19,7 @@ import io.netty.util.concurrent.DefaultThreadFactory;
 /**
  * Singleton multiplayer client that connects to an RDForward server.
  *
- * Provides a thread-safe API for the game loop (via Mixins) to:
+ * Provides a thread-safe API for the game loop to:
  *   - Connect/disconnect from a server
  *   - Send position updates
  *   - Send block place/break requests
