@@ -1,17 +1,25 @@
 description = 'RDForward Android - Android client using libGDX rendering backend'
 
 // ============================================================================
-// NOTE: This module requires the Android SDK to compile. It uses the standard
-// Gradle Java plugin for structure, but actual Android builds need the
-// Android Gradle Plugin (com.android.application) and an installed SDK.
+// CI-ONLY BUILD FILE
 //
-// To build on a machine with the Android SDK:
-//   1. Set ANDROID_HOME environment variable
-//   2. Replace this build.gradle with the android-specific version
-//   3. Run: ./gradlew :rd-android:assembleDebug
+// This uses the Java plugin so the code compiles in CI without the Android SDK.
+// Three stub files provide the Android/libGDX classes that would normally come
+// from the Android SDK:
+//   - src/main/java/android/os/Bundle.java
+//   - src/main/java/com/badlogic/gdx/backends/android/AndroidApplication.java
+//   - src/main/java/com/badlogic/gdx/backends/android/AndroidApplicationConfiguration.java
 //
-// The source code is structured to be Android-ready. The Java plugin is used
-// here only so the code compiles and is checked for correctness in CI.
+// FOR ACTUAL ANDROID BUILDS, see build.gradle.android in this directory.
+// It has full step-by-step instructions for switching to the Android Gradle
+// Plugin, including what to add to settings.gradle and root build.gradle.
+//
+// Quick start:
+//   cp rd-android/build.gradle.android rd-android/build.gradle
+//   rm rd-android/src/main/java/android/os/Bundle.java
+//   rm rd-android/src/main/java/com/badlogic/gdx/backends/android/AndroidApplication.java
+//   rm rd-android/src/main/java/com/badlogic/gdx/backends/android/AndroidApplicationConfiguration.java
+//   (then follow the settings.gradle / root build.gradle edits in that file)
 // ============================================================================
 
 ext {
