@@ -74,6 +74,7 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
     private boolean isLookDrag; // true once drag exceeds threshold
     private boolean holdDestroyActive; // latched true once hold-to-destroy fires, until touchUp
     private long lastDestroyTime;
+    private boolean suppressTap; // when true, touchUp won't set tapDetected (UI button was hit)
 
     // Thresholds
     private static final float DRAG_THRESHOLD = 40f; // px — beyond this it's a look, not a tap
@@ -128,17 +129,20 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
             long now = System.currentTimeMillis();
             long elapsed = now - touchDownTime;
             // Only fire a tap if the finger stayed still (not a look drag,
-            // not already in hold-destroy mode) and was quick enough.
-            if (!isLookDrag && !holdDestroyActive && elapsed < LONG_PRESS_MS) {
+            // not already in hold-destroy mode), was quick enough,
+            // and wasn't suppressed by a UI button hit.
+            if (!isLookDrag && !holdDestroyActive && !suppressTap && elapsed < LONG_PRESS_MS) {
                 tapDetected = true;
                 Gdx.app.log(TAG, "  → TAP detected (elapsed=" + elapsed + "ms)");
             } else {
                 Gdx.app.log(TAG, "  → no tap: isLookDrag=" + isLookDrag
-                        + " holdDestroy=" + holdDestroyActive + " elapsed=" + elapsed);
+                        + " holdDestroy=" + holdDestroyActive
+                        + " suppressTap=" + suppressTap + " elapsed=" + elapsed);
             }
             lookTouchId = -1;
             isLookDrag = false;
             holdDestroyActive = false;
+            suppressTap = false;
         }
         return true;
     }
@@ -359,9 +363,9 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
         return dy;
     }
 
-    /** Clears any pending tap so it won't also trigger block placement. */
-    public void consumeTap() {
-        tapDetected = false;
+    /** Marks the current touch as a UI interaction so touchUp won't fire a block-placement tap. */
+    public void suppressCurrentTouch() {
+        suppressTap = true;
     }
 
     @Override
