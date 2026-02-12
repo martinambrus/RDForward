@@ -64,7 +64,7 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
     // Screen dimensions for zone calculation
     private static final float MOVE_ZONE_FRACTION = 0.35f; // left 35% of screen
     private static final float MOVE_DEADZONE = 20f; // pixels
-    private static final float LOOK_SENSITIVITY = 0.3f;
+    private static final float LOOK_SENSITIVITY = 0.6f;
 
     // Block interaction state
     private boolean tapDetected;
