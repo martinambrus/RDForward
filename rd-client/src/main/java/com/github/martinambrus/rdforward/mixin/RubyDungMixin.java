@@ -409,14 +409,14 @@ public class RubyDungMixin {
     }
 
     /**
-     * Cancel player ticking while chat input is active.
+     * Cancel player ticking while the menu or chat input is active.
      * Player.tick() uses GLFW.glfwGetKey() polling for WASD/Space/R,
-     * which bypasses our key callback replacement. Cancelling tick()
-     * prevents all movement while typing.
+     * which bypasses our event-based input suppression. Cancelling tick()
+     * prevents all movement while the menu is shown or while typing.
      */
     @Inject(method = "tick", at = @At("HEAD"), cancellable = true)
     private void onTick(CallbackInfo ci) {
-        if (ChatInput.isActive()) {
+        if (rdforward$showMenu || ChatInput.isActive()) {
             ci.cancel();
         }
     }
