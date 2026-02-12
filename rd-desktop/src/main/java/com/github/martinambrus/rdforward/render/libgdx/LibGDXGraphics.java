@@ -564,7 +564,7 @@ public class LibGDXGraphics implements RDGraphics {
 
         Mesh mesh = new Mesh(false, triVertCount, 0,
                 new VertexAttribute(Usage.Position, 3, "a_position"),
-                new VertexAttribute(Usage.ColorPacked, 4, "a_color"),
+                new VertexAttribute(Usage.ColorUnpacked, 4, "a_color"),
                 new VertexAttribute(Usage.TextureCoordinates, 2, "a_texCoord0"));
         mesh.setVertices(triVerts, 0, triVertCount * 9);
         mesh.render(shader, GL20.GL_TRIANGLES);
@@ -574,7 +574,7 @@ public class LibGDXGraphics implements RDGraphics {
     private void renderImmediateLines() {
         Mesh mesh = new Mesh(false, imVertexCount, 0,
                 new VertexAttribute(Usage.Position, 3, "a_position"),
-                new VertexAttribute(Usage.ColorPacked, 4, "a_color"),
+                new VertexAttribute(Usage.ColorUnpacked, 4, "a_color"),
                 new VertexAttribute(Usage.TextureCoordinates, 2, "a_texCoord0"));
         mesh.setVertices(imVertices, 0, imVertexCount * 9);
         mesh.render(shader, GL20.GL_LINES);
