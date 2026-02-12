@@ -562,23 +562,27 @@ public class LibGDXGraphics implements RDGraphics {
             System.arraycopy(imVertices, src + 27, triVerts, dst + 45, 9);
         }
 
-        Mesh mesh = new Mesh(false, triVertCount, 0,
-                new VertexAttribute(Usage.Position, 3, "a_position"),
-                new VertexAttribute(Usage.ColorUnpacked, 4, "a_color"),
-                new VertexAttribute(Usage.TextureCoordinates, 2, "a_texCoord0"));
+        Mesh mesh = new Mesh(false, triVertCount, 0, immediateVertexAttribs());
         mesh.setVertices(triVerts, 0, triVertCount * 9);
         mesh.render(shader, GL20.GL_TRIANGLES);
         mesh.dispose();
     }
 
     private void renderImmediateLines() {
-        Mesh mesh = new Mesh(false, imVertexCount, 0,
-                new VertexAttribute(Usage.Position, 3, "a_position"),
-                new VertexAttribute(Usage.ColorUnpacked, 4, "a_color"),
-                new VertexAttribute(Usage.TextureCoordinates, 2, "a_texCoord0"));
+        Mesh mesh = new Mesh(false, imVertexCount, 0, immediateVertexAttribs());
         mesh.setVertices(imVertices, 0, imVertexCount * 9);
         mesh.render(shader, GL20.GL_LINES);
         mesh.dispose();
+    }
+
+    /** Vertex attributes for immediate-mode draws.
+     *  Color is explicitly GL_FLOAT to avoid libGDX treating it as packed bytes. */
+    private static VertexAttribute[] immediateVertexAttribs() {
+        return new VertexAttribute[] {
+            new VertexAttribute(Usage.Position, 3, "a_position"),
+            new VertexAttribute(Usage.ColorUnpacked, 4, GL20.GL_FLOAT, false, "a_color"),
+            new VertexAttribute(Usage.TextureCoordinates, 2, "a_texCoord0")
+        };
     }
 
     // ── Shader uniform upload ──────────────────────────────────────────

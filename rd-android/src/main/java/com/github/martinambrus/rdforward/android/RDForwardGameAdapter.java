@@ -161,13 +161,16 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
             if (level.isSolidTile(bx, by, bz)) {
                 int face = 1; // default to top
                 if (prevBx != Integer.MIN_VALUE) {
+                    // The face hit is the one BETWEEN the previous air block
+                    // and this solid block — i.e. the face of the solid block
+                    // that faces toward where the ray came from.
                     int dx = bx - prevBx, dy = by - prevBy, dz = bz - prevBz;
-                    if (dy < 0) face = 0;      // bottom
-                    else if (dy > 0) face = 1;  // top
-                    else if (dz < 0) face = 2;  // front (-z)
-                    else if (dz > 0) face = 3;  // back (+z)
-                    else if (dx < 0) face = 4;  // left (-x)
-                    else if (dx > 0) face = 5;  // right (+x)
+                    if (dy < 0) face = 1;      // ray came from above → top face
+                    else if (dy > 0) face = 0;  // ray came from below → bottom face
+                    else if (dz < 0) face = 3;  // ray came from +z → back face
+                    else if (dz > 0) face = 2;  // ray came from -z → front face
+                    else if (dx < 0) face = 5;  // ray came from +x → right face
+                    else if (dx > 0) face = 4;  // ray came from -x → left face
                 }
                 hitResult = new HitResult(bx, by, bz, 0, face);
                 return;
