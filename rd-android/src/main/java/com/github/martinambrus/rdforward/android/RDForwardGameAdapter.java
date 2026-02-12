@@ -453,6 +453,9 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
 
     // ── Name Tags ────────────────────────────────────────────────────
 
+    /** Reference distance (blocks) at which the nametag has its base size. */
+    private static final float NAMETAG_REF_DIST = 5.0f;
+
     private void renderNameTags() {
         Collection<RemotePlayer> players = MultiplayerState.getInstance().getRemotePlayers();
         if (players.isEmpty()) return;
@@ -462,13 +465,12 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
         float[] proj = graphics.getProjectionMatrix();
         int screenW = Gdx.graphics.getWidth();
         int screenH = Gdx.graphics.getHeight();
-        float scale = Math.max(1f, screenH / 480f);
+        float baseScale = Math.max(1f, screenH / 480f);
 
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
         Gdx.gl.glDisable(GL20.GL_CULL_FACE);
         spriteBatch.getProjectionMatrix().setToOrtho2D(0, 0, screenW, screenH);
         spriteBatch.begin();
-        font.getData().setScale(scale * 1.0f);
 
         for (RemotePlayer p : players) {
             String name = p.getName();
@@ -483,10 +485,15 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
             float[] screen = projectToScreen(wx, tagWorldY, wz, mv, proj, screenW, screenH);
             if (screen == null) continue; // behind camera
 
+            // Scale font by distance so it shrinks with perspective like desktop
+            float dist = screen[2];
+            float distScale = Math.min(2.0f, Math.max(0.15f, NAMETAG_REF_DIST / dist));
+            font.getData().setScale(baseScale * distScale);
+
             glyphLayout.setText(font, name);
             float textX = screen[0] - glyphLayout.width / 2;
             float textY = screen[1] + glyphLayout.height / 2;
-            float pad = 2 * scale;
+            float pad = 2 * baseScale * distScale;
 
             // Background
             spriteBatch.setColor(0, 0, 0, 0.4f);
@@ -511,7 +518,11 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
         Gdx.gl.glEnable(GL20.GL_CULL_FACE);
     }
 
-    /** Project a 3D world point to 2D screen coordinates (y-up). Returns null if behind camera. */
+    /**
+     * Project a 3D world point to 2D screen coordinates (y-up).
+     * Returns null if behind camera.
+     * Result: {screenX, screenY, eyeSpaceDistance}.
+     */
     private static float[] projectToScreen(float x, float y, float z,
                                            float[] mv, float[] proj,
                                            int screenW, int screenH) {
@@ -525,10 +536,14 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
         float cy = proj[1]*ex + proj[5]*ey + proj[9]*ez  + proj[13]*ew;
         float cw = proj[3]*ex + proj[7]*ey + proj[11]*ez + proj[15]*ew;
         if (cw <= 0) return null;
+        // Eye-space distance
+        float dist = (float) Math.sqrt(ex * ex + ey * ey + ez * ez);
+        if (dist < 0.1f) dist = 0.1f;
         // NDC → screen (y-up for libGDX SpriteBatch)
         return new float[]{
             (cx / cw * 0.5f + 0.5f) * screenW,
-            (cy / cw * 0.5f + 0.5f) * screenH
+            (cy / cw * 0.5f + 0.5f) * screenH,
+            dist
         };
     }
 
