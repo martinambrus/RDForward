@@ -1,7 +1,13 @@
 package com.github.martinambrus.rdforward.android.game;
 
+import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.files.FileHandle;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
 public class Level {
     public final int width;
@@ -27,6 +33,34 @@ public class Level {
             }
         }
         this.calcLightDepths(0, 0, w, h);
+        this.load();
+    }
+
+    public void load() {
+        try {
+            FileHandle fh = Gdx.files.local("level.dat");
+            if (!fh.exists()) return;
+            DataInputStream dis = new DataInputStream(
+                    new GZIPInputStream(fh.read()));
+            dis.readFully(this.blocks);
+            this.calcLightDepths(0, 0, this.width, this.height);
+            for (LevelListener l : this.levelListeners) l.allChanged();
+            dis.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void save() {
+        try {
+            FileHandle fh = Gdx.files.local("level.dat");
+            DataOutputStream dos = new DataOutputStream(
+                    new GZIPOutputStream(fh.write(false)));
+            dos.write(this.blocks);
+            dos.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     public void calcLightDepths(int x0, int y0, int x1, int y1) {

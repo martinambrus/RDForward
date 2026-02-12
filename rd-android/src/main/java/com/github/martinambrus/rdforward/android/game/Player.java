@@ -13,6 +13,11 @@ public class Player {
     public AABB bb;
     public boolean onGround = false;
 
+    // Auto-jump state
+    private static final int AUTO_JUMP_DELAY_TICKS = 8; // ~133ms at 60 TPS
+    private int autoJumpBlockedTicks;
+    private float lastXaOrg, lastXa, lastZaOrg, lastZa;
+
     public Player(Level level, RDInput input) {
         this.level = level;
         this.input = input;
@@ -47,7 +52,8 @@ public class Player {
         if (input.isKeyDown(82)) resetPos();
 
         // W/UP
-        if (input.isKeyDown(87) || input.isKeyDown(265)) ya--;
+        boolean movingForward = input.isKeyDown(87) || input.isKeyDown(265);
+        if (movingForward) ya--;
         // S/DOWN
         if (input.isKeyDown(83) || input.isKeyDown(264)) ya++;
         // A/LEFT
@@ -58,6 +64,18 @@ public class Player {
         moveRelative(xa, ya, onGround ? 0.02F : 0.005F);
         this.yd -= 0.005F;
         move(this.xd, this.yd, this.zd);
+
+        // Auto-jump: only when moving forward, on ground, and blocked
+        boolean blocked = lastXaOrg != lastXa || lastZaOrg != lastZa;
+        if (this.onGround && movingForward && blocked) {
+            autoJumpBlockedTicks++;
+            if (autoJumpBlockedTicks >= AUTO_JUMP_DELAY_TICKS) {
+                tryAutoJump();
+            }
+        } else {
+            autoJumpBlockedTicks = 0;
+        }
+
         this.xd *= 0.91F; this.yd *= 0.98F; this.zd *= 0.91F;
         if (onGround) { this.xd *= 0.8F; this.zd *= 0.8F; }
     }
@@ -75,35 +93,36 @@ public class Player {
         if (xaOrg != xa) this.xd = 0;
         if (yaOrg != ya) this.yd = 0;
         if (zaOrg != za) this.zd = 0;
-
-        // Auto-jump: when horizontal movement is blocked while on ground,
-        // check if stepping up 1 block would unblock it (Minecraft-style).
-        if (this.onGround && (xaOrg != xa || zaOrg != za)) {
-            // Check headroom: can the player move up by 1 block?
-            List<AABB> ceilCubes = level.getCubes(bb.expand(0, 1.0F, 0));
-            float testUp = 1.0F;
-            for (AABB c : ceilCubes) testUp = c.clipYCollide(bb, testUp);
-            if (testUp > 0.99F) {
-                // Simulate the player's bb 1 block higher
-                AABB steppedBb = new AABB(bb.x0, bb.y0 + 1.0F, bb.z0,
-                                          bb.x1, bb.y1 + 1.0F, bb.z1);
-                List<AABB> stepCubes = level.getCubes(
-                        steppedBb.expand(xaOrg, 0, zaOrg));
-                float testXa = xaOrg;
-                float testZa = zaOrg;
-                for (AABB c : stepCubes) testXa = c.clipXCollide(steppedBb, testXa);
-                for (AABB c : stepCubes) testZa = c.clipZCollide(steppedBb, testZa);
-                // If stepping up allows more horizontal movement, jump
-                if (Math.abs(testXa) > Math.abs(xa) + 0.001F
-                        || Math.abs(testZa) > Math.abs(za) + 0.001F) {
-                    this.yd = 0.12F;
-                }
-            }
-        }
-
+        // Store collision info for auto-jump check in tick()
+        this.lastXaOrg = xaOrg; this.lastXa = xa;
+        this.lastZaOrg = zaOrg; this.lastZa = za;
         this.x = (bb.x0 + bb.x1) / 2.0F;
         this.y = bb.y0 + 1.62F;
         this.z = (bb.z0 + bb.z1) / 2.0F;
+    }
+
+    private void tryAutoJump() {
+        // Check headroom: can the player move up by 1 block?
+        List<AABB> ceilCubes = level.getCubes(bb.expand(0, 1.0F, 0));
+        float testUp = 1.0F;
+        for (AABB c : ceilCubes) testUp = c.clipYCollide(bb, testUp);
+        if (testUp > 0.99F) {
+            // Simulate the player's bb 1 block higher
+            AABB steppedBb = new AABB(bb.x0, bb.y0 + 1.0F, bb.z0,
+                                      bb.x1, bb.y1 + 1.0F, bb.z1);
+            List<AABB> stepCubes = level.getCubes(
+                    steppedBb.expand(lastXaOrg, 0, lastZaOrg));
+            float testXa = lastXaOrg;
+            float testZa = lastZaOrg;
+            for (AABB c : stepCubes) testXa = c.clipXCollide(steppedBb, testXa);
+            for (AABB c : stepCubes) testZa = c.clipZCollide(steppedBb, testZa);
+            // If stepping up allows more horizontal movement, jump
+            if (Math.abs(testXa) > Math.abs(lastXa) + 0.001F
+                    || Math.abs(testZa) > Math.abs(lastZa) + 0.001F) {
+                this.yd = 0.12F;
+                autoJumpBlockedTicks = 0;
+            }
+        }
     }
 
     public void moveRelative(float xa, float za, float speed) {

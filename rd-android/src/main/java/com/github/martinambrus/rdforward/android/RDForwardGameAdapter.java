@@ -249,7 +249,7 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
 
     @Override
     public void pause() {
-        // Save state if needed
+        if (level != null) level.save();
     }
 
     @Override
@@ -259,6 +259,7 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
 
     @Override
     public void dispose() {
+        if (level != null) level.save();
         if (graphics != null) graphics.dispose();
     }
 
