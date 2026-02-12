@@ -399,7 +399,13 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
         int h = Gdx.graphics.getHeight();
         float scale = Math.max(1f, h / 480f);
 
-        // SpriteBatch changes GL state, so we need to save/restore
+        // Transition from 3D (LibGDXGraphics shader) to 2D (SpriteBatch shader):
+        // SpriteBatch doesn't disable depth test or cull face, so quads can get
+        // rejected by leftover 3D state. Set a clean 2D baseline explicitly.
+        Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
+        Gdx.gl.glDisable(GL20.GL_CULL_FACE);
+        Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0);
+
         spriteBatch.getProjectionMatrix().setToOrtho2D(0, 0, w, h);
         spriteBatch.begin();
 
@@ -424,9 +430,9 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
         font.getData().setScale(1f);
         spriteBatch.end();
 
-        // Restore GL state for next frame's 3D rendering
-        graphics.enableCullFace();
-        graphics.enableDepthTest();
+        // Restore 3D state for next frame
+        Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
+        Gdx.gl.glEnable(GL20.GL_CULL_FACE);
     }
 
     // ── Camera / Picking / Input (unchanged) ────────────────────────
