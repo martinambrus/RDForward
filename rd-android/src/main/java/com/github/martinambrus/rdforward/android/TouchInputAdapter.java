@@ -37,17 +37,19 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
     // Key-repeat events arrive as discrete keyDown+keyUp pairs every ~30 ms,
     // but only after Android's initial repeat delay (~500 ms).
     //
-    // Strategy: use a two-tier bridge.
-    //  • Initial press (1 keyDown seen): bridge for 600 ms to cover the repeat delay.
-    //  • Once repeats start (2+ keyDowns seen): bridge for only 80 ms so that
-    //    actual key release is detected quickly (~80 ms after last repeat pulse).
+    // Strategy: "sticky" keyHeld with two-tier timeout.
+    //  • keyDown sets keyHeld = true and refreshes keyDownTime.
+    //  • keyUp with near-zero hold does NOT clear keyHeld (suspected batch).
+    //  • update() (once per frame) clears keyHeld if no keyDown has arrived
+    //    within a timeout window:
+    //      – Initial press (1 keyDown): 600 ms timeout covers the repeat delay.
+    //      – Once repeats flow (2+ keyDowns): 80 ms timeout for quick release.
     private final boolean[] keyHeld = new boolean[256]; // indexed by libGDX keycode
     private final long[] keyDownTime = new long[256];
-    private final long[] keyUpTime = new long[256];
-    private final int[] keyDownCount = new int[256]; // consecutive keyDown events since last release
+    private final int[] keyDownCount = new int[256]; // consecutive keyDown events since last idle
     private static final long BATCH_THRESHOLD_MS = 80;  // keyUp within this of keyDown = same-frame batch
-    private static final long INITIAL_BRIDGE_MS = 600;   // covers Android key-repeat delay (~500 ms)
-    private static final long REPEAT_BRIDGE_MS = 80;     // spans gap between repeat pulses (~30 ms)
+    private static final long INITIAL_TIMEOUT_MS = 600;  // covers Android key-repeat delay (~500 ms)
+    private static final long REPEAT_TIMEOUT_MS = 80;    // spans gap between repeat pulses (~30 ms)
 
     // Camera look accumulation
     private float lookDX, lookDY;
@@ -183,11 +185,18 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
         if (keycode == Input.Keys.F6) { f6JustPressed = true; return true; }
         // Track for robust held-key detection
         if (keycode >= 0 && keycode < keyHeld.length) {
+            long now = System.currentTimeMillis();
+            long gap = now - keyDownTime[keycode];
+            // Fresh press if key was idle (keyHeld=false) or gap exceeds initial timeout
+            if (!keyHeld[keycode] || gap > INITIAL_TIMEOUT_MS) {
+                keyDownCount[keycode] = 1;
+            } else {
+                keyDownCount[keycode]++;
+            }
             keyHeld[keycode] = true;
-            keyDownTime[keycode] = System.currentTimeMillis();
-            keyDownCount[keycode]++;
-            Gdx.app.log(TAG, "keyDown code=" + keycode + " t=" + keyDownTime[keycode]
-                    + " count=" + keyDownCount[keycode]);
+            keyDownTime[keycode] = now;
+            Gdx.app.log(TAG, "keyDown code=" + keycode + " t=" + now
+                    + " count=" + keyDownCount[keycode] + " gap=" + gap);
         }
         return true;
     }
@@ -196,11 +205,19 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
     public boolean keyUp(int keycode) {
         if (keycode == Input.Keys.CONTROL_LEFT || keycode == Input.Keys.CONTROL_RIGHT) ctrlDown = false;
         if (keycode >= 0 && keycode < keyHeld.length) {
-            keyHeld[keycode] = false;
-            keyUpTime[keycode] = System.currentTimeMillis();
-            long held = keyUpTime[keycode] - keyDownTime[keycode];
-            Gdx.app.log(TAG, "keyUp   code=" + keycode + " t=" + keyUpTime[keycode]
-                    + " heldFor=" + held + "ms");
+            long now = System.currentTimeMillis();
+            long held = now - keyDownTime[keycode];
+            if (held >= BATCH_THRESHOLD_MS) {
+                // Genuine hold-then-release — clear immediately
+                keyHeld[keycode] = false;
+                keyDownCount[keycode] = 0;
+                Gdx.app.log(TAG, "keyUp   code=" + keycode + " heldFor=" + held
+                        + "ms → CLEARED (genuine release)");
+            } else {
+                // Suspected same-frame batch — keep keyHeld, let update() timeout
+                Gdx.app.log(TAG, "keyUp   code=" + keycode + " heldFor=" + held
+                        + "ms → STICKY (batch suspected)");
+            }
         }
         return true;
     }
@@ -257,12 +274,28 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
         // Keep physical key timestamps fresh via polling
         pollPhysicalKeys();
 
+        // Timeout-clear sticky keys that haven't received a fresh keyDown.
+        // Initial press (count=1): long timeout covers Android key-repeat delay.
+        // Once repeats are flowing (count>=2): short timeout for fast release detection.
+        long now = System.currentTimeMillis();
+        for (int gk : POLL_GDX_KEYS) {
+            if (keyHeld[gk]) {
+                long sinceDown = now - keyDownTime[gk];
+                long timeout = keyDownCount[gk] <= 1 ? INITIAL_TIMEOUT_MS : REPEAT_TIMEOUT_MS;
+                if (sinceDown >= timeout) {
+                    keyHeld[gk] = false;
+                    keyDownCount[gk] = 0;
+                    Gdx.app.log(TAG, "update: code=" + gk + " TIMED OUT after " + sinceDown
+                            + "ms (timeout=" + timeout + " count was " + keyDownCount[gk] + ")");
+                }
+            }
+        }
+
         // Continuous hold-to-destroy: fires periodically while the finger
         // is held on the right side for >= LONG_PRESS_MS.
         // Once activated (holdDestroyActive), keeps firing even if the finger
         // moves (so you can look around while destroying).
         if (lookTouchId != -1 && (!isLookDrag || holdDestroyActive)) {
-            long now = System.currentTimeMillis();
             long elapsed = now - touchDownTime;
             if (elapsed >= LONG_PRESS_MS && now - lastDestroyTime >= DESTROY_INTERVAL_MS) {
                 longPressDetected = true;
@@ -277,45 +310,11 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
 
     // ── RDInput implementation ─────────────────────────────────────────
 
-    // Throttle isKeyDown logging: log at most once per key per 500ms
-    private final long[] lastLogTime = new long[256];
-
     @Override
     public boolean isKeyDown(int keyCode) {
         int gdxKey = toGdxKey(keyCode);
         if (gdxKey != -1 && gdxKey < keyHeld.length) {
-            long now = System.currentTimeMillis();
-            boolean held = keyHeld[gdxKey];
-            boolean polled = Gdx.input.isKeyPressed(gdxKey);
-
-            if (held || polled) {
-                if (now - lastLogTime[gdxKey] > 500) {
-                    lastLogTime[gdxKey] = now;
-                    Gdx.app.log(TAG, "isKeyDown(glfw=" + keyCode + " gdx=" + gdxKey + ")=TRUE"
-                            + " held=" + held + " polled=" + polled);
-                }
-                return true;
-            }
-
-            // Two-tier bridge for instant keyDown+keyUp batching
-            long holdDuration = keyUpTime[gdxKey] - keyDownTime[gdxKey];
-            if (holdDuration >= 0 && holdDuration < BATCH_THRESHOLD_MS) {
-                long sincePress = now - keyDownTime[gdxKey];
-                // Initial press: long bridge to cover Android repeat delay (~500ms)
-                // After repeats start: short bridge to detect release quickly
-                long bridgeMs = keyDownCount[gdxKey] <= 1 ? INITIAL_BRIDGE_MS : REPEAT_BRIDGE_MS;
-                if (sincePress < bridgeMs) {
-                    if (now - lastLogTime[gdxKey] > 500) {
-                        lastLogTime[gdxKey] = now;
-                        Gdx.app.log(TAG, "isKeyDown(glfw=" + keyCode + " gdx=" + gdxKey + ")=TRUE"
-                                + " BRIDGED count=" + keyDownCount[gdxKey]
-                                + " bridgeMs=" + bridgeMs + " sincePress=" + sincePress);
-                    }
-                    return true;
-                }
-                // Bridge expired — key truly released
-                keyDownCount[gdxKey] = 0;
-            }
+            if (keyHeld[gdxKey] || Gdx.input.isKeyPressed(gdxKey)) return true;
         }
         // Fall back to touch zone virtual keys
         return switch (keyCode) {
