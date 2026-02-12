@@ -178,6 +178,7 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
         if (keycode >= 0 && keycode < keyHeld.length) {
             keyHeld[keycode] = true;
             keyDownTime[keycode] = System.currentTimeMillis();
+            Gdx.app.log(TAG, "keyDown code=" + keycode + " t=" + keyDownTime[keycode]);
         }
         return true;
     }
@@ -188,6 +189,9 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
         if (keycode >= 0 && keycode < keyHeld.length) {
             keyHeld[keycode] = false;
             keyUpTime[keycode] = System.currentTimeMillis();
+            long held = keyUpTime[keycode] - keyDownTime[keycode];
+            Gdx.app.log(TAG, "keyUp   code=" + keycode + " t=" + keyUpTime[keycode]
+                    + " heldFor=" + held + "ms");
         }
         return true;
     }
@@ -228,7 +232,11 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
     private void pollPhysicalKeys() {
         long now = System.currentTimeMillis();
         for (int gk : POLL_GDX_KEYS) {
-            if (Gdx.input.isKeyPressed(gk)) {
+            boolean pressed = Gdx.input.isKeyPressed(gk);
+            if (pressed) {
+                if (!keyHeld[gk]) {
+                    Gdx.app.log(TAG, "poll: code=" + gk + " isKeyPressed=TRUE but keyHeld was FALSE → fixing");
+                }
                 keyHeld[gk] = true;
                 keyDownTime[gk] = now;
             }
@@ -260,20 +268,32 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
 
     // ── RDInput implementation ─────────────────────────────────────────
 
+    // Throttle isKeyDown logging: log at most once per key per 500ms
+    private final long[] lastLogTime = new long[256];
+
     @Override
     public boolean isKeyDown(int keyCode) {
         int gdxKey = toGdxKey(keyCode);
         if (gdxKey != -1 && gdxKey < keyHeld.length) {
-            // 1. Event tracking says key is held (no keyUp received yet)
-            if (keyHeld[gdxKey]) return true;
-            // 2. libGDX polling (queries actual hardware state)
-            if (Gdx.input.isKeyPressed(gdxKey)) return true;
-            // 3. Both say key is up.  If keyUp arrived suspiciously fast after
-            //    keyDown (< BATCH_THRESHOLD_MS), it was likely same-frame event
-            //    batching, not a real release — bridge until key-repeat starts.
+            long now = System.currentTimeMillis();
+            boolean held = keyHeld[gdxKey];
+            boolean polled = Gdx.input.isKeyPressed(gdxKey);
             long holdDuration = keyUpTime[gdxKey] - keyDownTime[gdxKey];
-            if (holdDuration >= 0 && holdDuration < BATCH_THRESHOLD_MS
-                    && System.currentTimeMillis() - keyDownTime[gdxKey] < KEY_REPEAT_BRIDGE_MS) return true;
+            long sincePress = now - keyDownTime[gdxKey];
+            boolean bridged = holdDuration >= 0 && holdDuration < BATCH_THRESHOLD_MS
+                    && sincePress < KEY_REPEAT_BRIDGE_MS;
+
+            boolean result = held || polled || bridged;
+
+            // Log at most every 500ms per key, when there's something interesting
+            if (result && now - lastLogTime[gdxKey] > 500) {
+                lastLogTime[gdxKey] = now;
+                Gdx.app.log(TAG, "isKeyDown(glfw=" + keyCode + " gdx=" + gdxKey + ")=TRUE"
+                        + " held=" + held + " polled=" + polled + " bridged=" + bridged
+                        + " holdDur=" + holdDuration + " sincePress=" + sincePress);
+            }
+
+            if (result) return true;
         }
         // Fall back to touch zone virtual keys
         return switch (keyCode) {
