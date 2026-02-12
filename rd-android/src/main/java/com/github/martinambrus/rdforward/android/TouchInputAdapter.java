@@ -10,12 +10,13 @@ import com.github.martinambrus.rdforward.render.RDInput;
  * <p>
  * Touch mapping:
  * <ul>
- *   <li>Right-side drag → camera look (mouse look)</li>
+ *   <li>Right-side drag → camera look (only starts after finger moves past drag threshold)</li>
  *   <li>Left-side drag → movement (WASD)</li>
- *   <li>Tap (short, still touch) → place block (button 0)</li>
- *   <li>Long press (long, still touch) → destroy block (button 1)</li>
+ *   <li>Tap (short, still touch on right side) → place block (button 0)</li>
+ *   <li>Hold (still touch held ≥ 500 ms) → continuously destroy blocks (button 1)</li>
  *   <li>Two-finger tap → jump (space)</li>
  * </ul>
+ * Movement and block interaction work simultaneously via multi-touch.
  */
 public class TouchInputAdapter extends InputAdapter implements RDInput {
 
@@ -36,13 +37,18 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
     private static final float MOVE_DEADZONE = 20f; // pixels
     private static final float LOOK_SENSITIVITY = 0.3f;
 
-    // Simulated mouse state
+    // Block interaction state
     private boolean tapDetected;
     private boolean longPressDetected;
     private long touchDownTime;
     private float lookDragDist; // accumulated drag distance in pixels
-    private static final float DRAG_THRESHOLD = 15f; // px — beyond this it's a look, not a tap
+    private boolean isLookDrag; // true once drag exceeds threshold
+    private long lastDestroyTime;
+
+    // Thresholds
+    private static final float DRAG_THRESHOLD = 40f; // px — beyond this it's a look, not a tap
     private static final long LONG_PRESS_MS = 500;
+    private static final long DESTROY_INTERVAL_MS = 250; // continuous destroy rate
 
     @Override
     public boolean touchDown(int screenX, int screenY, int pointer, int button) {
@@ -61,6 +67,7 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
             lookLastY = screenY;
             touchDownTime = System.currentTimeMillis();
             lookDragDist = 0;
+            isLookDrag = false;
         }
         return true;
     }
@@ -72,17 +79,17 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
             keyW = keyA = keyS = keyD = false;
         }
         if (pointer == lookTouchId) {
-            // Only register tap/long-press if the finger stayed mostly still.
-            // If the user dragged to look around, it's not a block interaction.
-            if (lookDragDist < DRAG_THRESHOLD) {
+            // Only fire a tap if the finger stayed still (not a look drag)
+            // and was held for less than the long-press threshold.
+            // Long-press (destroy) is handled continuously in update(), not here.
+            if (!isLookDrag) {
                 long elapsed = System.currentTimeMillis() - touchDownTime;
                 if (elapsed < LONG_PRESS_MS) {
                     tapDetected = true; // short still touch = place block
-                } else {
-                    longPressDetected = true; // long still touch = destroy block
                 }
             }
             lookTouchId = -1;
+            isLookDrag = false;
         }
         return true;
     }
@@ -101,8 +108,18 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
             float dx = screenX - lookLastX;
             float dy = screenY - lookLastY;
             lookDragDist += (float) Math.sqrt(dx * dx + dy * dy);
-            lookDX += dx * LOOK_SENSITIVITY;
-            lookDY += dy * LOOK_SENSITIVITY;
+
+            if (!isLookDrag && lookDragDist >= DRAG_THRESHOLD) {
+                isLookDrag = true;
+            }
+
+            // Only rotate camera once we know this is a look drag,
+            // so taps don't jitter the camera.
+            if (isLookDrag) {
+                lookDX += dx * LOOK_SENSITIVITY;
+                lookDY += dy * LOOK_SENSITIVITY;
+            }
+
             lookLastX = screenX;
             lookLastY = screenY;
         }
@@ -112,10 +129,18 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
     /** Called once per frame to process touch state. */
     public void update() {
         // Two-finger tap → jump
-        if (Gdx.input.isTouched(0) && Gdx.input.isTouched(1)) {
-            keySpace = true;
-        } else {
-            keySpace = false;
+        keySpace = Gdx.input.isTouched(0) && Gdx.input.isTouched(1);
+
+        // Continuous hold-to-destroy: fires periodically while the finger
+        // is held still on the right side for >= LONG_PRESS_MS.
+        // This works alongside movement (different pointer).
+        if (lookTouchId != -1 && !isLookDrag) {
+            long now = System.currentTimeMillis();
+            long elapsed = now - touchDownTime;
+            if (elapsed >= LONG_PRESS_MS && now - lastDestroyTime >= DESTROY_INTERVAL_MS) {
+                longPressDetected = true;
+                lastDestroyTime = now;
+            }
         }
     }
 
