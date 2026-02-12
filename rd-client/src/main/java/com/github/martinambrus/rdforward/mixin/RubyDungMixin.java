@@ -143,6 +143,16 @@ public class RubyDungMixin {
                 mouseGrabbed = false;
             }
 
+            // Sync interpolation positions so the camera stays stable.
+            // tick() is cancelled during menu (to block WASD), but that
+            // also skips the xo=x/yo=y/zo=z sync at the start of
+            // Player.tick(), causing moveCameraToPlayer() to jitter.
+            if (player != null) {
+                player.xo = player.x;
+                player.yo = player.y;
+                player.zo = player.z;
+            }
+
             // Process key events for menu selection
             while (!keyEvents.isEmpty()) {
                 int[] event = keyEvents.poll();
