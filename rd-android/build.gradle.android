@@ -99,7 +99,14 @@ configurations { natives }
 dependencies {
     // Our rendering abstraction layer
     implementation project(':rd-render')
-    implementation project(':rd-desktop')
+    // rd-desktop provides the shared LibGDXGraphics implementation.
+    // Exclude its LWJGL / desktop-native transitive deps — Android uses
+    // gdx-backend-android instead.
+    implementation(project(':rd-desktop')) {
+        exclude group: 'com.badlogicgames.gdx', module: 'gdx-backend-lwjgl3'
+        exclude group: 'com.badlogicgames.gdx', module: 'gdx-platform'
+        exclude group: 'org.lwjgl'
+    }
 
     // Networking (Netty works unchanged on Android)
     implementation project(':rd-protocol')
