@@ -34,7 +34,7 @@ public class ChatRenderer {
     private static final int MAX_VISIBLE = 10;
 
     /** Font for chat text. */
-    private static final Font FONT = new Font("SansSerif", Font.PLAIN, 12);
+    private static final Font FONT = new Font("SansSerif", Font.BOLD, 14);
 
     /** All recent messages with timestamps. */
     private static final List<ChatEntry> messages = new ArrayList<>();
@@ -137,7 +137,7 @@ public class ChatRenderer {
 
         // Draw semi-transparent background
         GL11.glDisable(GL11.GL_TEXTURE_2D);
-        GL11.glColor4f(0.0f, 0.0f, 0.0f, 0.3f * minAlpha);
+        GL11.glColor4f(0.0f, 0.0f, 0.0f, 0.5f * minAlpha);
         GL11.glBegin(GL11.GL_QUADS);
         GL11.glVertex2f(x - 2, y - 2);
         GL11.glVertex2f(x + texWidth + 2, y - 2);
