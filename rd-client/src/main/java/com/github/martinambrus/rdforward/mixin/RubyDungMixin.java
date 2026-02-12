@@ -113,7 +113,10 @@ public class RubyDungMixin {
 
         // Parse server settings from system properties (set by CLI flags or -D)
         String serverProp = System.getProperty("rdforward.server", "");
-        rdforward$username = System.getProperty("rdforward.username", "");
+        String usernameProp = System.getProperty("rdforward.username");
+        if (usernameProp != null) {
+            rdforward$username = usernameProp;
+        }
         if (!serverProp.isEmpty()) {
             if (serverProp.contains(":")) {
                 String[] parts = serverProp.split(":", 2);
