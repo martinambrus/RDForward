@@ -84,9 +84,12 @@ android {
         }
     }
 
-    // Exclude desktop-native metadata that may leak in through transitive deps
+    // LWJGL desktop-native files leak in transitively via rd-desktop.
+    // Use pickFirsts to resolve duplicate conflicts at merge time, and
+    // excludes to keep them out of the final APK.
     packaging {
         resources {
+            pickFirsts += ['META-INF/**']
             excludes += ['META-INF/macos/**', 'META-INF/linux/**', 'META-INF/windows/**']
         }
     }
