@@ -239,6 +239,7 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
                 toggleMP = true;
             } else if (chatOverlay.isChatButtonTapped(Gdx.input.getX(), Gdx.input.getY())) {
                 chatOverlay.openChatInput();
+                touchInput.consumeTap(); // prevent the tap from also placing a block
             }
         }
         // T key opens chat (physical keyboard)

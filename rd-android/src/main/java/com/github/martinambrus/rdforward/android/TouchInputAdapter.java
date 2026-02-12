@@ -359,6 +359,11 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
         return dy;
     }
 
+    /** Clears any pending tap so it won't also trigger block placement. */
+    public void consumeTap() {
+        tapDetected = false;
+    }
+
     @Override
     public boolean isMouseButtonDown(int button) {
         if (button == 0) {
