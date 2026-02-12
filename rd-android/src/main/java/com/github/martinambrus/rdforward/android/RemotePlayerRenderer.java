@@ -1,7 +1,7 @@
 package com.github.martinambrus.rdforward.android;
 
-import com.github.martinambrus.rdforward.android.multiplayer.MultiplayerState;
-import com.github.martinambrus.rdforward.android.multiplayer.RemotePlayer;
+import com.github.martinambrus.rdforward.multiplayer.MultiplayerState;
+import com.github.martinambrus.rdforward.multiplayer.RemotePlayer;
 import com.github.martinambrus.rdforward.render.BlendFactor;
 import com.github.martinambrus.rdforward.render.libgdx.LibGDXGraphics;
 
@@ -43,10 +43,11 @@ public class RemotePlayerRenderer {
     }
 
     private static void renderPlayer(LibGDXGraphics graphics, RemotePlayer player) {
-        // Convert fixed-point (blocks * 32) to float block coordinates
-        float x = player.getX() / 32.0f;
-        float y = player.getY() / 32.0f;
-        float z = player.getZ() / 32.0f;
+        // Time-based interpolation: smoothly lerps from previous to current
+        // position over 100ms since the last network update arrived.
+        float x = player.getRenderX();
+        float y = player.getRenderY();
+        float z = player.getRenderZ();
 
         float halfWidth = 0.3f;
         float height = 1.8f;

@@ -1,5 +1,7 @@
 package com.github.martinambrus.rdforward.client;
 
+import com.github.martinambrus.rdforward.multiplayer.MultiplayerState;
+import com.github.martinambrus.rdforward.multiplayer.RemotePlayer;
 import org.lwjgl.opengl.GL11;
 
 import java.util.Collection;

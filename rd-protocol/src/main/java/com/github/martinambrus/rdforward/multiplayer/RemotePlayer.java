@@ -1,4 +1,4 @@
-package com.github.martinambrus.rdforward.client;
+package com.github.martinambrus.rdforward.multiplayer;
 
 /**
  * Represents a remote player visible to the local client.

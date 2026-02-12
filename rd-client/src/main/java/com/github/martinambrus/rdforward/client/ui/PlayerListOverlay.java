@@ -1,7 +1,7 @@
 package com.github.martinambrus.rdforward.client.ui;
 
-import com.github.martinambrus.rdforward.client.MultiplayerState;
-import com.github.martinambrus.rdforward.client.RemotePlayer;
+import com.github.martinambrus.rdforward.multiplayer.MultiplayerState;
+import com.github.martinambrus.rdforward.multiplayer.RemotePlayer;
 
 import java.util.Collection;
 

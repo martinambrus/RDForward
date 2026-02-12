@@ -7,8 +7,8 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
-import com.github.martinambrus.rdforward.android.multiplayer.MultiplayerState;
-import com.github.martinambrus.rdforward.android.multiplayer.RDClient;
+import com.github.martinambrus.rdforward.multiplayer.MultiplayerState;
+import com.github.martinambrus.rdforward.multiplayer.RDClient;
 
 import java.util.ArrayList;
 import java.util.List;

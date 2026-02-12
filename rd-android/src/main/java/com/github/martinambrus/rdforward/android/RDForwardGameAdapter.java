@@ -11,9 +11,9 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.github.martinambrus.rdforward.android.game.*;
-import com.github.martinambrus.rdforward.android.multiplayer.MultiplayerState;
-import com.github.martinambrus.rdforward.android.multiplayer.RDClient;
-import com.github.martinambrus.rdforward.android.multiplayer.RemotePlayer;
+import com.github.martinambrus.rdforward.multiplayer.MultiplayerState;
+import com.github.martinambrus.rdforward.multiplayer.RDClient;
+import com.github.martinambrus.rdforward.multiplayer.RemotePlayer;
 
 import java.util.Collection;
 import com.github.martinambrus.rdforward.render.BlendFactor;
@@ -476,9 +476,9 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
             String name = p.getName();
             if (name == null || name.isEmpty()) continue;
 
-            float wx = p.getX() / 32.0f;
-            float wy = p.getY() / 32.0f;
-            float wz = p.getZ() / 32.0f;
+            float wx = p.getRenderX();
+            float wy = p.getRenderY();
+            float wz = p.getRenderZ();
             // Above head: y is eye level (1.62), player height 1.8, plus small gap
             float tagWorldY = wy - 1.62f + 1.8f + 0.3f;
 

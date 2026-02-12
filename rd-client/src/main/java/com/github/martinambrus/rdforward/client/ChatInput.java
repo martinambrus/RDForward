@@ -1,5 +1,6 @@
 package com.github.martinambrus.rdforward.client;
 
+import com.github.martinambrus.rdforward.multiplayer.RDClient;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWCharCallback;
 import org.lwjgl.glfw.GLFWKeyCallback;
