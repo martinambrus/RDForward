@@ -30,6 +30,15 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
     private boolean ctrlDown = false;
     private boolean f6JustPressed = false;
 
+    // Robust physical keyboard state tracking.
+    // On Android, keyDown + keyUp can arrive in the same frame batch, causing
+    // Gdx.input.isKeyPressed() to return false by the time Player.tick() polls.
+    // We track per-key state AND a timestamp so a press is held for a minimum
+    // duration (KEY_MIN_HOLD_MS) regardless of how fast keyUp fires.
+    private final boolean[] keyHeld = new boolean[256]; // indexed by libGDX keycode
+    private final long[] keyDownTime = new long[256];
+    private static final long KEY_MIN_HOLD_MS = 150; // keep key "pressed" for at least this long
+
     // Camera look accumulation
     private float lookDX, lookDY;
 
@@ -162,12 +171,20 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
         if (keycode == Input.Keys.CONTROL_LEFT || keycode == Input.Keys.CONTROL_RIGHT) ctrlDown = true;
         if (keycode == Input.Keys.Q && ctrlDown) { Gdx.app.exit(); return true; }
         if (keycode == Input.Keys.F6) { f6JustPressed = true; return true; }
+        // Track for robust held-key detection
+        if (keycode >= 0 && keycode < keyHeld.length) {
+            keyHeld[keycode] = true;
+            keyDownTime[keycode] = System.currentTimeMillis();
+        }
         return true;
     }
 
     @Override
     public boolean keyUp(int keycode) {
         if (keycode == Input.Keys.CONTROL_LEFT || keycode == Input.Keys.CONTROL_RIGHT) ctrlDown = false;
+        if (keycode >= 0 && keycode < keyHeld.length) {
+            keyHeld[keycode] = false;
+        }
         return true;
     }
 
@@ -221,10 +238,18 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
 
     @Override
     public boolean isKeyDown(int keyCode) {
-        // Poll physical keyboard directly via libGDX (reliable on Android,
-        // unlike event-based tracking which can be consumed by the IME)
+        // Check physical keyboard via three methods (most to least reliable):
         int gdxKey = toGdxKey(keyCode);
-        if (gdxKey != -1 && Gdx.input.isKeyPressed(gdxKey)) return true;
+        if (gdxKey != -1) {
+            // 1. Our event-tracked state (keyDown/keyUp callbacks)
+            if (gdxKey < keyHeld.length && keyHeld[gdxKey]) return true;
+            // 2. Minimum hold: if keyDown fired recently, the key is still "pressed"
+            //    even if keyUp already arrived (handles same-frame DOWN+UP batching)
+            if (gdxKey < keyDownTime.length
+                    && System.currentTimeMillis() - keyDownTime[gdxKey] < KEY_MIN_HOLD_MS) return true;
+            // 3. libGDX polling as final fallback
+            if (Gdx.input.isKeyPressed(gdxKey)) return true;
+        }
         // Fall back to touch zone virtual keys
         return switch (keyCode) {
             case 87, 265 -> keyW;  // W or UP

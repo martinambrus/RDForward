@@ -62,6 +62,9 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
     private float btnX, btnWidth, btnHeight;
     private float singlePlayerBtnY, multiplayerBtnY;
 
+    // HUD banner bounds (screen coords, libGDX y-up) for tap-to-switch detection
+    private float hudBannerRight, hudBannerBottom;
+
     public RDForwardGameAdapter(AndroidLauncher launcher) {
         this.launcher = launcher;
     }
@@ -210,8 +213,16 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
         // Process touch input
         touchInput.update();
 
-        // F6 toggle (physical keyboard)
-        if (touchInput.consumeF6()) {
+        // F6 toggle (physical keyboard) or tap on HUD banner
+        boolean toggleMP = touchInput.consumeF6();
+        if (!toggleMP && Gdx.input.justTouched()) {
+            float tx = Gdx.input.getX();
+            float ty = Gdx.graphics.getHeight() - Gdx.input.getY(); // flip to y-up
+            if (tx <= hudBannerRight && ty >= hudBannerBottom) {
+                toggleMP = true;
+            }
+        }
+        if (toggleMP) {
             if (multiplayerMode) {
                 disconnectFromServer();
             } else {
@@ -390,9 +401,11 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
             text = "Server Unavailable";
         } else if (multiplayerMode && RDClient.getInstance().isConnected()) {
             String name = MultiplayerState.getInstance().getServerName();
-            text = "rd-132211 multiplayer" + (name.isEmpty() ? "" : " - " + name);
+            text = "rd-132211 multiplayer"
+                    + (name.isEmpty() ? "" : " - " + name)
+                    + " [tap for single player]";
         } else {
-            text = "rd-132211 single player";
+            text = "rd-132211 single player [tap for multiplayer]";
         }
 
         int w = Gdx.graphics.getWidth();
@@ -411,24 +424,34 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
 
         font.getData().setScale(scale * 0.8f);
 
-        // Background bar
+        // Measure text
         glyphLayout.setText(font, text);
         float pad = 4 * scale;
+        float bgHeight = glyphLayout.height + pad * 2;
+        float bgWidth = glyphLayout.width + pad * 4;
+
+        // Background bar flush with top of screen
         spriteBatch.setColor(0, 0, 0, 0.4f);
-        spriteBatch.draw(whitePixel, 0, h - glyphLayout.height - pad * 3,
-                glyphLayout.width + pad * 4, glyphLayout.height + pad * 2);
+        spriteBatch.draw(whitePixel, 0, h - bgHeight, bgWidth, bgHeight);
         spriteBatch.setColor(1, 1, 1, 1);
+
+        // Text centered vertically in the background bar
+        float textY = h - pad;
 
         // Shadow
         font.setColor(0, 0, 0, 0.8f);
-        font.draw(spriteBatch, text, pad * 2 + 1, h - pad - 1);
+        font.draw(spriteBatch, text, pad * 2 + 1, textY - 1);
 
         // Text
         font.setColor(1, 1, 1, 1);
-        font.draw(spriteBatch, text, pad * 2, h - pad);
+        font.draw(spriteBatch, text, pad * 2, textY);
 
         font.getData().setScale(1f);
         spriteBatch.end();
+
+        // Store banner bounds for tap detection (libGDX y-up coords)
+        hudBannerRight = bgWidth;
+        hudBannerBottom = h - bgHeight;
 
         // Restore 3D state for next frame
         Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
