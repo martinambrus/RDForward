@@ -13,6 +13,9 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.github.martinambrus.rdforward.android.game.*;
 import com.github.martinambrus.rdforward.android.multiplayer.MultiplayerState;
 import com.github.martinambrus.rdforward.android.multiplayer.RDClient;
+import com.github.martinambrus.rdforward.android.multiplayer.RemotePlayer;
+
+import java.util.Collection;
 import com.github.martinambrus.rdforward.render.BlendFactor;
 import com.github.martinambrus.rdforward.render.DepthFunc;
 import com.github.martinambrus.rdforward.render.TextureFilter;
@@ -238,6 +241,10 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
                 chatOverlay.openChatInput();
             }
         }
+        // T key opens chat (physical keyboard)
+        if (touchInput.consumeT() && RDClient.getInstance().isConnected()) {
+            chatOverlay.openChatInput();
+        }
         if (toggleMP) {
             if (multiplayerMode) {
                 disconnectFromServer();
@@ -305,6 +312,7 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
         // Render remote players (while still in 3D camera space)
         if (multiplayerMode && RDClient.getInstance().isConnected()) {
             RemotePlayerRenderer.renderAll(graphics, timer.a);
+            renderNameTags();
         }
 
         // Crosshair overlay
@@ -439,6 +447,89 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
         prefs.putInteger("server.port", port);
         prefs.putString("username", username);
         prefs.flush();
+    }
+
+    // ── HUD Banner ──────────────────────────────────────────────────
+
+    // ── Name Tags ────────────────────────────────────────────────────
+
+    private void renderNameTags() {
+        Collection<RemotePlayer> players = MultiplayerState.getInstance().getRemotePlayers();
+        if (players.isEmpty()) return;
+
+        // Grab 3D camera matrices before switching to 2D
+        float[] mv = graphics.getModelViewMatrix();
+        float[] proj = graphics.getProjectionMatrix();
+        int screenW = Gdx.graphics.getWidth();
+        int screenH = Gdx.graphics.getHeight();
+        float scale = Math.max(1f, screenH / 480f);
+
+        Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
+        Gdx.gl.glDisable(GL20.GL_CULL_FACE);
+        spriteBatch.getProjectionMatrix().setToOrtho2D(0, 0, screenW, screenH);
+        spriteBatch.begin();
+        font.getData().setScale(scale * 0.6f);
+
+        for (RemotePlayer p : players) {
+            String name = p.getName();
+            if (name == null || name.isEmpty()) continue;
+
+            float wx = p.getX() / 32.0f;
+            float wy = p.getY() / 32.0f;
+            float wz = p.getZ() / 32.0f;
+            // Above head: y is eye level (1.62), player height 1.8, plus small gap
+            float tagWorldY = wy - 1.62f + 1.8f + 0.3f;
+
+            float[] screen = projectToScreen(wx, tagWorldY, wz, mv, proj, screenW, screenH);
+            if (screen == null) continue; // behind camera
+
+            glyphLayout.setText(font, name);
+            float textX = screen[0] - glyphLayout.width / 2;
+            float textY = screen[1] + glyphLayout.height / 2;
+            float pad = 2 * scale;
+
+            // Background
+            spriteBatch.setColor(0, 0, 0, 0.4f);
+            spriteBatch.draw(whitePixel,
+                    textX - pad, textY - glyphLayout.height - pad,
+                    glyphLayout.width + pad * 2, glyphLayout.height + pad * 2);
+            spriteBatch.setColor(1, 1, 1, 1);
+
+            // Shadow
+            font.setColor(0, 0, 0, 0.8f);
+            font.draw(spriteBatch, name, textX + 1, textY - 1);
+
+            // Text
+            font.setColor(1, 1, 1, 1);
+            font.draw(spriteBatch, name, textX, textY);
+        }
+
+        font.getData().setScale(1f);
+        font.setColor(1, 1, 1, 1);
+        spriteBatch.end();
+        Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
+        Gdx.gl.glEnable(GL20.GL_CULL_FACE);
+    }
+
+    /** Project a 3D world point to 2D screen coordinates (y-up). Returns null if behind camera. */
+    private static float[] projectToScreen(float x, float y, float z,
+                                           float[] mv, float[] proj,
+                                           int screenW, int screenH) {
+        // Modelview transform
+        float ex = mv[0]*x + mv[4]*y + mv[8]*z  + mv[12];
+        float ey = mv[1]*x + mv[5]*y + mv[9]*z  + mv[13];
+        float ez = mv[2]*x + mv[6]*y + mv[10]*z + mv[14];
+        float ew = mv[3]*x + mv[7]*y + mv[11]*z + mv[15];
+        // Projection transform
+        float cx = proj[0]*ex + proj[4]*ey + proj[8]*ez  + proj[12]*ew;
+        float cy = proj[1]*ex + proj[5]*ey + proj[9]*ez  + proj[13]*ew;
+        float cw = proj[3]*ex + proj[7]*ey + proj[11]*ez + proj[15]*ew;
+        if (cw <= 0) return null;
+        // NDC → screen (y-up for libGDX SpriteBatch)
+        return new float[]{
+            (cx / cw * 0.5f + 0.5f) * screenW,
+            (cy / cw * 0.5f + 0.5f) * screenH
+        };
     }
 
     // ── HUD Banner ──────────────────────────────────────────────────

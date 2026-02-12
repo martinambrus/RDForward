@@ -29,6 +29,7 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
     // Physical keyboard edge detection (event-based for one-shot keys)
     private boolean ctrlDown = false;
     private boolean f6JustPressed = false;
+    private boolean tJustPressed = false;
 
     // Robust physical keyboard state tracking.
     // On some Android devices (notably with Bluetooth keyboards), every keyDown
@@ -183,6 +184,7 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
         if (keycode == Input.Keys.CONTROL_LEFT || keycode == Input.Keys.CONTROL_RIGHT) ctrlDown = true;
         if (keycode == Input.Keys.Q && ctrlDown) { Gdx.app.exit(); return true; }
         if (keycode == Input.Keys.F6) { f6JustPressed = true; return true; }
+        if (keycode == Input.Keys.T) { tJustPressed = true; return true; }
         // Track for robust held-key detection
         if (keycode >= 0 && keycode < keyHeld.length) {
             long now = System.currentTimeMillis();
@@ -226,6 +228,13 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
     public boolean consumeF6() {
         boolean was = f6JustPressed;
         f6JustPressed = false;
+        return was;
+    }
+
+    /** Consume T press event (returns true once, then resets). */
+    public boolean consumeT() {
+        boolean was = tJustPressed;
+        tJustPressed = false;
         return was;
     }
 
