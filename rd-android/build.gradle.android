@@ -84,6 +84,15 @@ android {
         }
     }
 
+    // Multiple JARs (Netty, etc.) each contain META-INF/INDEX.LIST and similar
+    // metadata files. pickFirsts resolves the duplicate-file merge conflict.
+    packaging {
+        resources {
+            pickFirsts += ['META-INF/INDEX.LIST', 'META-INF/io.netty.versions.properties']
+            excludes += ['META-INF/macos/**', 'META-INF/linux/**', 'META-INF/windows/**']
+        }
+    }
+
     sourceSets {
         main {
             manifest.srcFile 'src/main/AndroidManifest.xml'
@@ -97,18 +106,25 @@ android {
 configurations { natives }
 
 dependencies {
-    // Our rendering abstraction layer
-    implementation project(':rd-render')
+    // transitive=false on project deps prevents desktop-only libraries (LWJGL,
+    // gdx-backend-lwjgl3) from leaking in. rd-android declares its own Android-
+    // specific libGDX deps below, and Netty is pulled in explicitly.
+    implementation(project(':rd-render'))   { transitive = false }
+    implementation(project(':rd-desktop'))  { transitive = false }
+    implementation(project(':rd-protocol')) { transitive = false }
+    implementation(project(':rd-world'))    { transitive = false }
 
-    // rd-desktop provides shared LibGDXGraphics/LibGDXInput classes.
-    // transitive=false prevents rd-desktop's own deps (LWJGL, gdx-backend-lwjgl3)
-    // from leaking into the Android build. rd-android declares its own Android-
-    // specific libGDX deps below.
-    implementation(project(':rd-desktop')) { transitive = false }
+    // Netty — rd-protocol needs it at runtime on Android too
+    implementation 'io.netty:netty-buffer:4.1.131.Final'
+    implementation 'io.netty:netty-codec:4.1.131.Final'
+    implementation 'io.netty:netty-common:4.1.131.Final'
+    implementation 'io.netty:netty-handler:4.1.131.Final'
+    implementation 'io.netty:netty-resolver:4.1.131.Final'
+    implementation 'io.netty:netty-transport:4.1.131.Final'
+    implementation 'io.netty:netty-transport-native-unix-common:4.1.131.Final'
 
-    // Networking (Netty works unchanged on Android)
-    implementation project(':rd-protocol')
-    implementation project(':rd-world')
+    // Querz NBT — rd-world needs it at runtime
+    implementation 'com.github.Querz:NBT:6.1'
 
     // libGDX core + Android backend
     implementation "com.badlogicgames.gdx:gdx:${gdxVersion}"
