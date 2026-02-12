@@ -18,6 +18,15 @@ allprojects {
             }
         }
         mavenCentral()
+        // Android build tools (aapt2, etc.) — required by rd-android when
+        // building with the Android Gradle Plugin.
+        google {
+            content {
+                includeGroupByRegex 'com\\.android.*'
+                includeGroupByRegex 'com\\.google\\.android.*'
+                includeGroupByRegex 'androidx\\..*'
+            }
+        }
         maven {
             url = 'https://maven.fabricmc.net'
             content {
