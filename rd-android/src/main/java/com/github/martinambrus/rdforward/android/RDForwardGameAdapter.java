@@ -2,6 +2,7 @@ package com.github.martinambrus.rdforward.android;
 
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Preferences;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Pixmap;
@@ -56,6 +57,11 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
     // Chat overlay (messages + chat button)
     private ChatOverlay chatOverlay;
 
+    // Saved connection settings (persisted across sessions)
+    private String savedHost = "localhost";
+    private int savedPort = 25565;
+    private String savedUsername = "";
+
     // Fog color (sky color)
     private static final float FOG_R = 0.5f;
     private static final float FOG_G = 0.8f;
@@ -93,6 +99,7 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
         textureId = graphics.loadTexture("/terrain.png", TextureFilter.NEAREST);
 
         chatOverlay = new ChatOverlay(spriteBatch, font, glyphLayout, whitePixel);
+        loadConnectionSettings();
     }
 
     @Override
@@ -184,8 +191,9 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
     }
 
     private void startMultiplayer() {
-        ServerConnectDialog.show((host, port, username) -> {
+        ServerConnectDialog.show(savedHost + ":" + savedPort, savedUsername, (host, port, username) -> {
             Gdx.app.postRunnable(() -> {
+                saveConnectionSettings(host, port, username);
                 multiplayerMode = true;
                 worldApplied = false;
                 savedLocalBlocks = null;
@@ -234,8 +242,9 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
             if (multiplayerMode) {
                 disconnectFromServer();
             } else {
-                ServerConnectDialog.show((host, port, username) -> {
+                ServerConnectDialog.show(savedHost + ":" + savedPort, savedUsername, (host, port, username) -> {
                     Gdx.app.postRunnable(() -> {
+                        saveConnectionSettings(host, port, username);
                         multiplayerMode = true;
                         worldApplied = false;
                         savedLocalBlocks = null;
@@ -410,6 +419,26 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
             level.calcLightDepths(0, 0, level.width, level.height);
             level.notifyAllChanged();
         }
+    }
+
+    // ── Connection Settings Persistence ────────────────────────────
+
+    private void loadConnectionSettings() {
+        Preferences prefs = Gdx.app.getPreferences("rdforward");
+        savedHost = prefs.getString("server.host", "localhost");
+        savedPort = prefs.getInteger("server.port", 25565);
+        savedUsername = prefs.getString("username", "");
+    }
+
+    private void saveConnectionSettings(String host, int port, String username) {
+        savedHost = host;
+        savedPort = port;
+        savedUsername = username;
+        Preferences prefs = Gdx.app.getPreferences("rdforward");
+        prefs.putString("server.host", host);
+        prefs.putInteger("server.port", port);
+        prefs.putString("username", username);
+        prefs.flush();
     }
 
     // ── HUD Banner ──────────────────────────────────────────────────

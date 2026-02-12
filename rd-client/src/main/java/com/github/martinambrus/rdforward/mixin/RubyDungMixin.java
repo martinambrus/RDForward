@@ -108,6 +108,9 @@ public class RubyDungMixin {
         System.out.println("========================================");
         System.out.println();
 
+        // Load saved connection settings (CLI flags override these below)
+        rdforward$loadSettings();
+
         // Parse server settings from system properties (set by CLI flags or -D)
         String serverProp = System.getProperty("rdforward.server", "");
         rdforward$username = System.getProperty("rdforward.username", "");
@@ -579,12 +582,43 @@ public class RubyDungMixin {
 
         rdforward$username = (username != null) ? username.trim() : "";
 
+        // Save for next session
+        rdforward$saveSettings();
+
         // Dismiss menu, grab mouse, connect
         rdforward$showMenu = false;
         rdforward$grabMouseClean();
         rdforward$connectToServer();
         System.out.println("[RDForward] Menu: Multiplayer selected → "
                 + rdforward$serverHost + ":" + rdforward$serverPort);
+    }
+
+    private void rdforward$loadSettings() {
+        java.io.File file = new java.io.File("rdforward-settings.properties");
+        if (!file.exists()) return;
+        try (java.io.FileInputStream fis = new java.io.FileInputStream(file)) {
+            java.util.Properties props = new java.util.Properties();
+            props.load(fis);
+            rdforward$serverHost = props.getProperty("server.host", rdforward$serverHost);
+            try {
+                rdforward$serverPort = Integer.parseInt(props.getProperty("server.port", ""));
+            } catch (NumberFormatException ignored) {}
+            rdforward$username = props.getProperty("username", rdforward$username);
+        } catch (Exception e) {
+            System.err.println("[RDForward] Failed to load settings: " + e.getMessage());
+        }
+    }
+
+    private void rdforward$saveSettings() {
+        try (java.io.FileOutputStream fos = new java.io.FileOutputStream("rdforward-settings.properties")) {
+            java.util.Properties props = new java.util.Properties();
+            props.setProperty("server.host", rdforward$serverHost);
+            props.setProperty("server.port", String.valueOf(rdforward$serverPort));
+            props.setProperty("username", rdforward$username);
+            props.store(fos, null);
+        } catch (Exception e) {
+            System.err.println("[RDForward] Failed to save settings: " + e.getMessage());
+        }
     }
 
     private static String getVersion() {

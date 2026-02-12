@@ -21,20 +21,22 @@ public class ServerConnectDialog {
     /**
      * Show the server address input dialog.
      *
+     * @param defaultAddress pre-filled address (e.g. "localhost:25565")
+     * @param defaultUsername pre-filled username for the next dialog
      * @param callback called with parsed host, port, and username when confirmed
      */
-    public static void show(ConnectCallback callback) {
+    public static void show(String defaultAddress, String defaultUsername, ConnectCallback callback) {
         Gdx.input.getTextInput(new TextInputListener() {
             @Override
             public void input(String text) {
-                parseAndConnect(text, callback);
+                parseAndConnect(text, defaultUsername, callback);
             }
 
             @Override
             public void canceled() {
                 // User cancelled — do nothing
             }
-        }, "Connect to Server", "localhost:25565", "host:port");
+        }, "Connect to Server", defaultAddress, "host:port");
     }
 
     /**
@@ -42,9 +44,10 @@ public class ServerConnectDialog {
      *
      * @param host     server host
      * @param port     server port
+     * @param defaultUsername pre-filled username
      * @param callback called with final connection details
      */
-    public static void showWithUsername(String host, int port, ConnectCallback callback) {
+    private static void showWithUsername(String host, int port, String defaultUsername, ConnectCallback callback) {
         Gdx.input.getTextInput(new TextInputListener() {
             @Override
             public void input(String text) {
@@ -56,10 +59,10 @@ public class ServerConnectDialog {
             public void canceled() {
                 // User cancelled — do nothing
             }
-        }, "Player Name", "", "leave blank for auto-assign");
+        }, "Player Name", defaultUsername, "leave blank for auto-assign");
     }
 
-    private static void parseAndConnect(String text, ConnectCallback callback) {
+    private static void parseAndConnect(String text, String defaultUsername, ConnectCallback callback) {
         String trimmed = text.trim();
         if (trimmed.isEmpty()) return;
 
@@ -80,6 +83,6 @@ public class ServerConnectDialog {
 
         final String finalHost = host;
         final int finalPort = port;
-        showWithUsername(finalHost, finalPort, callback);
+        showWithUsername(finalHost, finalPort, defaultUsername, callback);
     }
 }
