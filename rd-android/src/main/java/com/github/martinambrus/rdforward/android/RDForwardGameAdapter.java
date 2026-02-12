@@ -2,7 +2,16 @@ package com.github.martinambrus.rdforward.android;
 
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.Pixmap;
+import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.GlyphLayout;
+import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.github.martinambrus.rdforward.android.game.*;
+import com.github.martinambrus.rdforward.android.multiplayer.MultiplayerState;
+import com.github.martinambrus.rdforward.android.multiplayer.RDClient;
 import com.github.martinambrus.rdforward.render.BlendFactor;
 import com.github.martinambrus.rdforward.render.DepthFunc;
 import com.github.martinambrus.rdforward.render.TextureFilter;
@@ -10,8 +19,8 @@ import com.github.martinambrus.rdforward.render.libgdx.LibGDXGraphics;
 
 /**
  * libGDX ApplicationAdapter that runs the full RubyDung game on Android.
- * Replicates the desktop game loop using the RDGraphics abstraction
- * (LibGDXGraphics) instead of direct GL11 calls.
+ * Provides a welcome screen with Single Player / Multiplayer options,
+ * full multiplayer support, and a HUD banner.
  */
 public class RDForwardGameAdapter extends ApplicationAdapter {
 
@@ -19,7 +28,11 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
     private LibGDXGraphics graphics;
     private TouchInputAdapter touchInput;
 
-    // Game state
+    // Game state machine
+    private enum GameState { MENU, PLAYING }
+    private GameState gameState = GameState.MENU;
+
+    // Game objects (created when entering PLAYING state)
     private Level level;
     private LevelRenderer levelRenderer;
     private Player player;
@@ -27,10 +40,27 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
     private HitResult hitResult;
     private int textureId;
 
+    // 2D rendering for menu and HUD
+    private SpriteBatch spriteBatch;
+    private BitmapFont font;
+    private GlyphLayout glyphLayout;
+    private Texture whitePixel;
+
+    // Multiplayer state
+    private boolean multiplayerMode = false;
+    private boolean worldApplied = false;
+    private byte[] savedLocalBlocks = null;
+    private int positionSyncCounter = 0;
+    private long serverUnavailableUntil = 0;
+
     // Fog color (sky color)
     private static final float FOG_R = 0.5f;
     private static final float FOG_G = 0.8f;
     private static final float FOG_B = 1.0f;
+
+    // Menu button layout (computed each frame for responsive sizing)
+    private float btnX, btnWidth, btnHeight;
+    private float singlePlayerBtnY, multiplayerBtnY;
 
     public RDForwardGameAdapter(AndroidLauncher launcher) {
         this.launcher = launcher;
@@ -42,18 +72,133 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
         touchInput = new TouchInputAdapter();
         Gdx.input.setInputProcessor(touchInput);
 
-        // Load texture
-        textureId = graphics.loadTexture("/terrain.png", TextureFilter.NEAREST);
+        // 2D rendering setup
+        spriteBatch = new SpriteBatch();
+        font = new BitmapFont();
+        glyphLayout = new GlyphLayout();
 
-        // Create world and renderer
+        Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
+        pixmap.setColor(Color.WHITE);
+        pixmap.fill();
+        whitePixel = new Texture(pixmap);
+        pixmap.dispose();
+
+        // Load terrain texture (needed for game rendering)
+        textureId = graphics.loadTexture("/terrain.png", TextureFilter.NEAREST);
+    }
+
+    @Override
+    public void render() {
+        switch (gameState) {
+            case MENU: renderMenu(); break;
+            case PLAYING: renderGame(); break;
+        }
+    }
+
+    // ── Welcome Screen ──────────────────────────────────────────────
+
+    private void renderMenu() {
+        int w = Gdx.graphics.getWidth();
+        int h = Gdx.graphics.getHeight();
+        float scale = Math.max(1f, h / 480f);
+
+        Gdx.gl.glClearColor(0.12f, 0.12f, 0.22f, 1f);
+        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+
+        spriteBatch.getProjectionMatrix().setToOrtho2D(0, 0, w, h);
+        spriteBatch.begin();
+
+        // Title
+        font.getData().setScale(scale * 3f);
+        font.setColor(1f, 1f, 1f, 1f);
+        glyphLayout.setText(font, "RDForward");
+        font.draw(spriteBatch, glyphLayout, (w - glyphLayout.width) / 2, h * 0.75f);
+
+        // Subtitle
+        font.getData().setScale(scale * 1.2f);
+        font.setColor(0.6f, 0.6f, 0.7f, 1f);
+        glyphLayout.setText(font, "rd-132211");
+        font.draw(spriteBatch, glyphLayout, (w - glyphLayout.width) / 2, h * 0.75f - scale * 55f);
+
+        // Buttons
+        font.getData().setScale(scale * 2f);
+        btnWidth = Math.min(w * 0.65f, 600 * scale);
+        btnHeight = scale * 60f;
+        btnX = (w - btnWidth) / 2;
+
+        singlePlayerBtnY = h * 0.40f;
+        drawButton("Single Player", btnX, singlePlayerBtnY, btnWidth, btnHeight,
+                0.18f, 0.45f, 0.18f);
+
+        multiplayerBtnY = singlePlayerBtnY - btnHeight - scale * 24f;
+        drawButton("Multiplayer", btnX, multiplayerBtnY, btnWidth, btnHeight,
+                0.18f, 0.18f, 0.45f);
+
+        // Reset font state
+        font.getData().setScale(1f);
+        font.setColor(1f, 1f, 1f, 1f);
+        spriteBatch.end();
+
+        // Handle button touches
+        if (Gdx.input.justTouched()) {
+            float tx = Gdx.input.getX();
+            float ty = h - Gdx.input.getY(); // flip Y for libGDX bottom-up coords
+            if (isInButton(tx, ty, btnX, singlePlayerBtnY, btnWidth, btnHeight)) {
+                startSinglePlayer();
+            } else if (isInButton(tx, ty, btnX, multiplayerBtnY, btnWidth, btnHeight)) {
+                startMultiplayer();
+            }
+        }
+    }
+
+    private void drawButton(String text, float x, float y, float w, float h,
+                            float r, float g, float b) {
+        spriteBatch.setColor(r, g, b, 0.85f);
+        spriteBatch.draw(whitePixel, x, y, w, h);
+
+        font.setColor(1f, 1f, 1f, 1f);
+        glyphLayout.setText(font, text);
+        float textX = x + (w - glyphLayout.width) / 2;
+        float textY = y + (h + glyphLayout.height) / 2;
+        font.draw(spriteBatch, glyphLayout, textX, textY);
+
+        spriteBatch.setColor(1, 1, 1, 1);
+    }
+
+    private boolean isInButton(float tx, float ty, float bx, float by, float bw, float bh) {
+        return tx >= bx && tx <= bx + bw && ty >= by && ty <= by + bh;
+    }
+
+    private void startSinglePlayer() {
+        multiplayerMode = false;
+        initGame();
+        gameState = GameState.PLAYING;
+    }
+
+    private void startMultiplayer() {
+        ServerConnectDialog.show((host, port, username) -> {
+            Gdx.app.postRunnable(() -> {
+                multiplayerMode = true;
+                worldApplied = false;
+                savedLocalBlocks = null;
+                initGame();
+                RDClient.getInstance().connect(host, port, username);
+                gameState = GameState.PLAYING;
+            });
+        });
+    }
+
+    private void initGame() {
+        if (level != null) return; // already initialized
         level = new Level(256, 256, 64);
         levelRenderer = new LevelRenderer(level, graphics);
         player = new Player(level, touchInput);
         timer = new Timer(60.0f);
     }
 
-    @Override
-    public void render() {
+    // ── Game Rendering ──────────────────────────────────────────────
+
+    private void renderGame() {
         if (level == null) return;
 
         // Advance timer and tick game logic
@@ -64,6 +209,27 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
 
         // Process touch input
         touchInput.update();
+
+        // F6 toggle (physical keyboard)
+        if (touchInput.consumeF6()) {
+            if (multiplayerMode) {
+                disconnectFromServer();
+            } else {
+                ServerConnectDialog.show((host, port, username) -> {
+                    Gdx.app.postRunnable(() -> {
+                        multiplayerMode = true;
+                        worldApplied = false;
+                        savedLocalBlocks = null;
+                        RDClient.getInstance().connect(host, port, username);
+                    });
+                });
+            }
+        }
+
+        // Multiplayer sync
+        if (multiplayerMode) {
+            syncMultiplayer();
+        }
 
         // Camera look from touch input
         float xo = touchInput.consumeMouseDX();
@@ -108,9 +274,162 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
         // Crosshair overlay
         renderCrosshair();
 
+        // HUD banner (top-left)
+        renderHud();
+
         // Reset color for next frame
         graphics.setColor(1, 1, 1, 1);
     }
+
+    // ── Multiplayer Sync ────────────────────────────────────────────
+
+    private void syncMultiplayer() {
+        MultiplayerState state = MultiplayerState.getInstance();
+        RDClient client = RDClient.getInstance();
+
+        // Apply server world once when ready
+        if (!worldApplied && state.isWorldReady() && level != null) {
+            applyServerWorld(state);
+        }
+
+        if (!client.isConnected()) {
+            if (worldApplied) {
+                disconnectFromServer();
+            }
+            if (!worldApplied && client.hasConnectionFailed()) {
+                disconnectFromServer();
+                serverUnavailableUntil = System.currentTimeMillis() + 5000;
+            }
+            return;
+        }
+
+        // Self-teleport (server spawn / correction)
+        short[] selfTeleport = state.pollSelfTeleport();
+        if (selfTeleport != null && player != null) {
+            float tx = selfTeleport[0] / 32.0f;
+            float ty = selfTeleport[1] / 32.0f + (1.0f / 32.0f);
+            float tz = selfTeleport[2] / 32.0f;
+            player.x = tx; player.y = ty; player.z = tz;
+            player.xo = tx; player.yo = ty; player.zo = tz;
+            float w = 0.3f;
+            float feetY = ty - 1.62f;
+            player.bb = new AABB(tx - w, feetY, tz - w, tx + w, feetY + 1.8f, tz + w);
+        }
+
+        // Position sync (every 3 ticks ≈ 20 TPS at 60 FPS)
+        if (timer.ticks > 0 && player != null) {
+            positionSyncCounter += timer.ticks;
+            if (positionSyncCounter >= 3) {
+                positionSyncCounter = 0;
+                short x = (short) (player.x * 32);
+                short y = (short) Math.round(player.y * 32);
+                short z = (short) (player.z * 32);
+                int yaw = (int) (player.yRot * 256.0f / 360.0f) & 0xFF;
+                int pitch = (int) (player.xRot * 256.0f / 360.0f) & 0xFF;
+                client.sendPosition(x, y, z, yaw, pitch);
+            }
+        }
+
+        // Apply server block changes
+        MultiplayerState.BlockChange change;
+        while ((change = state.pollBlockChange()) != null) {
+            if (level != null) {
+                level.setTile(change.x, change.y, change.z, change.blockType != 0 ? 1 : 0);
+            }
+        }
+
+        // Revert timed-out predictions
+        for (MultiplayerState.PendingPrediction pred : state.pollTimedOutPredictions()) {
+            if (level != null) {
+                level.setTile(pred.x, pred.y, pred.z, pred.originalBlockType != 0 ? 1 : 0);
+            }
+        }
+    }
+
+    private void applyServerWorld(MultiplayerState state) {
+        byte[] localBlocks = level.getBlocks();
+        byte[] serverBlocks = state.getWorldBlocks();
+
+        if (savedLocalBlocks == null) {
+            savedLocalBlocks = new byte[localBlocks.length];
+            System.arraycopy(localBlocks, 0, savedLocalBlocks, 0, localBlocks.length);
+        }
+
+        if (serverBlocks == null || localBlocks.length != serverBlocks.length) {
+            worldApplied = true;
+            return;
+        }
+
+        for (int i = 0; i < localBlocks.length; i++) {
+            localBlocks[i] = serverBlocks[i] != 0 ? (byte) 1 : (byte) 0;
+        }
+
+        level.calcLightDepths(0, 0, level.width, level.height);
+        level.notifyAllChanged();
+        worldApplied = true;
+    }
+
+    private void disconnectFromServer() {
+        RDClient.getInstance().disconnect();
+        multiplayerMode = false;
+
+        if (savedLocalBlocks != null && level != null) {
+            byte[] localBlocks = level.getBlocks();
+            System.arraycopy(savedLocalBlocks, 0, localBlocks, 0, localBlocks.length);
+            savedLocalBlocks = null;
+            level.calcLightDepths(0, 0, level.width, level.height);
+            level.notifyAllChanged();
+        }
+    }
+
+    // ── HUD Banner ──────────────────────────────────────────────────
+
+    private void renderHud() {
+        String text;
+        if (serverUnavailableUntil > System.currentTimeMillis()) {
+            text = "Server Unavailable";
+        } else if (multiplayerMode && RDClient.getInstance().isConnected()) {
+            String name = MultiplayerState.getInstance().getServerName();
+            text = "rd-132211 multiplayer" + (name.isEmpty() ? "" : " - " + name);
+        } else {
+            text = "rd-132211 single player";
+        }
+
+        int w = Gdx.graphics.getWidth();
+        int h = Gdx.graphics.getHeight();
+        float scale = Math.max(1f, h / 480f);
+
+        // SpriteBatch changes GL state, so we need to save/restore
+        spriteBatch.getProjectionMatrix().setToOrtho2D(0, 0, w, h);
+        spriteBatch.begin();
+
+        font.getData().setScale(scale * 0.8f);
+
+        // Background bar
+        glyphLayout.setText(font, text);
+        float pad = 4 * scale;
+        spriteBatch.setColor(0, 0, 0, 0.4f);
+        spriteBatch.draw(whitePixel, 0, h - glyphLayout.height - pad * 3,
+                glyphLayout.width + pad * 4, glyphLayout.height + pad * 2);
+        spriteBatch.setColor(1, 1, 1, 1);
+
+        // Shadow
+        font.setColor(0, 0, 0, 0.8f);
+        font.draw(spriteBatch, text, pad * 2 + 1, h - pad - 1);
+
+        // Text
+        font.setColor(1, 1, 1, 1);
+        font.draw(spriteBatch, text, pad * 2, h - pad);
+
+        font.getData().setScale(1f);
+        spriteBatch.end();
+
+        // Restore GL state for next frame's 3D rendering
+        graphics.enableCullFace();
+        graphics.enableDepthTest();
+    }
+
+    // ── Camera / Picking / Input (unchanged) ────────────────────────
 
     private void setupCamera(float a) {
         int w = Gdx.graphics.getWidth();
@@ -159,18 +478,15 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
             if (bx == prevBx && by == prevBy && bz == prevBz) continue;
 
             if (level.isSolidTile(bx, by, bz)) {
-                int face = 1; // default to top
+                int face = 1;
                 if (prevBx != Integer.MIN_VALUE) {
-                    // The face hit is the one BETWEEN the previous air block
-                    // and this solid block — i.e. the face of the solid block
-                    // that faces toward where the ray came from.
                     int dx = bx - prevBx, dy = by - prevBy, dz = bz - prevBz;
-                    if (dy < 0) face = 1;      // ray came from above → top face
-                    else if (dy > 0) face = 0;  // ray came from below → bottom face
-                    else if (dz < 0) face = 3;  // ray came from +z → back face
-                    else if (dz > 0) face = 2;  // ray came from -z → front face
-                    else if (dx < 0) face = 5;  // ray came from +x → right face
-                    else if (dx > 0) face = 4;  // ray came from -x → left face
+                    if (dy < 0) face = 1;
+                    else if (dy > 0) face = 0;
+                    else if (dz < 0) face = 3;
+                    else if (dz > 0) face = 2;
+                    else if (dx < 0) face = 5;
+                    else if (dx > 0) face = 4;
                 }
                 hitResult = new HitResult(bx, by, bz, 0, face);
                 return;
@@ -182,31 +498,33 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
     private void handleInput() {
         // Tap = left click = place block adjacent to hit face
         boolean tap = touchInput.isMouseButtonDown(0);
-        if (tap) {
-            if (hitResult != null) {
-                int bx = hitResult.x, by = hitResult.y, bz = hitResult.z;
-                Gdx.app.log("GameInput", "TAP place: hit=(" + bx + "," + by + "," + bz
-                        + ") face=" + hitResult.f);
-                switch (hitResult.f) {
-                    case 0: by--; break;
-                    case 1: by++; break;
-                    case 2: bz--; break;
-                    case 3: bz++; break;
-                    case 4: bx--; break;
-                    case 5: bx++; break;
-                }
-                Gdx.app.log("GameInput", "  → placing at (" + bx + "," + by + "," + bz + ")");
-                level.setTile(bx, by, bz, 1);
-            } else {
-                Gdx.app.log("GameInput", "TAP but hitResult is NULL — no block in crosshair");
+        if (tap && hitResult != null) {
+            int bx = hitResult.x, by = hitResult.y, bz = hitResult.z;
+            switch (hitResult.f) {
+                case 0: by--; break;
+                case 1: by++; break;
+                case 2: bz--; break;
+                case 3: bz++; break;
+                case 4: bx--; break;
+                case 5: bx++; break;
             }
+
+            if (multiplayerMode && RDClient.getInstance().isConnected()) {
+                byte orig = level.isTile(bx, by, bz) ? (byte) 1 : (byte) 0;
+                MultiplayerState.getInstance().addPrediction(bx, by, bz, orig);
+                RDClient.getInstance().sendBlockChange(bx, by, bz, 1, 1);
+            }
+            level.setTile(bx, by, bz, 1);
         }
 
         // Long press = right click = destroy block at hit point
         boolean hold = touchInput.isMouseButtonDown(1);
         if (hold && hitResult != null) {
-            Gdx.app.log("GameInput", "HOLD destroy: (" + hitResult.x + ","
-                    + hitResult.y + "," + hitResult.z + ")");
+            if (multiplayerMode && RDClient.getInstance().isConnected()) {
+                byte orig = level.isTile(hitResult.x, hitResult.y, hitResult.z) ? (byte) 1 : (byte) 0;
+                MultiplayerState.getInstance().addPrediction(hitResult.x, hitResult.y, hitResult.z, orig);
+                RDClient.getInstance().sendBlockChange(hitResult.x, hitResult.y, hitResult.z, 0, 0);
+            }
             level.setTile(hitResult.x, hitResult.y, hitResult.z, 0);
         }
     }
@@ -228,7 +546,7 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
 
         float cx = w / 2.0f;
         float cy = h / 2.0f;
-        float sz = Math.max(8, w * 0.01f); // scale with screen size
+        float sz = Math.max(8, w * 0.01f);
 
         graphics.setColor(1.0f, 1.0f, 1.0f, 0.7f);
         graphics.beginLines();
@@ -241,6 +559,8 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
         graphics.disableBlend();
         graphics.enableDepthTest();
     }
+
+    // ── Lifecycle ───────────────────────────────────────────────────
 
     @Override
     public void resize(int width, int height) {
@@ -259,7 +579,11 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
 
     @Override
     public void dispose() {
+        if (multiplayerMode) disconnectFromServer();
         if (level != null) level.save();
+        if (spriteBatch != null) spriteBatch.dispose();
+        if (font != null) font.dispose();
+        if (whitePixel != null) whitePixel.dispose();
         if (graphics != null) graphics.dispose();
     }
 

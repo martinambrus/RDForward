@@ -83,6 +83,14 @@ public class Level {
 
     public void addListener(LevelListener l) { this.levelListeners.add(l); }
 
+    /** Direct access to the block array (for multiplayer world swap). */
+    public byte[] getBlocks() { return this.blocks; }
+
+    /** Notify all listeners to rebuild everything (after world swap). */
+    public void notifyAllChanged() {
+        for (LevelListener l : this.levelListeners) l.allChanged();
+    }
+
     public boolean isTile(int x, int y, int z) {
         if (x < 0 || y < 0 || z < 0 || x >= width || y >= depth || z >= height) return false;
         return this.blocks[(y * this.height + z) * this.width + x] == 1;

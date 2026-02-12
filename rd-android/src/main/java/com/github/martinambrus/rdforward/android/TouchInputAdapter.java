@@ -1,8 +1,11 @@
 package com.github.martinambrus.rdforward.android;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputAdapter;
 import com.github.martinambrus.rdforward.render.RDInput;
+
+import java.util.HashSet;
 
 /**
  * Maps Android touch input to the keyboard/mouse interface expected by
@@ -24,6 +27,11 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
 
     // Virtual key states (set by touch zones)
     private boolean keyW, keyA, keyS, keyD;
+
+    // Physical keyboard state (GLFW key codes)
+    private final HashSet<Integer> physicalKeys = new HashSet<>();
+    private boolean ctrlDown = false;
+    private boolean f6JustPressed = false;
 
     // Camera look accumulation
     private float lookDX, lookDY;
@@ -150,6 +158,52 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
         return true;
     }
 
+    // ── Physical keyboard support ────────────────────────────────────
+
+    @Override
+    public boolean keyDown(int keycode) {
+        if (keycode == Input.Keys.CONTROL_LEFT || keycode == Input.Keys.CONTROL_RIGHT) ctrlDown = true;
+        if (keycode == Input.Keys.Q && ctrlDown) { Gdx.app.exit(); return true; }
+        if (keycode == Input.Keys.F6) { f6JustPressed = true; return true; }
+        int glfw = toGlfwKey(keycode);
+        if (glfw != -1) physicalKeys.add(glfw);
+        return true;
+    }
+
+    @Override
+    public boolean keyUp(int keycode) {
+        if (keycode == Input.Keys.CONTROL_LEFT || keycode == Input.Keys.CONTROL_RIGHT) ctrlDown = false;
+        int glfw = toGlfwKey(keycode);
+        if (glfw != -1) physicalKeys.remove(glfw);
+        return true;
+    }
+
+    /** Consume F6 press event (returns true once, then resets). */
+    public boolean consumeF6() {
+        boolean was = f6JustPressed;
+        f6JustPressed = false;
+        return was;
+    }
+
+    /** Translate libGDX key codes to GLFW key codes used by the game. */
+    private static int toGlfwKey(int libgdxKey) {
+        return switch (libgdxKey) {
+            case Input.Keys.W -> 87;
+            case Input.Keys.A -> 65;
+            case Input.Keys.S -> 83;
+            case Input.Keys.D -> 68;
+            case Input.Keys.R -> 82;
+            case Input.Keys.SPACE -> 32;
+            case Input.Keys.UP -> 265;
+            case Input.Keys.DOWN -> 264;
+            case Input.Keys.LEFT -> 263;
+            case Input.Keys.RIGHT -> 262;
+            case Input.Keys.ENTER -> 257;
+            case Input.Keys.ESCAPE -> 256;
+            default -> -1;
+        };
+    }
+
     /** Called once per frame to process touch state. */
     public void update() {
         // Continuous hold-to-destroy: fires periodically while the finger
@@ -174,7 +228,9 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
 
     @Override
     public boolean isKeyDown(int keyCode) {
-        // GLFW key codes used by the game
+        // Physical keyboard takes priority
+        if (physicalKeys.contains(keyCode)) return true;
+        // Fall back to touch zone virtual keys
         return switch (keyCode) {
             case 87, 265 -> keyW;  // W or UP
             case 65, 263 -> keyA;  // A or LEFT
