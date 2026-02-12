@@ -51,6 +51,7 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
 
     // Double-tap jump state
     private long lastTapTime; // time of last single tap (for double-tap detection)
+    private long pendingTapTime; // non-zero while waiting to see if a second tap follows
     private int jumpFramesRemaining; // how many frames to keep keySpace true
 
     // Thresholds
@@ -110,16 +111,18 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
             // not already in hold-destroy mode) and was quick enough.
             if (!isLookDrag && !holdDestroyActive && elapsed < LONG_PRESS_MS) {
                 if (now - lastTapTime < DOUBLE_TAP_MS) {
-                    // Double-tap → jump
+                    // Double-tap → jump (cancel pending tap so no block is placed)
+                    pendingTapTime = 0;
                     keySpace = true;
                     jumpFramesRemaining = 5;
                     lastTapTime = 0; // reset so triple-tap doesn't re-trigger
                     Gdx.app.log(TAG, "  → DOUBLE-TAP → jump");
                 } else {
-                    // Single tap → place block
-                    tapDetected = true;
+                    // Possible single tap — defer until DOUBLE_TAP_MS expires
+                    // so we can cancel it if a second tap arrives.
+                    pendingTapTime = now;
                     lastTapTime = now;
-                    Gdx.app.log(TAG, "  → TAP detected (elapsed=" + elapsed + "ms)");
+                    Gdx.app.log(TAG, "  → TAP pending (elapsed=" + elapsed + "ms)");
                 }
             } else {
                 Gdx.app.log(TAG, "  → no tap: isLookDrag=" + isLookDrag
@@ -174,6 +177,17 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
             jumpFramesRemaining--;
         } else {
             keySpace = false;
+        }
+
+        // Deferred single-tap: commit the tap as a block placement only after
+        // DOUBLE_TAP_MS has elapsed without a second tap cancelling it.
+        if (pendingTapTime != 0) {
+            long now = System.currentTimeMillis();
+            if (now - pendingTapTime >= DOUBLE_TAP_MS) {
+                tapDetected = true;
+                pendingTapTime = 0;
+                Gdx.app.log(TAG, "update → pending tap committed (block place)");
+            }
         }
 
         // Continuous hold-to-destroy: fires periodically while the finger
