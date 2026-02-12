@@ -167,7 +167,7 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
             // - hold-to-destroy is active (user wants to look while destroying)
             if (isLookDrag || holdDestroyActive) {
                 lookDX += dx * LOOK_SENSITIVITY;
-                lookDY += dy * LOOK_SENSITIVITY;
+                lookDY -= dy * LOOK_SENSITIVITY;
             }
 
             lookLastX = screenX;
