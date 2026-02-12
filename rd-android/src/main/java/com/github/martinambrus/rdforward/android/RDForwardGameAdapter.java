@@ -204,14 +204,15 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
     private void renderGame() {
         if (level == null) return;
 
+        // Poll physical keys & update touch state BEFORE ticking so
+        // Player.tick() sees the freshest input state.
+        touchInput.update();
+
         // Advance timer and tick game logic
         timer.advanceTime();
         for (int i = 0; i < timer.ticks; i++) {
             player.tick();
         }
-
-        // Process touch input
-        touchInput.update();
 
         // F6 toggle (physical keyboard) or tap on HUD banner
         boolean toggleMP = touchInput.consumeF6();

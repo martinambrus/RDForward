@@ -61,6 +61,11 @@ public class Player {
         // D/RIGHT
         if (input.isKeyDown(68) || input.isKeyDown(262)) xa++;
 
+        // SPACE = jump (GLFW key code 32)
+        if (input.isKeyDown(32) && this.onGround) {
+            this.yd = 0.12F;
+        }
+
         moveRelative(xa, ya, onGround ? 0.02F : 0.005F);
         this.yd -= 0.005F;
         move(this.xd, this.yd, this.zd);

@@ -37,7 +37,7 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
     // duration (KEY_MIN_HOLD_MS) regardless of how fast keyUp fires.
     private final boolean[] keyHeld = new boolean[256]; // indexed by libGDX keycode
     private final long[] keyDownTime = new long[256];
-    private static final long KEY_MIN_HOLD_MS = 150; // keep key "pressed" for at least this long
+    private static final long KEY_MIN_HOLD_MS = 600; // bridge Android's ~500 ms key-repeat delay
 
     // Camera look accumulation
     private float lookDX, lookDY;
@@ -214,8 +214,28 @@ public class TouchInputAdapter extends InputAdapter implements RDInput {
         };
     }
 
+    /** Refresh physical keyboard state by polling every frame.
+     *  Keeps keyDownTime current while a key is physically held, even if
+     *  the event callbacks are unreliable on this device. */
+    private static final int[] POLL_GDX_KEYS = {
+            Input.Keys.W, Input.Keys.A, Input.Keys.S, Input.Keys.D,
+            Input.Keys.R, Input.Keys.SPACE
+    };
+    private void pollPhysicalKeys() {
+        long now = System.currentTimeMillis();
+        for (int gk : POLL_GDX_KEYS) {
+            if (Gdx.input.isKeyPressed(gk)) {
+                keyHeld[gk] = true;
+                keyDownTime[gk] = now;
+            }
+        }
+    }
+
     /** Called once per frame to process touch state. */
     public void update() {
+        // Keep physical key timestamps fresh via polling
+        pollPhysicalKeys();
+
         // Continuous hold-to-destroy: fires periodically while the finger
         // is held on the right side for >= LONG_PRESS_MS.
         // Once activated (holdDestroyActive), keeps firing even if the finger
