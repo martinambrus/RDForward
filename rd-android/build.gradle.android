@@ -1,44 +1,60 @@
 // ============================================================================
 // Android build file for rd-android.
 //
-// To use this file:
-//   1. Install Android Studio (or just the Android SDK command-line tools)
-//   2. Set ANDROID_HOME (e.g. export ANDROID_HOME=~/Android/Sdk)
-//   3. Install SDK platform 34:  sdkmanager "platforms;android-34"
-//   4. Install build-tools:      sdkmanager "build-tools;34.0.0"
-//   5. Copy this over the CI build file:
+// SETUP (one-time):
+//
+//   1. Install Android Studio (https://developer.android.com/studio)
+//      It bundles the SDK, emulator, build tools, and AVD manager.
+//
+//   2. Open Android Studio → SDK Manager (Settings → Android SDK):
+//      - SDK Platforms tab: check "Android 14.0 (API 34)"
+//      - SDK Tools tab: check "Android SDK Build-Tools 34"
+//      - Click Apply / OK to install
+//
+//      Or from the command line:
+//        export ANDROID_HOME=~/Android/Sdk   (or wherever the SDK lives)
+//        sdkmanager "platforms;android-34" "build-tools;34.0.0"
+//
+//   3. Edit settings.gradle — add this block at the TOP (before rootProject.name):
+//
+//        pluginManagement {
+//            repositories {
+//                google()
+//                mavenCentral()
+//                gradlePluginPortal()
+//            }
+//        }
+//
+//   4. Copy this file over the CI build file:
+//
 //        cp rd-android/build.gradle.android rd-android/build.gradle
-//   6. Delete the 3 CI stub files:
+//
+//   5. Delete the 3 CI stub files (the real Android SDK provides these classes):
+//
 //        rm rd-android/src/main/java/android/os/Bundle.java
 //        rm rd-android/src/main/java/com/badlogic/gdx/backends/android/AndroidApplication.java
 //        rm rd-android/src/main/java/com/badlogic/gdx/backends/android/AndroidApplicationConfiguration.java
-//   7. Add the Android Gradle Plugin to settings.gradle (see below)
-//   8. Build:  ./gradlew :rd-android:assembleDebug
-//   9. Install on device:  ./gradlew :rd-android:installDebug
-//       or find the APK at: rd-android/build/outputs/apk/debug/rd-android-debug.apk
 //
-// You also need to add the Android Gradle Plugin to settings.gradle.
-// Add this block at the TOP of settings.gradle (before rootProject.name):
+// BUILD & RUN:
 //
-//   pluginManagement {
-//       repositories {
-//           google()
-//           mavenCentral()
-//           gradlePluginPortal()
-//       }
-//   }
+//   ./gradlew :rd-android:assembleDebug          # Build the APK
+//   ./gradlew :rd-android:installDebug            # Install on connected device/emulator
 //
-// And add this to the root build.gradle plugins block:
+//   APK location: rd-android/build/outputs/apk/debug/rd-android-debug.apk
 //
-//   plugins {
-//       id 'java'
-//       id 'com.android.application' version '8.5.0' apply false
-//   }
-//
+// NOTES:
+//   - The root build.gradle already skips rd-android from the Java plugin block
+//     (the Android plugin and Java plugin conflict), so no root edits are needed.
+//   - The root build.gradle already has the google() repo — but the AGP plugin
+//     resolution needs it in pluginManagement (step 3 above).
+//   - rd-render, rd-desktop, rd-protocol, rd-world use Java 21 but Android only
+//     supports up to Java 17 at compile time. The current code uses no Java 21
+//     APIs so this works. If you add Java 21 features to those modules later,
+//     you'll need to provide Android-compatible variants.
 // ============================================================================
 
 plugins {
-    id 'com.android.application'
+    id 'com.android.application' version '8.5.0'
 }
 
 ext {
@@ -58,7 +74,7 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17  // Android doesn't support Java 21 yet
+        sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
 
@@ -78,6 +94,8 @@ android {
     }
 }
 
+configurations { natives }
+
 dependencies {
     // Our rendering abstraction layer
     implementation project(':rd-render')
@@ -91,24 +109,22 @@ dependencies {
     implementation "com.badlogicgames.gdx:gdx:${gdxVersion}"
     implementation "com.badlogicgames.gdx:gdx-backend-android:${gdxVersion}"
 
-    // libGDX Android native libraries (OpenGL ES)
+    // libGDX Android native libraries (OpenGL ES, one per ABI)
     natives "com.badlogicgames.gdx:gdx-platform:${gdxVersion}:natives-armeabi-v7a"
     natives "com.badlogicgames.gdx:gdx-platform:${gdxVersion}:natives-arm64-v8a"
     natives "com.badlogicgames.gdx:gdx-platform:${gdxVersion}:natives-x86"
     natives "com.badlogicgames.gdx:gdx-platform:${gdxVersion}:natives-x86_64"
 }
 
-// Copy native libraries into the APK's jniLibs folder
-configurations { natives }
-
+// Extract .so files from the native JARs into jniLibs/ so they get packaged in the APK
 task copyAndroidNatives {
     doFirst {
         configurations.natives.files.each { jar ->
             def outputDir = null
-            if (jar.name.contains("armeabi-v7a")) outputDir = file("src/main/jniLibs/armeabi-v7a")
-            else if (jar.name.contains("arm64-v8a")) outputDir = file("src/main/jniLibs/arm64-v8a")
-            else if (jar.name.contains("x86_64"))    outputDir = file("src/main/jniLibs/x86_64")
-            else if (jar.name.contains("x86"))       outputDir = file("src/main/jniLibs/x86")
+            if (jar.name.contains("armeabi-v7a"))      outputDir = file("src/main/jniLibs/armeabi-v7a")
+            else if (jar.name.contains("arm64-v8a"))    outputDir = file("src/main/jniLibs/arm64-v8a")
+            else if (jar.name.contains("x86_64"))       outputDir = file("src/main/jniLibs/x86_64")
+            else if (jar.name.contains("x86"))          outputDir = file("src/main/jniLibs/x86")
 
             if (outputDir != null) {
                 copy {

@@ -180,6 +180,11 @@ task buildAll {
 }
 
 subprojects {
+    // rd-android uses the Android Gradle Plugin instead of the Java plugin.
+    // When building for Android, rd-android applies 'com.android.application'
+    // in its own build.gradle, which conflicts with 'java'. Skip it here.
+    if (project.name == 'rd-android') return
+
     apply plugin: 'java'
 
     sourceCompatibility = JavaVersion.VERSION_21

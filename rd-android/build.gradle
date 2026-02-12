@@ -1,5 +1,3 @@
-description = 'RDForward Android - Android client using libGDX rendering backend'
-
 // ============================================================================
 // CI-ONLY BUILD FILE
 //
@@ -19,8 +17,21 @@ description = 'RDForward Android - Android client using libGDX rendering backend
 //   rm rd-android/src/main/java/android/os/Bundle.java
 //   rm rd-android/src/main/java/com/badlogic/gdx/backends/android/AndroidApplication.java
 //   rm rd-android/src/main/java/com/badlogic/gdx/backends/android/AndroidApplicationConfiguration.java
-//   (then follow the settings.gradle / root build.gradle edits in that file)
+//   (then follow the settings.gradle edits in build.gradle.android)
 // ============================================================================
+
+description = 'RDForward Android - Android client using libGDX rendering backend'
+
+// The root build.gradle skips rd-android in its subprojects block (because the
+// Android Gradle Plugin conflicts with the Java plugin). For CI we apply it here.
+apply plugin: 'java'
+
+sourceCompatibility = JavaVersion.VERSION_21
+targetCompatibility = JavaVersion.VERSION_21
+
+java {
+    withSourcesJar()
+}
 
 ext {
     gdxVersion = '1.12.1'
