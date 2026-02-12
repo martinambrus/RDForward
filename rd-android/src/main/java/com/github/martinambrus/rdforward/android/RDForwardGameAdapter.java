@@ -32,9 +32,13 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
     public void render() {
         if (!initialized) return;
 
-        // The game tick and render loop runs here. On Android, libGDX
-        // drives the loop at ~60 FPS. The game code is called per frame.
         touchInput.update();
+
+        // Minimal test render: clear to cornflower blue to prove the GL
+        // pipeline is alive.  Replace this with the real game loop once
+        // RubyDung is ported to the RDGraphics abstraction.
+        graphics.setClearColor(0.4f, 0.6f, 0.9f, 1.0f);
+        graphics.clear();
     }
 
     @Override
