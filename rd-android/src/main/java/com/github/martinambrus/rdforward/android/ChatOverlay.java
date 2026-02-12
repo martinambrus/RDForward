@@ -97,7 +97,7 @@ public class ChatOverlay {
 
         if (visible.isEmpty()) return;
 
-        font.getData().setScale(scale * 0.7f);
+        font.getData().setScale(scale * 1.0f);
         float pad = 4 * scale;
         float lineHeight = font.getLineHeight();
         float totalHeight = lineHeight * visible.size() + pad * 2;
@@ -115,7 +115,7 @@ public class ChatOverlay {
         }
 
         // Background at bottom-left
-        spriteBatch.setColor(0, 0, 0, 0.3f * minAlpha);
+        spriteBatch.setColor(0, 0, 0, 0.5f * minAlpha);
         spriteBatch.draw(whitePixel, pad, pad, bgWidth, totalHeight);
         spriteBatch.setColor(1, 1, 1, 1);
 
