@@ -56,18 +56,21 @@ public class RemotePlayerRenderer {
         GL11.glEnable(GL11.GL_BLEND);
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
         for (RemotePlayer player : players) {
-            float x = player.getInterpolatedX(partialTick);
-            float y = player.getInterpolatedY(partialTick);
-            float z = player.getInterpolatedZ(partialTick);
+            float x = player.getX() / 32.0f;
+            float y = player.getY() / 32.0f;
+            float z = player.getZ() / 32.0f;
             NameTagRenderer.renderNameTag(player.getName(), x, y, z);
         }
         GL11.glPopAttrib();
     }
 
     private static void renderPlayer(RemotePlayer player, float partialTick) {
-        float x = player.getInterpolatedX(partialTick);
-        float y = player.getInterpolatedY(partialTick);
-        float z = player.getInterpolatedZ(partialTick);
+        // Use raw position — interpolation with the local game's partialTick
+        // causes ghosting because partialTick cycles 0→1 independently of
+        // when network position updates arrive.
+        float x = player.getX() / 32.0f;
+        float y = player.getY() / 32.0f;
+        float z = player.getZ() / 32.0f;
 
         // Player dimensions (roughly matching MC player hitbox)
         float halfWidth = 0.3f;

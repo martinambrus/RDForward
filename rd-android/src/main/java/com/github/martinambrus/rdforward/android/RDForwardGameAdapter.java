@@ -468,7 +468,7 @@ public class RDForwardGameAdapter extends ApplicationAdapter {
         Gdx.gl.glDisable(GL20.GL_CULL_FACE);
         spriteBatch.getProjectionMatrix().setToOrtho2D(0, 0, screenW, screenH);
         spriteBatch.begin();
-        font.getData().setScale(scale * 0.6f);
+        font.getData().setScale(scale * 1.0f);
 
         for (RemotePlayer p : players) {
             String name = p.getName();
