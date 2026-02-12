@@ -84,6 +84,13 @@ android {
         }
     }
 
+    // Exclude desktop-native metadata that may leak in through transitive deps
+    packaging {
+        resources {
+            excludes += ['META-INF/macos/**', 'META-INF/linux/**', 'META-INF/windows/**']
+        }
+    }
+
     sourceSets {
         main {
             manifest.srcFile 'src/main/AndroidManifest.xml'
@@ -96,17 +103,19 @@ android {
 
 configurations { natives }
 
+// LWJGL is desktop-only (GLFW, OpenGL via LWJGL). Exclude it globally so it
+// can't sneak in through any transitive path (rd-desktop → gdx-backend-lwjgl3,
+// rd-desktop → gdx-platform:natives-desktop, etc.).
+configurations.configureEach {
+    exclude group: 'org.lwjgl'
+    exclude group: 'com.badlogicgames.gdx', module: 'gdx-backend-lwjgl3'
+    exclude group: 'com.badlogicgames.gdx', module: 'gdx-platform'
+}
+
 dependencies {
     // Our rendering abstraction layer
     implementation project(':rd-render')
-    // rd-desktop provides the shared LibGDXGraphics implementation.
-    // Exclude its LWJGL / desktop-native transitive deps — Android uses
-    // gdx-backend-android instead.
-    implementation(project(':rd-desktop')) {
-        exclude group: 'com.badlogicgames.gdx', module: 'gdx-backend-lwjgl3'
-        exclude group: 'com.badlogicgames.gdx', module: 'gdx-platform'
-        exclude group: 'org.lwjgl'
-    }
+    implementation project(':rd-desktop')
 
     // Networking (Netty works unchanged on Android)
     implementation project(':rd-protocol')
