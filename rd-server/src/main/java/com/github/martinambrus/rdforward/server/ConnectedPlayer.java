@@ -2,6 +2,7 @@ package com.github.martinambrus.rdforward.server;
 
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
+import com.github.martinambrus.rdforward.server.bedrock.BedrockSessionWrapper;
 import io.netty.channel.Channel;
 
 /**
@@ -26,6 +27,9 @@ public class ConnectedPlayer {
     private volatile byte yaw;
     private volatile byte pitch;
 
+    // Bedrock session wrapper (null for non-Bedrock clients)
+    private volatile BedrockSessionWrapper bedrockSession;
+
     // Double-precision position for Alpha clients (block coordinates)
     private volatile double doubleX;
     private volatile double doubleY;
@@ -41,7 +45,11 @@ public class ConnectedPlayer {
     }
 
     public void sendPacket(Packet packet) {
-        if (channel.isActive()) {
+        if (bedrockSession != null) {
+            bedrockSession.translateAndSend(packet);
+            return;
+        }
+        if (channel != null && channel.isActive()) {
             channel.writeAndFlush(packet);
         }
     }
@@ -73,9 +81,21 @@ public class ConnectedPlayer {
     }
 
     public void disconnect() {
-        if (channel.isActive()) {
+        if (bedrockSession != null) {
+            bedrockSession.disconnect("Disconnected");
+            return;
+        }
+        if (channel != null && channel.isActive()) {
             channel.close();
         }
+    }
+
+    public void setBedrockSession(BedrockSessionWrapper session) {
+        this.bedrockSession = session;
+    }
+
+    public BedrockSessionWrapper getBedrockSession() {
+        return bedrockSession;
     }
 
     public byte getPlayerId() { return playerId; }

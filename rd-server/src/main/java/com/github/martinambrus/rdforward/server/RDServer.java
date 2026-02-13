@@ -11,16 +11,28 @@ import com.github.martinambrus.rdforward.world.AlphaWorldGenerator;
 import com.github.martinambrus.rdforward.world.FlatWorldGenerator;
 import com.github.martinambrus.rdforward.world.RubyDungWorldGenerator;
 import com.github.martinambrus.rdforward.world.WorldGenerator;
+import com.github.martinambrus.rdforward.server.bedrock.BedrockBlockMapper;
+import com.github.martinambrus.rdforward.server.bedrock.BedrockChunkConverter;
+import com.github.martinambrus.rdforward.server.bedrock.BedrockLoginHandler;
+import com.github.martinambrus.rdforward.server.bedrock.BedrockProtocolConstants;
+import com.github.martinambrus.rdforward.server.bedrock.BedrockRegistryData;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
+import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.timeout.ReadTimeoutHandler;
+import org.cloudburstmc.netty.channel.raknet.RakChannelFactory;
+import org.cloudburstmc.netty.channel.raknet.config.RakChannelOption;
+import org.cloudburstmc.protocol.bedrock.BedrockPong;
+import org.cloudburstmc.protocol.bedrock.BedrockServerSession;
+import org.cloudburstmc.protocol.bedrock.netty.initializer.BedrockServerInitializer;
 
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
+import java.net.InetSocketAddress;
 import java.util.Collection;
 
 /**
@@ -61,6 +73,10 @@ public class RDServer {
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
     private Channel serverChannel;
+    private Channel bedrockChannel;
+    private BedrockBlockMapper bedrockBlockMapper;
+    private BedrockChunkConverter bedrockChunkConverter;
+    private BedrockRegistryData bedrockRegistryData;
     private volatile boolean stopped = false;
 
     public RDServer(int port) {
@@ -142,6 +158,94 @@ public class RDServer {
         System.out.println("RDForward server started on port " + port
                 + " (protocol: " + protocolVersion.getDisplayName()
                 + ", version " + protocolVersion.getVersionNumber() + ")");
+
+        // Start Bedrock Edition server (UDP/RakNet on port 19132)
+        startBedrockServer();
+    }
+
+    /**
+     * Start the Bedrock Edition UDP/RakNet server on port 19132.
+     */
+    private void startBedrockServer() {
+        int bedrockPort = BedrockProtocolConstants.DEFAULT_PORT;
+
+        // Initialize block mapper, chunk converter, and registry data
+        bedrockBlockMapper = new BedrockBlockMapper(BedrockProtocolConstants.getVanillaBlockStates());
+        bedrockChunkConverter = new BedrockChunkConverter(bedrockBlockMapper);
+        bedrockRegistryData = new BedrockRegistryData();
+
+        // Configure BedrockPong for server list advertisement
+        final long serverGuid = System.currentTimeMillis();
+        final int bPort = bedrockPort;
+
+        // Runnable that rebuilds and updates the pong advertisement (player count etc.)
+        Runnable pongUpdater = () -> {
+            if (bedrockChannel == null) return;
+            BedrockPong p = new BedrockPong()
+                    .edition("MCPE")
+                    .motd("RDForward Server")
+                    .subMotd("RDForward")
+                    .playerCount(playerManager.getPlayerCount())
+                    .maximumPlayerCount(PlayerManager.MAX_PLAYERS)
+                    .gameType("Creative")
+                    .protocolVersion(BedrockProtocolConstants.CODEC.getProtocolVersion())
+                    .version(BedrockProtocolConstants.CODEC.getMinecraftVersion())
+                    .ipv4Port(bPort)
+                    .ipv6Port(bPort)
+                    .serverId(serverGuid)
+                    .nintendoLimited(false);
+            bedrockChannel.config().setOption(RakChannelOption.RAK_ADVERTISEMENT, p.toByteBuf());
+        };
+
+        BedrockPong pong = new BedrockPong()
+                .edition("MCPE")
+                .motd("RDForward Server")
+                .subMotd("RDForward")
+                .playerCount(0)
+                .maximumPlayerCount(PlayerManager.MAX_PLAYERS)
+                .gameType("Creative")
+                .protocolVersion(BedrockProtocolConstants.CODEC.getProtocolVersion())
+                .version(BedrockProtocolConstants.CODEC.getMinecraftVersion())
+                .ipv4Port(bedrockPort)
+                .ipv6Port(bedrockPort)
+                .serverId(serverGuid)
+                .nintendoLimited(false);
+
+        // Debug: print exact pong string for diagnosis
+        io.netty.buffer.ByteBuf pongBuf = pong.toByteBuf();
+        byte[] pongBytes = new byte[pongBuf.readableBytes()];
+        pongBuf.getBytes(pongBuf.readerIndex(), pongBytes);
+        System.out.println("[Bedrock] Pong advertisement: " + new String(pongBytes, java.nio.charset.StandardCharsets.UTF_8));
+        // Reset reader index since getBytes doesn't advance it — buf is ready for use
+
+        ServerBootstrap bedrockBootstrap = new ServerBootstrap()
+                .channelFactory(RakChannelFactory.server(NioDatagramChannel.class))
+                .group(workerGroup)
+                .option(RakChannelOption.RAK_HANDLE_PING, true)
+                .option(RakChannelOption.RAK_GUID, serverGuid)
+                .option(RakChannelOption.RAK_SUPPORTED_PROTOCOLS, new int[]{11})
+                .option(RakChannelOption.RAK_ADVERTISEMENT, pongBuf)
+                .childHandler(new BedrockServerInitializer() {
+                    @Override
+                    protected void initSession(BedrockServerSession session) {
+                        session.setCodec(BedrockProtocolConstants.CODEC);
+                        session.setPacketHandler(new BedrockLoginHandler(
+                                session, world, playerManager, chunkManager,
+                                bedrockBlockMapper, bedrockChunkConverter,
+                                bedrockRegistryData, pongUpdater));
+                    }
+                });
+
+        try {
+            bedrockChannel = bedrockBootstrap.bind(bedrockPort).sync().channel();
+            System.out.println("Bedrock server started on port " + bedrockPort
+                    + " (protocol: " + BedrockProtocolConstants.CODEC.getMinecraftVersion()
+                    + ", version " + BedrockProtocolConstants.CODEC.getProtocolVersion() + ")");
+        } catch (Exception e) {
+            System.err.println("Failed to start Bedrock server on port " + bedrockPort
+                    + ": " + e.getMessage());
+            System.err.println("Bedrock Edition support disabled. TCP server still running.");
+        }
     }
 
     /**
@@ -159,6 +263,9 @@ public class RDServer {
         world.savePlayers(playerManager.getAllPlayers());
         chunkManager.saveAllDirty();
 
+        if (bedrockChannel != null) {
+            bedrockChannel.close();
+        }
         if (serverChannel != null) {
             serverChannel.close();
         }

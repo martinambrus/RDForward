@@ -37,6 +37,22 @@ allprojects {
             url = 'https://jitpack.io'
             content { includeGroup 'com.github.Querz' }
         }
+        // CloudburstMC Protocol (Bedrock Edition codec + RakNet transport)
+        // and its transitive dependencies (cloudburstmc.math, nukkitx natives)
+        maven {
+            url = 'https://repo.opencollab.dev/maven-releases/'
+            content {
+                includeGroupByRegex 'org\\.cloudburstmc.*'
+                includeGroup 'com.nukkitx'
+            }
+        }
+        maven {
+            url = 'https://repo.opencollab.dev/maven-snapshots/'
+            content {
+                includeGroupByRegex 'org\\.cloudburstmc.*'
+                includeGroup 'com.nukkitx'
+            }
+        }
         // libGDX releases (rd-desktop, rd-android)
         maven {
             url = 'https://oss.sonatype.org/content/repositories/releases/'

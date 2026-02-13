@@ -304,6 +304,93 @@ public class ServerWorld {
         return playerPositionCache;
     }
 
+    /**
+     * Find a safe position near the given coordinates by scanning upward.
+     * A safe position requires: solid block below (ground), 2 air blocks above (feet + head).
+     * Searches upward from the player's Y first, then expands horizontally.
+     * This keeps players near their original position (e.g. in a cave) rather
+     * than teleporting them to the surface.
+     *
+     * @param x block X
+     * @param y block Y (feet position)
+     * @param z block Z
+     * @param maxRadius horizontal search radius in blocks
+     * @return int[3] with safe {x, feetY, z}
+     */
+    public int[] findSafePosition(int x, int y, int z, int maxRadius) {
+        int startY = Math.max(1, Math.min(y, height - 2));
+
+        // First: search straight up from current position
+        int safeY = findSafeYUpward(x, z, startY);
+        if (safeY >= 0) {
+            return new int[]{x, safeY, z};
+        }
+
+        // Expand horizontally in square rings, searching upward at each column
+        for (int r = 1; r <= maxRadius; r++) {
+            for (int dx = -r; dx <= r; dx++) {
+                for (int dz = -r; dz <= r; dz++) {
+                    if (Math.abs(dx) != r && Math.abs(dz) != r) continue;
+                    int tx = x + dx;
+                    int tz = z + dz;
+                    if (tx < 0 || tx >= width || tz < 0 || tz >= depth) continue;
+                    safeY = findSafeYUpward(tx, tz, startY);
+                    if (safeY >= 0) {
+                        return new int[]{tx, safeY, tz};
+                    }
+                }
+            }
+        }
+
+        // Fallback: world center surface (top-down scan)
+        int cx = width / 2;
+        int cz = depth / 2;
+        for (int testY = height - 2; testY >= 1; testY--) {
+            if (getBlock(cx, testY - 1, cz) != 0
+                    && getBlock(cx, testY, cz) == 0
+                    && getBlock(cx, testY + 1, cz) == 0) {
+                return new int[]{cx, testY, cz};
+            }
+        }
+        return new int[]{cx, height * 2 / 3 + 1, cz};
+    }
+
+    /**
+     * Search upward from startY for a safe position: solid ground below,
+     * 2 air blocks for feet and head, and at least one horizontal neighbor
+     * that also has 2 air blocks (so the player can actually move).
+     * Returns the feet Y, or -1 if none found.
+     */
+    private int findSafeYUpward(int x, int z, int startY) {
+        for (int testY = startY; testY < height - 1; testY++) {
+            if (getBlock(x, testY - 1, z) != 0       // solid ground below
+                    && getBlock(x, testY, z) == 0     // feet in air
+                    && getBlock(x, testY + 1, z) == 0 // head in air
+                    && hasHorizontalFreedom(x, testY, z)) { // can move somewhere
+                return testY;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Check if at least one horizontal neighbor (N/S/E/W) also has 2 blocks
+     * of air at the given Y, so the player has room to move.
+     */
+    private boolean hasHorizontalFreedom(int x, int feetY, int z) {
+        int[][] offsets = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (int[] off : offsets) {
+            int nx = x + off[0];
+            int nz = z + off[1];
+            if (inBounds(nx, feetY, nz) && inBounds(nx, feetY + 1, nz)
+                    && getBlock(nx, feetY, nz) == 0
+                    && getBlock(nx, feetY + 1, nz) == 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public int getWidth() { return width; }
     public int getHeight() { return height; }
     public int getDepth() { return depth; }

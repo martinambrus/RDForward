@@ -39,6 +39,7 @@ public class PlayerManager {
      * Register a new player. Assigns the next available player ID.
      * If the username is empty/blank, generates "Player&lt;ID&gt;".
      * If the username is already taken, appends a number to make it unique.
+     * Channel may be null for Bedrock players (they use a different transport).
      * Returns null if the server is full.
      */
     public synchronized ConnectedPlayer addPlayer(String username, Channel channel, ProtocolVersion version) {
@@ -63,19 +64,35 @@ public class PlayerManager {
         }
 
         ConnectedPlayer player = new ConnectedPlayer(id, username, channel, version);
-        playersByChannel.put(channel, player);
+        if (channel != null) {
+            playersByChannel.put(channel, player);
+        }
         playersById.put(id, player);
         return player;
     }
 
     /**
-     * Remove a player and free their ID.
+     * Remove a player by their network channel and free their ID.
      */
     public synchronized void removePlayer(Channel channel) {
         ConnectedPlayer player = playersByChannel.remove(channel);
         if (player != null) {
             playersById.remove(player.getPlayerId());
             usedIds[player.getPlayerId()] = false;
+        }
+    }
+
+    /**
+     * Remove a player by their ID and free the ID.
+     * Used for Bedrock players which don't have a Netty channel.
+     */
+    public synchronized void removePlayerById(byte playerId) {
+        ConnectedPlayer player = playersById.remove(playerId);
+        if (player != null) {
+            if (player.getChannel() != null) {
+                playersByChannel.remove(player.getChannel());
+            }
+            usedIds[playerId] = false;
         }
     }
 
@@ -94,24 +111,24 @@ public class PlayerManager {
     }
 
     /**
-     * Get all connected players.
+     * Get all connected players (both TCP and Bedrock).
      */
     public Collection<ConnectedPlayer> getAllPlayers() {
-        return playersByChannel.values();
+        return playersById.values();
     }
 
     /**
      * Get the current player count.
      */
     public int getPlayerCount() {
-        return playersByChannel.size();
+        return playersById.size();
     }
 
     /**
      * Send a packet to all connected players.
      */
     public void broadcastPacket(Packet packet) {
-        for (ConnectedPlayer player : playersByChannel.values()) {
+        for (ConnectedPlayer player : playersById.values()) {
             player.sendPacket(packet);
         }
     }
@@ -120,7 +137,7 @@ public class PlayerManager {
      * Send a packet to all players except the specified one.
      */
     public void broadcastPacketExcept(Packet packet, ConnectedPlayer exclude) {
-        for (ConnectedPlayer player : playersByChannel.values()) {
+        for (ConnectedPlayer player : playersById.values()) {
             if (player != exclude) {
                 player.sendPacket(packet);
             }
@@ -164,7 +181,7 @@ public class PlayerManager {
      * Check if a username is already taken by a connected player.
      */
     private boolean isNameTaken(String name) {
-        for (ConnectedPlayer p : playersByChannel.values()) {
+        for (ConnectedPlayer p : playersById.values()) {
             if (p.getUsername().equalsIgnoreCase(name)) {
                 return true;
             }

@@ -3,6 +3,10 @@ description = 'RDForward Server - dedicated server runtime'
 dependencies {
     implementation project(':rd-protocol')
     implementation project(':rd-world')
+    // CloudburstMC Protocol: Bedrock Edition codec, RakNet transport, compression
+    implementation 'org.cloudburstmc.protocol:bedrock-connection:3.0.0.Beta12-SNAPSHOT'
+    // SLF4J simple logger to see CloudburstMC library debug/error output
+    implementation 'org.slf4j:slf4j-simple:1.7.36'
 }
 
 jar {

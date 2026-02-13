@@ -44,10 +44,18 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     private final PlayerManager playerManager;
     private final ChunkManager chunkManager;
 
+    /**
+     * Cooldown period (ms) after placing a block during which dig packets are
+     * ignored. The Alpha client erroneously sends dig packets (0x0E) during
+     * sustained rapid right-clicking (e.g. building a column while jumping).
+     */
+    private static final long PLACEMENT_DIG_COOLDOWN_MS = 500;
+
     private String pendingUsername;
     private ProtocolVersion clientVersion;
     private ConnectedPlayer player;
     private boolean loginComplete = false;
+    private long lastPlacementTime = 0;
 
     public AlphaConnectionHandler(ProtocolVersion serverVersion, ServerWorld world,
                                   PlayerManager playerManager, ChunkManager chunkManager) {
@@ -152,7 +160,26 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             spawnZ = savedPos[2] / 32.0;
             spawnYaw = (savedPos[3] & 0xFF) * 360.0f / 256.0f;
             spawnPitch = (savedPos[4] & 0xFF) * 360.0f / 256.0f;
-            System.out.println("Restored position for " + player.getUsername());
+
+            // Safety check: ensure player isn't inside solid blocks.
+            // Add 0.1 to feet Y to avoid treating "standing on top of a block"
+            // as "inside the block" (e.g. feet at Y=5.97 → floor=5 which is ground).
+            double feetY = spawnY - PLAYER_EYE_HEIGHT;
+            int feetBlockX = (int) Math.floor(spawnX);
+            int feetBlockY = (int) Math.floor(feetY + 0.1);
+            int feetBlockZ = (int) Math.floor(spawnZ);
+            if (world.inBounds(feetBlockX, feetBlockY, feetBlockZ)
+                    && (world.getBlock(feetBlockX, feetBlockY, feetBlockZ) != 0
+                        || world.getBlock(feetBlockX, feetBlockY + 1, feetBlockZ) != 0)) {
+                int[] safe = world.findSafePosition(feetBlockX, feetBlockY, feetBlockZ, 50);
+                spawnX = safe[0] + 0.5;
+                spawnY = safe[1] + PLAYER_EYE_HEIGHT;
+                spawnZ = safe[2] + 0.5;
+                System.out.println("Saved position was inside blocks, relocated to "
+                        + safe[0] + "," + safe[1] + "," + safe[2]);
+            } else {
+                System.out.println("Restored position for " + player.getUsername());
+            }
         } else {
             // Default: center of world, on top of terrain.
             // Internal Y convention is eye-level (feet + 1.62) to match Classic.
@@ -177,11 +204,30 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         // Send player position and look.
         // spawnY is eye-level (internal convention). Alpha S2C needs feet and stance.
-        // Add a small upward offset (+0.5) to the S2C feet position to prevent the
-        // client from falling into the ground due to gravity processing before chunks
-        // are fully loaded. The client will settle to the correct Y on the next tick.
-        double feetY = spawnY - PLAYER_EYE_HEIGHT + 0.5;
+        double feetY = spawnY - PLAYER_EYE_HEIGHT;
+        // For default spawn (no saved position), add a small upward offset to prevent
+        // falling into ground before chunks load. Don't add it for restored positions
+        // since the player may be in a tight space (e.g. 2-block cave) where the
+        // offset would push their head into the ceiling.
+        if (savedPos == null) {
+            feetY += 0.5;
+        }
         double stanceY = feetY + PLAYER_EYE_HEIGHT;
+
+        // Debug: print block column around spawn position
+        int dbgX = (int) Math.floor(spawnX);
+        int dbgZ = (int) Math.floor(spawnZ);
+        System.out.println("Spawn debug: feetY=" + feetY + " eyeY=" + stanceY
+                + " pos=" + spawnX + "," + feetY + "," + spawnZ);
+        for (int dy = Math.max(0, (int) feetY - 2); dy <= Math.min(world.getHeight() - 1, (int) stanceY + 3); dy++) {
+            byte block = world.getBlock(dbgX, dy, dbgZ);
+            String marker = "";
+            if (dy == (int) Math.floor(feetY)) marker += " <-- feet block";
+            if (dy == (int) Math.floor(stanceY)) marker += " <-- eye block";
+            System.out.println("  Y=" + dy + ": block=" + (block & 0xFF) + " (" +
+                    (block == 0 ? "AIR" : "SOLID") + ")" + marker);
+        }
+
         ctx.writeAndFlush(new PlayerPositionAndLookS2CPacket(
                 spawnX, feetY, stanceY, spawnZ, spawnYaw, spawnPitch, true));
 
@@ -301,6 +347,13 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // and "finished" (survival mode break animation complete)
         if (packet.getStatus() == PlayerDiggingPacket.STATUS_STARTED
                 || packet.getStatus() == PlayerDiggingPacket.STATUS_FINISHED) {
+
+            // Suppress erroneous dig packets during rapid right-click placement.
+            // The Alpha client sends dig packets (0x0E) during sustained rapid
+            // right-clicking (e.g. building a column while jumping).
+            if (System.currentTimeMillis() - lastPlacementTime < PLACEMENT_DIG_COOLDOWN_MS) {
+                return;
+            }
             int x = packet.getX();
             int y = packet.getY();
             int z = packet.getZ();
@@ -329,6 +382,8 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Special case: direction -1 means "use item" without placing, ignore
         if (direction == -1) return;
 
+        lastPlacementTime = System.currentTimeMillis();
+
         // Compute target position based on face
         int targetX = x;
         int targetY = y;
@@ -343,6 +398,16 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
 
         if (!world.inBounds(targetX, targetY, targetZ)) return;
+
+        // Prevent placing blocks inside the player's body.
+        // Player AABB: 0.6 wide (±0.3), 1.8 tall from feet.
+        double px = player.getDoubleX();
+        double feetY = player.getDoubleY() - PLAYER_EYE_HEIGHT;
+        double pz = player.getDoubleZ();
+        boolean overlapsX = targetX < px + 0.3 && px - 0.3 < targetX + 1;
+        boolean overlapsY = targetY < feetY + 1.8 && feetY < targetY + 1;
+        boolean overlapsZ = targetZ < pz + 0.3 && pz - 0.3 < targetZ + 1;
+        if (overlapsX && overlapsY && overlapsZ) return;
 
         short itemId = packet.getItemId();
         if (itemId < 0) return; // empty hand, no block to place
@@ -370,7 +435,8 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         playerManager.broadcastPacketExcept(
                 new SetBlockServerPacket(targetX, targetY, targetZ, worldBlockType & 0xFF), player);
 
-        // Confirm cobblestone to this Alpha client (matches their held-item prediction)
+        // Confirm block to this Alpha client. Alpha v6 requires server confirmation;
+        // without it, the client removes its predicted blocks after ~2-3 seconds.
         ctx.writeAndFlush(new BlockChangePacket(
                 targetX, targetY, targetZ, itemId & 0xFF, 0));
 
@@ -386,7 +452,8 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             }, 200, TimeUnit.MILLISECONDS);
         }
 
-        // Replenish 1 cobblestone so the player can keep placing
+        // Replenish 1 cobblestone so the player can keep placing (survival mode,
+        // simulates infinite cobblestone like creative mode)
         giveItem(ctx, BlockRegistry.COBBLESTONE, 1);
     }
 

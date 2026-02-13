@@ -238,9 +238,14 @@ public class ChunkManager {
             System.err.println("Failed to load chunk " + coord + ": " + e.getMessage());
         }
 
-        // If not on disk, generate and overlay ServerWorld data
+        // If not on disk, generate a fresh chunk
         if (chunk == null && worldGenerator.supportsChunkGeneration()) {
             chunk = worldGenerator.generateChunk(coord.getX(), coord.getZ(), seed);
+        }
+
+        // Always overlay ServerWorld data so the authoritative world state
+        // takes priority over stale disk data or freshly generated terrain.
+        if (chunk != null) {
             overlayServerWorldBlocks(chunk);
         }
 

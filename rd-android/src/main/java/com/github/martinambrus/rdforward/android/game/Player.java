@@ -81,6 +81,12 @@ public class Player {
             autoJumpBlockedTicks = 0;
         }
 
+        // Void fall protection: teleport back to spawn if player falls below the world
+        if (this.y < -10.0F) {
+            resetPos();
+            return;
+        }
+
         this.xd *= 0.91F; this.yd *= 0.98F; this.zd *= 0.91F;
         if (onGround) { this.xd *= 0.8F; this.zd *= 0.8F; }
     }

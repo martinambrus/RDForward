@@ -42,6 +42,9 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
     /** Seconds to wait for PlayerIdentification before disconnecting. */
     static final int LOGIN_TIMEOUT_SECONDS = 5;
 
+    /** Player eye height in blocks. Internal Y convention is eye-level. */
+    private static final double PLAYER_EYE_HEIGHT = 1.62;
+
     private final ProtocolVersion serverVersion;
     private final ServerWorld world;
     private final PlayerManager playerManager;
@@ -250,6 +253,18 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
             blockType = (y == surfaceY)
                     ? (byte) BlockRegistry.GRASS
                     : (byte) BlockRegistry.COBBLESTONE;
+        }
+
+        // Prevent placing blocks inside the player's body.
+        // Player AABB: 0.6 wide (±0.3), 1.8 tall from feet.
+        if (blockType != 0 && player != null) {
+            double px = player.getDoubleX();
+            double feetY = player.getDoubleY() - PLAYER_EYE_HEIGHT;
+            double pz = player.getDoubleZ();
+            boolean overlapsX = x < px + 0.3 && px - 0.3 < x + 1;
+            boolean overlapsY = y < feetY + 1.8 && feetY < y + 1;
+            boolean overlapsZ = z < pz + 0.3 && pz - 0.3 < z + 1;
+            if (overlapsX && overlapsY && overlapsZ) return;
         }
 
         // Fire cancellable block events

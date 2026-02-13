@@ -198,7 +198,7 @@ public class RubyDungMixin {
             if (rdforward$multiplayerMode) {
                 rdforward$disconnectFromServer();
             } else {
-                rdforward$connectToServer();
+                rdforward$showMultiplayerDialog();
             }
         }
         rdforward$f6WasPressed = f6Pressed;
@@ -210,7 +210,7 @@ public class RubyDungMixin {
             if (rdforward$multiplayerMode) {
                 rdforward$disconnectFromServer();
             } else {
-                rdforward$connectToServer();
+                rdforward$showMultiplayerDialog();
             }
         }
 
@@ -547,6 +547,9 @@ public class RubyDungMixin {
 
     /** Show JOptionPane dialogs to get server address and username, then connect. */
     private void rdforward$showMultiplayerDialog() {
+        // Release mouse cursor so the user can interact with the dialog
+        GLFW.glfwSetInputMode(RubyDung.window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
+
         Object addrResult = JOptionPane.showInputDialog(null,
                 "Enter server address:",
                 "Connect to Server",
@@ -556,7 +559,8 @@ public class RubyDungMixin {
         String address = addrResult instanceof String ? (String) addrResult : null;
 
         if (address == null || address.trim().isEmpty()) {
-            // User cancelled — stay on menu
+            // User cancelled — re-grab mouse and stay in current mode
+            rdforward$grabMouseClean();
             return;
         }
 

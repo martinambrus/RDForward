@@ -50,7 +50,15 @@ public enum ProtocolVersion {
      * ~82 block types, health, time, mobs, explosions.
      * Real MC protocol version 14.
      */
-    ALPHA_1_2_6(14, "Alpha 1.2.6", 82);
+    ALPHA_1_2_6(14, "Alpha 1.2.6", 82),
+
+    /**
+     * Minecraft Bedrock Edition (1.26.0+).
+     * Uses UDP/RakNet on port 19132 with a completely different protocol.
+     * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
+     * Block count uses the same internal 0-91 range as Alpha.
+     */
+    BEDROCK(924, "Bedrock", 92);
 
     // Future versions:
     // BETA_1_0(14, "Beta 1.0", ...)   — Beta reuses protocol 14 initially
@@ -105,6 +113,13 @@ public enum ProtocolVersion {
      * Alpha+ uses the pre-Netty format (string16, variable-length fields).
      */
     public boolean isClassicFormat() {
-        return this.versionNumber <= CLASSIC.versionNumber;
+        return this == RUBYDUNG || this == CLASSIC;
+    }
+
+    /**
+     * Check if this version is Bedrock Edition (UDP/RakNet protocol).
+     */
+    public boolean isBedrock() {
+        return this == BEDROCK;
     }
 }
