@@ -67,6 +67,12 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
         }
 
         if (!loginComplete) {
+            // Non-identification packet before login — close immediately to prevent
+            // clients from holding connections open by sending continuous junk
+            System.err.println("Received unexpected pre-login packet 0x"
+                    + String.format("%02X", packet.getPacketId()) + ", disconnecting");
+            ctx.writeAndFlush(new DisconnectPacket("Invalid login sequence"));
+            ctx.close();
             return;
         }
 
@@ -99,8 +105,10 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
         }
 
         // If client is on a different version, insert version translator
+        // in the outbound pipeline (after encoder, so in outbound direction:
+        // handler -> translator -> encoder -> network)
         if (clientVersion != serverVersion) {
-            ctx.pipeline().addBefore("handler", "translator",
+            ctx.pipeline().addAfter("encoder", "translator",
                     new VersionTranslator(serverVersion, clientVersion));
 
             PacketDecoder decoder = ctx.pipeline().get(PacketDecoder.class);
@@ -119,9 +127,6 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
                 "Welcome to RDForward!",
                 ServerIdentificationPacket.USER_TYPE_NORMAL
         ));
-
-        // Register player for chunk tracking (used by Alpha-mode clients)
-        chunkManager.addPlayer(player);
 
         // Send world data via Classic level transfer
         sendWorldData(ctx);

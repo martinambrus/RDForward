@@ -336,20 +336,21 @@ public class ChunkManager {
      * Save all dirty chunks to disk.
      */
     public void saveAllDirty() {
+        Set<ChunkCoord> saved = new HashSet<>();
         for (ChunkCoord coord : dirtyChunks) {
             AlphaChunk chunk = loadedChunks.get(coord);
             if (chunk != null) {
                 try {
                     AlphaLevelFormat.saveChunk(worldDir, chunk);
+                    saved.add(coord);
                 } catch (IOException e) {
                     System.err.println("Failed to save chunk " + coord + ": " + e.getMessage());
                 }
             }
         }
-        int count = dirtyChunks.size();
-        dirtyChunks.clear();
-        if (count > 0) {
-            System.out.println("Saved " + count + " dirty chunk(s) to " + worldDir);
+        dirtyChunks.removeAll(saved);
+        if (!saved.isEmpty()) {
+            System.out.println("Saved " + saved.size() + " dirty chunk(s) to " + worldDir);
         }
     }
 

@@ -16,14 +16,15 @@ import com.github.martinambrus.rdforward.protocol.packet.alpha.SpawnPlayerPacket
 import com.github.martinambrus.rdforward.protocol.packet.alpha.TimeUpdatePacket;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.UpdateHealthPacket;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
 
 /**
- * Netty channel handler that translates packets between protocol versions.
+ * Netty outbound channel handler that translates packets between protocol versions.
  *
- * This sits in the Netty pipeline between the codec layer and the
- * game handler. It intercepts outbound packets (server -> client)
- * and translates them to match the client's protocol version.
+ * Sits in the outbound pipeline between the game handler and the encoder.
+ * Intercepts server-to-client packets and translates/filters them to match
+ * the client's protocol version before encoding.
  *
  * Translation layers (applied in order):
  *   1. Packet existence — drop packets whose ID doesn't exist in the client version
@@ -36,13 +37,10 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
  * - Each translator only needs to know about its adjacent versions
  *
  * Pipeline for a RubyDung client on a Classic server:
- *   Inbound:  [PacketDecoder] -> [VersionTranslator] -> [GameHandler]
- *   Outbound: [GameHandler] -> [PacketEncoder]
- *
- * The translator filters and transforms inbound packets (from server
- * perspective, these are the packets being sent TO the client).
+ *   Inbound:  [PacketDecoder] -> [GameHandler]
+ *   Outbound: [GameHandler] -> [VersionTranslator] -> [PacketEncoder]
  */
-public class VersionTranslator extends ChannelInboundHandlerAdapter {
+public class VersionTranslator extends ChannelOutboundHandlerAdapter {
 
     private static final boolean DEBUG_LOGGING = Boolean.getBoolean("rdforward.debug.packets");
 
@@ -55,9 +53,9 @@ public class VersionTranslator extends ChannelInboundHandlerAdapter {
     }
 
     @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
         if (!(msg instanceof Packet)) {
-            ctx.fireChannelRead(msg);
+            ctx.write(msg, promise);
             return;
         }
 
@@ -66,19 +64,23 @@ public class VersionTranslator extends ChannelInboundHandlerAdapter {
         // Layer 1: Check if this packet ID exists in the client's version
         if (!PacketRegistry.hasPacket(clientVersion, PacketDirection.SERVER_TO_CLIENT, packet.getPacketId())) {
             logFiltered(packet, "no packet ID in client version");
+            promise.setSuccess();
             return;
         }
 
         // Layer 2: Check capability-based filtering
         if (!passesCapabilityFilter(packet)) {
             logFiltered(packet, "client lacks required capability");
+            promise.setSuccess();
             return;
         }
 
         // Layer 3: Translate packet contents based on type
         Packet translated = translatePacket(packet);
         if (translated != null) {
-            ctx.fireChannelRead(translated);
+            ctx.write(translated, promise);
+        } else {
+            promise.setSuccess();
         }
     }
 

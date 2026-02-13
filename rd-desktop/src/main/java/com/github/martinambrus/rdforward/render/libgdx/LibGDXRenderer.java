@@ -46,6 +46,7 @@ public class LibGDXRenderer implements RDRenderer {
 
         @Override
         public void dispose() {
+            closeRequested = true;
             if (graphics != null) graphics.dispose();
         }
     };
@@ -70,7 +71,7 @@ public class LibGDXRenderer implements RDRenderer {
         gdxThread.start();
 
         // Wait for the GL context to be ready
-        while (graphics == null) {
+        while (graphics == null || input == null) {
             try {
                 Thread.sleep(10);
             } catch (InterruptedException e) {

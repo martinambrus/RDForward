@@ -215,7 +215,7 @@ public class RDServer {
             ctx.reply("World saved.");
         });
 
-        CommandRegistry.register("stop", "Save and stop the server", ctx -> {
+        CommandRegistry.registerOp("stop", "Save and stop the server", ctx -> {
             ctx.reply("Stopping server...");
             stop();
         });
