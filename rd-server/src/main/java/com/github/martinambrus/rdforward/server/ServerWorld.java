@@ -164,6 +164,26 @@ public class ServerWorld {
     }
 
     /**
+     * Migrate invalid block types for RubyDung worlds.
+     * RubyDung only supports AIR (0), GRASS (2), and COBBLESTONE (4).
+     * The RD client historically sent Stone (1) when placing blocks.
+     * This replaces any Stone blocks with Cobblestone.
+     */
+    public synchronized void migrateRubyDungBlocks() {
+        int count = 0;
+        for (int i = 0; i < blocks.length; i++) {
+            if ((blocks[i] & 0xFF) == BlockRegistry.STONE) {
+                blocks[i] = (byte) BlockRegistry.COBBLESTONE;
+                count++;
+            }
+        }
+        if (count > 0) {
+            dirty = true;
+            System.out.println("Migrated " + count + " stone block(s) to cobblestone");
+        }
+    }
+
+    /**
      * Save world to disk (GZip compressed).
      */
     public synchronized void save() {

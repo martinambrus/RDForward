@@ -30,12 +30,12 @@ public class ChatPacket implements Packet {
 
     @Override
     public void write(ByteBuf buf) {
-        McDataTypes.writeString16(buf, message);
+        McDataTypes.writeJavaUTF(buf, message);
     }
 
     @Override
     public void read(ByteBuf buf) {
-        message = McDataTypes.readString16(buf);
+        message = McDataTypes.readJavaUTF(buf);
     }
 
     public String getMessage() { return message; }

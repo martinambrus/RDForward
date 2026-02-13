@@ -29,12 +29,12 @@ public class HandshakeC2SPacket implements Packet {
 
     @Override
     public void write(ByteBuf buf) {
-        McDataTypes.writeString16(buf, username);
+        McDataTypes.writeJavaUTF(buf, username);
     }
 
     @Override
     public void read(ByteBuf buf) {
-        username = McDataTypes.readString16(buf);
+        username = McDataTypes.readJavaUTF(buf);
     }
 
     public String getUsername() { return username; }

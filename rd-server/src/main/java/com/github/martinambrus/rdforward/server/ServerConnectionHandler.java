@@ -3,6 +3,7 @@ package com.github.martinambrus.rdforward.server;
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.codec.PacketDecoder;
 import com.github.martinambrus.rdforward.protocol.event.EventResult;
+import com.github.martinambrus.rdforward.world.BlockRegistry;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.protocol.packet.classic.*;
 import com.github.martinambrus.rdforward.protocol.translation.VersionTranslator;
@@ -237,6 +238,15 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
             return;
         }
 
+        // RubyDung only has 3 block types. Override placed blocks to match terrain:
+        // grass at the surface layer, cobblestone everywhere else.
+        if (blockType != 0 && serverVersion == ProtocolVersion.RUBYDUNG) {
+            int surfaceY = world.getHeight() * 2 / 3;
+            blockType = (y == surfaceY)
+                    ? (byte) BlockRegistry.GRASS
+                    : (byte) BlockRegistry.COBBLESTONE;
+        }
+
         // Fire cancellable block events
         if (blockType == 0) {
             // Breaking: mode 0 = destroy
@@ -257,13 +267,6 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
         world.queueBlockChange(x, y, z, blockType);
     }
 
-    /**
-     * Maximum distance (in fixed-point units) a player can move per position update.
-     * 10 blocks * 32 fixed-point units = 320. Generous to allow fast movement
-     * without false positives, but catches blatant teleporting.
-     */
-    private static final int MAX_MOVE_DISTANCE_SQUARED = 320 * 320;
-
     private void handlePlayerPosition(ChannelHandlerContext ctx, PlayerTeleportPacket packet) {
         if (player == null) return;
 
@@ -273,31 +276,17 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
         byte yaw = (byte) packet.getYaw();
         byte pitch = (byte) packet.getPitch();
 
-        // Validate movement distance (anti-teleport)
-        int dx = x - player.getX();
-        int dy = y - player.getY();
-        int dz = z - player.getZ();
-        int distSq = dx * dx + dy * dy + dz * dz;
-
-        if (distSq > MAX_MOVE_DISTANCE_SQUARED) {
-            // Reject — teleport player back to their last known position
+        // If player falls below the world, teleport to spawn
+        if (y / 32 < -10) {
+            short spawnX = (short) ((world.getWidth() / 2) * 32 + 16);
+            int feetFixed = (world.getHeight() * 2 / 3 + 1) * 32;
+            int eyeOffset = (int) Math.ceil(1.62 * 32);
+            short spawnY = (short) (feetFixed + eyeOffset);
+            short spawnZ = (short) ((world.getDepth() / 2) * 32 + 16);
+            player.updatePosition(spawnX, spawnY, spawnZ, yaw, (byte) 0);
             ctx.writeAndFlush(new PlayerTeleportPacket(
-                -1, player.getX(), player.getY(), player.getZ(),
-                player.getYaw() & 0xFF, player.getPitch() & 0xFF
-            ));
-            return;
-        }
-
-        // Validate destination isn't inside a solid block
-        int blockX = x / 32;
-        int blockY = y / 32;
-        int blockZ = z / 32;
-        // Check feet and head positions (player is ~2 blocks tall)
-        if (world.inBounds(blockX, blockY, blockZ) && world.getBlock(blockX, blockY, blockZ) != 0) {
-            // Feet are inside solid — reject
-            ctx.writeAndFlush(new PlayerTeleportPacket(
-                -1, player.getX(), player.getY(), player.getZ(),
-                player.getYaw() & 0xFF, player.getPitch() & 0xFF
+                -1, spawnX, spawnY, spawnZ,
+                player.getYaw() & 0xFF, 0
             ));
             return;
         }

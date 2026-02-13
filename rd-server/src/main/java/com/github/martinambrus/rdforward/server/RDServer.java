@@ -85,6 +85,7 @@ public class RDServer {
         this.world = new ServerWorld(worldWidth, worldHeight, worldDepth);
         this.playerManager = new PlayerManager();
         this.chunkManager = new ChunkManager(worldGenerator, worldSeed, new File(DEFAULT_WORLD_DIR));
+        this.chunkManager.setServerWorld(world);
         this.tickLoop = new ServerTickLoop(playerManager, world, chunkManager);
     }
 
@@ -105,6 +106,11 @@ public class RDServer {
             System.out.println("World generated.");
         }
 
+        // Migrate invalid block types from old RubyDung worlds
+        if (protocolVersion == ProtocolVersion.RUBYDUNG) {
+            world.migrateRubyDungBlocks();
+        }
+
         tickLoop.start();
 
         bossGroup = new NioEventLoopGroup(1);
@@ -119,6 +125,8 @@ public class RDServer {
                         ChannelPipeline pipeline = ch.pipeline();
                         pipeline.addLast("loginTimeout", new ReadTimeoutHandler(
                                 ServerConnectionHandler.LOGIN_TIMEOUT_SECONDS));
+                        pipeline.addLast("protocolDetect", new ProtocolDetectionHandler(
+                                protocolVersion, world, playerManager, chunkManager));
                         pipeline.addLast("decoder", new PacketDecoder(
                                 PacketDirection.CLIENT_TO_SERVER, protocolVersion));
                         pipeline.addLast("encoder", new PacketEncoder());

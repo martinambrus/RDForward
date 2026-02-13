@@ -38,8 +38,8 @@ public class LoginC2SPacket implements Packet {
     @Override
     public void write(ByteBuf buf) {
         buf.writeInt(protocolVersion);
-        McDataTypes.writeString16(buf, username);
-        McDataTypes.writeString16(buf, "");
+        McDataTypes.writeJavaUTF(buf, username);
+        McDataTypes.writeJavaUTF(buf, "");
         buf.writeLong(mapSeed);
         buf.writeByte(dimension);
     }
@@ -47,8 +47,8 @@ public class LoginC2SPacket implements Packet {
     @Override
     public void read(ByteBuf buf) {
         protocolVersion = buf.readInt();
-        username = McDataTypes.readString16(buf);
-        McDataTypes.readString16(buf); // unused
+        username = McDataTypes.readJavaUTF(buf);
+        McDataTypes.readJavaUTF(buf); // unused
         mapSeed = buf.readLong();
         dimension = buf.readByte();
     }

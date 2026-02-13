@@ -32,6 +32,13 @@ public enum ProtocolVersion {
     CLASSIC(7, "Classic", 50),
 
     /**
+     * Minecraft Alpha 1.2.3-1.2.5.
+     * ~82 block types, survival mode, entities, inventory.
+     * Real MC protocol version 6.
+     */
+    ALPHA_1_2_5(6, "Alpha 1.2.5", 82),
+
+    /**
      * Minecraft Alpha 1.0.15 - first SMP version.
      * ~82 block types, survival mode, entities, inventory.
      * Real MC protocol version 10.

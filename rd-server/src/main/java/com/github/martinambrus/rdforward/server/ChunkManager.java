@@ -34,8 +34,10 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class ChunkManager {
 
-    /** Default view distance in chunks (radius around the player's chunk). */
-    public static final int DEFAULT_VIEW_DISTANCE = 10;
+    /** Default view distance in chunks (radius around the player's chunk).
+     *  Kept moderate to avoid triggering the Alpha client's TimSort comparator
+     *  bug when too many chunks are loaded at once (Java 7+ strict contract). */
+    public static final int DEFAULT_VIEW_DISTANCE = 5;
 
     /** Chunks loaded in memory, keyed by coordinate. */
     private final Map<ChunkCoord, AlphaChunk> loadedChunks = new ConcurrentHashMap<>();
@@ -58,6 +60,9 @@ public class ChunkManager {
     /** Tracks which chunks have been modified since last save. */
     private final Set<ChunkCoord> dirtyChunks = ConcurrentHashMap.newKeySet();
 
+    /** Reference to the authoritative Classic/RD world for block data overlay. */
+    private ServerWorld serverWorld;
+
     public ChunkManager(WorldGenerator worldGenerator, long seed, File worldDir) {
         this(worldGenerator, seed, worldDir, DEFAULT_VIEW_DISTANCE);
     }
@@ -67,6 +72,15 @@ public class ChunkManager {
         this.seed = seed;
         this.worldDir = worldDir;
         this.viewDistance = viewDistance;
+    }
+
+    /**
+     * Set the authoritative ServerWorld reference. When set, freshly generated
+     * chunks that overlap with the Classic world bounds will be populated from
+     * the ServerWorld block data instead of pure generator output.
+     */
+    public void setServerWorld(ServerWorld serverWorld) {
+        this.serverWorld = serverWorld;
     }
 
     /**
@@ -224,9 +238,10 @@ public class ChunkManager {
             System.err.println("Failed to load chunk " + coord + ": " + e.getMessage());
         }
 
-        // If not on disk, generate
+        // If not on disk, generate and overlay ServerWorld data
         if (chunk == null && worldGenerator.supportsChunkGeneration()) {
             chunk = worldGenerator.generateChunk(coord.getX(), coord.getZ(), seed);
+            overlayServerWorldBlocks(chunk);
         }
 
         if (chunk != null) {
@@ -234,6 +249,44 @@ public class ChunkManager {
         }
 
         return chunk;
+    }
+
+    /**
+     * Sync a freshly generated chunk with the authoritative ServerWorld.
+     *
+     * For columns within the Classic world bounds: copies block data from ServerWorld.
+     * For columns outside the bounds: clears to air (prevents infinite grass plane).
+     *
+     * This ensures Alpha clients see the same finite world as Classic/RD clients,
+     * with a void/edge beyond the world boundaries.
+     */
+    private void overlayServerWorldBlocks(AlphaChunk chunk) {
+        if (serverWorld == null) return;
+
+        int baseX = chunk.getXPos() * AlphaChunk.WIDTH;
+        int baseZ = chunk.getZPos() * AlphaChunk.DEPTH;
+        int maxY = Math.min(serverWorld.getHeight(), AlphaChunk.HEIGHT);
+
+        for (int localX = 0; localX < AlphaChunk.WIDTH; localX++) {
+            int worldX = baseX + localX;
+            for (int localZ = 0; localZ < AlphaChunk.DEPTH; localZ++) {
+                int worldZ = baseZ + localZ;
+
+                boolean inBounds = worldX >= 0 && worldX < serverWorld.getWidth()
+                        && worldZ >= 0 && worldZ < serverWorld.getDepth();
+
+                for (int y = 0; y < maxY; y++) {
+                    if (inBounds) {
+                        // Within Classic world: use ServerWorld data
+                        int block = serverWorld.getBlock(worldX, y, worldZ) & 0xFF;
+                        chunk.setBlock(localX, y, localZ, block);
+                    } else {
+                        // Outside Classic world: clear to air (finite world)
+                        chunk.setBlock(localX, y, localZ, 0);
+                    }
+                }
+            }
+        }
     }
 
     /**

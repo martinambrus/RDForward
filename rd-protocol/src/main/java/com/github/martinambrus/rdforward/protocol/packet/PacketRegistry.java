@@ -115,7 +115,7 @@ public class PacketRegistry {
      * not PlayerIdentification; 0x03 = Chat, not LevelDataChunk).
      */
     private static void registerAlphaPackets() {
-        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_2_6};
+        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_2_6};
 
         for (ProtocolVersion v : alphaVersions) {
             // === Bidirectional packets ===
@@ -125,6 +125,14 @@ public class PacketRegistry {
             });
             register(v, PacketDirection.SERVER_TO_CLIENT, 0x00, new PacketFactory() {
                 public Packet create() { return new KeepAlivePacket(); }
+            });
+            // 0x04 C2S: zero-payload tick/ack (client sends after inventory update)
+            register(v, PacketDirection.CLIENT_TO_SERVER, 0x04, new PacketFactory() {
+                public Packet create() { return new KeepAlivePacket(); }
+            });
+            // 0x05 C2S: Player Inventory sync (client sends inventory contents)
+            register(v, PacketDirection.CLIENT_TO_SERVER, 0x05, new PacketFactory() {
+                public Packet create() { return new PlayerInventoryPacket(); }
             });
             // 0x03 Chat
             register(v, PacketDirection.CLIENT_TO_SERVER, 0x03, new PacketFactory() {
@@ -169,6 +177,17 @@ public class PacketRegistry {
             register(v, PacketDirection.CLIENT_TO_SERVER, 0x0F, new PacketFactory() {
                 public Packet create() { return new PlayerBlockPlacementPacket(); }
             });
+            // 0x10 Holding Change (hotbar slot switch)
+            register(v, PacketDirection.CLIENT_TO_SERVER, 0x10, new PacketFactory() {
+                public Packet create() { return new HoldingChangePacket(); }
+            });
+            // 0x12 Animation (arm swing)
+            register(v, PacketDirection.CLIENT_TO_SERVER, 0x12, new PacketFactory() {
+                public Packet create() { return new AnimationPacket(); }
+            });
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0x12, new PacketFactory() {
+                public Packet create() { return new AnimationPacket(); }
+            });
 
             // === Server -> Client packets ===
             // Login flow
@@ -196,6 +215,12 @@ public class PacketRegistry {
             register(v, PacketDirection.SERVER_TO_CLIENT, 0x14, new PacketFactory() {
                 public Packet create() { return new com.github.martinambrus.rdforward.protocol.packet.alpha.SpawnPlayerPacket(); }
             });
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0x15, new PacketFactory() {
+                public Packet create() { return new PickupSpawnPacket(); }
+            });
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0x16, new PacketFactory() {
+                public Packet create() { return new CollectItemPacket(); }
+            });
             register(v, PacketDirection.SERVER_TO_CLIENT, 0x1D, new PacketFactory() {
                 public Packet create() { return new DestroyEntityPacket(); }
             });
@@ -220,6 +245,10 @@ public class PacketRegistry {
             });
             register(v, PacketDirection.SERVER_TO_CLIENT, 0x35, new PacketFactory() {
                 public Packet create() { return new BlockChangePacket(); }
+            });
+            // Inventory
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0x11, new PacketFactory() {
+                public Packet create() { return new AddToInventoryPacket(); }
             });
         }
     }

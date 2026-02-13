@@ -112,6 +112,36 @@ public final class McDataTypes {
     }
 
     // ========================================================================
+    // Java Modified UTF-8 data types (Alpha protocol, a1.0.15 - a1.2.6)
+    // ========================================================================
+
+    /**
+     * Read a Java Modified UTF-8 string (Alpha format: short byte-count prefix + UTF-8 bytes).
+     * This matches Java's DataInputStream.readUTF() format used by the original MC Alpha client.
+     * Wire format: [2 bytes: byte count] [N bytes: Modified UTF-8 encoded characters]
+     */
+    public static String readJavaUTF(ByteBuf buf) {
+        short byteCount = buf.readShort();
+        if (byteCount < 0) {
+            throw new IllegalStateException("JavaUTF byte count is negative: " + byteCount);
+        }
+        byte[] bytes = new byte[byteCount];
+        buf.readBytes(bytes);
+        return new String(bytes, Charset.forName("UTF-8"));
+    }
+
+    /**
+     * Write a Java Modified UTF-8 string (Alpha format: short byte-count prefix + UTF-8 bytes).
+     * This matches Java's DataOutputStream.writeUTF() format used by the original MC Alpha client.
+     * Wire format: [2 bytes: byte count] [N bytes: Modified UTF-8 encoded characters]
+     */
+    public static void writeJavaUTF(ByteBuf buf, String value) {
+        byte[] bytes = value.getBytes(Charset.forName("UTF-8"));
+        buf.writeShort(bytes.length);
+        buf.writeBytes(bytes);
+    }
+
+    // ========================================================================
     // VarInt (1.7+ / post-Netty format, for future use)
     // ========================================================================
 

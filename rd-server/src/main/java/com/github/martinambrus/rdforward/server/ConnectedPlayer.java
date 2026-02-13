@@ -26,6 +26,13 @@ public class ConnectedPlayer {
     private volatile byte yaw;
     private volatile byte pitch;
 
+    // Double-precision position for Alpha clients (block coordinates)
+    private volatile double doubleX;
+    private volatile double doubleY;
+    private volatile double doubleZ;
+    private volatile float floatYaw;
+    private volatile float floatPitch;
+
     public ConnectedPlayer(byte playerId, String username, Channel channel, ProtocolVersion protocolVersion) {
         this.playerId = playerId;
         this.username = username;
@@ -47,6 +54,24 @@ public class ConnectedPlayer {
         this.pitch = pitch;
     }
 
+    /**
+     * Update position using double-precision coordinates (Alpha clients).
+     * Also updates the fixed-point fields for Classic compatibility.
+     */
+    public void updatePositionDouble(double x, double y, double z, float yaw, float pitch) {
+        this.doubleX = x;
+        this.doubleY = y;
+        this.doubleZ = z;
+        this.floatYaw = yaw;
+        this.floatPitch = pitch;
+        // Also update fixed-point for Classic compatibility
+        this.x = (short) (x * 32);
+        this.y = (short) (y * 32);
+        this.z = (short) (z * 32);
+        this.yaw = (byte) ((yaw / 360.0f) * 256);
+        this.pitch = (byte) ((pitch / 360.0f) * 256);
+    }
+
     public void disconnect() {
         if (channel.isActive()) {
             channel.close();
@@ -62,4 +87,9 @@ public class ConnectedPlayer {
     public short getZ() { return z; }
     public byte getYaw() { return yaw; }
     public byte getPitch() { return pitch; }
+    public double getDoubleX() { return doubleX; }
+    public double getDoubleY() { return doubleY; }
+    public double getDoubleZ() { return doubleZ; }
+    public float getFloatYaw() { return floatYaw; }
+    public float getFloatPitch() { return floatPitch; }
 }

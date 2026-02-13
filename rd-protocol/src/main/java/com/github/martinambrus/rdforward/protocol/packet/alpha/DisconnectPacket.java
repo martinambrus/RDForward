@@ -30,12 +30,12 @@ public class DisconnectPacket implements Packet {
 
     @Override
     public void write(ByteBuf buf) {
-        McDataTypes.writeString16(buf, reason);
+        McDataTypes.writeJavaUTF(buf, reason);
     }
 
     @Override
     public void read(ByteBuf buf) {
-        reason = McDataTypes.readString16(buf);
+        reason = McDataTypes.readJavaUTF(buf);
     }
 
     public String getReason() { return reason; }

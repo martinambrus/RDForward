@@ -54,7 +54,7 @@ public class SpawnPlayerPacket implements Packet {
     @Override
     public void write(ByteBuf buf) {
         buf.writeInt(entityId);
-        McDataTypes.writeString16(buf, playerName);
+        McDataTypes.writeJavaUTF(buf, playerName);
         buf.writeInt(x);
         buf.writeInt(y);
         buf.writeInt(z);
@@ -66,7 +66,7 @@ public class SpawnPlayerPacket implements Packet {
     @Override
     public void read(ByteBuf buf) {
         entityId = buf.readInt();
-        playerName = McDataTypes.readString16(buf);
+        playerName = McDataTypes.readJavaUTF(buf);
         x = buf.readInt();
         y = buf.readInt();
         z = buf.readInt();

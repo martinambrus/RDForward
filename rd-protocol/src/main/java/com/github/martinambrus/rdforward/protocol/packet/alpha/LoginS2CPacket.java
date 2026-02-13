@@ -38,8 +38,8 @@ public class LoginS2CPacket implements Packet {
     @Override
     public void write(ByteBuf buf) {
         buf.writeInt(entityId);
-        McDataTypes.writeString16(buf, "");
-        McDataTypes.writeString16(buf, "");
+        McDataTypes.writeJavaUTF(buf, "");
+        McDataTypes.writeJavaUTF(buf, "");
         buf.writeLong(mapSeed);
         buf.writeByte(dimension);
     }
@@ -47,8 +47,8 @@ public class LoginS2CPacket implements Packet {
     @Override
     public void read(ByteBuf buf) {
         entityId = buf.readInt();
-        McDataTypes.readString16(buf); // unused
-        McDataTypes.readString16(buf); // unused
+        McDataTypes.readJavaUTF(buf); // unused
+        McDataTypes.readJavaUTF(buf); // unused
         mapSeed = buf.readLong();
         dimension = buf.readByte();
     }

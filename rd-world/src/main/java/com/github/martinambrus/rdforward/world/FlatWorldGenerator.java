@@ -9,8 +9,7 @@ import com.github.martinambrus.rdforward.world.alpha.AlphaChunk;
  * the surface layer is grass, and everything above is air.
  * This matches RubyDung's hardcoded surface rendering height.
  *
- * This generator only supports finite-world mode (the entire block
- * array is filled in one pass). Chunk-based generation is not supported.
+ * Supports both finite-world mode (Classic) and chunk-based generation (Alpha).
  */
 public class FlatWorldGenerator implements WorldGenerator {
 
@@ -41,11 +40,26 @@ public class FlatWorldGenerator implements WorldGenerator {
 
     @Override
     public AlphaChunk generateChunk(int chunkX, int chunkZ, long seed) {
-        throw new UnsupportedOperationException("FlatWorldGenerator does not support chunk-based generation");
+        AlphaChunk chunk = new AlphaChunk(chunkX, chunkZ);
+        // Surface at Y=42, matching the Classic finite-world generator
+        // which uses DEFAULT_WORLD_HEIGHT(64) * 2/3 = 42.
+        int surfaceY = 42;
+
+        for (int x = 0; x < AlphaChunk.WIDTH; x++) {
+            for (int z = 0; z < AlphaChunk.DEPTH; z++) {
+                for (int y = 0; y < surfaceY; y++) {
+                    chunk.setBlock(x, y, z, BlockRegistry.COBBLESTONE);
+                }
+                chunk.setBlock(x, surfaceY, z, BlockRegistry.GRASS);
+                // Sky light is already initialized to full brightness by AlphaChunk constructor
+            }
+        }
+        chunk.setTerrainPopulated(true);
+        return chunk;
     }
 
     @Override
     public boolean supportsChunkGeneration() {
-        return false;
+        return true;
     }
 }

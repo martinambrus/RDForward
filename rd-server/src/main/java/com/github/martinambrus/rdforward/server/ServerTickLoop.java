@@ -98,8 +98,10 @@ public class ServerTickLoop implements Runnable {
 
         // Process queued block changes and broadcast results
         List<SetBlockServerPacket> blockChanges = world.processPendingBlockChanges();
-        for (Packet packet : blockChanges) {
-            playerManager.broadcastPacket(packet);
+        for (SetBlockServerPacket sb : blockChanges) {
+            playerManager.broadcastPacket(sb);
+            // Keep Alpha chunk data in sync with ServerWorld
+            chunkManager.setBlock(sb.getX(), sb.getY(), sb.getZ(), (byte) sb.getBlockType());
         }
 
         // Send keep-alive pings periodically
