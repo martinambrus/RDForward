@@ -239,9 +239,15 @@ public class ServerWorld {
      * Called when a player disconnects so their position survives until the next save.
      */
     public void rememberPlayerPosition(ConnectedPlayer player) {
+        // Use double-precision position with rounding to minimize fixed-point
+        // truncation error. Plain (short)(y*32) always rounds down, which shifts
+        // feet up to 1/32 block below the original surface — causing players to
+        // respawn fractionally inside the block they were standing on.
+        short fx = (short) Math.round(player.getDoubleX() * 32);
+        short fy = (short) Math.round(player.getDoubleY() * 32);
+        short fz = (short) Math.round(player.getDoubleZ() * 32);
         playerPositionCache.put(player.getUsername(), new short[]{
-            player.getX(), player.getY(), player.getZ(),
-            player.getYaw(), player.getPitch()
+            fx, fy, fz, player.getYaw(), player.getPitch()
         });
     }
 
@@ -255,9 +261,9 @@ public class ServerWorld {
         int cz = depth / 2;
         int spawnY = height * 2 / 3 + 1;
         int[] safe = findSafePosition(cx, spawnY, cz, 50);
-        short fx = (short) ((safe[0] + 0.5) * 32);
-        short fy = (short) ((safe[1] + 1.62) * 32);
-        short fz = (short) ((safe[2] + 0.5) * 32);
+        short fx = (short) Math.round((safe[0] + 0.5) * 32);
+        short fy = (short) Math.round((safe[1] + (double) 1.62f) * 32);
+        short fz = (short) Math.round((safe[2] + 0.5) * 32);
         playerPositionCache.put(username, new short[]{fx, fy, fz, 0, 0});
     }
 
@@ -267,10 +273,20 @@ public class ServerWorld {
      * Format: [int count] then for each player: [UTF name] [short x,y,z] [byte yaw,pitch].
      */
     public void savePlayers(java.util.Collection<ConnectedPlayer> players) {
-        // Update cache with current online player positions
+        // Update cache with current online player positions.
+        // Use double-precision with rounding for Alpha/Bedrock clients to avoid
+        // fixed-point truncation that shifts Y downward on restore.
         for (ConnectedPlayer p : players) {
+            short fx, fy, fz;
+            if (p.getDoubleX() != 0 || p.getDoubleY() != 0 || p.getDoubleZ() != 0) {
+                fx = (short) Math.round(p.getDoubleX() * 32);
+                fy = (short) Math.round(p.getDoubleY() * 32);
+                fz = (short) Math.round(p.getDoubleZ() * 32);
+            } else {
+                fx = p.getX(); fy = p.getY(); fz = p.getZ();
+            }
             playerPositionCache.put(p.getUsername(), new short[]{
-                p.getX(), p.getY(), p.getZ(), p.getYaw(), p.getPitch()
+                fx, fy, fz, p.getYaw(), p.getPitch()
             });
         }
 

@@ -105,11 +105,9 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         } else if (packet instanceof PlayerInventoryPacket) {
             // Silently accept (inventory sync)
         } else if (packet instanceof PickupSpawnPacket) {
-            // Client tried to drop an item — return it to their inventory
-            PickupSpawnPacket drop = (PickupSpawnPacket) packet;
-            if (drop.getItemId() > 0 && drop.getCount() > 0) {
-                giveItem(ctx, drop.getItemId(), drop.getCount());
-            }
+            // Silently accept item drops. In our creative-like mode, cobblestone
+            // is replenished through placement handling. Returning drops via
+            // giveItem creates an echo loop (overflow → drop → give back → overflow).
         } else if (packet instanceof KeepAlivePacket) {
             // Silently accept
         } else if (packet instanceof DisconnectPacket) {
@@ -203,15 +201,19 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             spawnYaw = (savedPos[3] & 0xFF) * 360.0f / 256.0f;
             spawnPitch = (savedPos[4] & 0xFF) * 360.0f / 256.0f;
 
-            // Safety check: ensure player isn't inside solid blocks.
-            // Fixed-point short storage truncates to 1/32 precision, which can
-            // place feet up to 0.03 blocks below the actual surface (e.g. a
-            // player standing on Y=64 gets restored to feetY=63.97). Adding a
-            // small tolerance prevents false "embedded" detection for players
-            // who were simply standing on a block surface.
+            // Snap feet to nearest block surface if within fixed-point tolerance.
+            // Even with Math.round on save, fixed-point can shift feet up to
+            // 1/64 block below a surface. If feet are that close to the NEXT
+            // integer Y, snap upward to prevent sinking into the block.
             double feetY = spawnY - PLAYER_EYE_HEIGHT;
+            double fracFeet = feetY - Math.floor(feetY);
+            if (fracFeet > 1.0 - (1.0 / 16.0)) {
+                feetY = Math.ceil(feetY);
+                spawnY = feetY + PLAYER_EYE_HEIGHT;
+            }
+
             int feetBlockX = (int) Math.floor(spawnX);
-            int feetBlockY = (int) Math.floor(feetY + 0.0625);
+            int feetBlockY = (int) Math.floor(feetY);
             int feetBlockZ = (int) Math.floor(spawnZ);
             if (world.inBounds(feetBlockX, feetBlockY, feetBlockZ)
                     && (world.getBlock(feetBlockX, feetBlockY, feetBlockZ) != 0
@@ -442,11 +444,17 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             case 5: targetX++; break; // +X
         }
 
+        short itemId = packet.getItemId();
+        if (itemId < 0) return; // empty hand, no block consumed by client
+
         if (!world.inBounds(targetX, targetY, targetZ)) {
             // Cancel the client's predicted block immediately (otherwise the
             // phantom block persists for ~4 seconds, allowing further building
             // above the world height limit).
             ctx.writeAndFlush(new BlockChangePacket(targetX, targetY, targetZ, 0, 0));
+            // Return the consumed item after a short delay so the client has
+            // processed its own stack decrement before the replenishment arrives.
+            scheduleGiveItem(ctx, BlockRegistry.COBBLESTONE, 1);
             return;
         }
 
@@ -460,11 +468,9 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         boolean overlapsZ = targetZ < pz + 0.3 && pz - 0.3 < targetZ + 1;
         if (overlapsX && overlapsY && overlapsZ) {
             ctx.writeAndFlush(new BlockChangePacket(targetX, targetY, targetZ, 0, 0));
+            scheduleGiveItem(ctx, BlockRegistry.COBBLESTONE, 1);
             return;
         }
-
-        short itemId = packet.getItemId();
-        if (itemId < 0) return; // empty hand, no block to place
 
         // Determine world block type: RubyDung palette overrides surface to grass
         byte worldBlockType;
@@ -506,9 +512,11 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             }, 200, TimeUnit.MILLISECONDS);
         }
 
-        // Replenish 1 cobblestone so the player can keep placing (survival mode,
-        // simulates infinite cobblestone like creative mode).
-        giveItem(ctx, BlockRegistry.COBBLESTONE, 1);
+        // Replenish 1 cobblestone after a short delay so the client has processed
+        // its own stack decrement before the AddToInventory arrives. Without this
+        // delay, the replenishment can arrive while the stack is still full (64),
+        // causing overflow into a second stack.
+        scheduleGiveItem(ctx, BlockRegistry.COBBLESTONE, 1);
     }
 
     /**
@@ -517,6 +525,19 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
      */
     private void giveItem(ChannelHandlerContext ctx, int itemId, int count) {
         ctx.writeAndFlush(new AddToInventoryPacket(itemId, count, 0));
+    }
+
+    /**
+     * Give items after a short delay. This ensures the client has processed
+     * its own inventory changes (e.g. stack decrement from placing a block)
+     * before the AddToInventory arrives, preventing overflow into extra stacks.
+     */
+    private void scheduleGiveItem(ChannelHandlerContext ctx, int itemId, int count) {
+        ctx.executor().schedule(() -> {
+            if (ctx.channel().isActive()) {
+                giveItem(ctx, itemId, count);
+            }
+        }, 100, TimeUnit.MILLISECONDS);
     }
 
     private void handleChat(ChannelHandlerContext ctx, ChatPacket packet) {
