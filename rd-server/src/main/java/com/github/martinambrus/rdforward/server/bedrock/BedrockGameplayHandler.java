@@ -663,23 +663,10 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
 
         PlayerActionType action = packet.getAction();
 
-        if (action == PlayerActionType.START_BREAK) {
-            // Creative mode = instant break
+        if (action == PlayerActionType.START_BREAK
+                || action == PlayerActionType.DIMENSION_CHANGE_REQUEST_OR_CREATIVE_DESTROY_BLOCK) {
             Vector3i pos = packet.getBlockPosition();
-            int x = pos.getX();
-            int y = pos.getY();
-            int z = pos.getZ();
-
-            if (!world.inBounds(x, y, z)) return PacketSignal.HANDLED;
-
-            byte existingBlock = world.getBlock(x, y, z);
-            if (existingBlock == 0) return PacketSignal.HANDLED;
-
-            EventResult result = ServerEvents.BLOCK_BREAK.invoker()
-                    .onBlockBreak(player.getUsername(), x, y, z, existingBlock & 0xFF);
-            if (result == EventResult.CANCEL) return PacketSignal.HANDLED;
-
-            world.queueBlockChange(x, y, z, (byte) 0);
+            processBlockBreak(pos.getX(), pos.getY(), pos.getZ());
         }
 
         return PacketSignal.HANDLED;
@@ -723,6 +710,16 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
 
         if (!world.inBounds(targetX, targetY, targetZ)) return;
 
+        // Prevent placing blocks inside the player's body.
+        // Player AABB: 0.6 wide (±0.3), 1.8 tall from feet.
+        double px = player.getDoubleX();
+        double feetY = player.getDoubleY() - PLAYER_EYE_HEIGHT;
+        double pz = player.getDoubleZ();
+        boolean overlapsX = targetX < px + 0.3 && px - 0.3 < targetX + 1;
+        boolean overlapsY = targetY < feetY + 1.8 && feetY < targetY + 1;
+        boolean overlapsZ = targetZ < pz + 0.3 && pz - 0.3 < targetZ + 1;
+        if (overlapsX && overlapsY && overlapsZ) return;
+
         // Determine block type: RubyDung palette (grass at surface, cobblestone elsewhere)
         byte worldBlockType;
         int surfaceY = world.getHeight() * 2 / 3;
@@ -756,10 +753,15 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
 
     private void handleBlockBreak(InventoryTransactionPacket packet) {
         Vector3i pos = packet.getBlockPosition();
-        int x = pos.getX();
-        int y = pos.getY();
-        int z = pos.getZ();
+        processBlockBreak(pos.getX(), pos.getY(), pos.getZ());
+    }
 
+    /**
+     * Process a block break from any source (PlayerAction or InventoryTransaction).
+     * Sets the block directly (bypasses tick queue for instant creative-mode feedback),
+     * broadcasts to other players, and sends confirmation to this Bedrock client.
+     */
+    private void processBlockBreak(int x, int y, int z) {
         if (!world.inBounds(x, y, z)) return;
 
         byte existingBlock = world.getBlock(x, y, z);
@@ -769,7 +771,24 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
                 .onBlockBreak(player.getUsername(), x, y, z, existingBlock & 0xFF);
         if (result == EventResult.CANCEL) return;
 
-        world.queueBlockChange(x, y, z, (byte) 0);
+        // Set block directly (bypasses tick queue for instant creative-mode breaking)
+        if (!world.setBlock(x, y, z, (byte) 0)) return;
+        chunkManager.setBlock(x, y, z, (byte) 0);
+
+        // Broadcast to all other players as Classic packet
+        playerManager.broadcastPacketExcept(
+                new SetBlockServerPacket(x, y, z, 0),
+                player);
+
+        // Send block confirmation to this Bedrock client
+        UpdateBlockPacket ubp = new UpdateBlockPacket();
+        ubp.setBlockPosition(Vector3i.from(x, y, z));
+        ubp.setDefinition(blockMapper.toDefinition(0));
+        ubp.setDataLayer(0);
+        ubp.getFlags().addAll(EnumSet.of(
+                UpdateBlockPacket.Flag.NEIGHBORS,
+                UpdateBlockPacket.Flag.NETWORK));
+        session.sendPacket(ubp);
     }
 
     @Override
