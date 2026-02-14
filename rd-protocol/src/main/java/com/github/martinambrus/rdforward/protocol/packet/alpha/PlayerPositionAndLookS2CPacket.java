@@ -8,13 +8,19 @@ import io.netty.buffer.ByteBuf;
  *
  * Used to teleport the player (initial spawn, or server-side correction).
  *
- * In the S->C direction, the field order swaps y and stance compared to
- * C->S: (x, stance, y, z) instead of (x, y, stance, z).
+ * IMPORTANT: In the S2C direction, y = posY (eyes/camera position),
+ * NOT feet. The client sets posY from this value, and computes
+ * BB.minY (feet) = posY - 1.62.
+ *
+ * In the C2S direction, y = BB.minY (feet) and stance = posY (eyes).
+ * The asymmetry exists because the same Packet13 class is used for both
+ * directions, but the client writes BB.minY as y (C2S) while reading
+ * y directly into posY (S2C).
  *
  * Wire format (41 bytes payload):
  *   [double]  x
- *   [double]  stance (eyes) — NOTE: before y, unlike C->S
- *   [double]  y (feet)      — NOTE: after stance, unlike C->S
+ *   [double]  y (posY = eyes for S2C, feet for C2S)
+ *   [double]  stance (feet for S2C, posY = eyes for C2S)
  *   [double]  z
  *   [float]   yaw (degrees)
  *   [float]   pitch (degrees)
@@ -51,8 +57,8 @@ public class PlayerPositionAndLookS2CPacket implements Packet {
     @Override
     public void write(ByteBuf buf) {
         buf.writeDouble(x);
-        buf.writeDouble(stance);
         buf.writeDouble(y);
+        buf.writeDouble(stance);
         buf.writeDouble(z);
         buf.writeFloat(yaw);
         buf.writeFloat(pitch);
@@ -62,8 +68,8 @@ public class PlayerPositionAndLookS2CPacket implements Packet {
     @Override
     public void read(ByteBuf buf) {
         x = buf.readDouble();
-        stance = buf.readDouble();
         y = buf.readDouble();
+        stance = buf.readDouble();
         z = buf.readDouble();
         yaw = buf.readFloat();
         pitch = buf.readFloat();

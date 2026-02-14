@@ -34,8 +34,13 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private static final int LOGIN_TIMEOUT_SECONDS = 5;
 
-    /** Player eye height in blocks. Internal Y convention is eye-level (matching Classic). */
-    private static final double PLAYER_EYE_HEIGHT = 1.62;
+    /**
+     * Player eye height in blocks. Must use (double) 1.62f to match the MC Alpha
+     * client's float yOffset precision. The client computes feet = posY - (double)(1.62f).
+     * Using the double literal 1.62 causes a ~5e-9 precision mismatch that places
+     * feet fractionally below block boundaries, defeating collision detection.
+     */
+    private static final double PLAYER_EYE_HEIGHT = (double) 1.62f;
     /** Same in fixed-point units, rounded up to avoid sub-block clipping. */
     static final int PLAYER_EYE_HEIGHT_FIXED = (int) Math.ceil(PLAYER_EYE_HEIGHT * 32);
 
@@ -207,26 +212,14 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         chunkManager.sendInitialChunks(player, spawnBlockX, spawnBlockZ);
 
         // Send player position and look.
-        // spawnY is eye-level (internal convention). Alpha S2C needs feet and stance.
+        // spawnY is eye-level (internal convention). Alpha S2C needs posY and feet.
         double feetY = spawnY - PLAYER_EYE_HEIGHT;
-        double stanceY = feetY + PLAYER_EYE_HEIGHT;
+        double posY = feetY + PLAYER_EYE_HEIGHT;
 
-        // Debug: print block column around spawn position
-        int dbgX = (int) Math.floor(spawnX);
-        int dbgZ = (int) Math.floor(spawnZ);
-        System.out.println("Spawn debug: feetY=" + feetY + " eyeY=" + stanceY
-                + " pos=" + spawnX + "," + feetY + "," + spawnZ);
-        for (int dy = Math.max(0, (int) feetY - 2); dy <= Math.min(world.getHeight() - 1, (int) stanceY + 3); dy++) {
-            byte block = world.getBlock(dbgX, dy, dbgZ);
-            String marker = "";
-            if (dy == (int) Math.floor(feetY)) marker += " <-- feet block";
-            if (dy == (int) Math.floor(stanceY)) marker += " <-- eye block";
-            System.out.println("  Y=" + dy + ": block=" + (block & 0xFF) + " (" +
-                    (block == 0 ? "AIR" : "SOLID") + ")" + marker);
-        }
-
+        // S2C y = posY (eyes), stance = feet. The client sets posY from y
+        // and computes BB.minY (feet) = posY - (double)(1.62f).
         ctx.writeAndFlush(new PlayerPositionAndLookS2CPacket(
-                spawnX, feetY, stanceY, spawnZ, spawnYaw, spawnPitch, true));
+                spawnX, posY, feetY, spawnZ, spawnYaw, spawnPitch, true));
 
         // Send existing players to this client (as Alpha spawn packets).
         // Internal Y is eye-level; Alpha SpawnPlayerPacket expects feet Y.
@@ -299,9 +292,10 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             double spawnZ = world.getDepth() / 2.0 + 0.5;
             player.updatePositionDouble(spawnX, spawnEyeY, spawnZ, yaw, 0);
 
+            // S2C y = posY (eyes), stance = feet
             double spawnFeetY = feetBlockY + 0.5; // small offset to prevent re-falling
             ctx.writeAndFlush(new PlayerPositionAndLookS2CPacket(
-                    spawnX, spawnFeetY, spawnFeetY + PLAYER_EYE_HEIGHT, spawnZ,
+                    spawnX, spawnFeetY + PLAYER_EYE_HEIGHT, spawnFeetY, spawnZ,
                     yaw, 0, true));
 
             // Broadcast updated position to other players
@@ -340,6 +334,8 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     private void handleDigging(ChannelHandlerContext ctx, PlayerDiggingPacket packet) {
         if (player == null) return;
 
+        long timeSincePlacement = System.currentTimeMillis() - lastPlacementTime;
+
         // Alpha has instant block breaking — handle both "started" (instant break)
         // and "finished" (survival mode break animation complete)
         if (packet.getStatus() == PlayerDiggingPacket.STATUS_STARTED
@@ -348,7 +344,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             // Suppress erroneous dig packets during rapid right-click placement.
             // The Alpha client sends dig packets (0x0E) during sustained rapid
             // right-clicking (e.g. building a column while jumping).
-            if (System.currentTimeMillis() - lastPlacementTime < PLACEMENT_DIG_COOLDOWN_MS) {
+            if (timeSincePlacement < PLACEMENT_DIG_COOLDOWN_MS) {
                 return;
             }
             int x = packet.getX();

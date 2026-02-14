@@ -356,39 +356,20 @@ public class ServerWorld {
     }
 
     /**
-     * Search upward from startY for a safe position: solid ground below,
-     * 2 air blocks for feet and head, and at least one horizontal neighbor
-     * that also has 2 air blocks (so the player can actually move).
+     * Search upward from startY for a safe position: solid ground below
+     * and 2 air blocks for feet and head. Narrow pits (1-wide columns)
+     * are valid — the player may have dug them intentionally.
      * Returns the feet Y, or -1 if none found.
      */
     private int findSafeYUpward(int x, int z, int startY) {
         for (int testY = startY; testY < height - 1; testY++) {
             if (getBlock(x, testY - 1, z) != 0       // solid ground below
                     && getBlock(x, testY, z) == 0     // feet in air
-                    && getBlock(x, testY + 1, z) == 0 // head in air
-                    && hasHorizontalFreedom(x, testY, z)) { // can move somewhere
+                    && getBlock(x, testY + 1, z) == 0) { // head in air
                 return testY;
             }
         }
         return -1;
-    }
-
-    /**
-     * Check if at least one horizontal neighbor (N/S/E/W) also has 2 blocks
-     * of air at the given Y, so the player has room to move.
-     */
-    private boolean hasHorizontalFreedom(int x, int feetY, int z) {
-        int[][] offsets = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
-        for (int[] off : offsets) {
-            int nx = x + off[0];
-            int nz = z + off[1];
-            if (inBounds(nx, feetY, nz) && inBounds(nx, feetY + 1, nz)
-                    && getBlock(nx, feetY, nz) == 0
-                    && getBlock(nx, feetY + 1, nz) == 0) {
-                return true;
-            }
-        }
-        return false;
     }
 
     public int getWidth() { return width; }
