@@ -115,7 +115,7 @@ public class PacketRegistry {
      * not PlayerIdentification; 0x03 = Chat, not LevelDataChunk).
      */
     private static void registerAlphaPackets() {
-        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16};
+        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16};
 
         for (ProtocolVersion v : alphaVersions) {
             // === Bidirectional packets ===
