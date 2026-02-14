@@ -157,7 +157,8 @@ public final class BlockRegistry {
             case CLASSIC:
                 return blockId >= 0 && blockId <= 49;
             case ALPHA_1_0_15:
-            case ALPHA_1_2_6:
+            case ALPHA_1_0_16:
+            case ALPHA_1_2_5:
                 return blockId >= 0 && blockId <= 91;
             default:
                 return blockId >= 0;

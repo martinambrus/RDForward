@@ -30,7 +30,7 @@ public enum Capability {
     // === Alpha-era capabilities (v10+) ===
     PLAYER_HEALTH(10, ProtocolVersion.ALPHA_1_0_15),
     INVENTORY(11, ProtocolVersion.ALPHA_1_0_15),
-    DAY_NIGHT_CYCLE(12, ProtocolVersion.ALPHA_1_2_6),
+    DAY_NIGHT_CYCLE(12, ProtocolVersion.ALPHA_1_2_5),
     ENTITY_SPAWN(13, ProtocolVersion.ALPHA_1_0_15),
     BLOCK_METADATA(14, ProtocolVersion.ALPHA_1_0_15),
     MINING_PROGRESS(15, ProtocolVersion.ALPHA_1_0_15);
@@ -55,6 +55,6 @@ public enum Capability {
      * Check if this capability is available for a given protocol version.
      */
     public boolean isAvailableIn(ProtocolVersion version) {
-        return version.getVersionNumber() >= introducedIn.getVersionNumber();
+        return version.isAtLeast(introducedIn);
     }
 }

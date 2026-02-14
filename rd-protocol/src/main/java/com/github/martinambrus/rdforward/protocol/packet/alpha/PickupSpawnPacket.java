@@ -83,4 +83,12 @@ public class PickupSpawnPacket implements Packet {
     public int getX() { return x; }
     public int getY() { return y; }
     public int getZ() { return z; }
+
+    // Package-private setters for PickupSpawnPacketV14 subclass
+    void setEntityId(int entityId) { this.entityId = entityId; }
+    void setItemId(short itemId) { this.itemId = itemId; }
+    void setCount(byte count) { this.count = count; }
+    void setX(int x) { this.x = x; }
+    void setY(int y) { this.y = y; }
+    void setZ(int z) { this.z = z; }
 }

@@ -60,7 +60,7 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
             // pointers get updated to the new handlers. If we removed self
             // first, context.next would point to the old (removed) decoder.
             pipeline.replace("decoder", "decoder",
-                    new RawPacketDecoder(PacketDirection.CLIENT_TO_SERVER, ProtocolVersion.ALPHA_1_2_6));
+                    new RawPacketDecoder(PacketDirection.CLIENT_TO_SERVER, ProtocolVersion.ALPHA_1_2_5));
 
             pipeline.replace("encoder", "encoder", new RawPacketEncoder());
 

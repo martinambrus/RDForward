@@ -43,15 +43,21 @@ class CapabilityTest {
 
     @Test
     void dayNightCycleNotInAlpha1015() {
-        // DAY_NIGHT_CYCLE was introduced in Alpha 1.2.6 (version 14), not 1.0.15 (version 10)
+        // DAY_NIGHT_CYCLE was introduced in Alpha 1.2.x (v6), not 1.0.15 (v13)
         assertFalse(Capability.DAY_NIGHT_CYCLE.isAvailableIn(ProtocolVersion.ALPHA_1_0_15));
     }
 
     @Test
-    void allCapabilitiesAvailableInAlpha126() {
+    void dayNightCycleNotInAlpha1016() {
+        // DAY_NIGHT_CYCLE was introduced in Alpha 1.2.x (v6), not 1.0.16 (v14)
+        assertFalse(Capability.DAY_NIGHT_CYCLE.isAvailableIn(ProtocolVersion.ALPHA_1_0_16));
+    }
+
+    @Test
+    void allCapabilitiesAvailableInAlpha125() {
         for (Capability cap : Capability.values()) {
-            assertTrue(cap.isAvailableIn(ProtocolVersion.ALPHA_1_2_6),
-                    cap.name() + " should be available in Alpha 1.2.6");
+            assertTrue(cap.isAvailableIn(ProtocolVersion.ALPHA_1_2_5),
+                    cap.name() + " should be available in Alpha 1.2.x (v6)");
         }
     }
 
@@ -75,5 +81,20 @@ class CapabilityTest {
                         caps[i].name() + " and " + caps[j].name() + " share ID " + caps[i].getId());
             }
         }
+    }
+
+    @Test
+    void sortOrderIsChronological() {
+        // Verify that sortOrder reflects chronological order, not protocol number
+        assertTrue(ProtocolVersion.RUBYDUNG.isAtLeast(ProtocolVersion.RUBYDUNG));
+        assertTrue(ProtocolVersion.CLASSIC.isAtLeast(ProtocolVersion.RUBYDUNG));
+        assertTrue(ProtocolVersion.ALPHA_1_0_15.isAtLeast(ProtocolVersion.CLASSIC));
+        assertTrue(ProtocolVersion.ALPHA_1_0_16.isAtLeast(ProtocolVersion.ALPHA_1_0_15));
+        assertTrue(ProtocolVersion.ALPHA_1_2_5.isAtLeast(ProtocolVersion.ALPHA_1_0_16));
+        assertTrue(ProtocolVersion.BEDROCK.isAtLeast(ProtocolVersion.ALPHA_1_2_5));
+
+        // v6 is chronologically AFTER v14 (post-rewrite), even though 6 < 14
+        assertTrue(ProtocolVersion.ALPHA_1_2_5.isAtLeast(ProtocolVersion.ALPHA_1_0_16));
+        assertFalse(ProtocolVersion.ALPHA_1_0_16.isAtLeast(ProtocolVersion.ALPHA_1_2_5));
     }
 }

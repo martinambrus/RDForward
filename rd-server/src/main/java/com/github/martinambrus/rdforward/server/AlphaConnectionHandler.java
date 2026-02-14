@@ -8,6 +8,7 @@ import com.github.martinambrus.rdforward.protocol.packet.alpha.*;
 import com.github.martinambrus.rdforward.protocol.packet.classic.PlayerTeleportPacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
 import com.github.martinambrus.rdforward.server.api.CommandRegistry;
+import java.util.List;
 import com.github.martinambrus.rdforward.server.event.ServerEvents;
 import com.github.martinambrus.rdforward.world.BlockRegistry;
 import io.netty.channel.ChannelHandlerContext;
@@ -93,8 +94,8 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             // No-op: no position data, just onGround flag
         } else if (packet instanceof PlayerDiggingPacket) {
             handleDigging(ctx, (PlayerDiggingPacket) packet);
-        } else if (packet instanceof PlayerBlockPlacementPacket) {
-            handleBlockPlacement(ctx, (PlayerBlockPlacementPacket) packet);
+        } else if (packet instanceof BlockPlacementData) {
+            handleBlockPlacement(ctx, (BlockPlacementData) packet);
         } else if (packet instanceof ChatPacket) {
             handleChat(ctx, (ChatPacket) packet);
         } else if (packet instanceof HoldingChangePacket) {
@@ -132,8 +133,12 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Determine protocol version from the client's login packet
         clientVersion = ProtocolVersion.fromNumber(packet.getProtocolVersion());
         if (clientVersion == null) {
-            ctx.writeAndFlush(new DisconnectPacket(
-                    "Unknown protocol version: " + packet.getProtocolVersion()));
+            int pv = packet.getProtocolVersion();
+            String[] messages = buildUnsupportedVersionMessages(pv);
+            System.out.println("Rejected client"
+                    + (pendingUsername != null ? " (" + pendingUsername + ")" : "")
+                    + ": " + messages[1]);
+            ctx.writeAndFlush(new DisconnectPacket(messages[0]));
             ctx.close();
             return;
         }
@@ -383,7 +388,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
     }
 
-    private void handleBlockPlacement(ChannelHandlerContext ctx, PlayerBlockPlacementPacket packet) {
+    private void handleBlockPlacement(ChannelHandlerContext ctx, BlockPlacementData packet) {
         if (player == null) return;
 
         int x = packet.getX();
@@ -530,6 +535,51 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                     + ": " + cause.getMessage());
         }
         ctx.close();
+    }
+
+    /**
+     * Build disconnect messages for an unsupported protocol version.
+     * Returns [clientMessage, consoleMessage]. The client message is kept short
+     * because the Alpha disconnect screen renders text on a single line.
+     * The console message includes full version details.
+     */
+    private static String[] buildUnsupportedVersionMessages(int pv) {
+        // Determine which family the unknown version likely belongs to.
+        // AlphaConnectionHandler handles all pre-Netty TCP clients (Alpha and Beta).
+        // Alpha SMP versions: 1-14. Beta will use higher numbers when added.
+        ProtocolVersion.Family family;
+        if (pv >= 1 && pv <= 14) {
+            family = ProtocolVersion.Family.ALPHA;
+        } else {
+            String msg = "Unknown protocol version: " + pv;
+            return new String[]{msg, msg};
+        }
+
+        List<ProtocolVersion> supported = ProtocolVersion.getByFamily(family);
+
+        // Short message for the client's single-line disconnect screen
+        StringBuilder clientMsg = new StringBuilder();
+        clientMsg.append("Unsupported v").append(pv).append(". Supported: ");
+        for (int i = 0; i < supported.size(); i++) {
+            if (i > 0) clientMsg.append(", ");
+            clientMsg.append('v').append(supported.get(i).getVersionNumber());
+        }
+
+        // Detailed message for the server console
+        StringBuilder consoleMsg = new StringBuilder();
+        consoleMsg.append("protocol v").append(pv);
+        String gameVersions = ProtocolVersion.describeAlphaProtocol(pv);
+        if (gameVersions != null) {
+            consoleMsg.append(" (").append(gameVersions).append(')');
+        }
+        consoleMsg.append(" not supported. Supported ");
+        consoleMsg.append(family.name().toLowerCase()).append(" versions: ");
+        for (int i = 0; i < supported.size(); i++) {
+            if (i > 0) consoleMsg.append(", ");
+            consoleMsg.append(supported.get(i).getDisplayName());
+        }
+
+        return new String[]{clientMsg.toString(), consoleMsg.toString()};
     }
 
     private static short toFixedPoint(double d) {

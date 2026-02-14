@@ -115,7 +115,7 @@ public class PacketRegistry {
      * not PlayerIdentification; 0x03 = Chat, not LevelDataChunk).
      */
     private static void registerAlphaPackets() {
-        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_2_6};
+        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16};
 
         for (ProtocolVersion v : alphaVersions) {
             // === Bidirectional packets ===
@@ -253,6 +253,21 @@ public class PacketRegistry {
             // Inventory
             register(v, PacketDirection.SERVER_TO_CLIENT, 0x11, new PacketFactory() {
                 public Packet create() { return new AddToInventoryPacket(); }
+            });
+        }
+
+        // Override version-specific packets for pre-rewrite Alpha (v10-v14).
+        // These versions use different wire formats for 0x0F and 0x15.
+        ProtocolVersion[] preRewriteVersions = {ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16};
+        for (ProtocolVersion v : preRewriteVersions) {
+            register(v, PacketDirection.CLIENT_TO_SERVER, 0x0F, new PacketFactory() {
+                public Packet create() { return new PlayerBlockPlacementPacketV14(); }
+            });
+            register(v, PacketDirection.CLIENT_TO_SERVER, 0x15, new PacketFactory() {
+                public Packet create() { return new PickupSpawnPacketV14(); }
+            });
+            register(v, PacketDirection.SERVER_TO_CLIENT, 0x15, new PacketFactory() {
+                public Packet create() { return new PickupSpawnPacketV14(); }
             });
         }
     }

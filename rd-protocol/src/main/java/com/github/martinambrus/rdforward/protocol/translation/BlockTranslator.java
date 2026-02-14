@@ -35,22 +35,24 @@ public class BlockTranslator {
         loadTable(ProtocolVersion.CLASSIC, ProtocolVersion.RUBYDUNG, "classic-to-rubydung.properties");
         loadTable(ProtocolVersion.RUBYDUNG, ProtocolVersion.CLASSIC, "rubydung-to-classic.properties");
 
-        // Alpha tables — both Alpha versions share the same mappings
+        // Alpha tables — all Alpha versions share the same block mappings
         Map<Integer, Integer> alphaToRd = loadProperties("alpha-to-rubydung.properties");
         if (alphaToRd != null) {
             TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.RUBYDUNG), alphaToRd);
-            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_2_6, ProtocolVersion.RUBYDUNG), alphaToRd);
+            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.RUBYDUNG), alphaToRd);
+            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.RUBYDUNG), alphaToRd);
         }
 
         Map<Integer, Integer> alphaToClassic = loadProperties("alpha-to-classic.properties");
         if (alphaToClassic != null) {
             TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.CLASSIC), alphaToClassic);
-            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_2_6, ProtocolVersion.CLASSIC), alphaToClassic);
+            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.CLASSIC), alphaToClassic);
+            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.CLASSIC), alphaToClassic);
         }
     }
 
     private static String makeKey(ProtocolVersion from, ProtocolVersion to) {
-        return from.getVersionNumber() + "->" + to.getVersionNumber();
+        return from.name() + "->" + to.name();
     }
 
     /**
