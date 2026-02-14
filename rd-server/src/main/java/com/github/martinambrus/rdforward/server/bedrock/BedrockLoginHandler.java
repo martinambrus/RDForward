@@ -126,41 +126,97 @@ public class BedrockLoginHandler implements BedrockPacketHandler {
     }
 
     /**
-     * Extract the username from the JWT chain in the login packet.
-     * The chain contains JWTs; the last one has the extraData with displayName.
+     * Extract the username from the login packet's JWT data.
+     * Tries multiple sources in order:
+     * 1. Certificate chain (CertificateChainPayload) — standard Xbox auth
+     * 2. Single token (TokenPayload) — self-signed/offline auth
+     * 3. Client data JWT — fallback, contains skin + device info
      */
     private String extractUsernameFromChain(LoginPacket packet) {
         try {
-            // Beta12+ API: getAuthPayload() returns AuthPayload;
-            // for certificate-chain auth, cast to CertificateChainPayload
             org.cloudburstmc.protocol.bedrock.data.auth.AuthPayload authPayload = packet.getAuthPayload();
-            List<String> chain = null;
+
+            // Try 1: Certificate chain (standard Xbox-authenticated login)
             if (authPayload instanceof org.cloudburstmc.protocol.bedrock.data.auth.CertificateChainPayload) {
-                chain = ((org.cloudburstmc.protocol.bedrock.data.auth.CertificateChainPayload) authPayload).getChain();
-            }
-            if (chain == null) {
-                return null;
-            }
-
-            for (String token : chain) {
-                // JWT format: header.payload.signature
-                String[] parts = token.split("\\.");
-                if (parts.length < 2) continue;
-
-                String payload = new String(Base64.getUrlDecoder().decode(parts[1]));
-                // Simple JSON extraction for "displayName"
-                int nameIdx = payload.indexOf("\"displayName\"");
-                if (nameIdx >= 0) {
-                    int colonIdx = payload.indexOf(':', nameIdx);
-                    int quoteStart = payload.indexOf('"', colonIdx + 1);
-                    int quoteEnd = payload.indexOf('"', quoteStart + 1);
-                    if (quoteStart >= 0 && quoteEnd > quoteStart) {
-                        return payload.substring(quoteStart + 1, quoteEnd);
-                    }
+                List<String> chain =
+                        ((org.cloudburstmc.protocol.bedrock.data.auth.CertificateChainPayload) authPayload).getChain();
+                if (chain != null) {
+                    String name = findDisplayNameInTokens(chain);
+                    if (name != null) return name;
                 }
+            }
+
+            // Try 2: Single token (self-signed/offline mode)
+            if (authPayload instanceof org.cloudburstmc.protocol.bedrock.data.auth.TokenPayload) {
+                String token =
+                        ((org.cloudburstmc.protocol.bedrock.data.auth.TokenPayload) authPayload).getToken();
+                if (token != null) {
+                    String name = extractUsernameFromJwt(token);
+                    if (name != null) return name;
+                }
+            }
+
+            // Try 3: Client data JWT (contains device info and sometimes username)
+            String clientJwt = packet.getClientJwt();
+            if (clientJwt != null) {
+                String name = extractUsernameFromJwt(clientJwt);
+                if (name != null) return name;
             }
         } catch (Exception e) {
             System.err.println("Failed to extract username from Bedrock login: " + e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Search a list of JWT tokens for the username.
+     */
+    private String findDisplayNameInTokens(List<String> tokens) {
+        for (String token : tokens) {
+            String name = extractUsernameFromJwt(token);
+            if (name != null) return name;
+        }
+        return null;
+    }
+
+    /** Fields that may contain the player's username in a JWT payload. */
+    private static final String[] USERNAME_FIELDS = {
+        "displayName", "ThirdPartyName"
+    };
+
+    /**
+     * Extract the player username from a single JWT token's payload.
+     * Checks multiple fields: "displayName" (Xbox auth chain) and
+     * "ThirdPartyName" (self-signed/offline mode client data).
+     */
+    private String extractUsernameFromJwt(String token) {
+        try {
+            String[] parts = token.split("\\.");
+            if (parts.length < 2) return null;
+
+            String payload = new String(Base64.getUrlDecoder().decode(parts[1]));
+            for (String field : USERNAME_FIELDS) {
+                String value = extractJsonStringValue(payload, field);
+                if (value != null && !value.isEmpty()) return value;
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    /**
+     * Extract a JSON string value by key from a JSON string.
+     * Simple parser — finds "key":"value" pattern.
+     */
+    private String extractJsonStringValue(String json, String key) {
+        int nameIdx = json.indexOf("\"" + key + "\"");
+        if (nameIdx < 0) return null;
+        int colonIdx = json.indexOf(':', nameIdx);
+        if (colonIdx < 0) return null;
+        int quoteStart = json.indexOf('"', colonIdx + 1);
+        int quoteEnd = json.indexOf('"', quoteStart + 1);
+        if (quoteStart >= 0 && quoteEnd > quoteStart) {
+            return json.substring(quoteStart + 1, quoteEnd);
         }
         return null;
     }
