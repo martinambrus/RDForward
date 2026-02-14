@@ -40,6 +40,7 @@ public class BlockTranslator {
         if (alphaToRd != null) {
             TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.RUBYDUNG), alphaToRd);
             TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.RUBYDUNG), alphaToRd);
+            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.RUBYDUNG), alphaToRd);
             TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.RUBYDUNG), alphaToRd);
             TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.RUBYDUNG), alphaToRd);
             TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.RUBYDUNG), alphaToRd);
@@ -50,6 +51,7 @@ public class BlockTranslator {
         if (alphaToClassic != null) {
             TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.CLASSIC), alphaToClassic);
             TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.CLASSIC), alphaToClassic);
+            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.CLASSIC), alphaToClassic);
             TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.CLASSIC), alphaToClassic);
             TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.CLASSIC), alphaToClassic);
             TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.CLASSIC), alphaToClassic);

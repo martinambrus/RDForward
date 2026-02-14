@@ -77,7 +77,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             if (packet instanceof HandshakeC2SPacket) {
                 handleHandshake(ctx, (HandshakeC2SPacket) packet);
             } else if (packet instanceof LoginC2SPacket) {
-                handleLogin(ctx, (LoginC2SPacket) packet);
+                handleLogin(ctx, ((LoginC2SPacket) packet).getProtocolVersion());
             }
             // Ignore other packets before login completes
             return;
@@ -123,7 +123,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         ctx.writeAndFlush(new HandshakeS2CPacket("-"));
     }
 
-    private void handleLogin(ChannelHandlerContext ctx, LoginC2SPacket packet) {
+    private void handleLogin(ChannelHandlerContext ctx, int loginProtocolVersion) {
         if (pendingUsername == null) {
             ctx.writeAndFlush(new DisconnectPacket("Handshake not received"));
             ctx.close();
@@ -131,10 +131,9 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
 
         // Determine protocol version from the client's login packet
-        clientVersion = ProtocolVersion.fromNumber(packet.getProtocolVersion());
+        clientVersion = ProtocolVersion.fromNumber(loginProtocolVersion);
         if (clientVersion == null) {
-            int pv = packet.getProtocolVersion();
-            String[] messages = buildUnsupportedVersionMessages(pv);
+            String[] messages = buildUnsupportedVersionMessages(loginProtocolVersion);
             System.out.println("Rejected client"
                     + (pendingUsername != null ? " (" + pendingUsername + ")" : "")
                     + ": " + messages[1]);
@@ -147,6 +146,24 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         RawPacketDecoder decoder = ctx.pipeline().get(RawPacketDecoder.class);
         if (decoder != null) {
             decoder.setProtocolVersion(clientVersion);
+        }
+
+        // Pre-1.2.0 Alpha clients have a broken chunk-distance comparator in
+        // RenderGlobal that violates Java 7+'s TimSort transitivity contract.
+        // On first connect (no saved position), kick with the required JVM flag
+        // and save a default spawn position so they're recognized next time.
+        if (!clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_2_0)) {
+            Map<String, short[]> savedPositions = world.loadPlayerPositions();
+            if (!savedPositions.containsKey(pendingUsername.trim())) {
+                System.out.println("Rejected " + pendingUsername
+                        + ": " + clientVersion.getDisplayName() + " requires JVM flags (first connect)");
+                // Save default spawn so they're allowed through next time
+                world.savePlayerPosition(pendingUsername.trim());
+                ctx.writeAndFlush(new DisconnectPacket(
+                        "Add this Java flag to play: -Djava.util.Arrays.useLegacyMergeSort=true"));
+                ctx.close();
+                return;
+            }
         }
 
         // If a non-blank username is already online, kick the old connection
@@ -165,8 +182,12 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Entity ID: playerId + 1 (entity 0 is sometimes special in Alpha)
         int entityId = player.getPlayerId() + 1;
 
-        // Send LoginS2C
-        ctx.writeAndFlush(new LoginS2CPacket(entityId, 0L, (byte) 0));
+        // Send LoginS2C (v2 and earlier use shorter format without mapSeed/dimension)
+        if (clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_2_0)) {
+            ctx.writeAndFlush(new LoginS2CPacket(entityId, 0L, (byte) 0));
+        } else {
+            ctx.writeAndFlush(new LoginS2CPacketV2(entityId));
+        }
 
         // Determine spawn position
         Map<String, short[]> savedPositions = world.loadPlayerPositions();
@@ -223,11 +244,12 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         int spawnBlockZ = (int) Math.floor(spawnZ);
         ctx.writeAndFlush(new SpawnPositionPacket(spawnBlockX, spawnBlockY, spawnBlockZ));
 
-        // Register for chunk tracking and send initial chunks
-        chunkManager.addPlayer(player);
-        chunkManager.sendInitialChunks(player, spawnBlockX, spawnBlockZ);
-
-        // Send player position and look.
+        // Send player position and look BEFORE chunks.
+        // The Alpha 1.1.x client's RenderGlobal chunk comparator violates
+        // TimSort's transitivity contract (Java 7+). Sending position first
+        // ensures the client knows its location when the first render frame
+        // sorts chunks by distance, avoiding the pathological case.
+        //
         // spawnY is eye-level (internal convention). Alpha S2C needs posY and feet.
         double feetY = spawnY - PLAYER_EYE_HEIGHT;
         double posY = feetY + PLAYER_EYE_HEIGHT;
@@ -238,6 +260,10 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         float alphaSpawnYaw = (spawnYaw + 180.0f) % 360.0f;
         ctx.writeAndFlush(new PlayerPositionAndLookS2CPacket(
                 spawnX, posY, feetY, spawnZ, alphaSpawnYaw, spawnPitch, true));
+
+        // Register for chunk tracking and send initial chunks.
+        chunkManager.addPlayer(player);
+        chunkManager.sendInitialChunks(player, spawnBlockX, spawnBlockZ);
 
         // Send existing players to this client (as Alpha spawn packets).
         // Internal Y is eye-level; Alpha SpawnPlayerPacket expects feet Y.
@@ -257,7 +283,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         loginComplete = true;
 
-        // Give the player cobblestone so they can place blocks
+        // Give the player cobblestone so they can place blocks.
         giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
 
         // Remove login timeout
@@ -452,8 +478,8 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         playerManager.broadcastPacketExcept(
                 new SetBlockServerPacket(targetX, targetY, targetZ, worldBlockType & 0xFF), player);
 
-        // Confirm block to this Alpha client. Alpha v6 requires server confirmation;
-        // without it, the client removes its predicted blocks after ~2-3 seconds.
+        // Confirm block to this Alpha client. Without server confirmation,
+        // the client reverts its predicted blocks after ~4 seconds (80 ticks).
         ctx.writeAndFlush(new BlockChangePacket(
                 targetX, targetY, targetZ, itemId & 0xFF, 0));
 
@@ -470,7 +496,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
 
         // Replenish 1 cobblestone so the player can keep placing (survival mode,
-        // simulates infinite cobblestone like creative mode)
+        // simulates infinite cobblestone like creative mode).
         giveItem(ctx, BlockRegistry.COBBLESTONE, 1);
     }
 

@@ -247,6 +247,11 @@ public class ChunkManager {
         // takes priority over stale disk data or freshly generated terrain.
         if (chunk != null) {
             overlayServerWorldBlocks(chunk);
+            // Recompute skylight from the height map after block overlay.
+            // Without this, underground blocks retain skylight=15, causing
+            // the Alpha client's light engine to cascade-correct on any
+            // block change (StackOverflowError).
+            chunk.generateSkylightMap();
         }
 
         if (chunk != null) {

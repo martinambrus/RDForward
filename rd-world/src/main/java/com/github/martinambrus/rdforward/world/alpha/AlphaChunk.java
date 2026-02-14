@@ -68,11 +68,8 @@ public class AlphaChunk {
         this.terrainPopulated = false;
         this.lastUpdate = 0;
 
-        // Initialize skylight to full brightness (15) for all blocks
-        // Each byte holds two nibbles, so 0xFF = two blocks at light level 15
-        for (int i = 0; i < skyLight.length; i++) {
-            skyLight[i] = (byte) 0xFF;
-        }
+        // Sky light starts at zero; call generateSkylightMap() after all
+        // blocks are placed to compute correct values from the height map.
     }
 
     /**
@@ -153,6 +150,32 @@ public class AlphaChunk {
                 }
             }
             heightMap[hmIndex] = 0;
+        }
+    }
+
+    /**
+     * Compute skylight from the height map. Blocks at or above the height map
+     * value for their column get full sky light (15); blocks below get 0.
+     *
+     * Must be called after all block data is finalized (e.g. after world
+     * overlay) and before the chunk is serialized or sent to clients.
+     * Without this, underground blocks have incorrect skylight=15, which
+     * causes the Alpha client's light engine to cascade-correct on any block
+     * change, leading to a StackOverflowError.
+     */
+    public void generateSkylightMap() {
+        // Reset skylight to zero first
+        java.util.Arrays.fill(skyLight, (byte) 0);
+
+        for (int x = 0; x < WIDTH; x++) {
+            for (int z = 0; z < DEPTH; z++) {
+                int height = heightMap[z + (x * DEPTH)] & 0xFF;
+                // Blocks from height upward are exposed to sky (light 15)
+                for (int y = height; y < HEIGHT; y++) {
+                    setNibble(skyLight, blockIndex(x, y, z), 15);
+                }
+                // Blocks below height stay at 0 (underground)
+            }
         }
     }
 

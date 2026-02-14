@@ -246,6 +246,22 @@ public class ServerWorld {
     }
 
     /**
+     * Save a default spawn position for a username in the in-memory cache.
+     * Used to mark a player as "known" without a full ConnectedPlayer object
+     * (e.g., after kicking a first-time v2 client with the JVM flag message).
+     */
+    public void savePlayerPosition(String username) {
+        int cx = width / 2;
+        int cz = depth / 2;
+        int spawnY = height * 2 / 3 + 1;
+        int[] safe = findSafePosition(cx, spawnY, cz, 50);
+        short fx = (short) ((safe[0] + 0.5) * 32);
+        short fy = (short) ((safe[1] + 1.62) * 32);
+        short fz = (short) ((safe[2] + 0.5) * 32);
+        playerPositionCache.put(username, new short[]{fx, fy, fz, 0, 0});
+    }
+
+    /**
      * Save player positions so they can be restored when a player reconnects.
      * Merges the in-memory cache (disconnected players) with currently online players.
      * Format: [int count] then for each player: [UTF name] [short x,y,z] [byte yaw,pitch].

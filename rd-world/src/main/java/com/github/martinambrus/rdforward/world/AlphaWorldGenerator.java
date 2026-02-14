@@ -443,8 +443,7 @@ public class AlphaWorldGenerator implements WorldGenerator {
                     }
                 }
 
-                // Blocks at and below surface get no sky light (overwrite the
-                // default 0xFF that AlphaChunk constructor sets)
+                // Blocks at and below surface get no sky light
                 for (int y = surfaceY; y >= 0; y--) {
                     int idx = AlphaChunk.blockIndex(localX, y, localZ);
                     int byteIdx = idx / 2;

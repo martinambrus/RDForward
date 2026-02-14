@@ -104,11 +104,39 @@ class AlphaChunkTest {
     }
 
     @Test
-    void skylightInitializedToFullBrightness() {
+    void skylightZeroBeforeGeneration() {
         AlphaChunk chunk = new AlphaChunk(0, 0);
         byte[] sky = chunk.getSkyLight();
         for (byte b : sky) {
-            assertEquals((byte) 0xFF, b); // Each byte = two nibbles of 15
+            assertEquals((byte) 0x00, b);
+        }
+    }
+
+    @Test
+    void generateSkylightMapSetsCorrectValues() {
+        AlphaChunk chunk = new AlphaChunk(0, 0);
+        // Place a solid block at y=42 in column (0,0)
+        chunk.setBlock(0, 42, 0, 1);
+        chunk.generateSkylightMap();
+
+        byte[] sky = chunk.getSkyLight();
+        // Above the block (y=43): skylight 15
+        assertEquals(15, getNibble(sky, AlphaChunk.blockIndex(0, 43, 0)));
+        assertEquals(15, getNibble(sky, AlphaChunk.blockIndex(0, 127, 0)));
+        // At and below the block (y=42, y=0): skylight 0
+        assertEquals(0, getNibble(sky, AlphaChunk.blockIndex(0, 42, 0)));
+        assertEquals(0, getNibble(sky, AlphaChunk.blockIndex(0, 0, 0)));
+        // Empty column (1,0) with heightMap=0: all skylight 15
+        assertEquals(15, getNibble(sky, AlphaChunk.blockIndex(1, 0, 0)));
+        assertEquals(15, getNibble(sky, AlphaChunk.blockIndex(1, 127, 0)));
+    }
+
+    private static int getNibble(byte[] array, int blockIndex) {
+        int byteIndex = blockIndex / 2;
+        if ((blockIndex & 1) == 0) {
+            return array[byteIndex] & 0x0F;
+        } else {
+            return (array[byteIndex] >> 4) & 0x0F;
         }
     }
 

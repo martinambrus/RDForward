@@ -115,7 +115,7 @@ public class PacketRegistry {
      * not PlayerIdentification; 0x03 = Chat, not LevelDataChunk).
      */
     private static void registerAlphaPackets() {
-        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16};
+        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16};
 
         for (ProtocolVersion v : alphaVersions) {
             // === Bidirectional packets ===
@@ -255,6 +255,15 @@ public class PacketRegistry {
                 public Packet create() { return new AddToInventoryPacket(); }
             });
         }
+
+        // Override version-specific packets for Alpha v1/v2 (1.0.17-1.1.2_01).
+        // These versions use a shorter Login packet (no mapSeed/dimension fields).
+        register(ProtocolVersion.ALPHA_1_1_0, PacketDirection.CLIENT_TO_SERVER, 0x01, new PacketFactory() {
+            public Packet create() { return new LoginC2SPacketV2(); }
+        });
+        register(ProtocolVersion.ALPHA_1_1_0, PacketDirection.SERVER_TO_CLIENT, 0x01, new PacketFactory() {
+            public Packet create() { return new LoginS2CPacketV2(); }
+        });
 
         // Override version-specific packets for pre-rewrite Alpha (v10-v14).
         // These versions use different wire formats for 0x0F and 0x15.

@@ -54,6 +54,22 @@ class CapabilityTest {
     }
 
     @Test
+    void dayNightCycleNotInAlpha110() {
+        // DAY_NIGHT_CYCLE was introduced in Alpha 1.2.0 (v3), not 1.1.0 (v2)
+        assertFalse(Capability.DAY_NIGHT_CYCLE.isAvailableIn(ProtocolVersion.ALPHA_1_1_0));
+    }
+
+    @Test
+    void alpha110HasHealthAndInventory() {
+        // v2 inherits capabilities from v13+ (health, inventory, entities, etc.)
+        assertTrue(Capability.PLAYER_HEALTH.isAvailableIn(ProtocolVersion.ALPHA_1_1_0));
+        assertTrue(Capability.INVENTORY.isAvailableIn(ProtocolVersion.ALPHA_1_1_0));
+        assertTrue(Capability.ENTITY_SPAWN.isAvailableIn(ProtocolVersion.ALPHA_1_1_0));
+        assertTrue(Capability.BLOCK_METADATA.isAvailableIn(ProtocolVersion.ALPHA_1_1_0));
+        assertTrue(Capability.MINING_PROGRESS.isAvailableIn(ProtocolVersion.ALPHA_1_1_0));
+    }
+
+    @Test
     void dayNightCycleAvailableInAlpha120() {
         // DAY_NIGHT_CYCLE was introduced in Alpha 1.2.0 (v3)
         assertTrue(Capability.DAY_NIGHT_CYCLE.isAvailableIn(ProtocolVersion.ALPHA_1_2_0));
@@ -140,7 +156,8 @@ class CapabilityTest {
         assertTrue(ProtocolVersion.CLASSIC.isAtLeast(ProtocolVersion.RUBYDUNG));
         assertTrue(ProtocolVersion.ALPHA_1_0_15.isAtLeast(ProtocolVersion.CLASSIC));
         assertTrue(ProtocolVersion.ALPHA_1_0_16.isAtLeast(ProtocolVersion.ALPHA_1_0_15));
-        assertTrue(ProtocolVersion.ALPHA_1_2_0.isAtLeast(ProtocolVersion.ALPHA_1_0_16));
+        assertTrue(ProtocolVersion.ALPHA_1_1_0.isAtLeast(ProtocolVersion.ALPHA_1_0_16));
+        assertTrue(ProtocolVersion.ALPHA_1_2_0.isAtLeast(ProtocolVersion.ALPHA_1_1_0));
         assertTrue(ProtocolVersion.ALPHA_1_2_2.isAtLeast(ProtocolVersion.ALPHA_1_2_0));
         assertTrue(ProtocolVersion.ALPHA_1_2_3.isAtLeast(ProtocolVersion.ALPHA_1_2_2));
         assertTrue(ProtocolVersion.ALPHA_1_2_5.isAtLeast(ProtocolVersion.ALPHA_1_2_3));

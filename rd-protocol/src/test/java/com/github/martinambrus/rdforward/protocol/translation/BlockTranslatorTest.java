@@ -62,11 +62,13 @@ class BlockTranslatorTest {
         for (int id = 0; id <= 91; id++) {
             int from1015 = BlockTranslator.translate(id, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.RUBYDUNG);
             int from1016 = BlockTranslator.translate(id, ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.RUBYDUNG);
+            int from110 = BlockTranslator.translate(id, ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.RUBYDUNG);
             int from120 = BlockTranslator.translate(id, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.RUBYDUNG);
             int from122 = BlockTranslator.translate(id, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.RUBYDUNG);
             int from123 = BlockTranslator.translate(id, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.RUBYDUNG);
             int from125 = BlockTranslator.translate(id, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.RUBYDUNG);
             assertEquals(from1015, from1016, "Mismatch for block " + id + " between 1.0.15 and 1.0.16");
+            assertEquals(from1015, from110, "Mismatch for block " + id + " between 1.0.15 and 1.1.0");
             assertEquals(from1015, from120, "Mismatch for block " + id + " between 1.0.15 and 1.2.0");
             assertEquals(from1015, from122, "Mismatch for block " + id + " between 1.0.15 and 1.2.2");
             assertEquals(from1015, from123, "Mismatch for block " + id + " between 1.0.15 and 1.2.3");
@@ -143,12 +145,14 @@ class BlockTranslatorTest {
         assertTrue(BlockTranslator.hasTranslation(ProtocolVersion.RUBYDUNG, ProtocolVersion.CLASSIC));
         assertTrue(BlockTranslator.hasTranslation(ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.RUBYDUNG));
         assertTrue(BlockTranslator.hasTranslation(ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.RUBYDUNG));
+        assertTrue(BlockTranslator.hasTranslation(ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.RUBYDUNG));
         assertTrue(BlockTranslator.hasTranslation(ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.RUBYDUNG));
         assertTrue(BlockTranslator.hasTranslation(ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.RUBYDUNG));
         assertTrue(BlockTranslator.hasTranslation(ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.RUBYDUNG));
         assertTrue(BlockTranslator.hasTranslation(ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.RUBYDUNG));
         assertTrue(BlockTranslator.hasTranslation(ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.CLASSIC));
         assertTrue(BlockTranslator.hasTranslation(ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.CLASSIC));
+        assertTrue(BlockTranslator.hasTranslation(ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.CLASSIC));
         assertTrue(BlockTranslator.hasTranslation(ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.CLASSIC));
         assertTrue(BlockTranslator.hasTranslation(ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.CLASSIC));
         assertTrue(BlockTranslator.hasTranslation(ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.CLASSIC));

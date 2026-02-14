@@ -97,14 +97,16 @@ class AlphaLevelFormatTest {
     @Test
     void skylightPreservedOnRoundTrip() throws IOException {
         AlphaChunk original = new AlphaChunk(0, 0);
+        // Place blocks and generate correct skylight
+        original.setBlock(0, 42, 0, 1);
+        original.generateSkylightMap();
         AlphaLevelFormat.saveChunk(tempDir, original);
         AlphaChunk loaded = AlphaLevelFormat.loadChunk(tempDir, 0, 0);
         assertNotNull(loaded);
 
-        byte[] sky = loaded.getSkyLight();
-        for (byte b : sky) {
-            assertEquals((byte) 0xFF, b, "Sky light should be preserved at full brightness");
-        }
+        byte[] origSky = original.getSkyLight();
+        byte[] loadedSky = loaded.getSkyLight();
+        assertArrayEquals(origSky, loadedSky, "Sky light should be preserved on round-trip");
     }
 
     @Test
