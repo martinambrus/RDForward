@@ -489,7 +489,9 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
 
         float bedrockYaw = ((existing.getYaw() & 0xFF) * 360.0f / 256.0f + 180.0f) % 360.0f;
         float pitch = (existing.getPitch() & 0xFF) * 360.0f / 256.0f;
-        app.setRotation(Vector3f.from(pitch, bedrockYaw, 0));
+        if (pitch > 180.0f) pitch -= 360.0f; // signed pitch: negative = looking up
+        // Rotation Vector3f wire order: (pitch, yaw, headYaw)
+        app.setRotation(Vector3f.from(pitch, bedrockYaw, bedrockYaw));
         app.setHand(org.cloudburstmc.protocol.bedrock.data.inventory.ItemData.AIR);
         app.setPlatformChatId("");
         app.setDeviceId("");
@@ -513,10 +515,15 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         session.sendPacket(app);
 
         // 3. MovePlayerPacket — some Bedrock clients need this after AddPlayer
-        //    to make the entity actually render
+        //    to make the entity actually render.
+        //    MovePlayerPacket uses eye/head position, not feet.
         MovePlayerPacket mpp = new MovePlayerPacket();
         mpp.setRuntimeEntityId(entityId);
-        mpp.setPosition(app.getPosition());
+        Vector3f feetPos = app.getPosition();
+        mpp.setPosition(Vector3f.from(
+                feetPos.getX(),
+                feetPos.getY() + (float) PLAYER_EYE_HEIGHT,
+                feetPos.getZ()));
         mpp.setRotation(app.getRotation());
         mpp.setMode(MovePlayerPacket.Mode.TELEPORT);
         mpp.setOnGround(true);
@@ -552,12 +559,14 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
 
         Vector3f pos = packet.getPosition();
         Vector3f rot = packet.getRotation();
+        // MovePlayerPacket rotation wire order: (pitch, yaw, headYaw) — same as PlayerAuthInput
+        // rot.getX() = pitch, rot.getY() = yaw
 
-        // Bedrock Y is feet position; internal is eye-level
-        double eyeY = pos.getY() + PLAYER_EYE_HEIGHT;
+        // MovePlayerPacket C2S position is eye/head level; internal is eye-level
+        double eyeY = pos.getY();
 
         // If player falls below the world, teleport to spawn
-        if (pos.getY() < -10) {
+        if (eyeY - PLAYER_EYE_HEIGHT < -10) {
             teleportToSpawn(rot.getY());
             return PacketSignal.HANDLED;
         }
@@ -633,7 +642,7 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
     /**
      * Teleport player to world spawn (on top of the highest solid block at world center).
      */
-    private void teleportToSpawn(float yaw) {
+    private void teleportToSpawn(float bedrockYaw) {
         double spawnX = world.getWidth() / 2.0 + 0.5;
         double spawnZ = world.getDepth() / 2.0 + 0.5;
         int sx = (int) Math.floor(spawnX);
@@ -646,12 +655,17 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
             }
         }
         double spawnEyeY = feetBlockY + PLAYER_EYE_HEIGHT;
-        player.updatePositionDouble(spawnX, spawnEyeY, spawnZ, yaw, 0);
+        // Internal convention is Classic (0=North); convert Bedrock yaw (0=South)
+        float classicYaw = (bedrockYaw - 180.0f + 360.0f) % 360.0f;
+        player.updatePositionDouble(spawnX, spawnEyeY, spawnZ, classicYaw, 0);
 
         MovePlayerPacket respawn = new MovePlayerPacket();
         respawn.setRuntimeEntityId(player.getPlayerId() + 1);
-        respawn.setPosition(Vector3f.from((float) spawnX, (float) feetBlockY, (float) spawnZ));
-        respawn.setRotation(Vector3f.from(0, yaw, 0));
+        // MovePlayerPacket uses eye/head position
+        respawn.setPosition(Vector3f.from(
+                (float) spawnX, (float) (feetBlockY + PLAYER_EYE_HEIGHT), (float) spawnZ));
+        // Rotation Vector3f wire order: (pitch, yaw, headYaw) — S2C uses Bedrock convention
+        respawn.setRotation(Vector3f.from(0, bedrockYaw, bedrockYaw));
         respawn.setMode(MovePlayerPacket.Mode.TELEPORT);
         respawn.setOnGround(true);
         session.sendPacket(respawn);

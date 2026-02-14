@@ -39,7 +39,7 @@ import java.util.UUID;
  *
  * Coordinate conversion:
  * - Classic positions are fixed-point (x32) eye-level Y
- * - Bedrock positions are float blocks, feet Y
+ * - Bedrock AddPlayerPacket uses feet Y; MovePlayerPacket uses eye/head Y
  * - Classic yaw 0 = North; Bedrock yaw 0 = South (+180 degrees)
  */
 public class ClassicToBedrockTranslator {
@@ -130,10 +130,12 @@ public class ClassicToBedrockTranslator {
         app.setPosition(fixedPointToFloat(
                 pkt.getX(), pkt.getY(), pkt.getZ(), true));
         app.setMotion(Vector3f.ZERO);
+        float bedrockYaw = classicYawToBedrockDegrees(pkt.getYaw());
+        // Rotation Vector3f wire order: (pitch, yaw, headYaw)
         app.setRotation(Vector3f.from(
                 classicPitchToDegrees(pkt.getPitch()),
-                classicYawToBedrockDegrees(pkt.getYaw()),
-                0));
+                bedrockYaw,
+                bedrockYaw));
         app.setHand(org.cloudburstmc.protocol.bedrock.data.inventory.ItemData.AIR);
         app.setPlatformChatId("");
         app.setDeviceId("");
@@ -162,12 +164,13 @@ public class ClassicToBedrockTranslator {
 
         MovePlayerPacket mpp = new MovePlayerPacket();
         mpp.setRuntimeEntityId(pkt.getPlayerId() + 1);
+        // Internal Y is eye-level; MovePlayerPacket expects eye/head position (not feet)
         mpp.setPosition(fixedPointToFloat(
-                pkt.getX(), pkt.getY(), pkt.getZ(), true));
-        mpp.setRotation(Vector3f.from(
-                classicPitchToDegrees(pkt.getPitch()),
-                classicYawToBedrockDegrees(pkt.getYaw()),
-                0));
+                pkt.getX(), pkt.getY(), pkt.getZ(), false));
+        float bedrockYaw = classicYawToBedrockDegrees(pkt.getYaw());
+        float bedrockPitch = classicPitchToDegrees(pkt.getPitch());
+        // Rotation Vector3f wire order: (pitch, yaw, headYaw)
+        mpp.setRotation(Vector3f.from(bedrockPitch, bedrockYaw, bedrockYaw));
         mpp.setMode(MovePlayerPacket.Mode.NORMAL);
         mpp.setOnGround(true);
         return mpp;
@@ -246,10 +249,14 @@ public class ClassicToBedrockTranslator {
     }
 
     /**
-     * Convert Classic byte pitch (0-255) to Bedrock degrees.
+     * Convert Classic byte pitch (0-255) to Bedrock signed degrees.
+     * Classic: 0=level, 64=down(90°), 192=up(-90°).
+     * Bedrock: positive=down, negative=up.
      */
     private float classicPitchToDegrees(int classicPitch) {
-        return (classicPitch & 0xFF) * 360.0f / 256.0f;
+        float degrees = (classicPitch & 0xFF) * 360.0f / 256.0f;
+        if (degrees > 180.0f) degrees -= 360.0f;
+        return degrees;
     }
 
     /**
@@ -285,10 +292,15 @@ public class ClassicToBedrockTranslator {
             result.add(app);
 
             // 3. MovePlayerPacket — some Bedrock clients need this after AddPlayer
-            //    to make the entity actually render
+            //    to make the entity actually render.
+            //    MovePlayerPacket uses eye/head position, not feet.
             MovePlayerPacket mpp = new MovePlayerPacket();
             mpp.setRuntimeEntityId(entityId);
-            mpp.setPosition(app.getPosition());
+            Vector3f feetPos = app.getPosition();
+            mpp.setPosition(Vector3f.from(
+                    feetPos.getX(),
+                    feetPos.getY() + (float) EYE_HEIGHT,
+                    feetPos.getZ()));
             mpp.setRotation(app.getRotation());
             mpp.setMode(MovePlayerPacket.Mode.TELEPORT);
             mpp.setOnGround(true);

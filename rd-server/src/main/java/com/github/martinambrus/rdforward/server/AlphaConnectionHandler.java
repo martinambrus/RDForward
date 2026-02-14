@@ -218,8 +218,10 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         // S2C y = posY (eyes), stance = feet. The client sets posY from y
         // and computes BB.minY (feet) = posY - (double)(1.62f).
+        // spawnYaw is Classic convention; Alpha client expects Alpha (0=South)
+        float alphaSpawnYaw = (spawnYaw + 180.0f) % 360.0f;
         ctx.writeAndFlush(new PlayerPositionAndLookS2CPacket(
-                spawnX, posY, feetY, spawnZ, spawnYaw, spawnPitch, true));
+                spawnX, posY, feetY, spawnZ, alphaSpawnYaw, spawnPitch, true));
 
         // Send existing players to this client (as Alpha spawn packets).
         // Internal Y is eye-level; Alpha SpawnPlayerPacket expects feet Y.
@@ -260,8 +262,10 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     private void handlePositionAndLook(ChannelHandlerContext ctx,
                                        PlayerPositionAndLookC2SPacket packet) {
         if (player == null) return;
+        // Alpha yaw 0=South; internal convention is Classic 0=North. Convert by adding 180°.
+        float classicYaw = (packet.getYaw() + 180.0f) % 360.0f;
         updatePosition(ctx, packet.getX(), packet.getY(), packet.getZ(),
-                packet.getYaw(), packet.getPitch());
+                classicYaw, packet.getPitch());
     }
 
     private void handlePosition(ChannelHandlerContext ctx, PlayerPositionPacket packet) {
@@ -272,10 +276,12 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleLook(ChannelHandlerContext ctx, PlayerLookPacket packet) {
         if (player == null) return;
+        // Alpha yaw 0=South; internal convention is Classic 0=North. Convert by adding 180°.
+        float classicYaw = (packet.getYaw() + 180.0f) % 360.0f;
         // doubleY is eye-level (internal convention), but updatePosition expects feet Y
         updatePosition(ctx, player.getDoubleX(),
                 player.getDoubleY() - PLAYER_EYE_HEIGHT, player.getDoubleZ(),
-                packet.getYaw(), packet.getPitch());
+                classicYaw, packet.getPitch());
     }
 
     private void updatePosition(ChannelHandlerContext ctx,
@@ -293,10 +299,12 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             player.updatePositionDouble(spawnX, spawnEyeY, spawnZ, yaw, 0);
 
             // S2C y = posY (eyes), stance = feet
+            // yaw is Classic convention internally; Alpha client expects Alpha (0=South)
+            float alphaYaw = (yaw + 180.0f) % 360.0f;
             double spawnFeetY = feetBlockY + 0.5; // small offset to prevent re-falling
             ctx.writeAndFlush(new PlayerPositionAndLookS2CPacket(
                     spawnX, spawnFeetY + PLAYER_EYE_HEIGHT, spawnFeetY, spawnZ,
-                    yaw, 0, true));
+                    alphaYaw, 0, true));
 
             // Broadcast updated position to other players
             short fixedX = toFixedPoint(spawnX);
@@ -518,7 +526,8 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     }
 
     private static byte toByteRotation(float degrees) {
-        // Alpha yaw 0° = South; RD/Classic yaw 0 = North. Add 128 (180°) to convert.
-        return (byte) (((degrees / 360.0f) * 256) + 128);
+        // Callers already pass Classic convention degrees (0=North).
+        // Simple degrees-to-byte conversion with no offset.
+        return (byte) ((degrees / 360.0f) * 256);
     }
 }
