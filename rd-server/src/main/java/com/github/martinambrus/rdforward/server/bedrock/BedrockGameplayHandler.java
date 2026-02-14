@@ -485,10 +485,12 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
                 existing.getX() / 32.0f,
                 feetY,
                 existing.getZ() / 32.0f));
+        app.setMotion(Vector3f.ZERO);
 
         float bedrockYaw = ((existing.getYaw() & 0xFF) * 360.0f / 256.0f + 180.0f) % 360.0f;
         float pitch = (existing.getPitch() & 0xFF) * 360.0f / 256.0f;
         app.setRotation(Vector3f.from(pitch, bedrockYaw, 0));
+        app.setHand(org.cloudburstmc.protocol.bedrock.data.inventory.ItemData.AIR);
         app.setPlatformChatId("");
         app.setDeviceId("");
         app.setGameType(GameType.CREATIVE);

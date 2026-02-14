@@ -129,10 +129,12 @@ public class ClassicToBedrockTranslator {
         app.setRuntimeEntityId(entityId);
         app.setPosition(fixedPointToFloat(
                 pkt.getX(), pkt.getY(), pkt.getZ(), true));
+        app.setMotion(Vector3f.ZERO);
         app.setRotation(Vector3f.from(
                 classicPitchToDegrees(pkt.getPitch()),
                 classicYawToBedrockDegrees(pkt.getYaw()),
                 0));
+        app.setHand(org.cloudburstmc.protocol.bedrock.data.inventory.ItemData.AIR);
         app.setPlatformChatId("");
         app.setDeviceId("");
         app.setGameType(org.cloudburstmc.protocol.bedrock.data.GameType.CREATIVE);
