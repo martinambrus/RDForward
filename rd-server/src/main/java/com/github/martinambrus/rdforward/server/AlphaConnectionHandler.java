@@ -103,6 +103,12 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             // Silently accept (arm swing animation)
         } else if (packet instanceof PlayerInventoryPacket) {
             // Silently accept (inventory sync)
+        } else if (packet instanceof PickupSpawnPacket) {
+            // Client tried to drop an item — return it to their inventory
+            PickupSpawnPacket drop = (PickupSpawnPacket) packet;
+            if (drop.getItemId() > 0 && drop.getCount() > 0) {
+                giveItem(ctx, drop.getItemId(), drop.getCount());
+            }
         } else if (packet instanceof KeepAlivePacket) {
             // Silently accept
         } else if (packet instanceof DisconnectPacket) {

@@ -188,6 +188,10 @@ public class PacketRegistry {
             register(v, PacketDirection.SERVER_TO_CLIENT, 0x12, new PacketFactory() {
                 public Packet create() { return new AnimationPacket(); }
             });
+            // 0x15 Pickup Spawn (C2S: client dropping an item)
+            register(v, PacketDirection.CLIENT_TO_SERVER, 0x15, new PacketFactory() {
+                public Packet create() { return new PickupSpawnPacket(); }
+            });
 
             // === Server -> Client packets ===
             // Login flow

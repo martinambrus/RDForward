@@ -74,7 +74,6 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
     private BedrockSessionWrapper sessionWrapper;
     private boolean chunksInitialized = false;
     private boolean disconnected = false;
-    private int authInputCount = 0;
 
     public BedrockGameplayHandler(BedrockServerSession session, ServerWorld world,
                                   PlayerManager playerManager, ChunkManager chunkManager,
@@ -600,16 +599,10 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         Vector3f pos = packet.getPosition();
         Vector3f rot = packet.getRotation();
 
-        // Log first few positions for debugging
-        if (authInputCount < 5) {
-            System.out.println("[Bedrock] AuthInput #" + authInputCount
-                    + ": pos=" + pos.getX() + "," + pos.getY() + "," + pos.getZ()
-                    + " rot=" + rot.getX() + "," + rot.getY());
-            authInputCount++;
-        }
-
-        // Bedrock Y is feet position; internal is eye-level
-        double eyeY = pos.getY() + PLAYER_EYE_HEIGHT;
+        // Bedrock AuthInput Y appears to already be eye-level (not feet).
+        // Do NOT add PLAYER_EYE_HEIGHT — that causes a ~1.62 block upward offset
+        // when other clients (Alpha) view this player.
+        double eyeY = pos.getY();
 
         // If player falls below the world, teleport to spawn
         if (pos.getY() < -10) {
