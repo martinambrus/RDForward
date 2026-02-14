@@ -1,0 +1,8 @@
+description = 'RDForward Render Desktop - LWJGL 3 rendering backend'
+
+dependencies {
+    implementation project(':rd-render')
+    implementation 'org.lwjgl:lwjgl:3.4.1'
+    implementation 'org.lwjgl:lwjgl-opengl:3.4.1'
+    implementation 'org.lwjgl:lwjgl-glfw:3.4.1'
+}

@@ -1,8 +1,1 @@
-description = 'RDForward Render - rendering abstraction layer and LWJGL 3 desktop backend'
-
-dependencies {
-    // LWJGL 3 for the desktop backend
-    implementation 'org.lwjgl:lwjgl:3.4.1'
-    implementation 'org.lwjgl:lwjgl-opengl:3.4.1'
-    implementation 'org.lwjgl:lwjgl-glfw:3.4.1'
-}
+description = 'RDForward Render - rendering abstraction interfaces'
