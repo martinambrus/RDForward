@@ -55,9 +55,6 @@ public class BedrockLoginHandler implements BedrockPacketHandler {
     public PacketSignal handle(RequestNetworkSettingsPacket packet) {
         int clientProtocol = packet.getProtocolVersion();
         int serverProtocol = BedrockProtocolConstants.CODEC.getProtocolVersion();
-        System.out.println("[Bedrock] RequestNetworkSettings: client=" + clientProtocol
-                + " server=" + serverProtocol);
-
         if (clientProtocol != serverProtocol) {
             PlayStatusPacket status = new PlayStatusPacket();
             status.setStatus(clientProtocol > serverProtocol
@@ -73,49 +70,41 @@ public class BedrockLoginHandler implements BedrockPacketHandler {
         session.sendPacketImmediately(settings);
 
         session.setCompression(PacketCompressionAlgorithm.ZLIB);
-        System.out.println("[Bedrock] Compression enabled (ZLIB)");
         return PacketSignal.HANDLED;
     }
 
     @Override
     public PacketSignal handle(LoginPacket packet) {
-        System.out.println("[Bedrock] Login packet received");
         // Extract username from JWT chain (first token's payload)
         username = extractUsernameFromChain(packet);
         if (username == null || username.isEmpty()) {
             username = "BedrockPlayer";
         }
-        System.out.println("[Bedrock] Username: " + username);
 
         // Skip encryption — send LOGIN_SUCCESS immediately
         PlayStatusPacket status = new PlayStatusPacket();
         status.setStatus(PlayStatusPacket.Status.LOGIN_SUCCESS);
         session.sendPacket(status);
-        System.out.println("[Bedrock] Sent LOGIN_SUCCESS");
 
         // Send empty resource packs info
         ResourcePacksInfoPacket packsInfo = new ResourcePacksInfoPacket();
         packsInfo.setWorldTemplateId(UUID.randomUUID());
         packsInfo.setWorldTemplateVersion("*");
         session.sendPacket(packsInfo);
-        System.out.println("[Bedrock] Sent ResourcePacksInfo (empty)");
 
         return PacketSignal.HANDLED;
     }
 
     @Override
     public PacketSignal handle(ResourcePackClientResponsePacket packet) {
-        System.out.println("[Bedrock] ResourcePackClientResponse: " + packet.getStatus());
         switch (packet.getStatus()) {
             case HAVE_ALL_PACKS:
                 ResourcePackStackPacket stack = new ResourcePackStackPacket();
                 stack.setGameVersion("*");
                 session.sendPacket(stack);
-                System.out.println("[Bedrock] Sent ResourcePackStack");
                 break;
 
             case COMPLETED:
-                System.out.println("[Bedrock] Resource packs completed, transitioning to gameplay");
                 // Set vanilla block and item definitions on the codec helper — required
                 // for correct serialization of block/item-related packets
                 session.getPeer().getCodecHelper().setBlockDefinitions(
@@ -131,7 +120,6 @@ public class BedrockLoginHandler implements BedrockPacketHandler {
                 break;
 
             default:
-                System.out.println("[Bedrock] Unhandled resource pack status: " + packet.getStatus());
                 break;
         }
         return PacketSignal.HANDLED;
@@ -146,17 +134,13 @@ public class BedrockLoginHandler implements BedrockPacketHandler {
             // Beta12+ API: getAuthPayload() returns AuthPayload;
             // for certificate-chain auth, cast to CertificateChainPayload
             org.cloudburstmc.protocol.bedrock.data.auth.AuthPayload authPayload = packet.getAuthPayload();
-            System.out.println("[Bedrock] AuthPayload type: "
-                    + (authPayload != null ? authPayload.getClass().getSimpleName() : "null"));
             List<String> chain = null;
             if (authPayload instanceof org.cloudburstmc.protocol.bedrock.data.auth.CertificateChainPayload) {
                 chain = ((org.cloudburstmc.protocol.bedrock.data.auth.CertificateChainPayload) authPayload).getChain();
             }
             if (chain == null) {
-                System.out.println("[Bedrock] No certificate chain found in auth payload");
                 return null;
             }
-            System.out.println("[Bedrock] Chain has " + chain.size() + " tokens");
 
             for (String token : chain) {
                 // JWT format: header.payload.signature

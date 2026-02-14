@@ -96,6 +96,11 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
      * sends StartGame, chunks, and PLAYER_SPAWN.
      */
     public void onReady() {
+        // If a non-blank username is already online, kick the old connection
+        if (username != null && !username.trim().isEmpty()) {
+            playerManager.kickDuplicatePlayer(username.trim(), world);
+        }
+
         // Register player with Bedrock protocol version
         player = playerManager.addPlayer(username, null, ProtocolVersion.BEDROCK);
         if (player == null) {
@@ -135,8 +140,6 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
                 spawnX = safe[0] + 0.5;
                 spawnY = safe[1] + PLAYER_EYE_HEIGHT;
                 spawnZ = safe[2] + 0.5;
-                System.out.println("[Bedrock] Saved position was inside blocks, relocated to "
-                        + safe[0] + "," + safe[1] + "," + safe[2]);
             }
         } else {
             spawnX = world.getWidth() / 2.0 + 0.5;
@@ -157,7 +160,6 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         player.updatePositionDouble(spawnX, spawnY, spawnZ, spawnYaw, spawnPitch);
 
         long entityId = player.getPlayerId() + 1;
-        float feetY = (float) (spawnY - PLAYER_EYE_HEIGHT);
 
         // Convert Classic yaw to Bedrock yaw for S2C
         // Internal yaw was stored as Classic byte -> degrees. Bedrock 0=South, Classic 0=North.
@@ -165,15 +167,13 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
 
         // === Spawn sequence (BiomeDefinitionListPacket omitted — causes v924 client crash) ===
 
-        // 1. StartGamePacket
-        sendStartGame(entityId, (float) spawnX, feetY, (float) spawnZ, bedrockYaw, spawnPitch);
-        System.out.println("[Bedrock] Sent StartGamePacket (entity=" + entityId
-                + ", pos=" + spawnX + "," + feetY + "," + spawnZ + ")");
+        // 1. StartGamePacket — position is eye-level (same convention as MovePlayerPacket).
+        //    Sending feet Y causes the client to subtract eye height again, sinking into ground.
+        sendStartGame(entityId, (float) spawnX, (float) spawnY, (float) spawnZ, bedrockYaw, spawnPitch);
 
         // 2. ItemComponentPacket (empty)
         ItemComponentPacket itemComponentPkt = new ItemComponentPacket();
         session.sendPacket(itemComponentPkt);
-        System.out.println("[Bedrock] Sent ItemComponentPacket");
 
         // 3. One empty chunk at spawn (real chunks sent later via RequestChunkRadius)
         int spawnCX = (int) Math.floor(spawnX) >> 4;
@@ -201,7 +201,6 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         PlayStatusPacket spawnStatus = new PlayStatusPacket();
         spawnStatus.setStatus(PlayStatusPacket.Status.PLAYER_SPAWN);
         session.sendPacket(spawnStatus);
-        System.out.println("[Bedrock] Sent PLAYER_SPAWN");
 
         // 8. Post-spawn packets: abilities, attributes, game rules
         sendUpdateAbilities(entityId);
@@ -447,9 +446,6 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
                 }
             }
         }
-        System.out.println("[Bedrock] Sent " + sent + " chunks, " + nullChunks + " null"
-                + " (center=" + centerChunkX + "," + centerChunkZ
-                + ", viewDist=" + viewDist + ")");
     }
 
     private void sendAddPlayer(ConnectedPlayer existing) {
@@ -831,32 +827,22 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
 
     @Override
     public PacketSignal handle(ServerboundLoadingScreenPacket packet) {
-        System.out.println("[Bedrock] Loading screen: type=" + packet.getType()
-                + ", id=" + packet.getLoadingScreenId());
         return PacketSignal.HANDLED;
     }
 
     @Override
     public PacketSignal handle(ClientCacheStatusPacket packet) {
-        System.out.println("[Bedrock] Client cache status: supported=" + packet.isSupported());
         return PacketSignal.HANDLED;
     }
 
     @Override
     public PacketSignal handle(SetLocalPlayerAsInitializedPacket packet) {
-        System.out.println("[Bedrock] Client initialized (entity=" + packet.getRuntimeEntityId() + ")");
-
         // Now that the client has loaded chunks and is fully initialized,
         // send existing players so they render correctly.
         if (player != null) {
             for (ConnectedPlayer existing : playerManager.getAllPlayers()) {
                 if (existing != player) {
                     sendAddPlayer(existing);
-                    System.out.println("[Bedrock] Sent AddPlayer for " + existing.getUsername()
-                            + " (entity=" + (existing.getPlayerId() + 1)
-                            + ", pos=" + existing.getX() / 32.0f + ","
-                            + existing.getY() / 32.0f + ","
-                            + existing.getZ() / 32.0f + ")");
                 }
             }
         }
@@ -866,8 +852,6 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
 
     @Override
     public PacketSignal handle(RequestChunkRadiusPacket packet) {
-        System.out.println("[Bedrock] Client requested chunk radius: " + packet.getRadius());
-
         // Use the client's requested radius (capped at 16) so empty chunks cover
         // the full area — prevents invisible solid blocks beyond the world edge
         int radius = Math.min(packet.getRadius(), 16);
@@ -914,7 +898,6 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
                     }
                 }
             }
-            System.out.println("[Bedrock] Sent " + sent + " world chunks, " + empty + " empty");
         }
 
         return PacketSignal.HANDLED;
@@ -951,14 +934,9 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         return PacketSignal.HANDLED; // silently ignore
     }
 
-    // Catch-all: log any packet we don't explicitly handle
     @Override
     public PacketSignal handlePacket(org.cloudburstmc.protocol.bedrock.packet.BedrockPacket packet) {
-        PacketSignal result = packet.handle(this);
-        if (result == PacketSignal.UNHANDLED) {
-            System.out.println("[Bedrock] Unhandled C2S: " + packet.getClass().getSimpleName());
-        }
-        return result;
+        return packet.handle(this);
     }
 
     private void onDisconnect() {

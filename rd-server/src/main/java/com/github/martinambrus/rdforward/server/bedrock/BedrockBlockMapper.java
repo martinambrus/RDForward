@@ -80,15 +80,6 @@ public class BedrockBlockMapper {
                 mapped++;
             }
         }
-        System.out.println("[Bedrock] Block mapper: " + mapped + " blocks mapped");
-        // Log first few mappings for verification
-        for (int i = 0; i < Math.min(10, internalToDefinition.length); i++) {
-            BlockDefinition def = internalToDefinition[i];
-            System.out.println("[Bedrock]   ID " + i + " -> "
-                    + ((SimpleBlockDefinition) def).getIdentifier()
-                    + " (runtime=" + def.getRuntimeId() + ")");
-        }
-
     }
 
     /**

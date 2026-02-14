@@ -31,19 +31,12 @@ public class BedrockSessionWrapper {
      */
     public void translateAndSend(Packet classicPacket) {
         if (!session.isConnected()) {
-            System.out.println("[Bedrock] translateAndSend: session not connected, dropping "
-                    + classicPacket.getClass().getSimpleName());
             return;
         }
 
         List<org.cloudburstmc.protocol.bedrock.packet.BedrockPacket> packets =
                 translator.translateAll(classicPacket);
-        if (!packets.isEmpty()) {
-            System.out.println("[Bedrock] translateAndSend: " + classicPacket.getClass().getSimpleName()
-                    + " -> " + packets.size() + " packet(s)");
-        }
         for (org.cloudburstmc.protocol.bedrock.packet.BedrockPacket pkt : packets) {
-            System.out.println("[Bedrock]   -> " + pkt.getClass().getSimpleName());
             session.sendPacket(pkt);
         }
     }

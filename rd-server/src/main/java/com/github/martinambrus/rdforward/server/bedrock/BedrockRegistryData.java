@@ -45,13 +45,8 @@ public class BedrockRegistryData {
             try (NBTInputStream nbtIn = NbtUtils.createNetworkReader(is)) {
                 Object tag = nbtIn.readTag();
                 if (tag instanceof NbtMap) {
-                    NbtMap nbtMap = (NbtMap) tag;
-                    System.out.println("[Bedrock] Loaded " + description
-                            + " (" + nbtMap.size() + " entries)");
-                    return nbtMap;
+                    return (NbtMap) tag;
                 }
-                System.err.println("[Bedrock] " + description + " tag is not NbtMap: "
-                        + tag.getClass().getSimpleName());
                 return NbtMap.EMPTY;
             }
         } catch (Exception e) {

@@ -144,6 +144,11 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             decoder.setProtocolVersion(clientVersion);
         }
 
+        // If a non-blank username is already online, kick the old connection
+        if (pendingUsername != null && !pendingUsername.trim().isEmpty()) {
+            playerManager.kickDuplicatePlayer(pendingUsername.trim(), world);
+        }
+
         // Register the player
         player = playerManager.addPlayer(pendingUsername, ctx.channel(), clientVersion);
         if (player == null) {

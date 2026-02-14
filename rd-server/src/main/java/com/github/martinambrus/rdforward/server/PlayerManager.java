@@ -178,6 +178,55 @@ public class PlayerManager {
     }
 
     /**
+     * Find an online player by username (case-insensitive).
+     * Returns null if no player with that name is connected.
+     */
+    public ConnectedPlayer getPlayerByName(String name) {
+        for (ConnectedPlayer p : playersById.values()) {
+            if (p.getUsername().equalsIgnoreCase(name)) {
+                return p;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Kick an existing player with the given username to make room for a
+     * new connection. Used when a non-blank username is already online.
+     * Handles cleanup: despawn broadcast, position save, removal.
+     *
+     * @param username the username to kick (case-insensitive match)
+     * @param world    the server world (to save the player's position)
+     */
+    public void kickDuplicatePlayer(String username, ServerWorld world) {
+        ConnectedPlayer existing = getPlayerByName(username);
+        if (existing == null) return;
+
+        System.out.println("Kicking duplicate login for " + existing.getUsername());
+        world.rememberPlayerPosition(existing);
+        broadcastChat((byte) 0, existing.getUsername() + " left the game");
+        broadcastPlayerDespawn(existing);
+
+        // Send disconnect reason then close. For TCP clients (Classic/Alpha),
+        // sendPacket goes through the pipeline translator. For Bedrock,
+        // disconnect(reason) sends the reason natively.
+        if (existing.getBedrockSession() != null) {
+            existing.getBedrockSession().disconnect("Logged in from another location");
+        } else {
+            existing.sendPacket(new com.github.martinambrus.rdforward.protocol.packet.classic.DisconnectPacket(
+                    "Logged in from another location"));
+            existing.disconnect();
+        }
+
+        // Clean up maps
+        if (existing.getChannel() != null) {
+            playersByChannel.remove(existing.getChannel());
+        }
+        playersById.remove(existing.getPlayerId());
+        usedIds[existing.getPlayerId()] = false;
+    }
+
+    /**
      * Check if a username is already taken by a connected player.
      */
     private boolean isNameTaken(String name) {

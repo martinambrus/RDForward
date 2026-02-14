@@ -96,9 +96,6 @@ public final class BedrockProtocolConstants {
             // Use file order directly — matches the client's built-in palette for this codec version
             vanillaBlockStates = new java.util.ArrayList<>(unsorted);
 
-            System.out.println("[Bedrock] Loaded vanilla block palette ("
-                    + vanillaBlockStates.size() + " block states)");
-
             // Build the definition registry: runtime ID = sequential index in sorted palette
             SimpleDefinitionRegistry.Builder<BlockDefinition> builder =
                     SimpleDefinitionRegistry.builder();
@@ -171,7 +168,6 @@ public final class BedrockProtocolConstants {
             }
 
             itemDefinitions = builder.build();
-            System.out.println("[Bedrock] Loaded " + count + " item definitions from runtime_item_states.json");
         } catch (IOException e) {
             System.err.println("[Bedrock] Failed to load runtime_item_states.json: " + e.getMessage());
             // Fallback: empty registry

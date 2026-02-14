@@ -99,13 +99,20 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
             return;
         }
 
-        // Register the player (assigns an ID)
+        // If a non-blank username is already online, kick the old connection
+        if (username != null && !username.trim().isEmpty()) {
+            playerManager.kickDuplicatePlayer(username.trim(), world);
+        }
+
+        // Register the player (assigns an ID, may rename blank/duplicate names)
         player = playerManager.addPlayer(username, ctx.channel(), clientVersion);
         if (player == null) {
             ctx.writeAndFlush(new DisconnectPacket("Server is full!"));
             ctx.close();
             return;
         }
+        // Use the assigned username from here on (blank names become "Player<ID>")
+        username = player.getUsername();
 
         // If client is on a different version, insert version translator
         // in the outbound pipeline (after encoder, so in outbound direction:
