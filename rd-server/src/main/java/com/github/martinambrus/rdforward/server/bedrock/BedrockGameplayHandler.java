@@ -123,11 +123,11 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
             spawnPitch = (savedPos[4] & 0xFF) * 360.0f / 256.0f;
 
             // Safety check: ensure player isn't inside solid blocks.
-            // Add 0.1 to feet Y to avoid treating "standing on top of a block"
-            // as "inside the block" (e.g. feet at Y=5.97 → floor=5 which is ground).
+            // Fixed-point truncation can place feet slightly inside the ground,
+            // so check the actual block without any epsilon.
             double feetYCheck = spawnY - PLAYER_EYE_HEIGHT;
             int feetBlockX = (int) Math.floor(spawnX);
-            int feetBlockY = (int) Math.floor(feetYCheck + 0.1);
+            int feetBlockY = (int) Math.floor(feetYCheck);
             int feetBlockZ = (int) Math.floor(spawnZ);
             if (world.inBounds(feetBlockX, feetBlockY, feetBlockZ)
                     && (world.getBlock(feetBlockX, feetBlockY, feetBlockZ) != 0

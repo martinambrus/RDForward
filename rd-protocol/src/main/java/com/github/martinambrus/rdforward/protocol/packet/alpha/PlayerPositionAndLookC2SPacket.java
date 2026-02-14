@@ -8,9 +8,8 @@ import io.netty.buffer.ByteBuf;
  *
  * Sent when both position and look change. Combines 0x0B and 0x0C.
  *
- * IMPORTANT: The C->S field order is (x, y, stance, z) but the S->C
- * field order swaps y and stance to (x, stance, y, z). This is a known
- * quirk of the Alpha protocol. See {@link PlayerPositionAndLookS2CPacket}.
+ * NOTE: The C->S field order is (x, y, stance, z) but the S->C
+ * field order swaps y and stance. See {@link PlayerPositionAndLookS2CPacket}.
  *
  * Wire format (41 bytes payload):
  *   [double]  x

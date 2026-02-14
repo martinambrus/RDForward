@@ -16,6 +16,7 @@ import com.github.martinambrus.rdforward.server.bedrock.BedrockChunkConverter;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockLoginHandler;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockProtocolConstants;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockRegistryData;
+import com.github.martinambrus.rdforward.server.event.ServerEvents;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -211,17 +212,12 @@ public class RDServer {
                 .serverId(serverGuid)
                 .nintendoLimited(false);
 
-        // Debug: print exact pong string for diagnosis
         io.netty.buffer.ByteBuf pongBuf = pong.toByteBuf();
-        byte[] pongBytes = new byte[pongBuf.readableBytes()];
-        pongBuf.getBytes(pongBuf.readerIndex(), pongBytes);
-        System.out.println("[Bedrock] Pong advertisement: " + new String(pongBytes, java.nio.charset.StandardCharsets.UTF_8));
-        // Reset reader index since getBytes doesn't advance it — buf is ready for use
 
         ServerBootstrap bedrockBootstrap = new ServerBootstrap()
                 .channelFactory(RakChannelFactory.server(NioDatagramChannel.class))
                 .group(workerGroup)
-                .option(RakChannelOption.RAK_HANDLE_PING, true)
+                .option(RakChannelOption.RAK_HANDLE_PING, false)
                 .option(RakChannelOption.RAK_GUID, serverGuid)
                 .option(RakChannelOption.RAK_SUPPORTED_PROTOCOLS, new int[]{11})
                 .option(RakChannelOption.RAK_ADVERTISEMENT, pongBuf)
@@ -241,6 +237,14 @@ public class RDServer {
             System.out.println("Bedrock server started on port " + bedrockPort
                     + " (protocol: " + BedrockProtocolConstants.CODEC.getMinecraftVersion()
                     + ", version " + BedrockProtocolConstants.CODEC.getProtocolVersion() + ")");
+
+            // Update pong advertisement when ANY player (TCP or Bedrock) joins or leaves.
+            // PLAYER_JOIN fires after addPlayer, so the count is already correct.
+            ServerEvents.PLAYER_JOIN.register((name, version) -> pongUpdater.run());
+            // PLAYER_LEAVE fires before removePlayer, so defer the update to run
+            // after the current handler method completes (removePlayer included).
+            ServerEvents.PLAYER_LEAVE.register(name ->
+                    bedrockChannel.eventLoop().execute(pongUpdater));
         } catch (Exception e) {
             System.err.println("Failed to start Bedrock server on port " + bedrockPort
                     + ": " + e.getMessage());

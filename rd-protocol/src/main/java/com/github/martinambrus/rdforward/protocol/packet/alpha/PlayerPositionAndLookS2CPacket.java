@@ -8,9 +8,8 @@ import io.netty.buffer.ByteBuf;
  *
  * Used to teleport the player (initial spawn, or server-side correction).
  *
- * IMPORTANT: In the S->C direction, the field order swaps y and stance
- * compared to C->S: (x, stance, y, z) instead of (x, y, stance, z).
- * This is a well-known quirk of the Alpha/Beta protocol.
+ * In the S->C direction, the field order swaps y and stance compared to
+ * C->S: (x, stance, y, z) instead of (x, y, stance, z).
  *
  * Wire format (41 bytes payload):
  *   [double]  x
@@ -52,8 +51,8 @@ public class PlayerPositionAndLookS2CPacket implements Packet {
     @Override
     public void write(ByteBuf buf) {
         buf.writeDouble(x);
-        buf.writeDouble(stance); // swapped: stance before y
-        buf.writeDouble(y);      // swapped: y after stance
+        buf.writeDouble(stance);
+        buf.writeDouble(y);
         buf.writeDouble(z);
         buf.writeFloat(yaw);
         buf.writeFloat(pitch);
@@ -63,8 +62,8 @@ public class PlayerPositionAndLookS2CPacket implements Packet {
     @Override
     public void read(ByteBuf buf) {
         x = buf.readDouble();
-        stance = buf.readDouble(); // swapped: stance before y
-        y = buf.readDouble();      // swapped: y after stance
+        stance = buf.readDouble();
+        y = buf.readDouble();
         z = buf.readDouble();
         yaw = buf.readFloat();
         pitch = buf.readFloat();

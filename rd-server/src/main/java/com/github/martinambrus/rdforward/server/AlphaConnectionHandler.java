@@ -162,11 +162,12 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             spawnPitch = (savedPos[4] & 0xFF) * 360.0f / 256.0f;
 
             // Safety check: ensure player isn't inside solid blocks.
-            // Add 0.1 to feet Y to avoid treating "standing on top of a block"
-            // as "inside the block" (e.g. feet at Y=5.97 → floor=5 which is ground).
+            // Fixed-point truncation can place feet slightly inside the ground
+            // (e.g. feetY=42.97 when the player was standing at Y=43.0), so
+            // check the actual block the feet are in without any epsilon.
             double feetY = spawnY - PLAYER_EYE_HEIGHT;
             int feetBlockX = (int) Math.floor(spawnX);
-            int feetBlockY = (int) Math.floor(feetY + 0.1);
+            int feetBlockY = (int) Math.floor(feetY);
             int feetBlockZ = (int) Math.floor(spawnZ);
             if (world.inBounds(feetBlockX, feetBlockY, feetBlockZ)
                     && (world.getBlock(feetBlockX, feetBlockY, feetBlockZ) != 0
@@ -181,12 +182,15 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 System.out.println("Restored position for " + player.getUsername());
             }
         } else {
-            // Default: center of world, on top of terrain.
+            // Default: center of world, find safe position on terrain.
             // Internal Y convention is eye-level (feet + 1.62) to match Classic.
-            spawnX = world.getWidth() / 2.0 + 0.5;
-            int feetBlockY = world.getHeight() * 2 / 3 + 1;
-            spawnY = feetBlockY + PLAYER_EYE_HEIGHT; // eye-level
-            spawnZ = world.getDepth() / 2.0 + 0.5;
+            int cx = world.getWidth() / 2;
+            int cz = world.getDepth() / 2;
+            int heuristicY = world.getHeight() * 2 / 3 + 1;
+            int[] safe = world.findSafePosition(cx, heuristicY, cz, 50);
+            spawnX = safe[0] + 0.5;
+            spawnY = safe[1] + PLAYER_EYE_HEIGHT; // eye-level
+            spawnZ = safe[2] + 0.5;
         }
 
         // Update player position — internal convention is eye-level Y
@@ -205,13 +209,6 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Send player position and look.
         // spawnY is eye-level (internal convention). Alpha S2C needs feet and stance.
         double feetY = spawnY - PLAYER_EYE_HEIGHT;
-        // For default spawn (no saved position), add a small upward offset to prevent
-        // falling into ground before chunks load. Don't add it for restored positions
-        // since the player may be in a tight space (e.g. 2-block cave) where the
-        // offset would push their head into the ceiling.
-        if (savedPos == null) {
-            feetY += 0.5;
-        }
         double stanceY = feetY + PLAYER_EYE_HEIGHT;
 
         // Debug: print block column around spawn position
