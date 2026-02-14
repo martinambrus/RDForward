@@ -30,6 +30,7 @@ class BlockRegistryTest {
         ProtocolVersion[] alphaVersions = {
                 ProtocolVersion.ALPHA_1_0_15,
                 ProtocolVersion.ALPHA_1_0_16,
+                ProtocolVersion.ALPHA_1_2_0,
                 ProtocolVersion.ALPHA_1_2_2,
                 ProtocolVersion.ALPHA_1_2_3,
                 ProtocolVersion.ALPHA_1_2_5

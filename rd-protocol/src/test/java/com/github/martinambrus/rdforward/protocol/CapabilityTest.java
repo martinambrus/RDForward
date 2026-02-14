@@ -54,6 +54,12 @@ class CapabilityTest {
     }
 
     @Test
+    void dayNightCycleAvailableInAlpha120() {
+        // DAY_NIGHT_CYCLE was introduced in Alpha 1.2.0 (v3)
+        assertTrue(Capability.DAY_NIGHT_CYCLE.isAvailableIn(ProtocolVersion.ALPHA_1_2_0));
+    }
+
+    @Test
     void dayNightCycleAvailableInAlpha122() {
         // DAY_NIGHT_CYCLE was introduced in Alpha 1.2.0 (v3), so v4 should have it
         assertTrue(Capability.DAY_NIGHT_CYCLE.isAvailableIn(ProtocolVersion.ALPHA_1_2_2));
@@ -63,6 +69,14 @@ class CapabilityTest {
     void dayNightCycleAvailableInAlpha123() {
         // DAY_NIGHT_CYCLE was introduced in Alpha 1.2.0 (v3), so v5 should have it
         assertTrue(Capability.DAY_NIGHT_CYCLE.isAvailableIn(ProtocolVersion.ALPHA_1_2_3));
+    }
+
+    @Test
+    void allCapabilitiesAvailableInAlpha120() {
+        for (Capability cap : Capability.values()) {
+            assertTrue(cap.isAvailableIn(ProtocolVersion.ALPHA_1_2_0),
+                    cap.name() + " should be available in Alpha 1.2.0 (v3)");
+        }
     }
 
     @Test
@@ -126,7 +140,8 @@ class CapabilityTest {
         assertTrue(ProtocolVersion.CLASSIC.isAtLeast(ProtocolVersion.RUBYDUNG));
         assertTrue(ProtocolVersion.ALPHA_1_0_15.isAtLeast(ProtocolVersion.CLASSIC));
         assertTrue(ProtocolVersion.ALPHA_1_0_16.isAtLeast(ProtocolVersion.ALPHA_1_0_15));
-        assertTrue(ProtocolVersion.ALPHA_1_2_2.isAtLeast(ProtocolVersion.ALPHA_1_0_16));
+        assertTrue(ProtocolVersion.ALPHA_1_2_0.isAtLeast(ProtocolVersion.ALPHA_1_0_16));
+        assertTrue(ProtocolVersion.ALPHA_1_2_2.isAtLeast(ProtocolVersion.ALPHA_1_2_0));
         assertTrue(ProtocolVersion.ALPHA_1_2_3.isAtLeast(ProtocolVersion.ALPHA_1_2_2));
         assertTrue(ProtocolVersion.ALPHA_1_2_5.isAtLeast(ProtocolVersion.ALPHA_1_2_3));
         assertTrue(ProtocolVersion.BEDROCK.isAtLeast(ProtocolVersion.ALPHA_1_2_5));
