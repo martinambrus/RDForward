@@ -49,8 +49,22 @@ class CapabilityTest {
 
     @Test
     void dayNightCycleNotInAlpha1016() {
-        // DAY_NIGHT_CYCLE was introduced in Alpha 1.2.x (v6), not 1.0.16 (v14)
+        // DAY_NIGHT_CYCLE was introduced in Alpha 1.2.3 (v5), not 1.0.16 (v14)
         assertFalse(Capability.DAY_NIGHT_CYCLE.isAvailableIn(ProtocolVersion.ALPHA_1_0_16));
+    }
+
+    @Test
+    void dayNightCycleAvailableInAlpha123() {
+        // DAY_NIGHT_CYCLE was introduced in Alpha 1.2.0 (v3), so v5 should have it
+        assertTrue(Capability.DAY_NIGHT_CYCLE.isAvailableIn(ProtocolVersion.ALPHA_1_2_3));
+    }
+
+    @Test
+    void allCapabilitiesAvailableInAlpha123() {
+        for (Capability cap : Capability.values()) {
+            assertTrue(cap.isAvailableIn(ProtocolVersion.ALPHA_1_2_3),
+                    cap.name() + " should be available in Alpha 1.2.3 (v5)");
+        }
     }
 
     @Test
@@ -58,6 +72,14 @@ class CapabilityTest {
         for (Capability cap : Capability.values()) {
             assertTrue(cap.isAvailableIn(ProtocolVersion.ALPHA_1_2_5),
                     cap.name() + " should be available in Alpha 1.2.x (v6)");
+        }
+    }
+
+    @Test
+    void allCapabilitiesAvailableInBedrock() {
+        for (Capability cap : Capability.values()) {
+            assertTrue(cap.isAvailableIn(ProtocolVersion.BEDROCK),
+                    cap.name() + " should be available in Bedrock");
         }
     }
 
@@ -90,7 +112,8 @@ class CapabilityTest {
         assertTrue(ProtocolVersion.CLASSIC.isAtLeast(ProtocolVersion.RUBYDUNG));
         assertTrue(ProtocolVersion.ALPHA_1_0_15.isAtLeast(ProtocolVersion.CLASSIC));
         assertTrue(ProtocolVersion.ALPHA_1_0_16.isAtLeast(ProtocolVersion.ALPHA_1_0_15));
-        assertTrue(ProtocolVersion.ALPHA_1_2_5.isAtLeast(ProtocolVersion.ALPHA_1_0_16));
+        assertTrue(ProtocolVersion.ALPHA_1_2_3.isAtLeast(ProtocolVersion.ALPHA_1_0_16));
+        assertTrue(ProtocolVersion.ALPHA_1_2_5.isAtLeast(ProtocolVersion.ALPHA_1_2_3));
         assertTrue(ProtocolVersion.BEDROCK.isAtLeast(ProtocolVersion.ALPHA_1_2_5));
 
         // v6 is chronologically AFTER v14 (post-rewrite), even though 6 < 14

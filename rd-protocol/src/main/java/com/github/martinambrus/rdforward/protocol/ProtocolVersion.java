@@ -58,11 +58,18 @@ public enum ProtocolVersion {
     ALPHA_1_0_16(14, 3, Family.ALPHA, "Alpha 1.0.16 (v14)", 82),
 
     /**
-     * Minecraft Alpha 1.2.3-1.2.6 - post-rewrite SMP.
+     * Minecraft Alpha 1.2.3_01-1.2.3_04 - post-rewrite SMP.
+     * ~82 block types, health, time, mobs, explosions.
+     * Real MC protocol version 5. Same wire formats as v6.
+     */
+    ALPHA_1_2_3(5, 4, Family.ALPHA, "Alpha 1.2.3 (v5)", 82),
+
+    /**
+     * Minecraft Alpha 1.2.3_05-1.2.6 - post-rewrite SMP.
      * ~82 block types, health, time, mobs, explosions.
      * Real MC protocol version 6. Post-rewrite SMP (lower number than v14!).
      */
-    ALPHA_1_2_5(6, 4, Family.ALPHA, "Alpha 1.2.x (v6)", 82),
+    ALPHA_1_2_5(6, 5, Family.ALPHA, "Alpha 1.2.x (v6)", 82),
 
     /**
      * Minecraft Bedrock Edition (1.26.0+).
@@ -70,12 +77,12 @@ public enum ProtocolVersion {
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 5, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 6, Family.BEDROCK, "Bedrock", 92);
 
     // Future versions:
-    // BETA_1_0(14, 6, Family.BETA, "Beta 1.0", ...)
-    // RELEASE_1_0(29, 7, Family.RELEASE, "Release 1.0", ...)
-    // RELEASE_1_7(4, 8, Family.RELEASE, "Release 1.7", ...)
+    // BETA_1_0(14, 7, Family.BETA, "Beta 1.0", ...)
+    // RELEASE_1_0(29, 8, Family.RELEASE, "Release 1.0", ...)
+    // RELEASE_1_7(4, 9, Family.RELEASE, "Release 1.7", ...)
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
