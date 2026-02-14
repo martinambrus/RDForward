@@ -204,12 +204,14 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             spawnPitch = (savedPos[4] & 0xFF) * 360.0f / 256.0f;
 
             // Safety check: ensure player isn't inside solid blocks.
-            // Fixed-point truncation can place feet slightly inside the ground
-            // (e.g. feetY=42.97 when the player was standing at Y=43.0), so
-            // check the actual block the feet are in without any epsilon.
+            // Fixed-point short storage truncates to 1/32 precision, which can
+            // place feet up to 0.03 blocks below the actual surface (e.g. a
+            // player standing on Y=64 gets restored to feetY=63.97). Adding a
+            // small tolerance prevents false "embedded" detection for players
+            // who were simply standing on a block surface.
             double feetY = spawnY - PLAYER_EYE_HEIGHT;
             int feetBlockX = (int) Math.floor(spawnX);
-            int feetBlockY = (int) Math.floor(feetY);
+            int feetBlockY = (int) Math.floor(feetY + 0.0625);
             int feetBlockZ = (int) Math.floor(spawnZ);
             if (world.inBounds(feetBlockX, feetBlockY, feetBlockZ)
                     && (world.getBlock(feetBlockX, feetBlockY, feetBlockZ) != 0
@@ -440,7 +442,13 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             case 5: targetX++; break; // +X
         }
 
-        if (!world.inBounds(targetX, targetY, targetZ)) return;
+        if (!world.inBounds(targetX, targetY, targetZ)) {
+            // Cancel the client's predicted block immediately (otherwise the
+            // phantom block persists for ~4 seconds, allowing further building
+            // above the world height limit).
+            ctx.writeAndFlush(new BlockChangePacket(targetX, targetY, targetZ, 0, 0));
+            return;
+        }
 
         // Prevent placing blocks inside the player's body.
         // Player AABB: 0.6 wide (±0.3), 1.8 tall from feet.
@@ -450,7 +458,10 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         boolean overlapsX = targetX < px + 0.3 && px - 0.3 < targetX + 1;
         boolean overlapsY = targetY < feetY + 1.8 && feetY < targetY + 1;
         boolean overlapsZ = targetZ < pz + 0.3 && pz - 0.3 < targetZ + 1;
-        if (overlapsX && overlapsY && overlapsZ) return;
+        if (overlapsX && overlapsY && overlapsZ) {
+            ctx.writeAndFlush(new BlockChangePacket(targetX, targetY, targetZ, 0, 0));
+            return;
+        }
 
         short itemId = packet.getItemId();
         if (itemId < 0) return; // empty hand, no block to place

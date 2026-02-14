@@ -2,7 +2,9 @@ package com.github.martinambrus.rdforward.world.alpha;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.zip.Deflater;
@@ -154,28 +156,160 @@ public class AlphaChunk {
     }
 
     /**
-     * Compute skylight from the height map. Blocks at or above the height map
-     * value for their column get full sky light (15); blocks below get 0.
+     * Compute skylight using column sweep + BFS flood-fill propagation.
+     *
+     * Phase 1: Direct sky access — blocks above the height map get light 15.
+     * Phase 2: BFS flood-fill — propagates sky light laterally and downward
+     * through transparent blocks (air, glass, leaves, etc.), decreasing by
+     * each block's light opacity (minimum 1 per step).
      *
      * Must be called after all block data is finalized (e.g. after world
      * overlay) and before the chunk is serialized or sent to clients.
-     * Without this, underground blocks have incorrect skylight=15, which
-     * causes the Alpha client's light engine to cascade-correct on any block
-     * change, leading to a StackOverflowError.
+     * Without correct skylight, the Alpha client's light engine cascade-corrects
+     * on any block change, leading to a StackOverflowError.
+     *
+     * Note: propagation is limited to within this chunk. Light does not
+     * cross chunk boundaries.
      */
     public void generateSkylightMap() {
-        // Reset skylight to zero first
-        java.util.Arrays.fill(skyLight, (byte) 0);
+        Arrays.fill(skyLight, (byte) 0);
 
+        // Phase 1: Column sweep — direct sky access gets light 15
         for (int x = 0; x < WIDTH; x++) {
             for (int z = 0; z < DEPTH; z++) {
                 int height = heightMap[z + (x * DEPTH)] & 0xFF;
-                // Blocks from height upward are exposed to sky (light 15)
                 for (int y = height; y < HEIGHT; y++) {
                     setNibble(skyLight, blockIndex(x, y, z), 15);
                 }
-                // Blocks below height stay at 0 (underground)
             }
+        }
+
+        // Phase 2: BFS flood-fill from sky boundary into underground
+        ArrayDeque<Integer> queue = new ArrayDeque<>();
+
+        // Seed: sky-lit blocks whose neighbors include underground transparent blocks.
+        // For each column, the sky-lit range is [height, HEIGHT). We only need to seed
+        // blocks in that range up to the maximum adjacent column height, since those
+        // are the only sky-lit blocks adjacent to underground blocks in other columns.
+        // Also seed y=height if the block directly below (y=height-1) is transparent
+        // (e.g. leaves, water) — light can enter from above through the height map block.
+        for (int x = 0; x < WIDTH; x++) {
+            for (int z = 0; z < DEPTH; z++) {
+                int height = heightMap[z + (x * DEPTH)] & 0xFF;
+                if (height >= HEIGHT) continue; // Fully solid column, no sky-lit blocks
+
+                // Find the tallest adjacent column — sky-lit blocks up to that height
+                // border underground blocks in the taller column
+                int maxAdjacentHeight = height;
+                if (x > 0)
+                    maxAdjacentHeight = Math.max(maxAdjacentHeight, heightMap[z + ((x - 1) * DEPTH)] & 0xFF);
+                if (x < WIDTH - 1)
+                    maxAdjacentHeight = Math.max(maxAdjacentHeight, heightMap[z + ((x + 1) * DEPTH)] & 0xFF);
+                if (z > 0)
+                    maxAdjacentHeight = Math.max(maxAdjacentHeight, heightMap[(z - 1) + (x * DEPTH)] & 0xFF);
+                if (z < DEPTH - 1)
+                    maxAdjacentHeight = Math.max(maxAdjacentHeight, heightMap[(z + 1) + (x * DEPTH)] & 0xFF);
+
+                // Seed the block directly below the sky column if it's transparent
+                // (handles light entering through leaves/water at the surface)
+                if (height > 0 && getLightOpacity(getBlock(x, height - 1, z)) < 15) {
+                    int newLight = 15 - Math.max(1, getLightOpacity(getBlock(x, height - 1, z)));
+                    if (newLight > 0) {
+                        setNibble(skyLight, blockIndex(x, height - 1, z), newLight);
+                        queue.add(packCoord(x, height - 1, z));
+                    }
+                }
+
+                // Seed sky-lit blocks in the range that borders taller adjacent columns
+                for (int y = height; y < Math.min(maxAdjacentHeight, HEIGHT); y++) {
+                    queue.add(packCoord(x, y, z));
+                }
+            }
+        }
+
+        // BFS: spread light to transparent neighbors, reducing by opacity (min 1)
+        while (!queue.isEmpty()) {
+            int packed = queue.poll();
+            int x = (packed >> 11) & 0xF;
+            int y = (packed >> 4) & 0x7F;
+            int z = packed & 0xF;
+            int light = getNibble(skyLight, blockIndex(x, y, z));
+            if (light <= 1) continue;
+
+            spreadSkyLight(queue, x - 1, y, z, light);
+            spreadSkyLight(queue, x + 1, y, z, light);
+            spreadSkyLight(queue, x, y - 1, z, light);
+            spreadSkyLight(queue, x, y + 1, z, light);
+            spreadSkyLight(queue, x, y, z - 1, light);
+            spreadSkyLight(queue, x, y, z + 1, light);
+        }
+    }
+
+    /**
+     * Try to spread sky light into a neighboring block. If the neighbor is
+     * within bounds, not fully opaque, and would receive more light than it
+     * currently has, update it and enqueue for further propagation.
+     */
+    private void spreadSkyLight(ArrayDeque<Integer> queue, int x, int y, int z, int sourceLight) {
+        if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT || z < 0 || z >= DEPTH) return;
+
+        int opacity = getLightOpacity(getBlock(x, y, z));
+        if (opacity >= 15) return; // Fully opaque
+
+        int newLight = sourceLight - Math.max(1, opacity);
+        if (newLight <= 0) return;
+
+        int idx = blockIndex(x, y, z);
+        if (getNibble(skyLight, idx) >= newLight) return; // Already at least as bright
+
+        setNibble(skyLight, idx, newLight);
+        queue.add(packCoord(x, y, z));
+    }
+
+    /** Pack local chunk coordinates into a single int (x: 4 bits, y: 7 bits, z: 4 bits). */
+    private static int packCoord(int x, int y, int z) {
+        return (x << 11) | (y << 4) | z;
+    }
+
+    /**
+     * Get the sky-light opacity of a block type. Opaque blocks return 15
+     * (block all light). Transparent blocks return 0. Some blocks like
+     * water (3) and leaves (1) partially reduce light.
+     */
+    static int getLightOpacity(int blockId) {
+        switch (blockId) {
+            case 0:  // Air
+            case 6:  // Sapling
+            case 20: // Glass
+            case 37: // Dandelion
+            case 38: // Rose
+            case 39: // Brown mushroom
+            case 40: // Red mushroom
+            case 50: // Torch
+            case 51: // Fire
+            case 55: // Redstone wire
+            case 59: // Wheat
+            case 63: // Sign post
+            case 65: // Ladder
+            case 66: // Rail
+            case 68: // Wall sign
+            case 69: // Lever
+            case 70: // Stone pressure plate
+            case 72: // Wooden pressure plate
+            case 75: // Redstone torch (off)
+            case 76: // Redstone torch (on)
+            case 77: // Button
+            case 79: // Ice
+            case 83: // Sugar cane
+            case 85: // Fence
+            case 90: // Portal
+                return 0;
+            case 8: case 9: // Water
+                return 3;
+            case 18: // Leaves
+                return 1;
+            default:
+                return 15; // Fully opaque
         }
     }
 
