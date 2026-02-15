@@ -92,7 +92,13 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             if (packet instanceof HandshakeC2SPacket) {
                 handleHandshake(ctx, (HandshakeC2SPacket) packet);
             } else if (packet instanceof LoginC2SPacket) {
-                handleLogin(ctx, ((LoginC2SPacket) packet).getProtocolVersion());
+                // Pre-rewrite clients (v13) skip Handshake and send Login directly.
+                // Extract username from the Login packet if no Handshake was received.
+                LoginC2SPacket loginPacket = (LoginC2SPacket) packet;
+                if (pendingUsername == null) {
+                    pendingUsername = loginPacket.getUsername();
+                }
+                handleLogin(ctx, loginPacket.getProtocolVersion());
             }
             // Ignore other packets before login completes
             return;

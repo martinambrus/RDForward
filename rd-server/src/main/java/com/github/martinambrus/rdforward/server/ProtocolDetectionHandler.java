@@ -52,8 +52,11 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
         // Peek at the first byte without consuming it
         int firstByte = buf.getUnsignedByte(buf.readerIndex());
 
-        if (firstByte == 0x02) {
-            // Alpha Handshake packet — reconfigure pipeline for raw MC protocol
+        if (firstByte == 0x02 || firstByte == 0x01) {
+            // 0x02 = Alpha Handshake (v14+ / post-rewrite clients)
+            // 0x01 = Alpha Login (v13 / pre-rewrite clients that skip Handshake)
+            // A Nati-framed client's first 4 bytes are a length prefix; a frame
+            // starting with 0x01 would imply 16+ MB, which is unreasonable.
             ChannelPipeline pipeline = ctx.pipeline();
 
             // Replace handlers FIRST so that this handler's context.next
