@@ -9,16 +9,19 @@ import io.netty.buffer.ByteBuf;
  * Sent when the player scrolls or presses a number key to switch
  * the currently held item slot.
  *
- * Wire format (2 bytes payload):
+ * Wire format (6 bytes payload):
+ *   [int]   entity ID
  *   [short] slot ID (0-8, the hotbar slot index)
  */
 public class HoldingChangePacket implements Packet {
 
+    private int entityId;
     private short slotId;
 
     public HoldingChangePacket() {}
 
-    public HoldingChangePacket(short slotId) {
+    public HoldingChangePacket(int entityId, short slotId) {
+        this.entityId = entityId;
         this.slotId = slotId;
     }
 
@@ -29,13 +32,16 @@ public class HoldingChangePacket implements Packet {
 
     @Override
     public void write(ByteBuf buf) {
+        buf.writeInt(entityId);
         buf.writeShort(slotId);
     }
 
     @Override
     public void read(ByteBuf buf) {
+        entityId = buf.readInt();
         slotId = buf.readShort();
     }
 
+    public int getEntityId() { return entityId; }
     public short getSlotId() { return slotId; }
 }

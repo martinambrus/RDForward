@@ -213,12 +213,12 @@ class PacketRoundTripTest {
         assertEquals("Kicked!", decoded.getReason());
     }
 
-    // === V14 Packet Variants ===
+    // === V14 (pre-rewrite) uses same wire format as v6 ===
 
     @Test
     void v14BlockPlacementRoundTrip() {
-        PlayerBlockPlacementPacketV14 original = new PlayerBlockPlacementPacketV14(10, 64, 20, 1, (short) 4);
-        PlayerBlockPlacementPacketV14 decoded = roundTrip(original, ProtocolVersion.ALPHA_1_0_16, PacketDirection.CLIENT_TO_SERVER);
+        PlayerBlockPlacementPacket original = new PlayerBlockPlacementPacket(10, 64, 20, 1, (short) 4);
+        PlayerBlockPlacementPacket decoded = roundTrip(original, ProtocolVersion.ALPHA_1_0_16, PacketDirection.CLIENT_TO_SERVER);
         assertEquals(10, decoded.getX());
         assertEquals(64, decoded.getY());
         assertEquals(20, decoded.getZ());
@@ -294,12 +294,11 @@ class PacketRoundTripTest {
 
     @Test
     void v14PickupSpawnRoundTrip() {
-        PickupSpawnPacketV14 original = new PickupSpawnPacketV14(42, 4, 1, 0, 320, 2080, 640);
-        PickupSpawnPacketV14 decoded = roundTrip(original, ProtocolVersion.ALPHA_1_0_16, PacketDirection.SERVER_TO_CLIENT);
+        PickupSpawnPacket original = new PickupSpawnPacket(42, 4, 1, 320, 2080, 640);
+        PickupSpawnPacket decoded = roundTrip(original, ProtocolVersion.ALPHA_1_0_16, PacketDirection.SERVER_TO_CLIENT);
         assertEquals(42, decoded.getEntityId());
         assertEquals(4, decoded.getItemId());
         assertEquals(1, decoded.getCount());
-        assertEquals(0, decoded.getDamage());
         assertEquals(320, decoded.getX());
         assertEquals(2080, decoded.getY());
         assertEquals(640, decoded.getZ());

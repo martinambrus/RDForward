@@ -271,20 +271,9 @@ public class PacketRegistry {
             public Packet create() { return new LoginS2CPacketV2(); }
         });
 
-        // Override version-specific packets for pre-rewrite Alpha (v10-v14).
-        // These versions use different wire formats for 0x0F and 0x15.
-        ProtocolVersion[] preRewriteVersions = {ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16};
-        for (ProtocolVersion v : preRewriteVersions) {
-            register(v, PacketDirection.CLIENT_TO_SERVER, 0x0F, new PacketFactory() {
-                public Packet create() { return new PlayerBlockPlacementPacketV14(); }
-            });
-            register(v, PacketDirection.CLIENT_TO_SERVER, 0x15, new PacketFactory() {
-                public Packet create() { return new PickupSpawnPacketV14(); }
-            });
-            register(v, PacketDirection.SERVER_TO_CLIENT, 0x15, new PacketFactory() {
-                public Packet create() { return new PickupSpawnPacketV14(); }
-            });
-        }
+        // Pre-rewrite Alpha (v10-v14) uses identical wire formats to post-rewrite
+        // (v1-v6) for all packets including 0x0F (BlockPlacement) and 0x15
+        // (PickupSpawn). No version-specific overrides needed.
     }
 
     /**

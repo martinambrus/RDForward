@@ -70,6 +70,14 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     private int trackedCobblestone = 0;
     private java.util.concurrent.ScheduledFuture<?> replenishTask;
 
+    /**
+     * Tracks the feet Y where the current fall started. Used for pre-rewrite
+     * clients (v13/v14) that lack UpdateHealthPacket — when the fall exceeds
+     * 10 blocks, the server teleports the player to the ground to prevent
+     * lethal fall damage.
+     */
+    private double fallStartFeetY = Double.NaN;
+
     public AlphaConnectionHandler(ProtocolVersion serverVersion, ServerWorld world,
                                   PlayerManager playerManager, ChunkManager chunkManager) {
         this.serverVersion = serverVersion;
@@ -279,6 +287,9 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         ctx.writeAndFlush(new PlayerPositionAndLookS2CPacket(
                 spawnX, posY, feetY, spawnZ, alphaSpawnYaw, spawnPitch, true));
 
+        // Initialize fall tracking for pre-rewrite clients
+        fallStartFeetY = feetY;
+
         // Register for chunk tracking and send initial chunks.
         chunkManager.addPlayer(player);
         chunkManager.sendInitialChunks(player, spawnBlockX, spawnBlockZ);
@@ -304,6 +315,16 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Give the player cobblestone so they can place blocks.
         giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
         trackedCobblestone = 64;
+
+        // Pre-rewrite clients (v13/v14) can't receive UpdateHealthPacket, so
+        // fall damage is handled client-side with no server override. Give them
+        // cooked pork chops (item 320, heals 4 hearts each, max stack 1) so
+        // they can eat to recover from any residual fall damage.
+        if (!clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_0_17)) {
+            for (int i = 0; i < 35; i++) {
+                giveItem(ctx, 320, 1);
+            }
+        }
 
         // Remove login timeout
         if (ctx.pipeline().get("loginTimeout") != null) {
@@ -351,31 +372,40 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Internal convention is eye-level (Classic compatible).
         double eyeY = y + PLAYER_EYE_HEIGHT;
 
+        // Pre-rewrite clients (v13/v14) don't support SpawnPosition (0x06),
+        // so their world spawn stays at (0, 0, 0). When the player dies, the
+        // client creates a new entity at (0.5, ?, 0.5) with a fresh inventory.
+        // Detect this position jump and redirect to a proper safe spawn.
+        if (!clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_0_17)
+                && x < 2 && z < 2 && x >= 0 && z >= 0) {
+            double prevX = player.getDoubleX();
+            double prevZ = player.getDoubleZ();
+            double dxSq = (prevX - x) * (prevX - x);
+            double dzSq = (prevZ - z) * (prevZ - z);
+            if (dxSq + dzSq > 100) { // > 10 blocks away = respawn, not walking
+                respawnToSafePosition(ctx, yaw);
+                return;
+            }
+        }
+
+        // Fall protection for pre-rewrite clients (v13/v14) that lack
+        // UpdateHealthPacket. Track fall distance and teleport to ground
+        // before lethal fall damage can occur.
+        if (!clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_0_17)) {
+            double prevFeetY = player.getDoubleY() - PLAYER_EYE_HEIGHT;
+            if (y >= prevFeetY) {
+                // Moving up or level — reset fall start
+                fallStartFeetY = y;
+            } else if (fallStartFeetY - y > 5) {
+                // Falling more than 5 blocks — teleport to ground
+                teleportToGround(ctx, x, z, yaw, pitch);
+                return;
+            }
+        }
+
         // If player falls below the world, teleport to spawn
         if (y < -10) {
-            double spawnX = world.getWidth() / 2.0 + 0.5;
-            int feetBlockY = world.getHeight() * 2 / 3 + 1;
-            double spawnEyeY = feetBlockY + PLAYER_EYE_HEIGHT;
-            double spawnZ = world.getDepth() / 2.0 + 0.5;
-            player.updatePositionDouble(spawnX, spawnEyeY, spawnZ, yaw, 0);
-
-            // S2C y = posY (eyes), stance = feet
-            // yaw is Classic convention internally; Alpha client expects Alpha (0=South)
-            float alphaYaw = (yaw + 180.0f) % 360.0f;
-            double spawnFeetY = feetBlockY + 0.5; // small offset to prevent re-falling
-            ctx.writeAndFlush(new PlayerPositionAndLookS2CPacket(
-                    spawnX, spawnFeetY + PLAYER_EYE_HEIGHT, spawnFeetY, spawnZ,
-                    alphaYaw, 0, true));
-
-            // Broadcast updated position to other players
-            short fixedX = toFixedPoint(spawnX);
-            short fixedY = toFixedPoint(spawnEyeY);
-            short fixedZ = toFixedPoint(spawnZ);
-            byte byteYaw = toByteRotation(yaw);
-            playerManager.broadcastPacketExcept(
-                    new PlayerTeleportPacket(player.getPlayerId(),
-                            fixedX, fixedY, fixedZ, byteYaw & 0xFF, 0),
-                    player);
+            respawnToSafePosition(ctx, yaw);
             return;
         }
 
@@ -394,6 +424,101 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 player.getUsername(), fixedX, fixedY, fixedZ, byteYaw, bytePitch);
 
         // Broadcast as Classic PlayerTeleportPacket (eye-level, translator adjusts for Alpha)
+        playerManager.broadcastPacketExcept(
+                new PlayerTeleportPacket(player.getPlayerId(),
+                        fixedX, fixedY, fixedZ, byteYaw & 0xFF, bytePitch & 0xFF),
+                player);
+    }
+
+    /**
+     * Teleport the player to a safe ground-level position at world center
+     * and re-give cobblestone. Used for void-fall recovery and pre-rewrite
+     * client respawn (v13/v14 don't support SpawnPosition so the client
+     * respawns at (0, 0, 0) with a fresh empty inventory).
+     */
+    private void respawnToSafePosition(ChannelHandlerContext ctx, float yaw) {
+        int cx = world.getWidth() / 2;
+        int cz = world.getDepth() / 2;
+        int heuristicY = world.getHeight() * 2 / 3 + 1;
+        int[] safe = world.findSafePosition(cx, heuristicY, cz, 50);
+        double spawnX = safe[0] + 0.5;
+        double spawnFeetY = safe[1];
+        double spawnEyeY = spawnFeetY + PLAYER_EYE_HEIGHT;
+        double spawnZ = safe[2] + 0.5;
+        player.updatePositionDouble(spawnX, spawnEyeY, spawnZ, yaw, 0);
+
+        // S2C y = posY (eyes), stance = feet
+        // yaw is Classic convention internally; Alpha client expects Alpha (0=South)
+        float alphaYaw = (yaw + 180.0f) % 360.0f;
+        ctx.writeAndFlush(new PlayerPositionAndLookS2CPacket(
+                spawnX, spawnFeetY + PLAYER_EYE_HEIGHT, spawnFeetY, spawnZ,
+                alphaYaw, 0, true));
+
+        // Update chunk tracking for the new position
+        chunkManager.updatePlayerChunks(player);
+
+        // Broadcast updated position to other players
+        short fixedX = toFixedPoint(spawnX);
+        short fixedY = toFixedPoint(spawnEyeY);
+        short fixedZ = toFixedPoint(spawnZ);
+        byte byteYaw = toByteRotation(yaw);
+        playerManager.broadcastPacketExcept(
+                new PlayerTeleportPacket(player.getPlayerId(),
+                        fixedX, fixedY, fixedZ, byteYaw & 0xFF, 0),
+                player);
+
+        // Reset fall tracking
+        fallStartFeetY = spawnFeetY;
+    }
+
+    /**
+     * Teleport the player to the ground directly below their current XZ
+     * position. Used by fall protection to catch the player before lethal
+     * fall damage. Scans downward for a safe landing spot (solid ground
+     * with 2 air blocks above).
+     */
+    private void teleportToGround(ChannelHandlerContext ctx,
+                                   double x, double z, float yaw, float pitch) {
+        int blockX = (int) Math.floor(x);
+        int blockZ = (int) Math.floor(z);
+        int startY = Math.min((int) Math.floor(fallStartFeetY), world.getHeight() - 3);
+
+        // Scan downward from where the fall started to find ground
+        int groundFeetY = -1;
+        for (int testY = startY; testY >= 0; testY--) {
+            if (world.inBounds(blockX, testY, blockZ)
+                    && world.getBlock(blockX, testY, blockZ) != 0
+                    && world.getBlock(blockX, testY + 1, blockZ) == 0
+                    && world.getBlock(blockX, testY + 2, blockZ) == 0) {
+                groundFeetY = testY + 1;
+                break;
+            }
+        }
+        if (groundFeetY < 0) {
+            // No ground below — fall back to world center spawn
+            respawnToSafePosition(ctx, yaw);
+            return;
+        }
+
+        double landX = blockX + 0.5;
+        double landFeetY = groundFeetY;
+        double landEyeY = landFeetY + PLAYER_EYE_HEIGHT;
+        double landZ = blockZ + 0.5;
+        player.updatePositionDouble(landX, landEyeY, landZ, yaw, pitch);
+        fallStartFeetY = landFeetY;
+
+        float alphaYaw = (yaw + 180.0f) % 360.0f;
+        ctx.writeAndFlush(new PlayerPositionAndLookS2CPacket(
+                landX, landFeetY + PLAYER_EYE_HEIGHT, landFeetY, landZ,
+                alphaYaw, pitch, true));
+
+        // Update chunk tracking and broadcast to other players
+        chunkManager.updatePlayerChunks(player);
+        short fixedX = toFixedPoint(landX);
+        short fixedY = toFixedPoint(landEyeY);
+        short fixedZ = toFixedPoint(landZ);
+        byte byteYaw = toByteRotation(yaw);
+        byte bytePitch = toByteRotation(pitch);
         playerManager.broadcastPacketExcept(
                 new PlayerTeleportPacket(player.getPlayerId(),
                         fixedX, fixedY, fixedZ, byteYaw & 0xFF, bytePitch & 0xFF),
@@ -450,6 +575,14 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         short itemId = packet.getItemId();
         if (itemId < 0) return;
+
+        // Items (item ID >= 256) and non-placeable blocks are not valid for placement.
+        // Without this check, item IDs get truncated by (byte)(itemId & 0xFF),
+        // e.g. cooked pork chop (320) would become block 64.
+        if (!BlockRegistry.isValidBlock(itemId, serverVersion)) {
+            ctx.writeAndFlush(new BlockChangePacket(targetX, targetY, targetZ, 0, 0));
+            return;
+        }
 
         if (!world.inBounds(targetX, targetY, targetZ)) {
             // Cancel the client's predicted block immediately (otherwise the
