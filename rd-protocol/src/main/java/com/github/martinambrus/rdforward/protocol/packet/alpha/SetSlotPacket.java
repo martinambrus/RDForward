@@ -4,9 +4,12 @@ import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import io.netty.buffer.ByteBuf;
 
 /**
- * Alpha protocol 0x67 (Server -> Client): Set Slot.
+ * Beta protocol 0x67 (Server -> Client): Set Slot.
  *
  * Sets a single inventory slot to a specific item.
+ * Uses Beta 1.2 wire format (short damage) for S2C. Older Beta 1.1_02 clients
+ * read byte damage, and the trailing 0x00 byte from short is a valid
+ * zero-payload KeepAlive (0x00) — the "phantom KeepAlive" trick.
  *
  * Wire format:
  *   [byte]  window ID (0 = player inventory)
@@ -14,7 +17,7 @@ import io.netty.buffer.ByteBuf;
  *   [short] item ID (-1 = empty slot)
  *   if item ID >= 0:
  *     [byte]  count
- *     [byte]  damage/metadata
+ *     [short] damage/metadata
  */
 public class SetSlotPacket implements Packet {
 
@@ -22,7 +25,7 @@ public class SetSlotPacket implements Packet {
     private int slot;
     private short itemId;
     private byte count;
-    private byte damage;
+    private short damage;
 
     public SetSlotPacket() {}
 
@@ -31,7 +34,7 @@ public class SetSlotPacket implements Packet {
         this.slot = slot;
         this.itemId = (short) itemId;
         this.count = (byte) count;
-        this.damage = (byte) damage;
+        this.damage = (short) damage;
     }
 
     @Override
@@ -46,7 +49,7 @@ public class SetSlotPacket implements Packet {
         buf.writeShort(itemId);
         if (itemId >= 0) {
             buf.writeByte(count);
-            buf.writeByte(damage);
+            buf.writeShort(damage);
         }
     }
 
@@ -57,7 +60,7 @@ public class SetSlotPacket implements Packet {
         itemId = buf.readShort();
         if (itemId >= 0) {
             count = buf.readByte();
-            damage = buf.readByte();
+            damage = buf.readShort();
         }
     }
 
@@ -65,5 +68,5 @@ public class SetSlotPacket implements Packet {
     public int getSlot() { return slot; }
     public short getItemId() { return itemId; }
     public byte getCount() { return count; }
-    public byte getDamage() { return damage; }
+    public short getDamage() { return damage; }
 }

@@ -108,11 +108,16 @@ public enum ProtocolVersion {
     BETA_1_0(7, 10, Family.BETA, "Beta 1.0 (v7)", 92),
 
     /**
-     * Minecraft Beta 1.1_02 - chest bug fix release.
-     * Identical wire protocol to Beta 1.0 (v7), only the version number changed.
+     * Minecraft Beta 1.1_02 through 1.2_02 - protocol version 8.
+     * Beta 1.2 changed ItemStack damage from byte to short in S2C packets.
+     * Both versions are handled simultaneously via the "phantom KeepAlive" trick:
+     * S2C uses short damage (Beta 1.2 format); older clients read byte damage
+     * and the trailing 0x00 byte is a valid zero-payload KeepAlive (0x00).
+     * C2S keeps byte damage (Beta 1.1_02 format); Beta 1.2 clients' extra 0x00
+     * trailing byte is also a phantom KeepAlive.
      * Real MC protocol version 8.
      */
-    BETA_1_1(8, 11, Family.BETA, "Beta 1.1_02 (v8)", 92),
+    BETA_1_2(8, 11, Family.BETA, "Beta 1.2 (v8)", 92),
 
     /**
      * Minecraft Bedrock Edition (1.26.0+).
@@ -231,7 +236,7 @@ public enum ProtocolVersion {
             case 5:  return "Alpha 1.2.3_01-1.2.3_04";
             case 6:  return "Alpha 1.2.3_05-1.2.6";
             case 7:  return "Beta 1.0-1.1 (or Classic c0.0.20a-c0.30)";
-            case 8:  return "Beta 1.1_02 (or Alpha 1.0.0-1.0.1_01)";
+            case 8:  return "Beta 1.1_02-1.2_02 (or Alpha 1.0.0-1.0.1_01)";
             case 9:  return "Alpha 1.0.2-1.0.3";
             case 10: return "Alpha 1.0.4-1.0.11";
             case 11: return "Alpha 1.0.12";
