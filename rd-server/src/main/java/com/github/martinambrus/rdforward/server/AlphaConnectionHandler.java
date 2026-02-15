@@ -139,11 +139,12 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         } else if (packet instanceof WindowClickPacket) {
             // Silently accept — cobblestone replenishment happens on CloseWindow
         } else if (packet instanceof CloseWindowPacket) {
-            // Player closed inventory. Replenish cobblestone to ensure they have
-            // a full stack, regardless of what they did during the inventory session
-            // (throwing items outside, rearranging slots, etc.).
+            // Player closed inventory. Reset entire inventory to just 64
+            // cobblestone in hotbar slot 0. Using WindowItems clears any
+            // cobblestone the player moved to other slots during the session
+            // (SetSlot alone would leave those copies intact).
             if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)) {
-                giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
+                resetInventory(ctx);
             }
         } else if (packet instanceof UseEntityPacket
                 || packet instanceof ConfirmTransactionPacket
@@ -772,6 +773,30 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         } else {
             ctx.writeAndFlush(new AddToInventoryPacket(itemId, count, 0));
         }
+    }
+
+    /** Number of slots in the Beta player inventory window (ID 0). */
+    private static final int INVENTORY_SLOTS = 45;
+    /** Window slot index for hotbar slot 0. */
+    private static final int HOTBAR_SLOT_0 = 36;
+
+    /**
+     * Reset the entire player inventory via WindowItems (0x68). Clears all
+     * slots and places 64 cobblestone in hotbar slot 0. This prevents
+     * cobblestone duplication when players redistribute items across slots
+     * before closing the inventory — SetSlot alone only updates one slot,
+     * leaving copies in other slots intact.
+     */
+    private void resetInventory(ChannelHandlerContext ctx) {
+        short[] itemIds = new short[INVENTORY_SLOTS];
+        byte[] counts = new byte[INVENTORY_SLOTS];
+        short[] damages = new short[INVENTORY_SLOTS];
+        for (int i = 0; i < INVENTORY_SLOTS; i++) {
+            itemIds[i] = -1; // empty
+        }
+        itemIds[HOTBAR_SLOT_0] = (short) BlockRegistry.COBBLESTONE;
+        counts[HOTBAR_SLOT_0] = 64;
+        ctx.writeAndFlush(new WindowItemsPacket(0, itemIds, counts, damages));
     }
 
     /**
