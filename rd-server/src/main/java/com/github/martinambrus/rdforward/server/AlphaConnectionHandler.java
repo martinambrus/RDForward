@@ -135,9 +135,15 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         } else if (packet instanceof RespawnPacket) {
             handleRespawn(ctx);
         } else if (packet instanceof WindowClickPacket) {
-            handleWindowClick(ctx, (WindowClickPacket) packet);
+            // Silently accept — cobblestone replenishment happens on CloseWindow
+        } else if (packet instanceof CloseWindowPacket) {
+            // Player closed inventory. Replenish cobblestone to ensure they have
+            // a full stack, regardless of what they did during the inventory session
+            // (throwing items outside, rearranging slots, etc.).
+            if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)) {
+                giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
+            }
         } else if (packet instanceof UseEntityPacket
-                || packet instanceof CloseWindowPacket
                 || packet instanceof ConfirmTransactionPacket
                 || packet instanceof UpdateSignPacket
                 || packet instanceof EntityEquipmentPacket) {
@@ -586,20 +592,6 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             if (result == EventResult.CANCEL) return;
 
             world.queueBlockChange(x, y, z, (byte) 0);
-        }
-    }
-
-    /**
-     * Handle Beta inventory window clicks. Slot -999 means the player clicked
-     * outside the window to throw items. Replenish cobblestone so they can
-     * keep building (this server is creative-mode only).
-     */
-    private void handleWindowClick(ChannelHandlerContext ctx, WindowClickPacket packet) {
-        if (player == null) return;
-
-        if (packet.getSlot() == -999) {
-            // Player threw item(s) out of the inventory window. Replenish cobblestone.
-            giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
         }
     }
 
