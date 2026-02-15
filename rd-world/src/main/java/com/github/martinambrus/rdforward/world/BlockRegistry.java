@@ -164,6 +164,7 @@ public final class BlockRegistry {
             case ALPHA_1_2_2:
             case ALPHA_1_2_3:
             case ALPHA_1_2_5:
+            case BETA_1_0:
                 return blockId >= 0 && blockId <= 91;
             default:
                 return blockId >= 0;

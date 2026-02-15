@@ -115,7 +115,7 @@ public class PacketRegistry {
      * not PlayerIdentification; 0x03 = Chat, not LevelDataChunk).
      */
     private static void registerAlphaPackets() {
-        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16};
+        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_1};
 
         for (ProtocolVersion v : alphaVersions) {
             // === Bidirectional packets ===
@@ -274,6 +274,90 @@ public class PacketRegistry {
         // Pre-rewrite Alpha (v10-v14) uses identical wire formats to post-rewrite
         // (v1-v6) for all packets including 0x0F (BlockPlacement) and 0x15
         // (PickupSpawn). No version-specific overrides needed.
+
+        // === Beta overrides (v7+) ===
+        // Beta changed several packet wire formats and added new packets.
+        // All Beta versions share the same wire protocol — loop to avoid duplication.
+        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_1};
+        for (ProtocolVersion betaV : betaVersions) {
+            // Override C2S packets that changed format:
+            register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x0F, new PacketFactory() {
+                public Packet create() { return new PlayerBlockPlacementPacketBeta(); }
+            });
+            register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x10, new PacketFactory() {
+                public Packet create() { return new HoldingChangePacketBeta(); }
+            });
+            // 0x05 C2S: Beta replaced PlayerInventory with EntityEquipment (S2C only).
+            // Unregister Alpha's C2S PlayerInventory for Beta — clients don't send it.
+            REGISTRY.remove(registryKey(betaV, PacketDirection.CLIENT_TO_SERVER, 0x05));
+            // 0x11 S2C: Beta removed AddToInventory — uses SetSlot (0x67) instead.
+            REGISTRY.remove(registryKey(betaV, PacketDirection.SERVER_TO_CLIENT, 0x11));
+
+            // New C2S packets in Beta
+            register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x07, new PacketFactory() {
+                public Packet create() { return new UseEntityPacket(); }
+            });
+            register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x09, new PacketFactory() {
+                public Packet create() { return new RespawnPacket(); }
+            });
+            register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x65, new PacketFactory() {
+                public Packet create() { return new CloseWindowPacket(); }
+            });
+            register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x66, new PacketFactory() {
+                public Packet create() { return new WindowClickPacket(); }
+            });
+            register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x6A, new PacketFactory() {
+                public Packet create() { return new ConfirmTransactionPacket(); }
+            });
+            register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x82, new PacketFactory() {
+                public Packet create() { return new UpdateSignPacket(); }
+            });
+
+            // New S2C packets in Beta
+            register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x05, new PacketFactory() {
+                public Packet create() { return new EntityEquipmentPacket(); }
+            });
+            register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x18, new PacketFactory() {
+                public Packet create() { return new SpawnMobPacket(); }
+            });
+            register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x1C, new PacketFactory() {
+                public Packet create() { return new EntityVelocityPacket(); }
+            });
+            register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x26, new PacketFactory() {
+                public Packet create() { return new EntityStatusPacket(); }
+            });
+            register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x27, new PacketFactory() {
+                public Packet create() { return new AttachEntityPacket(); }
+            });
+            register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x3C, new PacketFactory() {
+                public Packet create() { return new ExplosionPacket(); }
+            });
+            register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x64, new PacketFactory() {
+                public Packet create() { return new OpenWindowPacket(); }
+            });
+            register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x67, new PacketFactory() {
+                public Packet create() { return new SetSlotPacket(); }
+            });
+            register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x68, new PacketFactory() {
+                public Packet create() { return new WindowItemsPacket(); }
+            });
+            register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x69, new PacketFactory() {
+                public Packet create() { return new WindowPropertyPacket(); }
+            });
+            // Bidirectional Beta packets
+            register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x6A, new PacketFactory() {
+                public Packet create() { return new ConfirmTransactionPacket(); }
+            });
+            register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x82, new PacketFactory() {
+                public Packet create() { return new UpdateSignPacket(); }
+            });
+            register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x67, new PacketFactory() {
+                public Packet create() { return new SetSlotPacket(); }
+            });
+            register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x65, new PacketFactory() {
+                public Packet create() { return new CloseWindowPacket(); }
+            });
+        }
     }
 
     /**

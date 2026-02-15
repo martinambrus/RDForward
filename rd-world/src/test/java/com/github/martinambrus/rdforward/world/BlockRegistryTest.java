@@ -26,8 +26,8 @@ class BlockRegistryTest {
     }
 
     @Test
-    void allAlphaVersionsAllowBlocksUpTo91() {
-        ProtocolVersion[] alphaVersions = {
+    void allAlphaAndBetaVersionsAllowBlocksUpTo91() {
+        ProtocolVersion[] versions = {
                 ProtocolVersion.ALPHA_1_0_15,
                 ProtocolVersion.ALPHA_1_0_16,
                 ProtocolVersion.ALPHA_1_0_17,
@@ -35,9 +35,10 @@ class BlockRegistryTest {
                 ProtocolVersion.ALPHA_1_2_0,
                 ProtocolVersion.ALPHA_1_2_2,
                 ProtocolVersion.ALPHA_1_2_3,
-                ProtocolVersion.ALPHA_1_2_5
+                ProtocolVersion.ALPHA_1_2_5,
+                ProtocolVersion.BETA_1_0
         };
-        for (ProtocolVersion v : alphaVersions) {
+        for (ProtocolVersion v : versions) {
             assertTrue(BlockRegistry.isValidBlock(0, v), v.name() + " should allow air");
             assertTrue(BlockRegistry.isValidBlock(91, v), v.name() + " should allow block 91");
             assertFalse(BlockRegistry.isValidBlock(92, v), v.name() + " should reject block 92");

@@ -8,11 +8,11 @@ import io.netty.buffer.ByteBuf;
  * Alpha protocol 0x01 (Client -> Server): Login Request.
  *
  * Sent after the handshake to initiate login.
- * Self-adaptive: reads mapSeed/dimension only for post-rewrite v3-v6,
+ * Self-adaptive: reads mapSeed/dimension only for post-rewrite v3-v6 and Beta v7-v8+,
  * since the decoder doesn't yet know the client's version when
  * decoding this packet.
  *
- * Wire format (v3-v6, post-rewrite with mapSeed):
+ * Wire format (v3-v8, post-rewrite with mapSeed):
  *   [int]      protocol version
  *   [string16] username
  *   [string16] unused (empty, was password in early tests)
@@ -48,9 +48,9 @@ public class LoginC2SPacket implements Packet {
         buf.writeInt(protocolVersion);
         McDataTypes.writeJavaUTF(buf, username);
         McDataTypes.writeJavaUTF(buf, "");
-        // Only post-rewrite v3-v6 include mapSeed/dimension.
+        // Post-rewrite v3-v6 and Beta v7+ include mapSeed/dimension.
         // v1-v2 (1.0.17-1.1.2_01) and v10-v14 (pre-rewrite 1.0.4-1.0.16) omit them.
-        if (protocolVersion >= 3 && protocolVersion <= 6) {
+        if (protocolVersion >= 3 && protocolVersion < 10) {
             buf.writeLong(mapSeed);
             buf.writeByte(dimension);
         }
@@ -61,9 +61,9 @@ public class LoginC2SPacket implements Packet {
         protocolVersion = buf.readInt();
         username = McDataTypes.readJavaUTF(buf);
         McDataTypes.readJavaUTF(buf); // unused
-        // Only post-rewrite v3-v6 include mapSeed/dimension.
+        // Post-rewrite v3-v6 and Beta v7+ include mapSeed/dimension.
         // v1-v2 (1.0.17-1.1.2_01) and v10-v14 (pre-rewrite 1.0.4-1.0.16) omit them.
-        if (protocolVersion >= 3 && protocolVersion <= 6) {
+        if (protocolVersion >= 3 && protocolVersion < 10) {
             mapSeed = buf.readLong();
             dimension = buf.readByte();
         }

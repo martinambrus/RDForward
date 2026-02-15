@@ -100,17 +100,27 @@ public enum ProtocolVersion {
     ALPHA_1_2_5(6, 9, Family.ALPHA, "Alpha 1.2.x (v6)", 82),
 
     /**
+     * Minecraft Beta 1.0-1.1 - first Beta release.
+     * ~92 block types, new inventory/window system (SetSlot replaces AddToInventory),
+     * new block placement wire format (coordinates first), shorter HoldingChange.
+     * Real MC protocol version 7 (clashes with Classic v7 — use family-aware lookup).
+     */
+    BETA_1_0(7, 10, Family.BETA, "Beta 1.0 (v7)", 92),
+
+    /**
+     * Minecraft Beta 1.1_02 - chest bug fix release.
+     * Identical wire protocol to Beta 1.0 (v7), only the version number changed.
+     * Real MC protocol version 8.
+     */
+    BETA_1_1(8, 11, Family.BETA, "Beta 1.1_02 (v8)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 10, Family.BEDROCK, "Bedrock", 92);
-
-    // Future versions:
-    // BETA_1_0(14, 7, Family.BETA, "Beta 1.0", ...)
-    // RELEASE_1_0(29, 8, Family.RELEASE, "Release 1.0", ...)
-    // RELEASE_1_7(4, 9, Family.RELEASE, "Release 1.7", ...)
+    BEDROCK(924, 12, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -157,11 +167,35 @@ public enum ProtocolVersion {
     /**
      * Look up a protocol version by its numeric ID.
      * Returns null if the version is unknown.
+     *
+     * WARNING: Protocol version 7 is shared by Classic and Beta 1.0.
+     * Use {@link #fromNumber(int, Family...)} to disambiguate.
      */
     public static ProtocolVersion fromNumber(int number) {
         for (ProtocolVersion pv : values()) {
             if (pv.versionNumber == number) {
                 return pv;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Look up a protocol version by its numeric ID, restricted to specific families.
+     * Returns null if no matching version is found in the given families.
+     *
+     * This is needed because protocol version 7 is shared by Classic (c0.0.20a)
+     * and Beta 1.0 — the caller must specify which families are valid for the
+     * connection context.
+     */
+    public static ProtocolVersion fromNumber(int number, Family... families) {
+        for (ProtocolVersion pv : values()) {
+            if (pv.versionNumber == number) {
+                for (Family f : families) {
+                    if (pv.family == f) {
+                        return pv;
+                    }
+                }
             }
         }
         return null;
@@ -196,8 +230,8 @@ public enum ProtocolVersion {
             case 4:  return "Alpha 1.2.2";
             case 5:  return "Alpha 1.2.3_01-1.2.3_04";
             case 6:  return "Alpha 1.2.3_05-1.2.6";
-            case 7:  return "Classic c0.0.20a-c0.30";
-            case 8:  return "Alpha 1.0.0-1.0.1_01";
+            case 7:  return "Beta 1.0-1.1 (or Classic c0.0.20a-c0.30)";
+            case 8:  return "Beta 1.1_02 (or Alpha 1.0.0-1.0.1_01)";
             case 9:  return "Alpha 1.0.2-1.0.3";
             case 10: return "Alpha 1.0.4-1.0.11";
             case 11: return "Alpha 1.0.12";

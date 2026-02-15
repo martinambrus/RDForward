@@ -119,7 +119,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             handleBlockPlacement(ctx, (BlockPlacementData) packet);
         } else if (packet instanceof ChatPacket) {
             handleChat(ctx, (ChatPacket) packet);
-        } else if (packet instanceof HoldingChangePacket) {
+        } else if (packet instanceof HoldingChangePacket || packet instanceof HoldingChangePacketBeta) {
             // Silently accept (hotbar slot change)
         } else if (packet instanceof AnimationPacket) {
             // Silently accept (arm swing animation)
@@ -132,6 +132,15 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             int droppedCount = ((PickupSpawnPacket) packet).getCount() & 0xFF;
             if (droppedCount < 1) droppedCount = 1;
             giveItem(ctx, BlockRegistry.COBBLESTONE, droppedCount);
+        } else if (packet instanceof RespawnPacket) {
+            handleRespawn(ctx);
+        } else if (packet instanceof UseEntityPacket
+                || packet instanceof CloseWindowPacket
+                || packet instanceof WindowClickPacket
+                || packet instanceof ConfirmTransactionPacket
+                || packet instanceof UpdateSignPacket
+                || packet instanceof EntityEquipmentPacket) {
+            // Silently accept (not yet implemented server-side)
         } else if (packet instanceof KeepAlivePacket) {
             // Silently accept
         } else if (packet instanceof DisconnectPacket) {
@@ -152,8 +161,10 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
-        // Determine protocol version from the client's login packet
-        clientVersion = ProtocolVersion.fromNumber(loginProtocolVersion);
+        // Determine protocol version from the client's login packet.
+        // Use family-aware lookup because v7 is shared by Classic and Beta 1.0.
+        clientVersion = ProtocolVersion.fromNumber(loginProtocolVersion,
+                ProtocolVersion.Family.ALPHA, ProtocolVersion.Family.BETA);
         if (clientVersion == null) {
             String[] messages = buildUnsupportedVersionMessages(loginProtocolVersion);
             System.out.println("Rejected client"
@@ -337,7 +348,8 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.pipeline().remove("loginTimeout");
         }
 
-        System.out.println("Alpha login complete: " + player.getUsername()
+        String familyLabel = clientVersion.getFamily() == ProtocolVersion.Family.BETA ? "Beta" : "Alpha";
+        System.out.println(familyLabel + " login complete: " + player.getUsername()
                 + " (protocol: " + clientVersion.getDisplayName()
                 + ", version " + clientVersion.getVersionNumber()
                 + ", ID " + player.getPlayerId()
@@ -478,6 +490,17 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     }
 
     /**
+     * Handle Beta 1.0 respawn request. Teleport to spawn and re-give cobblestone.
+     */
+    private void handleRespawn(ChannelHandlerContext ctx) {
+        if (player == null) return;
+        float yaw = player.getFloatYaw();
+        respawnToSafePosition(ctx, yaw);
+        giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
+        trackedCobblestone = 64;
+    }
+
+    /**
      * Teleport the player to the ground directly below their current XZ
      * position. Used by fall protection to catch the player before lethal
      * fall damage. Scans downward for a safe landing spot (solid ground
@@ -602,7 +625,10 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             // inventory sync (which has the real count) can drive a top-up.
             // v1 has no inventory sync and no way to know if the client
             // consumed, so skip the give-back to avoid inflation.
-            if (clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_1_0)) {
+            // Beta uses SetSlot per-placement so just re-set the slot to 64.
+            if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)) {
+                giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
+            } else if (clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_1_0)) {
                 scheduleReplenishment(ctx);
             }
             return;
@@ -625,7 +651,10 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             // over-counting is harmless.
             // v1 has no inventory sync — skip give-back to avoid inflation
             // when both client and server reject the overlap.
-            if (clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_1_0)) {
+            // Beta uses SetSlot per-placement so just re-set the slot to 64.
+            if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)) {
+                giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
+            } else if (clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_1_0)) {
                 trackedCobblestone--;
                 scheduleReplenishment(ctx);
             }
@@ -672,11 +701,13 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             }, 200, TimeUnit.MILLISECONDS);
         }
 
-        // Replenish cobblestone. v1 (Alpha 1.0.17) has no PlayerInventory (0x05)
-        // packet and sends nothing back after AddToInventory, so immediate per-
-        // placement give-back is safe. v2+ clients send 0x04/0x05 responses that
-        // interfere with rapid placement input, so they use batched replenishment.
-        if (!clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_1_0)) {
+        // Replenish cobblestone.
+        // - v1 (Alpha 1.0.17): no PlayerInventory (0x05), immediate give-back is safe
+        // - v2-v6 (Alpha 1.1.0-1.2.6): batched replenishment to avoid 0x04/0x05 response interference
+        // - v7+ (Beta 1.0): SetSlot targets a specific slot, immediate per-placement is safe
+        if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)) {
+            giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
+        } else if (!clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_1_0)) {
             giveItem(ctx, BlockRegistry.COBBLESTONE, 1);
         } else {
             trackedCobblestone--;
@@ -685,11 +716,16 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     }
 
     /**
-     * Give items to the player using the Alpha AddToInventory packet (0x11).
-     * The client handles slot assignment (first matching stack or first empty slot).
+     * Give items to the player. Alpha uses AddToInventory (0x11) which lets
+     * the client pick the slot. Beta removed that packet and uses SetSlot (0x67)
+     * which targets a specific slot — we always use hotbar slot 0 (window slot 36).
      */
     private void giveItem(ChannelHandlerContext ctx, int itemId, int count) {
-        ctx.writeAndFlush(new AddToInventoryPacket(itemId, count, 0));
+        if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)) {
+            ctx.writeAndFlush(new SetSlotPacket(0, 36, itemId, count, 0));
+        } else {
+            ctx.writeAndFlush(new AddToInventoryPacket(itemId, count, 0));
+        }
     }
 
     /**
@@ -789,7 +825,8 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     private static String[] buildUnsupportedVersionMessages(int pv) {
         // Determine which family the unknown version likely belongs to.
         // AlphaConnectionHandler handles all pre-Netty TCP clients (Alpha and Beta).
-        // Alpha SMP versions: 1-14. Beta will use higher numbers when added.
+        // Alpha SMP versions: 1-14, Beta: 7-29. The ranges overlap, so for
+        // truly unsupported versions we show Alpha as the likely family.
         ProtocolVersion.Family family;
         if (pv >= 1 && pv <= 14) {
             family = ProtocolVersion.Family.ALPHA;

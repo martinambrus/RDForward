@@ -136,6 +136,22 @@ class CapabilityTest {
     }
 
     @Test
+    void allCapabilitiesAvailableInBeta10() {
+        for (Capability cap : Capability.values()) {
+            assertTrue(cap.isAvailableIn(ProtocolVersion.BETA_1_0),
+                    cap.name() + " should be available in Beta 1.0 (v7)");
+        }
+    }
+
+    @Test
+    void allCapabilitiesAvailableInBeta11() {
+        for (Capability cap : Capability.values()) {
+            assertTrue(cap.isAvailableIn(ProtocolVersion.BETA_1_1),
+                    cap.name() + " should be available in Beta 1.1_02 (v8)");
+        }
+    }
+
+    @Test
     void allCapabilitiesAvailableInBedrock() {
         for (Capability cap : Capability.values()) {
             assertTrue(cap.isAvailableIn(ProtocolVersion.BEDROCK),
@@ -152,6 +168,29 @@ class CapabilityTest {
             assertTrue(Capability.CHAT_MESSAGE.isAvailableIn(version),
                     "CHAT_MESSAGE should be available in " + version.name());
         }
+    }
+
+    @Test
+    void fromNumberWithFamilyDisambiguatesV7() {
+        // v7 is shared by Classic and Beta 1.0 — family filter picks the right one
+        assertEquals(ProtocolVersion.CLASSIC,
+                ProtocolVersion.fromNumber(7, ProtocolVersion.Family.CLASSIC));
+        assertEquals(ProtocolVersion.BETA_1_0,
+                ProtocolVersion.fromNumber(7, ProtocolVersion.Family.BETA));
+        assertEquals(ProtocolVersion.BETA_1_0,
+                ProtocolVersion.fromNumber(7, ProtocolVersion.Family.ALPHA, ProtocolVersion.Family.BETA));
+        assertNull(ProtocolVersion.fromNumber(7, ProtocolVersion.Family.ALPHA));
+    }
+
+    @Test
+    void fromNumberResolvesV8ToBeta11() {
+        // v8 is Beta 1.1_02 — resolves correctly with BETA family filter
+        assertEquals(ProtocolVersion.BETA_1_1,
+                ProtocolVersion.fromNumber(8, ProtocolVersion.Family.BETA));
+        assertEquals(ProtocolVersion.BETA_1_1,
+                ProtocolVersion.fromNumber(8, ProtocolVersion.Family.ALPHA, ProtocolVersion.Family.BETA));
+        // No Alpha version uses protocol number 8
+        assertNull(ProtocolVersion.fromNumber(8, ProtocolVersion.Family.ALPHA));
     }
 
     @Test
@@ -178,7 +217,9 @@ class CapabilityTest {
         assertTrue(ProtocolVersion.ALPHA_1_2_2.isAtLeast(ProtocolVersion.ALPHA_1_2_0));
         assertTrue(ProtocolVersion.ALPHA_1_2_3.isAtLeast(ProtocolVersion.ALPHA_1_2_2));
         assertTrue(ProtocolVersion.ALPHA_1_2_5.isAtLeast(ProtocolVersion.ALPHA_1_2_3));
-        assertTrue(ProtocolVersion.BEDROCK.isAtLeast(ProtocolVersion.ALPHA_1_2_5));
+        assertTrue(ProtocolVersion.BETA_1_0.isAtLeast(ProtocolVersion.ALPHA_1_2_5));
+        assertTrue(ProtocolVersion.BETA_1_1.isAtLeast(ProtocolVersion.BETA_1_0));
+        assertTrue(ProtocolVersion.BEDROCK.isAtLeast(ProtocolVersion.BETA_1_1));
 
         // v6 is chronologically AFTER v14 (post-rewrite), even though 6 < 14
         assertTrue(ProtocolVersion.ALPHA_1_2_5.isAtLeast(ProtocolVersion.ALPHA_1_0_16));
