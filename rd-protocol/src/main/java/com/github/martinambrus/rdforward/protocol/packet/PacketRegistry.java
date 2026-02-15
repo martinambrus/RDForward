@@ -115,7 +115,7 @@ public class PacketRegistry {
      * not PlayerIdentification; 0x03 = Chat, not LevelDataChunk).
      */
     private static void registerAlphaPackets() {
-        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3};
+        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4};
 
         for (ProtocolVersion v : alphaVersions) {
             // === Bidirectional packets ===
@@ -278,7 +278,7 @@ public class PacketRegistry {
         // === Beta overrides (v7+) ===
         // Beta changed several packet wire formats and added new packets.
         // All Beta versions share the same wire protocol — loop to avoid duplication.
-        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3};
+        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4};
         for (ProtocolVersion betaV : betaVersions) {
             // Override C2S packets that changed format:
             register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x0F, new PacketFactory() {
@@ -370,6 +370,15 @@ public class PacketRegistry {
             register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x65, new PacketFactory() {
                 public Packet create() { return new CloseWindowPacket(); }
             });
+
+            // Beta v10+ (Beta 1.4+): protocol number 10 clashes with pre-rewrite Alpha v10.
+            // Override 0x01 C2S with forceMapSeed=true so Login reads mapSeed/dimension
+            // instead of treating v10 as a pre-rewrite version with no mapSeed.
+            if (betaV.getVersionNumber() >= 10) {
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x01, new PacketFactory() {
+                    public Packet create() { return new LoginC2SPacket(true); }
+                });
+            }
         }
     }
 

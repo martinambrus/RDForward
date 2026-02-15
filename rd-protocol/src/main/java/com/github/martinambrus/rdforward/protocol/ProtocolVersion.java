@@ -130,12 +130,23 @@ public enum ProtocolVersion {
     BETA_1_3(9, 12, Family.BETA, "Beta 1.3 (v9)", 92),
 
     /**
+     * Minecraft Beta 1.4-1.4_01 - protocol version 10.
+     * Added wolves, cookies, bed spawn points. Wire format identical to v9
+     * (ViaLegacy Protocolb1_3_0_1Tob1_4_0_1 is a StatelessProtocol with zero
+     * packet transformations). One new S2C packet (0x46 Game Event for rain)
+     * which we don't need since we don't send weather.
+     * Phantom KeepAlive trick still applies.
+     * Real MC protocol version 10 (clashes with pre-rewrite Alpha v10).
+     */
+    BETA_1_4(10, 13, Family.BETA, "Beta 1.4 (v10)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 13, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 14, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -248,7 +259,7 @@ public enum ProtocolVersion {
             case 7:  return "Beta 1.0-1.1 (or Classic c0.0.20a-c0.30)";
             case 8:  return "Beta 1.1_02-1.2_02 (or Alpha 1.0.0-1.0.1_01)";
             case 9:  return "Beta 1.3 (or Alpha 1.0.2-1.0.3)";
-            case 10: return "Alpha 1.0.4-1.0.11";
+            case 10: return "Beta 1.4 (or Alpha 1.0.4-1.0.11)";
             case 11: return "Alpha 1.0.12";
             case 12: return "Alpha 1.0.13-1.0.14";
             case 13: return "Alpha 1.0.15";

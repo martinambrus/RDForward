@@ -418,6 +418,20 @@ class PacketRoundTripTest {
         assertEquals(0x1B, decoded.getPacketId());
     }
 
+    // === Beta 1.4 Packets (v10) ===
+
+    @Test
+    void beta14LoginC2SRoundTrip() {
+        // Beta 1.4 sends v10 which clashes with pre-rewrite Alpha v10.
+        // The forceMapSeed flag ensures mapSeed/dimension are read correctly.
+        LoginC2SPacket original = new LoginC2SPacket(10, "TestPlayer", true);
+        LoginC2SPacket decoded = roundTrip(original, ProtocolVersion.BETA_1_4, PacketDirection.CLIENT_TO_SERVER);
+        assertEquals(10, decoded.getProtocolVersion());
+        assertEquals("TestPlayer", decoded.getUsername());
+        assertEquals(0, decoded.getMapSeed());
+        assertEquals(0, decoded.getDimension());
+    }
+
     // === Registry Completeness ===
 
     @Test
@@ -466,8 +480,8 @@ class PacketRoundTripTest {
 
     @Test
     void allBetaVersionsSharePacketRegistrations() {
-        // All Beta versions (v7, v8, v9) share packet registrations
-        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3};
+        // All Beta versions (v7, v8, v9, v10) share packet registrations
+        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4};
         int[] betaC2SIds = {0x00, 0x01, 0x02, 0x03, 0x04, 0x07, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x12, 0x13, 0x15, 0x1B, 0x65, 0x66, 0x67, 0x6A, 0x82, 0xFF};
         int[] betaS2CIds = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x08, 0x0D, 0x12, 0x14, 0x15, 0x16, 0x18, 0x1C, 0x1D, 0x1F, 0x20, 0x21, 0x22, 0x26, 0x27, 0x32, 0x33, 0x35, 0x3C, 0x64, 0x65, 0x67, 0x68, 0x69, 0x6A, 0x82, 0xFF};
         for (int id : betaC2SIds) {

@@ -160,6 +160,14 @@ class CapabilityTest {
     }
 
     @Test
+    void allCapabilitiesAvailableInBeta14() {
+        for (Capability cap : Capability.values()) {
+            assertTrue(cap.isAvailableIn(ProtocolVersion.BETA_1_4),
+                    cap.name() + " should be available in Beta 1.4 (v10)");
+        }
+    }
+
+    @Test
     void allCapabilitiesAvailableInBedrock() {
         for (Capability cap : Capability.values()) {
             assertTrue(cap.isAvailableIn(ProtocolVersion.BEDROCK),
@@ -202,6 +210,17 @@ class CapabilityTest {
     }
 
     @Test
+    void fromNumberResolvesV10ToBeta14() {
+        // v10 is Beta 1.4 — resolves correctly with BETA family filter
+        assertEquals(ProtocolVersion.BETA_1_4,
+                ProtocolVersion.fromNumber(10, ProtocolVersion.Family.BETA));
+        assertEquals(ProtocolVersion.BETA_1_4,
+                ProtocolVersion.fromNumber(10, ProtocolVersion.Family.ALPHA, ProtocolVersion.Family.BETA));
+        // No Alpha version uses protocol number 10 (pre-rewrite v10 is not in our enum)
+        assertNull(ProtocolVersion.fromNumber(10, ProtocolVersion.Family.ALPHA));
+    }
+
+    @Test
     void fromNumberResolvesV8ToBeta12() {
         // v8 is Beta 1.2 — resolves correctly with BETA family filter
         assertEquals(ProtocolVersion.BETA_1_2,
@@ -239,7 +258,8 @@ class CapabilityTest {
         assertTrue(ProtocolVersion.BETA_1_0.isAtLeast(ProtocolVersion.ALPHA_1_2_5));
         assertTrue(ProtocolVersion.BETA_1_2.isAtLeast(ProtocolVersion.BETA_1_0));
         assertTrue(ProtocolVersion.BETA_1_3.isAtLeast(ProtocolVersion.BETA_1_2));
-        assertTrue(ProtocolVersion.BEDROCK.isAtLeast(ProtocolVersion.BETA_1_3));
+        assertTrue(ProtocolVersion.BETA_1_4.isAtLeast(ProtocolVersion.BETA_1_3));
+        assertTrue(ProtocolVersion.BEDROCK.isAtLeast(ProtocolVersion.BETA_1_4));
 
         // v6 is chronologically AFTER v14 (post-rewrite), even though 6 < 14
         assertTrue(ProtocolVersion.ALPHA_1_2_5.isAtLeast(ProtocolVersion.ALPHA_1_0_16));
