@@ -115,7 +115,7 @@ public class PacketRegistry {
      * not PlayerIdentification; 0x03 = Chat, not LevelDataChunk).
      */
     private static void registerAlphaPackets() {
-        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3};
+        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8};
 
         for (ProtocolVersion v : alphaVersions) {
             // === Bidirectional packets ===
@@ -278,7 +278,7 @@ public class PacketRegistry {
         // === Beta overrides (v7+) ===
         // Beta changed several packet wire formats and added new packets.
         // All Beta versions share the same wire protocol — loop to avoid duplication.
-        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3};
+        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8};
         for (ProtocolVersion betaV : betaVersions) {
             // Override C2S packets that changed format:
             register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x0F, new PacketFactory() {
@@ -395,6 +395,37 @@ public class PacketRegistry {
                 register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x09, new PacketFactory() {
                     public Packet create() { return new RespawnPacketV12(); }
                 });
+            }
+
+            // Beta v17+ (Beta 1.8+): Major wire format changes.
+            // BlockPlacement changed damage from byte to short (no phantom KeepAlive needed).
+            if (betaV.getVersionNumber() >= 17) {
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x0F, new PacketFactory() {
+                    public Packet create() { return new PlayerBlockPlacementPacketV17(); }
+                });
+                // KeepAlive changed from zero-payload to int keepAliveId
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x00, new PacketFactory() {
+                    public Packet create() { return new KeepAlivePacketV17(); }
+                });
+                register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x00, new PacketFactory() {
+                    public Packet create() { return new KeepAlivePacketV17(); }
+                });
+                // Login S2C gained gameMode + difficulty + worldHeight + maxPlayers
+                register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x01, new PacketFactory() {
+                    public Packet create() { return new LoginS2CPacketV17(); }
+                });
+                // Respawn expanded from dimension byte to dimension + difficulty +
+                // gameMode + worldHeight + seed
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x09, new PacketFactory() {
+                    public Packet create() { return new RespawnPacketV17(); }
+                });
+                // Creative Inventory Action (creative mode item selection).
+                // Beta 1.8 uses 4 unconditional shorts (slot, itemId, count, damage).
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x6B, new PacketFactory() {
+                    public Packet create() { return new CreativeSlotPacket(); }
+                });
+                // Note: 0xCA PlayerAbilities does not exist as a packet in Beta 1.8.
+                // Abilities are derived client-side from the gameMode in Login/Respawn.
             }
         }
     }

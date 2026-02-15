@@ -16,7 +16,7 @@ import io.netty.buffer.ByteBuf;
  * Alpha v10 (which has no mapSeed). The PacketRegistry creates this packet
  * with forceMapSeed=true for Beta v10+ to override the self-adaptive condition.
  *
- * Wire format (v3-v9, or forceMapSeed, post-rewrite with mapSeed):
+ * Wire format (v3-v9 or forceMapSeed, post-rewrite with mapSeed):
  *   [int]      protocol version
  *   [string16] username
  *   [string16] unused (empty, was password in early tests)
@@ -27,6 +27,17 @@ import io.netty.buffer.ByteBuf;
  *   [int]      protocol version
  *   [string16] username
  *   [string16] unused
+ *
+ * Wire format (v17+, Beta 1.8+):
+ *   [int]      protocol version (17)
+ *   [string16] username
+ *   [long]     map seed (0)
+ *   [int]      game mode (0, not used server-side)
+ *   [byte]     dimension (0)
+ *   [byte]     difficulty (0, not used)
+ *   [byte]     world height (0, not used)
+ *   [byte]     max players (0, not used)
+ *   Note: Beta 1.8 removed the "unused" String16 field.
  */
 public class LoginC2SPacket implements Packet {
 
@@ -65,12 +76,20 @@ public class LoginC2SPacket implements Packet {
     public void write(ByteBuf buf) {
         buf.writeInt(protocolVersion);
         McDataTypes.writeStringAdaptive(buf, username);
-        McDataTypes.writeStringAdaptive(buf, "");
-        // Post-rewrite v3-v9 include mapSeed/dimension. forceMapSeed overrides for Beta v10+.
-        // v1-v2 (1.0.17-1.1.2_01) and v10-v14 (pre-rewrite 1.0.4-1.0.16) omit them.
-        if (forceMapSeed || (protocolVersion >= 3 && protocolVersion < 10)) {
+        if (protocolVersion >= 17) {
+            // Beta 1.8+: no "unused" String16, additional fields after mapSeed
             buf.writeLong(mapSeed);
+            buf.writeInt(0);   // gameMode (not used)
             buf.writeByte(dimension);
+            buf.writeByte(0);  // difficulty
+            buf.writeByte(0);  // worldHeight
+            buf.writeByte(0);  // maxPlayers
+        } else {
+            McDataTypes.writeStringAdaptive(buf, ""); // unused
+            if (forceMapSeed || (protocolVersion >= 3 && protocolVersion < 10)) {
+                buf.writeLong(mapSeed);
+                buf.writeByte(dimension);
+            }
         }
     }
 
@@ -78,12 +97,20 @@ public class LoginC2SPacket implements Packet {
     public void read(ByteBuf buf) {
         protocolVersion = buf.readInt();
         username = McDataTypes.readStringAdaptive(buf);
-        McDataTypes.readStringAdaptive(buf); // unused
-        // Post-rewrite v3-v9 include mapSeed/dimension. forceMapSeed overrides for Beta v10+.
-        // v1-v2 (1.0.17-1.1.2_01) and v10-v14 (pre-rewrite 1.0.4-1.0.16) omit them.
-        if (forceMapSeed || (protocolVersion >= 3 && protocolVersion < 10)) {
+        if (protocolVersion >= 17) {
+            // Beta 1.8+: no "unused" String16, additional fields after mapSeed
             mapSeed = buf.readLong();
+            buf.readInt();   // gameMode (not used)
             dimension = buf.readByte();
+            buf.readByte();  // difficulty
+            buf.readByte();  // worldHeight
+            buf.readByte();  // maxPlayers
+        } else {
+            McDataTypes.readStringAdaptive(buf); // unused
+            if (forceMapSeed || (protocolVersion >= 3 && protocolVersion < 10)) {
+                mapSeed = buf.readLong();
+                dimension = buf.readByte();
+            }
         }
     }
 

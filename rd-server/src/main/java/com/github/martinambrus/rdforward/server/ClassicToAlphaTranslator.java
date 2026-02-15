@@ -28,6 +28,19 @@ public class ClassicToAlphaTranslator extends ChannelOutboundHandlerAdapter {
     /** Eye-height offset in fixed-point units. Internal Y is eye-level; Alpha expects feet. */
     private static final int EYE_HEIGHT_FIXED = AlphaConnectionHandler.PLAYER_EYE_HEIGHT_FIXED;
 
+    /**
+     * When true, Classic PingPackets are dropped instead of translated to
+     * zero-payload KeepAlive. Beta 1.8+ (v17) uses KeepAlivePacketV17 with
+     * an int ID — a zero-payload KeepAlive would cause stream misalignment
+     * because the client reads 4 extra bytes as the keepAliveId.
+     * Set by AlphaConnectionHandler after determining the client version.
+     */
+    private volatile boolean dropPing = false;
+
+    public void setDropPing(boolean dropPing) {
+        this.dropPing = dropPing;
+    }
+
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
         if (!(msg instanceof Packet)) {
@@ -58,6 +71,11 @@ public class ClassicToAlphaTranslator extends ChannelOutboundHandlerAdapter {
         }
 
         if (packet instanceof PingPacket) {
+            // v17+ has its own KeepAlive heartbeat with int ID; drop tick-loop pings
+            // to avoid sending a zero-payload KeepAlive that misaligns the stream.
+            if (dropPing) {
+                return null;
+            }
             // Classic 0x01 Ping -> Alpha 0x00 KeepAlive
             return new KeepAlivePacket();
         }

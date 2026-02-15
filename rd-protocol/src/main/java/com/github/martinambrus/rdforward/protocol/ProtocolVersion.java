@@ -181,12 +181,24 @@ public enum ProtocolVersion {
     BETA_1_7_3(14, 17, Family.BETA, "Beta 1.7.3 (v14)", 92),
 
     /**
+     * Minecraft Beta 1.8-1.8.1 - protocol version 17.
+     * Major wire format overhaul: KeepAlive gained int ID, Login S2C/C2S gained
+     * gameMode+difficulty+worldHeight+maxPlayers, Respawn gained multiple new
+     * fields. First version with native creative mode (gameMode=1 in Login S2C
+     * enables instant break, creative inventory, flying, no fall damage).
+     * New C2S packets: CreativeSlot (0x6B), PlayerAbilities (0xCA).
+     * String encoding uses String16 (same as v11+).
+     * Real MC protocol version 17.
+     */
+    BETA_1_8(17, 18, Family.BETA, "Beta 1.8 (v17)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 18, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 19, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -304,6 +316,7 @@ public enum ProtocolVersion {
             case 12: return "Beta 1.6 (or Alpha 1.0.13-1.0.14)";
             case 13: return "Beta 1.6.1-1.7_01 (or Alpha 1.0.15)";
             case 14: return "Beta 1.7.2-1.7.3 (or Alpha 1.0.16-1.0.16_02)";
+            case 17: return "Beta 1.8-1.8.1";
             default: return null;
         }
     }

@@ -4,6 +4,7 @@ import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.codec.RawPacketDecoder;
 import com.github.martinambrus.rdforward.protocol.codec.RawPacketEncoder;
 import com.github.martinambrus.rdforward.protocol.packet.PacketDirection;
+import com.github.martinambrus.rdforward.protocol.McDataTypes;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -51,6 +52,23 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
 
         // Peek at the first byte without consuming it
         int firstByte = buf.getUnsignedByte(buf.readerIndex());
+
+        if (firstByte == 0xFE) {
+            // Beta 1.8+ server list ping: respond with Disconnect containing
+            // "motd§currentPlayers§maxPlayers" and close the connection.
+            // Write raw bytes (bypassing packet encoder) since this is a
+            // separate connection from the actual game Handshake.
+            buf.release();
+            String response = "RDForward Server\u00A7"
+                    + playerManager.getPlayerCount() + "\u00A7"
+                    + PlayerManager.MAX_PLAYERS;
+            ByteBuf out = ctx.alloc().buffer();
+            out.writeByte(0xFF); // Disconnect packet ID
+            McDataTypes.writeString16(out, response);
+            ctx.channel().writeAndFlush(out)
+                    .addListener(io.netty.channel.ChannelFutureListener.CLOSE);
+            return;
+        }
 
         if (firstByte == 0x02 || firstByte == 0x01) {
             // 0x02 = Alpha Handshake (v14+ / post-rewrite clients)

@@ -567,8 +567,8 @@ class PacketRoundTripTest {
 
     @Test
     void allBetaVersionsSharePacketRegistrations() {
-        // All Beta versions (v7, v8, v9, v10, v11, v12, v13, v14) share packet registrations
-        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3};
+        // All Beta versions share packet registrations (v17 adds extras but still has all base IDs)
+        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8};
         int[] betaC2SIds = {0x00, 0x01, 0x02, 0x03, 0x04, 0x07, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x12, 0x13, 0x15, 0x1B, 0x65, 0x66, 0x67, 0x6A, 0x82, 0xFF};
         int[] betaS2CIds = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x08, 0x0D, 0x12, 0x14, 0x15, 0x16, 0x18, 0x1C, 0x1D, 0x1F, 0x20, 0x21, 0x22, 0x26, 0x27, 0x32, 0x33, 0x35, 0x3C, 0x64, 0x65, 0x67, 0x68, 0x69, 0x6A, 0x82, 0xFF};
         for (int id : betaC2SIds) {
@@ -587,6 +587,167 @@ class PacketRoundTripTest {
                         "Beta 1.0 and " + v.name() + " should share S2C packet 0x" + Integer.toHexString(id));
             }
         }
+    }
+
+    // === Beta 1.8 Packets (v17) ===
+
+    @Test
+    void beta18KeepAliveRoundTrip() {
+        KeepAlivePacketV17 original = new KeepAlivePacketV17(42);
+        KeepAlivePacketV17 decoded = roundTrip(original, ProtocolVersion.BETA_1_8, PacketDirection.SERVER_TO_CLIENT);
+        assertEquals(42, decoded.getKeepAliveId());
+    }
+
+    @Test
+    void beta18LoginS2CRoundTrip() {
+        McDataTypes.STRING16_MODE.set(true);
+        try {
+            LoginS2CPacketV17 original = new LoginS2CPacketV17(
+                    1, 0L, 1, (byte) 0, (byte) 0, (byte) 128, (byte) 127);
+            ByteBuf buf = Unpooled.buffer();
+            try {
+                original.write(buf);
+                LoginS2CPacketV17 decoded = (LoginS2CPacketV17) PacketRegistry.createPacket(
+                        ProtocolVersion.BETA_1_8, PacketDirection.SERVER_TO_CLIENT, 0x01);
+                assertNotNull(decoded);
+                decoded.read(buf);
+                assertEquals(0, buf.readableBytes(), "Not all bytes consumed");
+                assertEquals(1, decoded.getEntityId());
+                assertEquals(0L, decoded.getMapSeed());
+                assertEquals(1, decoded.getGameMode());
+                assertEquals(0, decoded.getDimension());
+                assertEquals(0, decoded.getDifficulty());
+                assertEquals((byte) 128, decoded.getWorldHeight());
+                assertEquals(127, decoded.getMaxPlayers());
+            } finally {
+                buf.release();
+            }
+        } finally {
+            McDataTypes.STRING16_MODE.remove();
+        }
+    }
+
+    @Test
+    void beta18LoginC2SRoundTrip() {
+        McDataTypes.STRING16_MODE.set(true);
+        try {
+            LoginC2SPacket original = new LoginC2SPacket(17, "TestPlayer");
+            ByteBuf buf = Unpooled.buffer();
+            try {
+                original.write(buf);
+                // Use BETA_1_8 registry entry (has forceMapSeed=true)
+                LoginC2SPacket decoded = (LoginC2SPacket) PacketRegistry.createPacket(
+                        ProtocolVersion.BETA_1_8, PacketDirection.CLIENT_TO_SERVER, 0x01);
+                assertNotNull(decoded);
+                decoded.read(buf);
+                assertEquals(0, buf.readableBytes(), "Not all bytes consumed");
+                assertEquals(17, decoded.getProtocolVersion());
+                assertEquals("TestPlayer", decoded.getUsername());
+            } finally {
+                buf.release();
+            }
+        } finally {
+            McDataTypes.STRING16_MODE.remove();
+        }
+    }
+
+    @Test
+    void beta18LoginC2SSelfAdaptiveFromV6() {
+        // Simulates the real decoder scenario: decoder starts at ALPHA_1_2_5 (v6)
+        // and the LoginC2SPacket's self-adaptive code handles v17 using
+        // protocolVersion >= 17 in the condition (forceMapSeed=false).
+        McDataTypes.STRING16_MODE.set(true);
+        try {
+            LoginC2SPacket original = new LoginC2SPacket(17, "TestPlayer");
+            ByteBuf buf = Unpooled.buffer();
+            try {
+                original.write(buf);
+                // Use ALPHA_1_2_5 registry entry (forceMapSeed=false, as actual decoder does)
+                LoginC2SPacket decoded = (LoginC2SPacket) PacketRegistry.createPacket(
+                        ProtocolVersion.ALPHA_1_2_5, PacketDirection.CLIENT_TO_SERVER, 0x01);
+                assertNotNull(decoded);
+                decoded.read(buf);
+                assertEquals(0, buf.readableBytes(), "Not all bytes consumed");
+                assertEquals(17, decoded.getProtocolVersion());
+                assertEquals("TestPlayer", decoded.getUsername());
+            } finally {
+                buf.release();
+            }
+        } finally {
+            McDataTypes.STRING16_MODE.remove();
+        }
+    }
+
+    @Test
+    void beta18RespawnRoundTrip() {
+        RespawnPacketV17 original = new RespawnPacketV17();
+        // Write manually to verify format
+        ByteBuf buf = Unpooled.buffer();
+        buf.writeByte(0);   // dimension
+        buf.writeByte(0);   // difficulty
+        buf.writeByte(1);   // gameMode
+        buf.writeShort(128); // worldHeight
+        buf.writeLong(0);   // mapSeed
+        original.read(buf);
+        buf.release();
+
+        RespawnPacketV17 decoded = roundTrip(original, ProtocolVersion.BETA_1_8, PacketDirection.CLIENT_TO_SERVER);
+        assertEquals(0, decoded.getDimension());
+        assertEquals(0, decoded.getDifficulty());
+        assertEquals(1, decoded.getGameMode());
+        assertEquals(128, decoded.getWorldHeight());
+        assertEquals(0, decoded.getMapSeed());
+    }
+
+    @Test
+    void beta18CreativeSlotRoundTrip() {
+        // Beta 1.8 CreativeSlot uses 4 unconditional shorts (no conditional item data)
+        CreativeSlotPacket original = new CreativeSlotPacket();
+        ByteBuf buf = Unpooled.buffer();
+        buf.writeShort(36);  // slotId
+        buf.writeShort(4);   // itemId (cobblestone)
+        buf.writeShort(64);  // count (short, not byte!)
+        buf.writeShort(0);   // damage
+        original.read(buf);
+        assertEquals(0, buf.readableBytes(), "Not all bytes consumed");
+        buf.release();
+
+        CreativeSlotPacket decoded = roundTrip(original, ProtocolVersion.BETA_1_8, PacketDirection.CLIENT_TO_SERVER);
+        assertEquals(36, decoded.getSlotId());
+        assertEquals(4, decoded.getItemId());
+        assertEquals(64, decoded.getCount());
+        assertEquals(0, decoded.getDamage());
+    }
+
+    @Test
+    void beta18CreativeSlotEmptyRoundTrip() {
+        // Even with itemId=-1 (empty), all 4 shorts are always present
+        CreativeSlotPacket original = new CreativeSlotPacket();
+        ByteBuf buf = Unpooled.buffer();
+        buf.writeShort(36);  // slotId
+        buf.writeShort(-1);  // itemId (empty)
+        buf.writeShort(0);   // count
+        buf.writeShort(0);   // damage
+        original.read(buf);
+        assertEquals(0, buf.readableBytes(), "Not all bytes consumed");
+        buf.release();
+
+        CreativeSlotPacket decoded = roundTrip(original, ProtocolVersion.BETA_1_8, PacketDirection.CLIENT_TO_SERVER);
+        assertEquals(36, decoded.getSlotId());
+        assertEquals(-1, decoded.getItemId());
+        assertEquals(0, decoded.getCount());
+        assertEquals(0, decoded.getDamage());
+    }
+
+    @Test
+    void beta18HasV17SpecificPackets() {
+        // v17 registers CreativeSlot (0x6B) that earlier versions don't have.
+        // 0xCA (PlayerAbilities) does NOT exist as a packet in Beta 1.8 — abilities
+        // are derived client-side from the gameMode in Login/Respawn.
+        assertTrue(PacketRegistry.hasPacket(ProtocolVersion.BETA_1_8, PacketDirection.CLIENT_TO_SERVER, 0x6B));
+        assertFalse(PacketRegistry.hasPacket(ProtocolVersion.BETA_1_8, PacketDirection.CLIENT_TO_SERVER, 0xCA));
+        // Earlier versions should NOT have CreativeSlot
+        assertFalse(PacketRegistry.hasPacket(ProtocolVersion.BETA_1_7_3, PacketDirection.CLIENT_TO_SERVER, 0x6B));
     }
 
     @Test

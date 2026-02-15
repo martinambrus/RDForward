@@ -71,6 +71,8 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
      */
     private int trackedCobblestone = 0;
     private java.util.concurrent.ScheduledFuture<?> replenishTask;
+    private java.util.concurrent.ScheduledFuture<?> keepAliveTask;
+    private int keepAliveCounter = 0;
 
     /**
      * Tracks the feet Y where the current fall started. Used for pre-rewrite
@@ -143,9 +145,14 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             // cobblestone in hotbar slot 0. Using WindowItems clears any
             // cobblestone the player moved to other slots during the session
             // (SetSlot alone would leave those copies intact).
-            if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)) {
+            // v17+ creative mode manages inventory natively, no reset needed.
+            if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)
+                    && !clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
                 resetInventory(ctx);
             }
+        } else if (packet instanceof CreativeSlotPacket
+                || packet instanceof PlayerAbilitiesPacket) {
+            // Creative mode actions — silently accept
         } else if (packet instanceof UseEntityPacket
                 || packet instanceof ConfirmTransactionPacket
                 || packet instanceof UpdateSignPacket
@@ -162,6 +169,13 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleHandshake(ChannelHandlerContext ctx, HandshakeC2SPacket packet) {
         pendingUsername = packet.getUsername();
+
+        // Beta 1.8+ sends "username;host:port" in the Handshake. Strip the
+        // ";host:port" suffix to get just the username.
+        int semicolon = pendingUsername.indexOf(';');
+        if (semicolon >= 0) {
+            pendingUsername = pendingUsername.substring(0, semicolon);
+        }
 
         // Beta 1.5+ uses String16 encoding instead of Java Modified UTF-8.
         // The Handshake auto-detects the format; configure codec for all
@@ -218,6 +232,16 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             decoder.setProtocolVersion(clientVersion);
         }
 
+        // Beta 1.8+ uses KeepAlivePacketV17 (with int ID). Tell the translator
+        // to drop tick-loop PingPackets — zero-payload KeepAlive would misalign
+        // the stream (client reads 4 extra bytes as keepAliveId).
+        if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
+            ClassicToAlphaTranslator translator = ctx.pipeline().get(ClassicToAlphaTranslator.class);
+            if (translator != null) {
+                translator.setDropPing(true);
+            }
+        }
+
         // Pre-1.2.0 Alpha clients have a broken chunk-distance comparator in
         // RenderGlobal that violates Java 7+'s TimSort transitivity contract.
         // On first connect (no saved position), kick with the required JVM flag
@@ -252,8 +276,13 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Entity ID: playerId + 1 (entity 0 is sometimes special in Alpha)
         int entityId = player.getPlayerId() + 1;
 
-        // Send LoginS2C (v2 and earlier use shorter format without mapSeed/dimension)
-        if (clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_2_0)) {
+        // Send LoginS2C (format varies by version)
+        if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
+            // Beta 1.8+ has native creative mode: gameMode=1 enables instant break,
+            // creative inventory, flying, and no fall damage on the client.
+            ctx.writeAndFlush(new LoginS2CPacketV17(entityId, 0L, 1,
+                    (byte) 0, (byte) 0, (byte) 128, (byte) 127));
+        } else if (clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_2_0)) {
             ctx.writeAndFlush(new LoginS2CPacket(entityId, 0L, (byte) 0));
         } else {
             ctx.writeAndFlush(new LoginS2CPacketV2(entityId));
@@ -366,18 +395,35 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         loginComplete = true;
 
-        // Give the player cobblestone so they can place blocks.
-        giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
-        trackedCobblestone = 64;
+        // Beta 1.8+ has native creative mode — no cobblestone replenishment needed.
+        // Give 1 cobblestone so right-click works immediately without opening
+        // the creative inventory first.
+        // Earlier versions need survival-mode hacks for block placement.
+        if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
+            giveItem(ctx, BlockRegistry.COBBLESTONE, 1);
+        } else {
+            // Give the player cobblestone so they can place blocks.
+            giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
+            trackedCobblestone = 64;
 
-        // Pre-rewrite clients (v13/v14) can't receive UpdateHealthPacket, so
-        // fall damage is handled client-side with no server override. Give them
-        // cooked pork chops (item 320, heals 4 hearts each, max stack 1) so
-        // they can eat to recover from any residual fall damage.
-        if (!clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_0_17)) {
-            for (int i = 0; i < 35; i++) {
-                giveItem(ctx, 320, 1);
+            // Pre-rewrite clients (v13/v14) can't receive UpdateHealthPacket, so
+            // fall damage is handled client-side with no server override. Give them
+            // cooked pork chops (item 320, heals 4 hearts each, max stack 1) so
+            // they can eat to recover from any residual fall damage.
+            if (!clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_0_17)) {
+                for (int i = 0; i < 35; i++) {
+                    giveItem(ctx, 320, 1);
+                }
             }
+        }
+
+        // Beta 1.8+ requires periodic KeepAlive with int ID (client times out otherwise)
+        if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
+            keepAliveTask = ctx.executor().scheduleAtFixedRate(() -> {
+                if (ctx.channel().isActive()) {
+                    ctx.writeAndFlush(new KeepAlivePacketV17(++keepAliveCounter));
+                }
+            }, 10, 10, TimeUnit.SECONDS);
         }
 
         // Remove login timeout
@@ -527,14 +573,17 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     }
 
     /**
-     * Handle Beta 1.0 respawn request. Teleport to spawn and re-give cobblestone.
+     * Handle Beta respawn request. Teleport to spawn and re-give cobblestone.
+     * v17+ creative mode manages inventory natively, no re-give needed.
      */
     private void handleRespawn(ChannelHandlerContext ctx) {
         if (player == null) return;
         float yaw = player.getFloatYaw();
         respawnToSafePosition(ctx, yaw);
-        giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
-        trackedCobblestone = 64;
+        if (!clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
+            giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
+            trackedCobblestone = 64;
+        }
     }
 
     /**
@@ -597,8 +646,10 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Q-drop (status 4): player pressed Q to drop an item.
         // Beta clients use this instead of PickupSpawnPacket for drops.
         // Replenish cobblestone so the player can keep building.
+        // v17+ creative mode has infinite inventory, no replenishment needed.
         if (packet.getStatus() == PlayerDiggingPacket.STATUS_DROP_ITEM) {
-            if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)) {
+            if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)
+                    && !clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
                 giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
             }
             return;
@@ -652,10 +703,16 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         short itemId = packet.getItemId();
         if (itemId < 0) return;
 
-        // Items (item ID >= 256) and non-placeable blocks are not valid for placement.
-        // Without this check, item IDs get truncated by (byte)(itemId & 0xFF),
-        // e.g. cooked pork chop (320) would become block 64.
-        if (!BlockRegistry.isValidBlock(itemId, serverVersion)) {
+        // Validate the item being placed.
+        // v17+ creative mode: accept any block ID (1-121), reject items (256+).
+        // All placed blocks get converted to grass/cobblestone anyway.
+        // Other versions: use server version's block range.
+        if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
+            if (itemId < 1 || itemId > BlockRegistry.BETA_1_8_MAX_BLOCK_ID) {
+                ctx.writeAndFlush(new BlockChangePacket(targetX, targetY, targetZ, 0, 0));
+                return;
+            }
+        } else if (!BlockRegistry.isValidBlock(itemId, serverVersion)) {
             ctx.writeAndFlush(new BlockChangePacket(targetX, targetY, targetZ, 0, 0));
             return;
         }
@@ -673,7 +730,10 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             // v1 has no inventory sync and no way to know if the client
             // consumed, so skip the give-back to avoid inflation.
             // Beta uses SetSlot per-placement so just re-set the slot to 64.
-            if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)) {
+            // v17+ creative mode has infinite inventory, no replenishment needed.
+            if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
+                // Creative mode — no replenishment needed
+            } else if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)) {
                 giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
             } else if (clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_1_0)) {
                 scheduleReplenishment(ctx);
@@ -699,7 +759,10 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             // v1 has no inventory sync — skip give-back to avoid inflation
             // when both client and server reject the overlap.
             // Beta uses SetSlot per-placement so just re-set the slot to 64.
-            if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)) {
+            // v17+ creative mode has infinite inventory, no replenishment needed.
+            if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
+                // Creative mode — no replenishment needed
+            } else if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)) {
                 giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
             } else if (clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_1_0)) {
                 trackedCobblestone--;
@@ -708,9 +771,12 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
-        // Determine world block type: RubyDung palette overrides surface to grass
+        // Determine world block type.
+        // RubyDung and v17+ creative mode: convert all blocks to
+        // grass at the surface layer, cobblestone everywhere else.
         byte worldBlockType;
-        if (serverVersion == ProtocolVersion.RUBYDUNG) {
+        if (serverVersion == ProtocolVersion.RUBYDUNG
+                || clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
             int surfaceY = world.getHeight() * 2 / 3;
             worldBlockType = (targetY == surfaceY)
                     ? (byte) BlockRegistry.GRASS
@@ -748,11 +814,14 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             }, 200, TimeUnit.MILLISECONDS);
         }
 
-        // Replenish cobblestone.
+        // Replenish cobblestone (not needed for v17+ creative mode).
         // - v1 (Alpha 1.0.17): no PlayerInventory (0x05), immediate give-back is safe
         // - v2-v6 (Alpha 1.1.0-1.2.6): batched replenishment to avoid 0x04/0x05 response interference
-        // - v7+ (Beta 1.0): SetSlot targets a specific slot, immediate per-placement is safe
-        if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)) {
+        // - v7-v14 (Beta 1.0-1.7.3): SetSlot targets a specific slot, immediate per-placement is safe
+        // - v17+ (Beta 1.8+): creative mode has infinite inventory, no replenishment needed
+        if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
+            // Creative mode — no replenishment needed
+        } else if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)) {
             giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
         } else if (!clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_1_0)) {
             giveItem(ctx, BlockRegistry.COBBLESTONE, 1);
@@ -858,6 +927,9 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+        if (keepAliveTask != null) {
+            keepAliveTask.cancel(false);
+        }
         if (player != null) {
             System.out.println(player.getUsername() + " disconnected"
                     + " (" + (playerManager.getPlayerCount() - 1) + " online)");
@@ -901,6 +973,8 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         ProtocolVersion.Family family;
         if (pv >= 1 && pv <= 14) {
             family = ProtocolVersion.Family.ALPHA;
+        } else if (pv >= 15 && pv <= 29) {
+            family = ProtocolVersion.Family.BETA;
         } else {
             String msg = "Unknown protocol version: " + pv;
             return new String[]{msg, msg};
