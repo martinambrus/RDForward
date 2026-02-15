@@ -152,12 +152,32 @@ public enum ProtocolVersion {
     BETA_1_5(11, 14, Family.BETA, "Beta 1.5 (v11)", 92),
 
     /**
+     * Minecraft Beta 1.6-1.6_test - protocol version 12.
+     * Added maps, trapdoors, tall grass, dead bushes. Wire format changes
+     * from v11: Respawn (0x09) C2S/S2C gained a dimension byte, AddEntity
+     * (0x17) S2C gained int data + conditional velocity. String encoding
+     * uses String16 (same as v11). Login format unchanged.
+     * Real MC protocol version 12.
+     */
+    BETA_1_6(12, 15, Family.BETA, "Beta 1.6 (v12)", 92),
+
+    /**
+     * Minecraft Beta 1.6.1-1.7_01 - protocol version 13.
+     * Wire format identical to v12 (ViaLegacy Protocolb1_6_0_6Tob1_7_0_3
+     * has zero packet transformations). Protocol v13 clashes with Alpha
+     * 1.0.15 (v13) — disambiguated by String16 detection in Handshake
+     * (Beta 1.5+ uses String16, Alpha uses writeUTF).
+     * Real MC protocol version 13.
+     */
+    BETA_1_7(13, 16, Family.BETA, "Beta 1.7 (v13)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 15, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 17, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -272,9 +292,9 @@ public enum ProtocolVersion {
             case 9:  return "Beta 1.3 (or Alpha 1.0.2-1.0.3)";
             case 10: return "Beta 1.4 (or Alpha 1.0.4-1.0.11)";
             case 11: return "Beta 1.5 (or Alpha 1.0.12)";
-            case 12: return "Alpha 1.0.13-1.0.14";
-            case 13: return "Alpha 1.0.15";
-            case 14: return "Alpha 1.0.16-1.0.16_02";
+            case 12: return "Beta 1.6 (or Alpha 1.0.13-1.0.14)";
+            case 13: return "Beta 1.6.1-1.7_01 (or Alpha 1.0.15)";
+            case 14: return "Beta 1.7.2-1.7.3 (or Alpha 1.0.16-1.0.16_02)";
             default: return null;
         }
     }

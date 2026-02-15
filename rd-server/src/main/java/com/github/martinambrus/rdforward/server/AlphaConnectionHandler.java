@@ -59,6 +59,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     private static final long REPLENISH_DELAY_MS = 1000;
 
     private String pendingUsername;
+    private boolean detectedString16 = false;
     private ProtocolVersion clientVersion;
     private ConnectedPlayer player;
     private boolean loginComplete = false;
@@ -163,8 +164,11 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         // Beta 1.5+ uses String16 encoding instead of Java Modified UTF-8.
         // The Handshake auto-detects the format; configure codec for all
-        // subsequent packets on this channel.
+        // subsequent packets on this channel. Also track the detection so
+        // handleLogin can use Family.BETA for version resolution (v13/v14
+        // clash between Alpha and Beta).
         if (packet.isDetectedString16()) {
+            detectedString16 = true;
             RawPacketDecoder decoder = ctx.pipeline().get(RawPacketDecoder.class);
             if (decoder != null) {
                 decoder.setUseString16(true);
@@ -187,9 +191,16 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
 
         // Determine protocol version from the client's login packet.
-        // Use family-aware lookup because v7 is shared by Classic and Beta 1.0.
-        clientVersion = ProtocolVersion.fromNumber(loginProtocolVersion,
-                ProtocolVersion.Family.ALPHA, ProtocolVersion.Family.BETA);
+        // String16 detection from Handshake disambiguates version clashes:
+        // v13 is shared by Alpha 1.0.15 and Beta 1.6.1-1.7, v14 by Alpha
+        // 1.0.16 and Beta 1.7.2-1.7.3. String16 means Beta 1.5+ for certain.
+        if (detectedString16) {
+            clientVersion = ProtocolVersion.fromNumber(loginProtocolVersion,
+                    ProtocolVersion.Family.BETA);
+        } else {
+            clientVersion = ProtocolVersion.fromNumber(loginProtocolVersion,
+                    ProtocolVersion.Family.ALPHA, ProtocolVersion.Family.BETA);
+        }
         if (clientVersion == null) {
             String[] messages = buildUnsupportedVersionMessages(loginProtocolVersion);
             System.out.println("Rejected client"

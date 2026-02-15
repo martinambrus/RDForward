@@ -115,7 +115,7 @@ public class PacketRegistry {
      * not PlayerIdentification; 0x03 = Chat, not LevelDataChunk).
      */
     private static void registerAlphaPackets() {
-        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5};
+        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7};
 
         for (ProtocolVersion v : alphaVersions) {
             // === Bidirectional packets ===
@@ -278,7 +278,7 @@ public class PacketRegistry {
         // === Beta overrides (v7+) ===
         // Beta changed several packet wire formats and added new packets.
         // All Beta versions share the same wire protocol — loop to avoid duplication.
-        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5};
+        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7};
         for (ProtocolVersion betaV : betaVersions) {
             // Override C2S packets that changed format:
             register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x0F, new PacketFactory() {
@@ -386,6 +386,14 @@ public class PacketRegistry {
             if (betaV.getVersionNumber() >= 11) {
                 register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x66, new PacketFactory() {
                     public Packet create() { return new WindowClickPacketBeta15(); }
+                });
+            }
+
+            // Beta v12+ (Beta 1.6+): Respawn (0x09) C2S gained a dimension byte.
+            // Earlier Beta versions used an empty payload.
+            if (betaV.getVersionNumber() >= 12) {
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x09, new PacketFactory() {
+                    public Packet create() { return new RespawnPacketV12(); }
                 });
             }
         }
