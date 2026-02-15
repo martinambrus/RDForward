@@ -282,6 +282,17 @@ class PacketRoundTripTest {
     }
 
     @Test
+    void v1BlockPlacementRoundTrip() {
+        PlayerBlockPlacementPacket original = new PlayerBlockPlacementPacket(10, 64, 20, 1, (short) 4);
+        PlayerBlockPlacementPacket decoded = roundTrip(original, ProtocolVersion.ALPHA_1_0_17, PacketDirection.CLIENT_TO_SERVER);
+        assertEquals(10, decoded.getX());
+        assertEquals(64, decoded.getY());
+        assertEquals(20, decoded.getZ());
+        assertEquals(1, decoded.getDirection());
+        assertEquals(4, decoded.getItemId());
+    }
+
+    @Test
     void v14PickupSpawnRoundTrip() {
         PickupSpawnPacketV14 original = new PickupSpawnPacketV14(42, 4, 1, 0, 320, 2080, 640);
         PickupSpawnPacketV14 decoded = roundTrip(original, ProtocolVersion.ALPHA_1_0_16, PacketDirection.SERVER_TO_CLIENT);
@@ -311,6 +322,21 @@ class PacketRoundTripTest {
         assertEquals(42, decoded.getEntityId());
     }
 
+    @Test
+    void v1LoginC2SRoundTrip() {
+        LoginC2SPacketV2 original = new LoginC2SPacketV2(1, "TestPlayer");
+        LoginC2SPacketV2 decoded = roundTrip(original, ProtocolVersion.ALPHA_1_0_17, PacketDirection.CLIENT_TO_SERVER);
+        assertEquals(1, decoded.getProtocolVersion());
+        assertEquals("TestPlayer", decoded.getUsername());
+    }
+
+    @Test
+    void v1LoginS2CRoundTrip() {
+        LoginS2CPacketV2 original = new LoginS2CPacketV2(42);
+        LoginS2CPacketV2 decoded = roundTrip(original, ProtocolVersion.ALPHA_1_0_17, PacketDirection.SERVER_TO_CLIENT);
+        assertEquals(42, decoded.getEntityId());
+    }
+
     // === Registry Completeness ===
 
     @Test
@@ -334,7 +360,7 @@ class PacketRoundTripTest {
     @Test
     void v2v3v4v5AndV6ShareSamePacketRegistrations() {
         // Post-rewrite Alpha v2, v3, v4, v5 and v6 use identical wire formats
-        ProtocolVersion[] postRewriteVersions = {ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5};
+        ProtocolVersion[] postRewriteVersions = {ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5};
         int[] sharedC2SIds = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x12, 0x15, 0xFF};
         int[] sharedS2CIds = {0x00, 0x01, 0x02, 0x03, 0x04, 0x06, 0x08, 0x0D, 0x11, 0x12, 0x14, 0x15, 0x16, 0x1D, 0x1F, 0x20, 0x21, 0x22, 0x32, 0x33, 0x35, 0xFF};
         for (int id : sharedC2SIds) {

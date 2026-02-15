@@ -252,11 +252,15 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Update player position — internal convention is eye-level Y
         player.updatePositionDouble(spawnX, spawnY, spawnZ, spawnYaw, spawnPitch);
 
-        // Send spawn position (block coords for compass)
+        // Send spawn position (block coords for compass). SpawnPosition (0x06) was
+        // added in Alpha 1.1.0 (v2) alongside the compass item. v1 clients don't
+        // have this packet and throw "Bad packet id 6" if they receive it.
         int spawnBlockX = (int) Math.floor(spawnX);
         int spawnBlockY = (int) Math.floor(spawnY);
         int spawnBlockZ = (int) Math.floor(spawnZ);
-        ctx.writeAndFlush(new SpawnPositionPacket(spawnBlockX, spawnBlockY, spawnBlockZ));
+        if (clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_1_0)) {
+            ctx.writeAndFlush(new SpawnPositionPacket(spawnBlockX, spawnBlockY, spawnBlockZ));
+        }
 
         // Send player position and look BEFORE chunks.
         // The Alpha 1.1.x client's RenderGlobal chunk comparator violates
@@ -457,7 +461,11 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             // clicks may target in-bounds side faces that the client consumes
             // before the server rejects. Schedule replenishment so the
             // inventory sync (which has the real count) can drive a top-up.
-            scheduleReplenishment(ctx);
+            // v1 has no inventory sync and no way to know if the client
+            // consumed, so skip the give-back to avoid inflation.
+            if (clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_1_0)) {
+                scheduleReplenishment(ctx);
+            }
             return;
         }
 
@@ -471,12 +479,17 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         boolean overlapsZ = targetZ < pz + 0.3 && pz - 0.3 < targetZ + 1;
         if (overlapsX && overlapsY && overlapsZ) {
             ctx.writeAndFlush(new BlockChangePacket(targetX, targetY, targetZ, 0, 0));
-            // Count as consumed: during rapid jumping the client's position is ahead
-            // of the server's, so the client's own overlap check may pass (consuming
-            // the item) while the server's check fails. The batched replenishment
-            // tops up to 64, so slight over-counting is harmless.
-            trackedCobblestone--;
-            scheduleReplenishment(ctx);
+            // Count as consumed for v2+: during rapid jumping the client's
+            // position is ahead of the server's, so the client's own overlap
+            // check may pass (consuming the item) while the server's check
+            // fails. The batched replenishment tops up to 64, so slight
+            // over-counting is harmless.
+            // v1 has no inventory sync — skip give-back to avoid inflation
+            // when both client and server reject the overlap.
+            if (clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_1_0)) {
+                trackedCobblestone--;
+                scheduleReplenishment(ctx);
+            }
             return;
         }
 
@@ -520,12 +533,16 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             }, 200, TimeUnit.MILLISECONDS);
         }
 
-        // Batch replenishment: instead of giving cobblestone back immediately
-        // (which interferes with the Alpha client's input handling during rapid
-        // placement), accumulate the count and replenish once the player stops
-        // placing for 2 seconds.
-        trackedCobblestone--;
-        scheduleReplenishment(ctx);
+        // Replenish cobblestone. v1 (Alpha 1.0.17) has no PlayerInventory (0x05)
+        // packet and sends nothing back after AddToInventory, so immediate per-
+        // placement give-back is safe. v2+ clients send 0x04/0x05 responses that
+        // interfere with rapid placement input, so they use batched replenishment.
+        if (!clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_1_0)) {
+            giveItem(ctx, BlockRegistry.COBBLESTONE, 1);
+        } else {
+            trackedCobblestone--;
+            scheduleReplenishment(ctx);
+        }
     }
 
     /**
