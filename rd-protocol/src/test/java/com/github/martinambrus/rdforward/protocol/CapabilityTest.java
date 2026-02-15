@@ -152,6 +152,14 @@ class CapabilityTest {
     }
 
     @Test
+    void allCapabilitiesAvailableInBeta13() {
+        for (Capability cap : Capability.values()) {
+            assertTrue(cap.isAvailableIn(ProtocolVersion.BETA_1_3),
+                    cap.name() + " should be available in Beta 1.3 (v9)");
+        }
+    }
+
+    @Test
     void allCapabilitiesAvailableInBedrock() {
         for (Capability cap : Capability.values()) {
             assertTrue(cap.isAvailableIn(ProtocolVersion.BEDROCK),
@@ -180,6 +188,17 @@ class CapabilityTest {
         assertEquals(ProtocolVersion.BETA_1_0,
                 ProtocolVersion.fromNumber(7, ProtocolVersion.Family.ALPHA, ProtocolVersion.Family.BETA));
         assertNull(ProtocolVersion.fromNumber(7, ProtocolVersion.Family.ALPHA));
+    }
+
+    @Test
+    void fromNumberResolvesV9ToBeta13() {
+        // v9 is Beta 1.3 — resolves correctly with BETA family filter
+        assertEquals(ProtocolVersion.BETA_1_3,
+                ProtocolVersion.fromNumber(9, ProtocolVersion.Family.BETA));
+        assertEquals(ProtocolVersion.BETA_1_3,
+                ProtocolVersion.fromNumber(9, ProtocolVersion.Family.ALPHA, ProtocolVersion.Family.BETA));
+        // No Alpha version uses protocol number 9
+        assertNull(ProtocolVersion.fromNumber(9, ProtocolVersion.Family.ALPHA));
     }
 
     @Test
@@ -219,7 +238,8 @@ class CapabilityTest {
         assertTrue(ProtocolVersion.ALPHA_1_2_5.isAtLeast(ProtocolVersion.ALPHA_1_2_3));
         assertTrue(ProtocolVersion.BETA_1_0.isAtLeast(ProtocolVersion.ALPHA_1_2_5));
         assertTrue(ProtocolVersion.BETA_1_2.isAtLeast(ProtocolVersion.BETA_1_0));
-        assertTrue(ProtocolVersion.BEDROCK.isAtLeast(ProtocolVersion.BETA_1_2));
+        assertTrue(ProtocolVersion.BETA_1_3.isAtLeast(ProtocolVersion.BETA_1_2));
+        assertTrue(ProtocolVersion.BEDROCK.isAtLeast(ProtocolVersion.BETA_1_3));
 
         // v6 is chronologically AFTER v14 (post-rewrite), even though 6 < 14
         assertTrue(ProtocolVersion.ALPHA_1_2_5.isAtLeast(ProtocolVersion.ALPHA_1_0_16));

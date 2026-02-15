@@ -146,7 +146,9 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         } else if (packet instanceof UseEntityPacket
                 || packet instanceof ConfirmTransactionPacket
                 || packet instanceof UpdateSignPacket
-                || packet instanceof EntityEquipmentPacket) {
+                || packet instanceof EntityEquipmentPacket
+                || packet instanceof EntityActionPacket
+                || packet instanceof InputPacket) {
             // Silently accept (not yet implemented server-side)
         } else if (packet instanceof KeepAlivePacket) {
             // Silently accept

@@ -115,7 +115,7 @@ public class PacketRegistry {
      * not PlayerIdentification; 0x03 = Chat, not LevelDataChunk).
      */
     private static void registerAlphaPackets() {
-        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2};
+        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3};
 
         for (ProtocolVersion v : alphaVersions) {
             // === Bidirectional packets ===
@@ -278,7 +278,7 @@ public class PacketRegistry {
         // === Beta overrides (v7+) ===
         // Beta changed several packet wire formats and added new packets.
         // All Beta versions share the same wire protocol — loop to avoid duplication.
-        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2};
+        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3};
         for (ProtocolVersion betaV : betaVersions) {
             // Override C2S packets that changed format:
             register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x0F, new PacketFactory() {
@@ -316,6 +316,14 @@ public class PacketRegistry {
             });
             register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x82, new PacketFactory() {
                 public Packet create() { return new UpdateSignPacket(); }
+            });
+            // 0x13 Entity Action (crouch/uncrouch/leave bed)
+            register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x13, new PacketFactory() {
+                public Packet create() { return new EntityActionPacket(); }
+            });
+            // 0x1B Input/Steer Vehicle (silently consumed)
+            register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x1B, new PacketFactory() {
+                public Packet create() { return new InputPacket(); }
             });
 
             // New S2C packets in Beta

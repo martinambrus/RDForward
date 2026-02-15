@@ -120,12 +120,22 @@ public enum ProtocolVersion {
     BETA_1_2(8, 11, Family.BETA, "Beta 1.2 (v8)", 92),
 
     /**
+     * Minecraft Beta 1.3-1.3_01 - protocol version 9.
+     * Added beds, redstone repeaters, slabs. Minimal wire-level changes from v8:
+     * entity metadata format changed (irrelevant — we don't send metadata),
+     * block digging behavior changed (irrelevant — we use instant break).
+     * Login format unchanged, phantom KeepAlive trick still applies.
+     * Real MC protocol version 9.
+     */
+    BETA_1_3(9, 12, Family.BETA, "Beta 1.3 (v9)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 12, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 13, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -237,7 +247,7 @@ public enum ProtocolVersion {
             case 6:  return "Alpha 1.2.3_05-1.2.6";
             case 7:  return "Beta 1.0-1.1 (or Classic c0.0.20a-c0.30)";
             case 8:  return "Beta 1.1_02-1.2_02 (or Alpha 1.0.0-1.0.1_01)";
-            case 9:  return "Alpha 1.0.2-1.0.3";
+            case 9:  return "Beta 1.3 (or Alpha 1.0.2-1.0.3)";
             case 10: return "Alpha 1.0.4-1.0.11";
             case 11: return "Alpha 1.0.12";
             case 12: return "Alpha 1.0.13-1.0.14";

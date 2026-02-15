@@ -394,6 +394,30 @@ class PacketRoundTripTest {
         assertEquals(42, decoded.getEntityId());
     }
 
+    // === Beta 1.3 Packets (v9) ===
+
+    @Test
+    void beta13EntityActionRoundTrip() {
+        EntityActionPacket original = new EntityActionPacket();
+        // Write manually to set fields (packet has no constructor args)
+        ByteBuf buf = Unpooled.buffer();
+        buf.writeInt(42);   // entityId
+        buf.writeByte(1);   // actionId (crouch)
+        original.read(buf);
+        buf.release();
+
+        EntityActionPacket decoded = roundTrip(original, ProtocolVersion.BETA_1_3, PacketDirection.CLIENT_TO_SERVER);
+        assertEquals(42, decoded.getEntityId());
+        assertEquals(1, decoded.getActionId());
+    }
+
+    @Test
+    void beta13InputPacketRoundTrip() {
+        InputPacket original = new InputPacket();
+        InputPacket decoded = roundTrip(original, ProtocolVersion.BETA_1_3, PacketDirection.CLIENT_TO_SERVER);
+        assertEquals(0x1B, decoded.getPacketId());
+    }
+
     // === Registry Completeness ===
 
     @Test
@@ -441,21 +465,26 @@ class PacketRoundTripTest {
     }
 
     @Test
-    void beta12SharesBeta10PacketRegistrations() {
-        // Beta 1.2 (v8) shares packet registrations with Beta 1.0 (v7)
-        int[] betaC2SIds = {0x00, 0x01, 0x02, 0x03, 0x04, 0x07, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x12, 0x15, 0x65, 0x66, 0x67, 0x6A, 0x82, 0xFF};
+    void allBetaVersionsSharePacketRegistrations() {
+        // All Beta versions (v7, v8, v9) share packet registrations
+        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3};
+        int[] betaC2SIds = {0x00, 0x01, 0x02, 0x03, 0x04, 0x07, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x12, 0x13, 0x15, 0x1B, 0x65, 0x66, 0x67, 0x6A, 0x82, 0xFF};
         int[] betaS2CIds = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x08, 0x0D, 0x12, 0x14, 0x15, 0x16, 0x18, 0x1C, 0x1D, 0x1F, 0x20, 0x21, 0x22, 0x26, 0x27, 0x32, 0x33, 0x35, 0x3C, 0x64, 0x65, 0x67, 0x68, 0x69, 0x6A, 0x82, 0xFF};
         for (int id : betaC2SIds) {
-            assertEquals(
-                    PacketRegistry.hasPacket(ProtocolVersion.BETA_1_0, PacketDirection.CLIENT_TO_SERVER, id),
-                    PacketRegistry.hasPacket(ProtocolVersion.BETA_1_2, PacketDirection.CLIENT_TO_SERVER, id),
-                    "Beta 1.0 and 1.2 should share C2S packet 0x" + Integer.toHexString(id));
+            for (ProtocolVersion v : betaVersions) {
+                assertEquals(
+                        PacketRegistry.hasPacket(ProtocolVersion.BETA_1_0, PacketDirection.CLIENT_TO_SERVER, id),
+                        PacketRegistry.hasPacket(v, PacketDirection.CLIENT_TO_SERVER, id),
+                        "Beta 1.0 and " + v.name() + " should share C2S packet 0x" + Integer.toHexString(id));
+            }
         }
         for (int id : betaS2CIds) {
-            assertEquals(
-                    PacketRegistry.hasPacket(ProtocolVersion.BETA_1_0, PacketDirection.SERVER_TO_CLIENT, id),
-                    PacketRegistry.hasPacket(ProtocolVersion.BETA_1_2, PacketDirection.SERVER_TO_CLIENT, id),
-                    "Beta 1.0 and 1.2 should share S2C packet 0x" + Integer.toHexString(id));
+            for (ProtocolVersion v : betaVersions) {
+                assertEquals(
+                        PacketRegistry.hasPacket(ProtocolVersion.BETA_1_0, PacketDirection.SERVER_TO_CLIENT, id),
+                        PacketRegistry.hasPacket(v, PacketDirection.SERVER_TO_CLIENT, id),
+                        "Beta 1.0 and " + v.name() + " should share S2C packet 0x" + Integer.toHexString(id));
+            }
         }
     }
 
