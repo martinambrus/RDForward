@@ -134,9 +134,10 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             giveItem(ctx, BlockRegistry.COBBLESTONE, droppedCount);
         } else if (packet instanceof RespawnPacket) {
             handleRespawn(ctx);
+        } else if (packet instanceof WindowClickPacket) {
+            handleWindowClick(ctx, (WindowClickPacket) packet);
         } else if (packet instanceof UseEntityPacket
                 || packet instanceof CloseWindowPacket
-                || packet instanceof WindowClickPacket
                 || packet instanceof ConfirmTransactionPacket
                 || packet instanceof UpdateSignPacket
                 || packet instanceof EntityEquipmentPacket) {
@@ -557,6 +558,16 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     private void handleDigging(ChannelHandlerContext ctx, PlayerDiggingPacket packet) {
         if (player == null) return;
 
+        // Q-drop (status 4): player pressed Q to drop an item.
+        // Beta clients use this instead of PickupSpawnPacket for drops.
+        // Replenish cobblestone so the player can keep building.
+        if (packet.getStatus() == PlayerDiggingPacket.STATUS_DROP_ITEM) {
+            if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)) {
+                giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
+            }
+            return;
+        }
+
         // Alpha creative mode: instant block breaking on STARTED or FINISHED
         if (packet.getStatus() == PlayerDiggingPacket.STATUS_STARTED
                 || packet.getStatus() == PlayerDiggingPacket.STATUS_FINISHED) {
@@ -575,6 +586,20 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             if (result == EventResult.CANCEL) return;
 
             world.queueBlockChange(x, y, z, (byte) 0);
+        }
+    }
+
+    /**
+     * Handle Beta inventory window clicks. Slot -999 means the player clicked
+     * outside the window to throw items. Replenish cobblestone so they can
+     * keep building (this server is creative-mode only).
+     */
+    private void handleWindowClick(ChannelHandlerContext ctx, WindowClickPacket packet) {
+        if (player == null) return;
+
+        if (packet.getSlot() == -999) {
+            // Player threw item(s) out of the inventory window. Replenish cobblestone.
+            giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
         }
     }
 
