@@ -567,8 +567,8 @@ class PacketRoundTripTest {
 
     @Test
     void allBetaVersionsSharePacketRegistrations() {
-        // All Beta versions share packet registrations (v17 adds extras but still has all base IDs)
-        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8};
+        // All Beta + Release versions share packet registrations (v17/v22 add extras but still have all base IDs)
+        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8, ProtocolVersion.RELEASE_1_0};
         int[] betaC2SIds = {0x00, 0x01, 0x02, 0x03, 0x04, 0x07, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x12, 0x13, 0x15, 0x1B, 0x65, 0x66, 0x67, 0x6A, 0x82, 0xFF};
         int[] betaS2CIds = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x08, 0x0D, 0x12, 0x14, 0x15, 0x16, 0x18, 0x1C, 0x1D, 0x1F, 0x20, 0x21, 0x22, 0x26, 0x27, 0x32, 0x33, 0x35, 0x3C, 0x64, 0x65, 0x67, 0x68, 0x69, 0x6A, 0x82, 0xFF};
         for (int id : betaC2SIds) {
@@ -737,6 +737,179 @@ class PacketRoundTripTest {
         assertEquals(-1, decoded.getItemId());
         assertEquals(0, decoded.getCount());
         assertEquals(0, decoded.getDamage());
+    }
+
+    // === Release 1.0.0 Packets (v22) ===
+
+    @Test
+    void release10BlockPlacementV22RoundTrip() {
+        // V22 block placement — cobblestone is NOT damageable, so no NBT tag
+        PlayerBlockPlacementPacketV22 original = new PlayerBlockPlacementPacketV22();
+        ByteBuf buf = Unpooled.buffer();
+        buf.writeInt(10);    // x
+        buf.writeByte(64);   // y
+        buf.writeInt(20);    // z
+        buf.writeByte(1);    // direction
+        buf.writeShort(4);   // itemId (cobblestone — not damageable, no NBT)
+        buf.writeByte(1);    // amount
+        buf.writeShort(0);   // damage
+        original.read(buf);
+        assertEquals(0, buf.readableBytes(), "Not all bytes consumed");
+        buf.release();
+
+        PlayerBlockPlacementPacketV22 decoded = roundTrip(original, ProtocolVersion.RELEASE_1_0, PacketDirection.CLIENT_TO_SERVER);
+        assertEquals(10, decoded.getX());
+        assertEquals(64, decoded.getY());
+        assertEquals(20, decoded.getZ());
+        assertEquals(1, decoded.getDirection());
+        assertEquals(4, decoded.getItemId());
+        assertEquals(1, decoded.getAmount());
+        assertEquals(0, decoded.getDamage());
+    }
+
+    @Test
+    void release10BlockPlacementV22DamageableItemRoundTrip() {
+        // V22 block placement with a damageable item (iron sword = 267) — includes NBT
+        PlayerBlockPlacementPacketV22 original = new PlayerBlockPlacementPacketV22();
+        ByteBuf buf = Unpooled.buffer();
+        buf.writeInt(10);    // x
+        buf.writeByte(64);   // y
+        buf.writeInt(20);    // z
+        buf.writeByte(1);    // direction
+        buf.writeShort(267); // itemId (iron sword — damageable, has NBT)
+        buf.writeByte(1);    // amount
+        buf.writeShort(0);   // damage
+        buf.writeShort(-1);  // nbt length (-1 = no NBT data)
+        original.read(buf);
+        assertEquals(0, buf.readableBytes(), "Not all bytes consumed");
+        buf.release();
+
+        PlayerBlockPlacementPacketV22 decoded = roundTrip(original, ProtocolVersion.RELEASE_1_0, PacketDirection.CLIENT_TO_SERVER);
+        assertEquals(10, decoded.getX());
+        assertEquals(64, decoded.getY());
+        assertEquals(20, decoded.getZ());
+        assertEquals(1, decoded.getDirection());
+        assertEquals(267, decoded.getItemId());
+        assertEquals(1, decoded.getAmount());
+        assertEquals(0, decoded.getDamage());
+    }
+
+    @Test
+    void release10WindowClickV22RoundTrip() {
+        // Cobblestone is NOT damageable — no NBT tag
+        WindowClickPacketV22 original = new WindowClickPacketV22();
+        ByteBuf buf = Unpooled.buffer();
+        buf.writeByte(0);    // windowId
+        buf.writeShort(36);  // slot
+        buf.writeByte(0);    // rightClick
+        buf.writeShort(1);   // actionNum
+        buf.writeByte(0);    // shift
+        buf.writeShort(4);   // itemId (cobblestone — not damageable)
+        buf.writeByte(64);   // count
+        buf.writeShort(0);   // damage
+        original.read(buf);
+        assertEquals(0, buf.readableBytes(), "Not all bytes consumed");
+        buf.release();
+
+        WindowClickPacketV22 decoded = roundTrip(original, ProtocolVersion.RELEASE_1_0, PacketDirection.CLIENT_TO_SERVER);
+        assertEquals(0, decoded.getWindowId());
+        assertEquals(36, decoded.getSlot());
+        assertEquals(4, decoded.getItemId());
+        assertEquals(64, decoded.getCount());
+    }
+
+    @Test
+    void release10CreativeSlotV22RoundTrip() {
+        // V22 CreativeSlot uses conditional item format (unlike v17's unconditional 4 shorts)
+        // Cobblestone is NOT damageable — no NBT tag
+        CreativeSlotPacketV22 original = new CreativeSlotPacketV22();
+        ByteBuf buf = Unpooled.buffer();
+        buf.writeShort(36);  // slotId
+        buf.writeShort(4);   // itemId (cobblestone — not damageable)
+        buf.writeByte(64);   // count (byte, not short!)
+        buf.writeShort(0);   // damage
+        original.read(buf);
+        assertEquals(0, buf.readableBytes(), "Not all bytes consumed");
+        buf.release();
+
+        CreativeSlotPacketV22 decoded = roundTrip(original, ProtocolVersion.RELEASE_1_0, PacketDirection.CLIENT_TO_SERVER);
+        assertEquals(36, decoded.getSlotId());
+        assertEquals(4, decoded.getItemId());
+        assertEquals(64, decoded.getCount());
+        assertEquals(0, decoded.getDamage());
+    }
+
+    @Test
+    void release10CreativeSlotV22DamageableItemRoundTrip() {
+        // V22 CreativeSlot with a damageable item (diamond pickaxe = 278) — includes NBT
+        CreativeSlotPacketV22 original = new CreativeSlotPacketV22();
+        ByteBuf buf = Unpooled.buffer();
+        buf.writeShort(36);  // slotId
+        buf.writeShort(278); // itemId (diamond pickaxe — damageable)
+        buf.writeByte(1);    // count
+        buf.writeShort(10);  // damage (some durability used)
+        buf.writeShort(-1);  // nbt length (-1 = no NBT data)
+        original.read(buf);
+        assertEquals(0, buf.readableBytes(), "Not all bytes consumed");
+        buf.release();
+
+        CreativeSlotPacketV22 decoded = roundTrip(original, ProtocolVersion.RELEASE_1_0, PacketDirection.CLIENT_TO_SERVER);
+        assertEquals(36, decoded.getSlotId());
+        assertEquals(278, decoded.getItemId());
+        assertEquals(1, decoded.getCount());
+        assertEquals(10, decoded.getDamage());
+    }
+
+    @Test
+    void release10CreativeSlotV22EmptyRoundTrip() {
+        // V22 CreativeSlot with empty item — no count/damage/nbt fields
+        CreativeSlotPacketV22 original = new CreativeSlotPacketV22();
+        ByteBuf buf = Unpooled.buffer();
+        buf.writeShort(36);  // slotId
+        buf.writeShort(-1);  // itemId (empty)
+        original.read(buf);
+        assertEquals(0, buf.readableBytes(), "Not all bytes consumed");
+        buf.release();
+
+        CreativeSlotPacketV22 decoded = roundTrip(original, ProtocolVersion.RELEASE_1_0, PacketDirection.CLIENT_TO_SERVER);
+        assertEquals(36, decoded.getSlotId());
+        assertEquals(-1, decoded.getItemId());
+    }
+
+    @Test
+    void release10SetSlotV22RoundTrip() {
+        SetSlotPacketV22 original = new SetSlotPacketV22(0, 36, 4, 64, 0);
+        SetSlotPacketV22 decoded = roundTrip(original, ProtocolVersion.RELEASE_1_0, PacketDirection.SERVER_TO_CLIENT);
+        assertEquals(0, decoded.getWindowId());
+        assertEquals(36, decoded.getSlot());
+        assertEquals(4, decoded.getItemId());
+        assertEquals(64, decoded.getCount());
+        assertEquals(0, decoded.getDamage());
+    }
+
+    @Test
+    void release10EnchantItemRoundTrip() {
+        EnchantItemPacket original = new EnchantItemPacket();
+        ByteBuf buf = Unpooled.buffer();
+        buf.writeByte(1);  // windowId
+        buf.writeByte(2);  // enchantment
+        original.read(buf);
+        assertEquals(0, buf.readableBytes(), "Not all bytes consumed");
+        buf.release();
+
+        EnchantItemPacket decoded = roundTrip(original, ProtocolVersion.RELEASE_1_0, PacketDirection.CLIENT_TO_SERVER);
+        assertEquals(1, decoded.getWindowId());
+        assertEquals(2, decoded.getEnchantment());
+    }
+
+    @Test
+    void release10HasV22SpecificPackets() {
+        // v22 registers PlayerAbilities (0xCA) and EnchantItem (0x6C) that v17 doesn't have.
+        assertTrue(PacketRegistry.hasPacket(ProtocolVersion.RELEASE_1_0, PacketDirection.CLIENT_TO_SERVER, 0xCA));
+        assertTrue(PacketRegistry.hasPacket(ProtocolVersion.RELEASE_1_0, PacketDirection.CLIENT_TO_SERVER, 0x6C));
+        // v17 (Beta 1.8) should NOT have these
+        assertFalse(PacketRegistry.hasPacket(ProtocolVersion.BETA_1_8, PacketDirection.CLIENT_TO_SERVER, 0xCA));
+        assertFalse(PacketRegistry.hasPacket(ProtocolVersion.BETA_1_8, PacketDirection.CLIENT_TO_SERVER, 0x6C));
     }
 
     @Test

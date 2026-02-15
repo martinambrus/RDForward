@@ -102,11 +102,11 @@ public final class BlockRegistry {
     public static final int JACK_O_LANTERN = 91;
 
     /**
-     * Highest block ID that exists in Beta 1.8 (End Stone).
-     * Used to validate creative-mode placement: IDs 1-121 are blocks,
+     * Highest block ID that exists up to Release 1.0.0 (Dragon Egg = 122).
+     * Used to validate creative-mode placement: IDs 1-122 are blocks,
      * IDs 256+ are items (tools, food, minecarts, etc.) and are rejected.
      */
-    public static final int BETA_1_8_MAX_BLOCK_ID = 121;
+    public static final int MAX_BLOCK_ID = 122;
 
     private static final Map<Integer, String> BLOCK_NAMES;
 

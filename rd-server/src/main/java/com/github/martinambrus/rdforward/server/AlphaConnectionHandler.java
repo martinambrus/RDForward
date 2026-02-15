@@ -151,7 +151,9 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 resetInventory(ctx);
             }
         } else if (packet instanceof CreativeSlotPacket
-                || packet instanceof PlayerAbilitiesPacket) {
+                || packet instanceof CreativeSlotPacketV22
+                || packet instanceof PlayerAbilitiesPacket
+                || packet instanceof EnchantItemPacket) {
             // Creative mode actions — silently accept
         } else if (packet instanceof UseEntityPacket
                 || packet instanceof ConfirmTransactionPacket
@@ -211,7 +213,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // 1.0.16 and Beta 1.7.2-1.7.3. String16 means Beta 1.5+ for certain.
         if (detectedString16) {
             clientVersion = ProtocolVersion.fromNumber(loginProtocolVersion,
-                    ProtocolVersion.Family.BETA);
+                    ProtocolVersion.Family.BETA, ProtocolVersion.Family.RELEASE);
         } else {
             clientVersion = ProtocolVersion.fromNumber(loginProtocolVersion,
                     ProtocolVersion.Family.ALPHA, ProtocolVersion.Family.BETA);
@@ -431,7 +433,8 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.pipeline().remove("loginTimeout");
         }
 
-        String familyLabel = clientVersion.getFamily() == ProtocolVersion.Family.BETA ? "Beta" : "Alpha";
+        String familyLabel = clientVersion.getFamily() == ProtocolVersion.Family.RELEASE ? "Release"
+                : clientVersion.getFamily() == ProtocolVersion.Family.BETA ? "Beta" : "Alpha";
         System.out.println(familyLabel + " login complete: " + player.getUsername()
                 + " (protocol: " + clientVersion.getDisplayName()
                 + ", version " + clientVersion.getVersionNumber()
@@ -708,7 +711,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // All placed blocks get converted to grass/cobblestone anyway.
         // Other versions: use server version's block range.
         if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
-            if (itemId < 1 || itemId > BlockRegistry.BETA_1_8_MAX_BLOCK_ID) {
+            if (itemId < 1 || itemId > BlockRegistry.MAX_BLOCK_ID) {
                 ctx.writeAndFlush(new BlockChangePacket(targetX, targetY, targetZ, 0, 0));
                 return;
             }
@@ -837,7 +840,9 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
      * which targets a specific slot — we always use hotbar slot 0 (window slot 36).
      */
     private void giveItem(ChannelHandlerContext ctx, int itemId, int count) {
-        if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_0)) {
+            ctx.writeAndFlush(new SetSlotPacketV22(0, 36, itemId, count, 0));
+        } else if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)) {
             ctx.writeAndFlush(new SetSlotPacket(0, 36, itemId, count, 0));
         } else {
             ctx.writeAndFlush(new AddToInventoryPacket(itemId, count, 0));
@@ -967,14 +972,16 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
      */
     private static String[] buildUnsupportedVersionMessages(int pv) {
         // Determine which family the unknown version likely belongs to.
-        // AlphaConnectionHandler handles all pre-Netty TCP clients (Alpha and Beta).
-        // Alpha SMP versions: 1-14, Beta: 7-29. The ranges overlap, so for
-        // truly unsupported versions we show Alpha as the likely family.
+        // AlphaConnectionHandler handles all pre-Netty TCP clients (Alpha, Beta, Release).
+        // Alpha SMP versions: 1-14, Beta: 7-17, Release: 22+. The ranges overlap,
+        // so for truly unsupported versions we show the most likely family.
         ProtocolVersion.Family family;
         if (pv >= 1 && pv <= 14) {
             family = ProtocolVersion.Family.ALPHA;
-        } else if (pv >= 15 && pv <= 29) {
+        } else if (pv >= 15 && pv <= 21) {
             family = ProtocolVersion.Family.BETA;
+        } else if (pv >= 22 && pv <= 78) {
+            family = ProtocolVersion.Family.RELEASE;
         } else {
             String msg = "Unknown protocol version: " + pv;
             return new String[]{msg, msg};

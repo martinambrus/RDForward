@@ -96,7 +96,7 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
             // Remove self from pipeline
             pipeline.remove(this);
 
-            System.out.println("Detected Alpha protocol client, pipeline reconfigured");
+            System.out.println("Detected raw TCP client (Alpha/Beta/Release), pipeline reconfigured");
 
             // Forward the ByteBuf from the pipeline HEAD so it reaches the
             // new decoder without relying on the removed context's pointers.

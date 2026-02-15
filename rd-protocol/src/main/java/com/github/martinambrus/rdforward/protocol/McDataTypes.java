@@ -217,6 +217,49 @@ public final class McDataTypes {
     }
 
     // ========================================================================
+    // NBT item slot helpers (Release 1.0.0+ / v22+)
+    // ========================================================================
+
+    /**
+     * Check if an item ID corresponds to a damageable item in Release 1.0.0
+     * that includes NBT tag data in its wire format. The R1.0.0 client's base
+     * Packet class conditionally reads/writes NBT only for items where
+     * Item.isDamageable() returns true (maxDamage > 0 and !hasSubtypes).
+     * This includes tools, weapons, armor, bows, fishing rods, flint and steel,
+     * and shears. Blocks (IDs 0-255) are never damageable.
+     */
+    public static boolean isNbtDamageableItem(int itemId) {
+        return (itemId >= 256 && itemId <= 259)  // iron shovel/pick/axe + flint & steel
+            || itemId == 261                      // bow
+            || (itemId >= 267 && itemId <= 279)   // iron/wood/stone/diamond swords + tools
+            || (itemId >= 283 && itemId <= 286)   // gold sword/shovel/pick/axe
+            || (itemId >= 290 && itemId <= 294)   // hoes (wood/stone/iron/diamond/gold)
+            || (itemId >= 298 && itemId <= 317)   // armor (leather/chain/iron/diamond/gold)
+            || itemId == 346                      // fishing rod
+            || itemId == 359;                     // shears
+    }
+
+    /**
+     * Skip the NBT tag data appended to item slots in v22+ (Release 1.0.0).
+     * Wire format: [short nbtLength] [if > 0: nbtLength bytes of gzipped NBT].
+     * Our server never uses NBT, so we just skip past the data.
+     */
+    public static void skipNbtItemTag(ByteBuf buf) {
+        short nbtLength = buf.readShort();
+        if (nbtLength > 0) {
+            buf.skipBytes(nbtLength);
+        }
+    }
+
+    /**
+     * Write an empty NBT tag for item slots in v22+ (Release 1.0.0).
+     * Writes short -1 to indicate no NBT data.
+     */
+    public static void writeEmptyNbtItemTag(ByteBuf buf) {
+        buf.writeShort(-1);
+    }
+
+    // ========================================================================
     // VarInt (1.7+ / post-Netty format, for future use)
     // ========================================================================
 

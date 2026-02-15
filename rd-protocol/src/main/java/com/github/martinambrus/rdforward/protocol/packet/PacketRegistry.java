@@ -115,7 +115,7 @@ public class PacketRegistry {
      * not PlayerIdentification; 0x03 = Chat, not LevelDataChunk).
      */
     private static void registerAlphaPackets() {
-        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8};
+        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8, ProtocolVersion.RELEASE_1_0};
 
         for (ProtocolVersion v : alphaVersions) {
             // === Bidirectional packets ===
@@ -275,10 +275,11 @@ public class PacketRegistry {
         // (v1-v6) for all packets including 0x0F (BlockPlacement) and 0x15
         // (PickupSpawn). No version-specific overrides needed.
 
-        // === Beta overrides (v7+) ===
+        // === Beta + Release overrides (v7+) ===
         // Beta changed several packet wire formats and added new packets.
-        // All Beta versions share the same wire protocol — loop to avoid duplication.
-        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8};
+        // Release 1.0.0 (v22) shares the same base registrations as Beta, with
+        // version-specific overrides for item slot format (NBT tags).
+        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8, ProtocolVersion.RELEASE_1_0};
         for (ProtocolVersion betaV : betaVersions) {
             // Override C2S packets that changed format:
             register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x0F, new PacketFactory() {
@@ -426,6 +427,37 @@ public class PacketRegistry {
                 });
                 // Note: 0xCA PlayerAbilities does not exist as a packet in Beta 1.8.
                 // Abilities are derived client-side from the gameMode in Login/Respawn.
+            }
+
+            // Release v22+ (Release 1.0.0+): Item slots gained NBT tag data after
+            // damage. All packets containing item data need v22 variants. CreativeSlot
+            // changed from unconditional 4-short format to conditional item with NBT.
+            // New C2S packets: EnchantItem (0x6C), PlayerAbilities (0xCA, now a real packet).
+            if (betaV.getVersionNumber() >= 22) {
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x0F, new PacketFactory() {
+                    public Packet create() { return new PlayerBlockPlacementPacketV22(); }
+                });
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x66, new PacketFactory() {
+                    public Packet create() { return new WindowClickPacketV22(); }
+                });
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x6B, new PacketFactory() {
+                    public Packet create() { return new CreativeSlotPacketV22(); }
+                });
+                register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x67, new PacketFactory() {
+                    public Packet create() { return new SetSlotPacketV22(); }
+                });
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x67, new PacketFactory() {
+                    public Packet create() { return new SetSlotPacketV22(); }
+                });
+                register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x68, new PacketFactory() {
+                    public Packet create() { return new WindowItemsPacketV22(); }
+                });
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x6C, new PacketFactory() {
+                    public Packet create() { return new EnchantItemPacket(); }
+                });
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0xCA, new PacketFactory() {
+                    public Packet create() { return new PlayerAbilitiesPacket(); }
+                });
             }
         }
     }

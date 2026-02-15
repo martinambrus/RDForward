@@ -193,12 +193,23 @@ public enum ProtocolVersion {
     BETA_1_8(17, 18, Family.BETA, "Beta 1.8 (v17)", 92),
 
     /**
+     * Minecraft Release 1.0.0 (the first official release after Beta).
+     * Wire protocol nearly identical to v17 — the only significant change is
+     * that item slots gained NBT tag data after the damage field. This affects
+     * all packets containing item data (BlockPlacement, WindowClick, CreativeSlot,
+     * SetSlot, WindowItems). Login, Handshake, KeepAlive, and Respawn are unchanged.
+     * New C2S packets: EnchantItem (0x6C), PlayerAbilities (0xCA, now a real packet).
+     * Real MC protocol version 22.
+     */
+    RELEASE_1_0(22, 19, Family.RELEASE, "Release 1.0.0 (v22)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 19, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 20, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -317,6 +328,7 @@ public enum ProtocolVersion {
             case 13: return "Beta 1.6.1-1.7_01 (or Alpha 1.0.15)";
             case 14: return "Beta 1.7.2-1.7.3 (or Alpha 1.0.16-1.0.16_02)";
             case 17: return "Beta 1.8-1.8.1";
+            case 22: return "Release 1.0.0";
             default: return null;
         }
     }
