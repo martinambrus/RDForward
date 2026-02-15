@@ -1,5 +1,6 @@
 package com.github.martinambrus.rdforward.protocol.codec;
 
+import com.github.martinambrus.rdforward.protocol.McDataTypes;
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.protocol.packet.PacketDirection;
@@ -26,6 +27,7 @@ public class RawPacketDecoder extends ByteToMessageDecoder {
 
     private final PacketDirection readDirection;
     private volatile ProtocolVersion protocolVersion;
+    private volatile boolean useString16 = false;
 
     public RawPacketDecoder(PacketDirection readDirection, ProtocolVersion protocolVersion) {
         this.readDirection = readDirection;
@@ -34,6 +36,8 @@ public class RawPacketDecoder extends ByteToMessageDecoder {
 
     @Override
     protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) {
+        McDataTypes.STRING16_MODE.set(useString16);
+        try {
         while (in.readableBytes() > 0) {
             in.markReaderIndex();
 
@@ -73,6 +77,9 @@ public class RawPacketDecoder extends ByteToMessageDecoder {
 
             out.add(packet);
         }
+        } finally {
+            McDataTypes.STRING16_MODE.remove();
+        }
     }
 
     public void setProtocolVersion(ProtocolVersion version) {
@@ -85,5 +92,9 @@ public class RawPacketDecoder extends ByteToMessageDecoder {
 
     public PacketDirection getReadDirection() {
         return readDirection;
+    }
+
+    public void setUseString16(boolean useString16) {
+        this.useString16 = useString16;
     }
 }

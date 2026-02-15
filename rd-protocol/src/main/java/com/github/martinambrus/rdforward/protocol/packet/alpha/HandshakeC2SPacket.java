@@ -15,6 +15,7 @@ import io.netty.buffer.ByteBuf;
 public class HandshakeC2SPacket implements Packet {
 
     private String username;
+    private boolean detectedString16;
 
     public HandshakeC2SPacket() {}
 
@@ -29,13 +30,16 @@ public class HandshakeC2SPacket implements Packet {
 
     @Override
     public void write(ByteBuf buf) {
-        McDataTypes.writeJavaUTF(buf, username);
+        McDataTypes.writeStringAdaptive(buf, username);
     }
 
     @Override
     public void read(ByteBuf buf) {
-        username = McDataTypes.readJavaUTF(buf);
+        Object[] result = McDataTypes.readStringAuto(buf);
+        username = (String) result[0];
+        detectedString16 = (Boolean) result[1];
     }
 
     public String getUsername() { return username; }
+    public boolean isDetectedString16() { return detectedString16; }
 }

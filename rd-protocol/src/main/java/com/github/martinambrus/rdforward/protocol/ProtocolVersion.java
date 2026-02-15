@@ -141,12 +141,23 @@ public enum ProtocolVersion {
     BETA_1_4(10, 13, Family.BETA, "Beta 1.4 (v10)", 92),
 
     /**
+     * Minecraft Beta 1.5-1.5_01 - protocol version 11.
+     * Changed string encoding from Java Modified UTF-8 (writeUTF format:
+     * 2-byte byte count + UTF-8 bytes) to String16 (2-byte char count +
+     * UTF-16BE bytes). Auto-detected in HandshakeC2SPacket by peeking at
+     * the first data byte after the length prefix (0x00 = String16 for ASCII).
+     * Wire format otherwise identical to v10.
+     * Real MC protocol version 11 (clashes with pre-rewrite Alpha v11/1.0.12).
+     */
+    BETA_1_5(11, 14, Family.BETA, "Beta 1.5 (v11)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 14, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 15, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -260,7 +271,7 @@ public enum ProtocolVersion {
             case 8:  return "Beta 1.1_02-1.2_02 (or Alpha 1.0.0-1.0.1_01)";
             case 9:  return "Beta 1.3 (or Alpha 1.0.2-1.0.3)";
             case 10: return "Beta 1.4 (or Alpha 1.0.4-1.0.11)";
-            case 11: return "Alpha 1.0.12";
+            case 11: return "Beta 1.5 (or Alpha 1.0.12)";
             case 12: return "Alpha 1.0.13-1.0.14";
             case 13: return "Alpha 1.0.15";
             case 14: return "Alpha 1.0.16-1.0.16_02";

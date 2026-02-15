@@ -64,8 +64,8 @@ public class LoginC2SPacket implements Packet {
     @Override
     public void write(ByteBuf buf) {
         buf.writeInt(protocolVersion);
-        McDataTypes.writeJavaUTF(buf, username);
-        McDataTypes.writeJavaUTF(buf, "");
+        McDataTypes.writeStringAdaptive(buf, username);
+        McDataTypes.writeStringAdaptive(buf, "");
         // Post-rewrite v3-v9 include mapSeed/dimension. forceMapSeed overrides for Beta v10+.
         // v1-v2 (1.0.17-1.1.2_01) and v10-v14 (pre-rewrite 1.0.4-1.0.16) omit them.
         if (forceMapSeed || (protocolVersion >= 3 && protocolVersion < 10)) {
@@ -77,8 +77,8 @@ public class LoginC2SPacket implements Packet {
     @Override
     public void read(ByteBuf buf) {
         protocolVersion = buf.readInt();
-        username = McDataTypes.readJavaUTF(buf);
-        McDataTypes.readJavaUTF(buf); // unused
+        username = McDataTypes.readStringAdaptive(buf);
+        McDataTypes.readStringAdaptive(buf); // unused
         // Post-rewrite v3-v9 include mapSeed/dimension. forceMapSeed overrides for Beta v10+.
         // v1-v2 (1.0.17-1.1.2_01) and v10-v14 (pre-rewrite 1.0.4-1.0.16) omit them.
         if (forceMapSeed || (protocolVersion >= 3 && protocolVersion < 10)) {

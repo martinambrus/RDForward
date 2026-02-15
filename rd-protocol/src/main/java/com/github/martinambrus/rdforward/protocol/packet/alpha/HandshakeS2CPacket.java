@@ -30,12 +30,12 @@ public class HandshakeS2CPacket implements Packet {
 
     @Override
     public void write(ByteBuf buf) {
-        McDataTypes.writeJavaUTF(buf, connectionHash);
+        McDataTypes.writeStringAdaptive(buf, connectionHash);
     }
 
     @Override
     public void read(ByteBuf buf) {
-        connectionHash = McDataTypes.readJavaUTF(buf);
+        connectionHash = McDataTypes.readStringAdaptive(buf);
     }
 
     public String getConnectionHash() { return connectionHash; }

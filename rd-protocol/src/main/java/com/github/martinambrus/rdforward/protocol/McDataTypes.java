@@ -22,6 +22,18 @@ public final class McDataTypes {
     private static final Charset US_ASCII = Charset.forName("US-ASCII");
     private static final Charset UTF_16BE = Charset.forName("UTF-16BE");
 
+    /**
+     * Thread-local flag controlling whether adaptive string methods use String16
+     * (UTF-16BE) or Java Modified UTF-8 encoding. Set by RawPacketDecoder/Encoder
+     * for Beta 1.5+ connections that use String16 encoding.
+     */
+    public static final ThreadLocal<Boolean> STRING16_MODE = new ThreadLocal<Boolean>() {
+        @Override
+        protected Boolean initialValue() {
+            return false;
+        }
+    };
+
     private McDataTypes() {}
 
     // ========================================================================
@@ -139,6 +151,69 @@ public final class McDataTypes {
         byte[] bytes = value.getBytes(Charset.forName("UTF-8"));
         buf.writeShort(bytes.length);
         buf.writeBytes(bytes);
+    }
+
+    // ========================================================================
+    // Adaptive string methods (auto-detect or delegate based on STRING16_MODE)
+    // ========================================================================
+
+    /**
+     * Auto-detect string encoding format by peeking at the first data byte
+     * after the 2-byte length prefix. For ASCII strings (all MC usernames),
+     * String16's first byte is always 0x00 (high byte of UTF-16BE), while
+     * writeUTF's first byte is the character itself (non-zero for ASCII).
+     *
+     * Used by HandshakeC2SPacket to detect the client's string format before
+     * the protocol version is known.
+     *
+     * @return a two-element Object array: [0] = String value, [1] = Boolean isString16
+     */
+    public static Object[] readStringAuto(ByteBuf buf) {
+        short length = buf.readShort();
+        if (length <= 0) {
+            return new Object[]{"", false};
+        }
+        // Peek at the first byte after the length prefix to determine format.
+        // String16: length is char count, first byte is 0x00 (high byte of UTF-16BE for ASCII).
+        // writeUTF: length is byte count, first byte is the character itself (non-zero for ASCII).
+        byte firstByte = buf.getByte(buf.readerIndex());
+        if (firstByte == 0x00) {
+            // String16 format: length is char count, read length*2 bytes as UTF-16BE
+            byte[] bytes = new byte[length * 2];
+            buf.readBytes(bytes);
+            return new Object[]{new String(bytes, UTF_16BE), true};
+        } else {
+            // writeUTF format: length is byte count, read length bytes as UTF-8
+            byte[] bytes = new byte[length];
+            buf.readBytes(bytes);
+            return new Object[]{new String(bytes, Charset.forName("UTF-8")), false};
+        }
+    }
+
+    /**
+     * Read a string using the format determined by STRING16_MODE ThreadLocal.
+     * When STRING16_MODE is true, reads String16 (UTF-16BE). Otherwise reads
+     * Java Modified UTF-8. Used by all C2S packets except HandshakeC2SPacket.
+     */
+    public static String readStringAdaptive(ByteBuf buf) {
+        if (STRING16_MODE.get()) {
+            return readString16(buf);
+        } else {
+            return readJavaUTF(buf);
+        }
+    }
+
+    /**
+     * Write a string using the format determined by STRING16_MODE ThreadLocal.
+     * When STRING16_MODE is true, writes String16 (UTF-16BE). Otherwise writes
+     * Java Modified UTF-8. Used by all S2C packets that contain strings.
+     */
+    public static void writeStringAdaptive(ByteBuf buf, String value) {
+        if (STRING16_MODE.get()) {
+            writeString16(buf, value);
+        } else {
+            writeJavaUTF(buf, value);
+        }
     }
 
     // ========================================================================

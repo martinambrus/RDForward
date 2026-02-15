@@ -1,5 +1,6 @@
 package com.github.martinambrus.rdforward.protocol.codec;
 
+import com.github.martinambrus.rdforward.protocol.McDataTypes;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
@@ -15,9 +16,20 @@ import io.netty.handler.codec.MessageToByteEncoder;
  */
 public class RawPacketEncoder extends MessageToByteEncoder<Packet> {
 
+    private volatile boolean useString16 = false;
+
     @Override
     protected void encode(ChannelHandlerContext ctx, Packet packet, ByteBuf out) {
         out.writeByte(packet.getPacketId());
-        packet.write(out);
+        McDataTypes.STRING16_MODE.set(useString16);
+        try {
+            packet.write(out);
+        } finally {
+            McDataTypes.STRING16_MODE.remove();
+        }
+    }
+
+    public void setUseString16(boolean useString16) {
+        this.useString16 = useString16;
     }
 }

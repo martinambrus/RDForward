@@ -1,5 +1,6 @@
 package com.github.martinambrus.rdforward.protocol.packet;
 
+import com.github.martinambrus.rdforward.protocol.McDataTypes;
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.packet.classic.*;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.*;
@@ -432,6 +433,92 @@ class PacketRoundTripTest {
         assertEquals(0, decoded.getDimension());
     }
 
+    // === Beta 1.5 Packets (v11) — String16 encoding ===
+
+    @Test
+    void beta15LoginC2SString16RoundTrip() {
+        // Write Login in String16 mode, read back, verify fields
+        McDataTypes.STRING16_MODE.set(true);
+        try {
+            LoginC2SPacket original = new LoginC2SPacket(11, "TestPlayer", true);
+            ByteBuf buf = Unpooled.buffer();
+            try {
+                original.write(buf);
+                LoginC2SPacket decoded = (LoginC2SPacket) PacketRegistry.createPacket(
+                        ProtocolVersion.BETA_1_5, PacketDirection.CLIENT_TO_SERVER, 0x01);
+                assertNotNull(decoded);
+                decoded.read(buf);
+                assertEquals(0, buf.readableBytes(), "Not all bytes consumed");
+                assertEquals(11, decoded.getProtocolVersion());
+                assertEquals("TestPlayer", decoded.getUsername());
+                assertEquals(0, decoded.getMapSeed());
+                assertEquals(0, decoded.getDimension());
+            } finally {
+                buf.release();
+            }
+        } finally {
+            McDataTypes.STRING16_MODE.remove();
+        }
+    }
+
+    @Test
+    void beta15ChatString16RoundTrip() {
+        // Write Chat in String16 mode, read back, verify message
+        McDataTypes.STRING16_MODE.set(true);
+        try {
+            ChatPacket original = new ChatPacket("Hello Beta 1.5!");
+            ByteBuf buf = Unpooled.buffer();
+            try {
+                original.write(buf);
+                ChatPacket decoded = new ChatPacket();
+                decoded.read(buf);
+                assertEquals(0, buf.readableBytes(), "Not all bytes consumed");
+                assertEquals("Hello Beta 1.5!", decoded.getMessage());
+            } finally {
+                buf.release();
+            }
+        } finally {
+            McDataTypes.STRING16_MODE.remove();
+        }
+    }
+
+    @Test
+    void beta15HandshakeC2SAutoDetection() {
+        // Write Handshake in String16 format, read with auto-detect,
+        // verify isDetectedString16() is true
+        ByteBuf buf = Unpooled.buffer();
+        try {
+            // Manually write String16 format: char count + UTF-16BE
+            McDataTypes.writeString16(buf, "TestPlayer");
+
+            HandshakeC2SPacket decoded = new HandshakeC2SPacket();
+            decoded.read(buf);
+            assertEquals(0, buf.readableBytes(), "Not all bytes consumed");
+            assertEquals("TestPlayer", decoded.getUsername());
+            assertTrue(decoded.isDetectedString16(), "Should detect String16 format");
+        } finally {
+            buf.release();
+        }
+    }
+
+    @Test
+    void beta15HandshakeC2SAutoDetectionWriteUTF() {
+        // Write Handshake in writeUTF format, read with auto-detect,
+        // verify isDetectedString16() is false
+        ByteBuf buf = Unpooled.buffer();
+        try {
+            McDataTypes.writeJavaUTF(buf, "TestPlayer");
+
+            HandshakeC2SPacket decoded = new HandshakeC2SPacket();
+            decoded.read(buf);
+            assertEquals(0, buf.readableBytes(), "Not all bytes consumed");
+            assertEquals("TestPlayer", decoded.getUsername());
+            assertFalse(decoded.isDetectedString16(), "Should detect writeUTF format");
+        } finally {
+            buf.release();
+        }
+    }
+
     // === Registry Completeness ===
 
     @Test
@@ -480,8 +567,8 @@ class PacketRoundTripTest {
 
     @Test
     void allBetaVersionsSharePacketRegistrations() {
-        // All Beta versions (v7, v8, v9, v10) share packet registrations
-        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4};
+        // All Beta versions (v7, v8, v9, v10, v11) share packet registrations
+        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5};
         int[] betaC2SIds = {0x00, 0x01, 0x02, 0x03, 0x04, 0x07, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x12, 0x13, 0x15, 0x1B, 0x65, 0x66, 0x67, 0x6A, 0x82, 0xFF};
         int[] betaS2CIds = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x08, 0x0D, 0x12, 0x14, 0x15, 0x16, 0x18, 0x1C, 0x1D, 0x1F, 0x20, 0x21, 0x22, 0x26, 0x27, 0x32, 0x33, 0x35, 0x3C, 0x64, 0x65, 0x67, 0x68, 0x69, 0x6A, 0x82, 0xFF};
         for (int id : betaC2SIds) {

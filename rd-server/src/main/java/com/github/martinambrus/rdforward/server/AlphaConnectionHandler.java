@@ -2,6 +2,7 @@ package com.github.martinambrus.rdforward.server;
 
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.codec.RawPacketDecoder;
+import com.github.martinambrus.rdforward.protocol.codec.RawPacketEncoder;
 import com.github.martinambrus.rdforward.protocol.event.EventResult;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.*;
@@ -159,6 +160,21 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleHandshake(ChannelHandlerContext ctx, HandshakeC2SPacket packet) {
         pendingUsername = packet.getUsername();
+
+        // Beta 1.5+ uses String16 encoding instead of Java Modified UTF-8.
+        // The Handshake auto-detects the format; configure codec for all
+        // subsequent packets on this channel.
+        if (packet.isDetectedString16()) {
+            RawPacketDecoder decoder = ctx.pipeline().get(RawPacketDecoder.class);
+            if (decoder != null) {
+                decoder.setUseString16(true);
+            }
+            RawPacketEncoder encoder = ctx.pipeline().get(RawPacketEncoder.class);
+            if (encoder != null) {
+                encoder.setUseString16(true);
+            }
+        }
+
         // Respond with offline-mode hash
         ctx.writeAndFlush(new HandshakeS2CPacket("-"));
     }
