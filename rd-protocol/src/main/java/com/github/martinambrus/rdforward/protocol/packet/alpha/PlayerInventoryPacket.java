@@ -3,6 +3,9 @@ package com.github.martinambrus.rdforward.protocol.packet.alpha;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import io.netty.buffer.ByteBuf;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Alpha protocol 0x05 (Client -> Server): Player Inventory.
  *
@@ -21,6 +24,8 @@ import io.netty.buffer.ByteBuf;
 public class PlayerInventoryPacket implements Packet {
 
     private int type;
+    /** Total count of each item ID across all slots in this inventory section. */
+    private final Map<Integer, Integer> itemCounts = new HashMap<>();
 
     public PlayerInventoryPacket() {}
 
@@ -37,15 +42,25 @@ public class PlayerInventoryPacket implements Packet {
     @Override
     public void read(ByteBuf buf) {
         type = buf.readInt();
+        itemCounts.clear();
         short count = buf.readShort();
         for (int i = 0; i < count; i++) {
             short itemId = buf.readShort();
             if (itemId >= 0) {
-                buf.readByte();  // stack size
+                byte stackSize = buf.readByte();
                 buf.readShort(); // damage/durability
+                itemCounts.merge((int) itemId, (int) stackSize & 0xFF, Integer::sum);
             }
         }
     }
 
     public int getType() { return type; }
+
+    /**
+     * Returns the total count of the given item across all slots.
+     * Only valid after {@link #read(ByteBuf)} has been called.
+     */
+    public int getItemCount(int itemId) {
+        return itemCounts.getOrDefault(itemId, 0);
+    }
 }

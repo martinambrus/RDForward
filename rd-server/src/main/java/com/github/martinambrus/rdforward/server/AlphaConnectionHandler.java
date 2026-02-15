@@ -51,17 +51,24 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     private final ChunkManager chunkManager;
 
     /**
-     * Cooldown period (ms) after placing a block during which dig packets are
-     * ignored. The Alpha client erroneously sends dig packets (0x0E) during
-     * sustained rapid right-clicking (e.g. building a column while jumping).
+     * Delay (ms) after the last block placement before replenishing cobblestone.
+     * Batching replenishment avoids sending AddToInventory packets during rapid
+     * placement, which can confuse the Alpha client's input handling.
      */
-    private static final long PLACEMENT_DIG_COOLDOWN_MS = 500;
+    private static final long REPLENISH_DELAY_MS = 1000;
 
     private String pendingUsername;
     private ProtocolVersion clientVersion;
     private ConnectedPlayer player;
     private boolean loginComplete = false;
-    private long lastPlacementTime = 0;
+
+    /**
+     * Server-side estimate of the player's cobblestone count. Corrected by
+     * inventory sync packets (0x05) from the client. Used to calculate how
+     * many to give back when replenishing (top up to 64).
+     */
+    private int trackedCobblestone = 0;
+    private java.util.concurrent.ScheduledFuture<?> replenishTask;
 
     public AlphaConnectionHandler(ProtocolVersion serverVersion, ServerWorld world,
                                   PlayerManager playerManager, ChunkManager chunkManager) {
@@ -103,11 +110,14 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         } else if (packet instanceof AnimationPacket) {
             // Silently accept (arm swing animation)
         } else if (packet instanceof PlayerInventoryPacket) {
-            // Silently accept (inventory sync)
+            handleInventorySync((PlayerInventoryPacket) packet);
         } else if (packet instanceof PickupSpawnPacket) {
-            // Silently accept item drops. In our creative-like mode, cobblestone
-            // is replenished through placement handling. Returning drops via
-            // giveItem creates an echo loop (overflow → drop → give back → overflow).
+            // Give back dropped cobblestone immediately. Q-drops are single
+            // events that don't interfere with the client's input handling.
+            // Use the actual count from the packet (Q may drop a full stack).
+            int droppedCount = ((PickupSpawnPacket) packet).getCount() & 0xFF;
+            if (droppedCount < 1) droppedCount = 1;
+            giveItem(ctx, BlockRegistry.COBBLESTONE, droppedCount);
         } else if (packet instanceof KeepAlivePacket) {
             // Silently accept
         } else if (packet instanceof DisconnectPacket) {
@@ -289,6 +299,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         // Give the player cobblestone so they can place blocks.
         giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
+        trackedCobblestone = 64;
 
         // Remove login timeout
         if (ctx.pipeline().get("loginTimeout") != null) {
@@ -388,19 +399,10 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     private void handleDigging(ChannelHandlerContext ctx, PlayerDiggingPacket packet) {
         if (player == null) return;
 
-        long timeSincePlacement = System.currentTimeMillis() - lastPlacementTime;
-
-        // Alpha has instant block breaking — handle both "started" (instant break)
-        // and "finished" (survival mode break animation complete)
+        // Alpha creative mode: instant block breaking on STARTED or FINISHED
         if (packet.getStatus() == PlayerDiggingPacket.STATUS_STARTED
                 || packet.getStatus() == PlayerDiggingPacket.STATUS_FINISHED) {
 
-            // Suppress erroneous dig packets during rapid right-click placement.
-            // The Alpha client sends dig packets (0x0E) during sustained rapid
-            // right-clicking (e.g. building a column while jumping).
-            if (timeSincePlacement < PLACEMENT_DIG_COOLDOWN_MS) {
-                return;
-            }
             int x = packet.getX();
             int y = packet.getY();
             int z = packet.getZ();
@@ -408,7 +410,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             if (!world.inBounds(x, y, z)) return;
 
             byte existingBlock = world.getBlock(x, y, z);
-            if (existingBlock == 0) return; // already air, nothing to break
+            if (existingBlock == 0) return;
 
             EventResult result = ServerEvents.BLOCK_BREAK.invoker()
                     .onBlockBreak(player.getUsername(), x, y, z, existingBlock & 0xFF);
@@ -429,8 +431,6 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Special case: direction -1 means "use item" without placing, ignore
         if (direction == -1) return;
 
-        lastPlacementTime = System.currentTimeMillis();
-
         // Compute target position based on face
         int targetX = x;
         int targetY = y;
@@ -445,16 +445,19 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
 
         short itemId = packet.getItemId();
-        if (itemId < 0) return; // empty hand, no block consumed by client
+        if (itemId < 0) return;
 
         if (!world.inBounds(targetX, targetY, targetZ)) {
             // Cancel the client's predicted block immediately (otherwise the
             // phantom block persists for ~4 seconds, allowing further building
             // above the world height limit).
             ctx.writeAndFlush(new BlockChangePacket(targetX, targetY, targetZ, 0, 0));
-            // Return the consumed item after a short delay so the client has
-            // processed its own stack decrement before the replenishment arrives.
-            scheduleGiveItem(ctx, BlockRegistry.COBBLESTONE, 1);
+            // Don't decrement trackedCobblestone — the client's own OOB check
+            // usually prevents consumption. But during rapid jumping, some
+            // clicks may target in-bounds side faces that the client consumes
+            // before the server rejects. Schedule replenishment so the
+            // inventory sync (which has the real count) can drive a top-up.
+            scheduleReplenishment(ctx);
             return;
         }
 
@@ -468,7 +471,12 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         boolean overlapsZ = targetZ < pz + 0.3 && pz - 0.3 < targetZ + 1;
         if (overlapsX && overlapsY && overlapsZ) {
             ctx.writeAndFlush(new BlockChangePacket(targetX, targetY, targetZ, 0, 0));
-            scheduleGiveItem(ctx, BlockRegistry.COBBLESTONE, 1);
+            // Count as consumed: during rapid jumping the client's position is ahead
+            // of the server's, so the client's own overlap check may pass (consuming
+            // the item) while the server's check fails. The batched replenishment
+            // tops up to 64, so slight over-counting is harmless.
+            trackedCobblestone--;
+            scheduleReplenishment(ctx);
             return;
         }
 
@@ -512,11 +520,12 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             }, 200, TimeUnit.MILLISECONDS);
         }
 
-        // Replenish 1 cobblestone after a short delay so the client has processed
-        // its own stack decrement before the AddToInventory arrives. Without this
-        // delay, the replenishment can arrive while the stack is still full (64),
-        // causing overflow into a second stack.
-        scheduleGiveItem(ctx, BlockRegistry.COBBLESTONE, 1);
+        // Batch replenishment: instead of giving cobblestone back immediately
+        // (which interferes with the Alpha client's input handling during rapid
+        // placement), accumulate the count and replenish once the player stops
+        // placing for 2 seconds.
+        trackedCobblestone--;
+        scheduleReplenishment(ctx);
     }
 
     /**
@@ -528,16 +537,36 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     }
 
     /**
-     * Give items after a short delay. This ensures the client has processed
-     * its own inventory changes (e.g. stack decrement from placing a block)
-     * before the AddToInventory arrives, preventing overflow into extra stacks.
+     * Handle inventory sync from the client (0x05). The client sends this after
+     * any inventory change. We parse the cobblestone count from the main
+     * inventory section (type -1) to keep our tracked count accurate.
      */
-    private void scheduleGiveItem(ChannelHandlerContext ctx, int itemId, int count) {
-        ctx.executor().schedule(() -> {
-            if (ctx.channel().isActive()) {
-                giveItem(ctx, itemId, count);
+    private void handleInventorySync(PlayerInventoryPacket packet) {
+        if (packet.getType() == -1) {
+            // Main inventory — update tracked count from actual client data
+            trackedCobblestone = packet.getItemCount(BlockRegistry.COBBLESTONE);
+        }
+    }
+
+    /**
+     * Schedule a batched cobblestone replenishment. Resets the 2-second timer
+     * on each call. When the timer fires (no placement for 2 seconds), tops
+     * up to 64 using trackedCobblestone (corrected by inventory sync packets).
+     * This avoids sending AddToInventory packets during rapid placement, which
+     * can confuse the Alpha client's input handling.
+     */
+    private void scheduleReplenishment(ChannelHandlerContext ctx) {
+        if (replenishTask != null) {
+            replenishTask.cancel(false);
+        }
+        replenishTask = ctx.executor().schedule(() -> {
+            int deficit = 64 - trackedCobblestone;
+            if (ctx.channel().isActive() && deficit > 0) {
+                giveItem(ctx, BlockRegistry.COBBLESTONE, deficit);
+                trackedCobblestone = 64;
             }
-        }, 100, TimeUnit.MILLISECONDS);
+            replenishTask = null;
+        }, REPLENISH_DELAY_MS, TimeUnit.MILLISECONDS);
     }
 
     private void handleChat(ChannelHandlerContext ctx, ChatPacket packet) {
