@@ -172,12 +172,21 @@ public enum ProtocolVersion {
     BETA_1_7(13, 16, Family.BETA, "Beta 1.7 (v13)", 92),
 
     /**
+     * Minecraft Beta 1.7.2-1.7.3 - protocol version 14.
+     * Wire format identical to v13 (ViaLegacy Protocolb1_6_0_6Tob1_7_0_3
+     * has zero packet transformations). Protocol v14 clashes with Alpha
+     * 1.0.16 (v14) — disambiguated by String16 detection in Handshake.
+     * Real MC protocol version 14.
+     */
+    BETA_1_7_3(14, 17, Family.BETA, "Beta 1.7.3 (v14)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 17, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 18, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
