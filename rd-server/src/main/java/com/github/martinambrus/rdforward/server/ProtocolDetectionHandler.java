@@ -1,8 +1,13 @@
 package com.github.martinambrus.rdforward.server;
 
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
+import com.github.martinambrus.rdforward.protocol.codec.NettyPacketDecoder;
+import com.github.martinambrus.rdforward.protocol.codec.NettyPacketEncoder;
 import com.github.martinambrus.rdforward.protocol.codec.RawPacketDecoder;
 import com.github.martinambrus.rdforward.protocol.codec.RawPacketEncoder;
+import com.github.martinambrus.rdforward.protocol.codec.VarIntFrameDecoder;
+import com.github.martinambrus.rdforward.protocol.codec.VarIntFrameEncoder;
+import com.github.martinambrus.rdforward.protocol.packet.ConnectionState;
 import com.github.martinambrus.rdforward.protocol.packet.PacketDirection;
 import com.github.martinambrus.rdforward.protocol.McDataTypes;
 import io.netty.buffer.ByteBuf;
@@ -142,6 +147,36 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
             // Forward the ByteBuf from the pipeline HEAD so it reaches the
             // new decoder without relying on the removed context's pointers.
             pipeline.fireChannelRead(buf);
+        } else if (firstByte > 0x02 && buf.readableBytes() >= 2
+                && buf.getUnsignedByte(buf.readerIndex() + 1) == 0x00) {
+            // 1.7.2+ Netty client: first byte is VarInt packet length (> 2 for any
+            // reasonable Handshake), second byte is packet ID 0x00 (Handshake).
+            // A Nati-framed first message with byte[0] > 0x02 would imply >50MB frame.
+            ChannelPipeline pipeline = ctx.pipeline();
+
+            // Replace frame-level codecs
+            pipeline.replace("decoder", "decoder", new VarIntFrameDecoder());
+            pipeline.replace("encoder", "encoder", new VarIntFrameEncoder());
+
+            // Add packet-level codecs after frame codecs
+            pipeline.addAfter("decoder", "packetDecoder",
+                    new NettyPacketDecoder(ConnectionState.HANDSHAKING));
+            pipeline.addAfter("encoder", "packetEncoder",
+                    new NettyPacketEncoder(ConnectionState.HANDSHAKING));
+
+            // Add outbound translator (Classic→Netty) after packet encoder
+            pipeline.addAfter("packetEncoder", "nettyTranslator",
+                    new ClassicToNettyTranslator());
+
+            // Replace handler
+            pipeline.replace("handler", "handler",
+                    new NettyConnectionHandler(serverVersion, world, playerManager, chunkManager));
+
+            pipeline.remove(this);
+
+            System.out.println("Detected 1.7.2+ Netty client, pipeline reconfigured");
+
+            pipeline.fireChannelRead(buf);
         } else {
             // Nati client — remove self and forward from HEAD
             ChannelPipeline pipeline = ctx.pipeline();
@@ -165,6 +200,7 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
             case 49: return "1.4.5";
             case 47: return "1.4.2";
             case 39: return "1.3.2";
+            case 4: return "1.7.5";
             default: return "RDForward";
         }
     }

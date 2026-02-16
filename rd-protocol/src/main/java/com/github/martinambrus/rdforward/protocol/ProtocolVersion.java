@@ -327,12 +327,25 @@ public enum ProtocolVersion {
     RELEASE_1_6_4(78, 32, Family.RELEASE, "Release 1.6.4 (v78)", 92),
 
     /**
+     * Minecraft Release 1.7.2-1.7.5 (October 2013).
+     * The Netty rewrite — biggest wire format change in MC history. VarInt-framed
+     * packets, connection states (Handshaking/Status/Login/Play), all packet IDs
+     * remapped, strings changed from short+UTF-16BE to VarInt+UTF-8, slot data NBT
+     * changed from short(-1) to byte(0x00) for empty NBT, S2C Player Position lost
+     * the separate stance field. Protocol v4 clashes with Alpha 1.2.2 — safe because
+     * 1.7.2 is detected by VarInt framing (not Handshake byte), and
+     * fromNumber(4, Family.RELEASE) disambiguates.
+     * Real MC protocol version 4.
+     */
+    RELEASE_1_7_2(4, 33, Family.RELEASE, "Release 1.7.2 (v4)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 33, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 34, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -439,7 +452,7 @@ public enum ProtocolVersion {
             case 1:  return "Alpha 1.0.17_04";
             case 2:  return "Alpha 1.1.0-1.1.2_01";
             case 3:  return "Alpha 1.2.0-1.2.1_01";
-            case 4:  return "Alpha 1.2.2";
+            case 4:  return "Alpha 1.2.2 (or Release 1.7.2-1.7.5)";
             case 5:  return "Alpha 1.2.3_01-1.2.3_04";
             case 6:  return "Alpha 1.2.3_05-1.2.6";
             case 7:  return "Beta 1.0-1.1 (or Classic c0.0.20a-c0.30)";

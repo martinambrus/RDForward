@@ -102,11 +102,12 @@ public final class BlockRegistry {
     public static final int JACK_O_LANTERN = 91;
 
     /**
-     * Highest block ID that exists up to Release 1.0.0 (Dragon Egg = 122).
-     * Used to validate creative-mode placement: IDs 1-122 are blocks,
-     * IDs 256+ are items (tools, food, minecarts, etc.) and are rejected.
+     * Highest possible block ID in pre-1.13 Minecraft (block IDs are 1-255,
+     * item-only IDs start at 256+). Forward-compatible through 1.12.2.
+     * Used to validate creative-mode placement: IDs 1-255 are treated as
+     * blocks, IDs 256+ are items (tools, food, etc.) and are rejected.
      */
-    public static final int MAX_BLOCK_ID = 122;
+    public static final int MAX_BLOCK_ID = 255;
 
     private static final Map<Integer, String> BLOCK_NAMES;
 

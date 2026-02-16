@@ -1,0 +1,180 @@
+package com.github.martinambrus.rdforward.server;
+
+import com.github.martinambrus.rdforward.protocol.packet.Packet;
+import com.github.martinambrus.rdforward.protocol.packet.alpha.*;
+import com.github.martinambrus.rdforward.protocol.packet.classic.*;
+import com.github.martinambrus.rdforward.protocol.packet.netty.*;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
+
+/**
+ * Outbound handler that translates Classic broadcast packets to their
+ * 1.7.2 Netty equivalents for MC 1.7.2+ clients.
+ *
+ * Same pattern as ClassicToAlphaTranslator: the server's internal
+ * broadcast language is Classic packets. This translator intercepts
+ * them and converts to the corresponding Netty-protocol packets.
+ *
+ * Packets that are already Netty packets (from the netty package)
+ * or Alpha packets (sent directly by NettyConnectionHandler during
+ * login) pass through unchanged.
+ */
+public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
+
+    /** Eye-height offset in fixed-point units. Internal Y is eye-level; spawn expects feet. */
+    private static final int EYE_HEIGHT_FIXED = AlphaConnectionHandler.PLAYER_EYE_HEIGHT_FIXED;
+
+    @Override
+    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+        if (!(msg instanceof Packet)) {
+            super.write(ctx, msg, promise);
+            return;
+        }
+
+        Packet packet = (Packet) msg;
+        Packet translated = translate(packet);
+
+        if (translated != null) {
+            super.write(ctx, translated, promise);
+        } else {
+            // Packet was dropped
+            promise.setSuccess();
+        }
+    }
+
+    private Packet translate(Packet packet) {
+        // PlayerListItemPacket is in the .alpha package but needs translation
+        // to NettyPlayerListItemPacket — check before isNettyPacket() which
+        // passes .alpha packets through unchanged.
+        if (packet instanceof PlayerListItemPacket) {
+            PlayerListItemPacket pli = (PlayerListItemPacket) packet;
+            return new NettyPlayerListItemPacket(pli.getUsername(), pli.isOnline(), pli.getPing());
+        }
+
+        // Already a Netty-protocol packet — pass through
+        if (isNettyPacket(packet)) {
+            return packet;
+        }
+
+        if (packet instanceof PingPacket) {
+            // Drop tick-loop pings — Netty protocol has its own KeepAlive heartbeat
+            return null;
+        }
+
+        if (packet instanceof SetBlockServerPacket) {
+            SetBlockServerPacket sb = (SetBlockServerPacket) packet;
+            return new NettyBlockChangePacket(sb.getX(), sb.getY(), sb.getZ(),
+                    sb.getBlockType(), 0);
+        }
+
+        if (packet instanceof com.github.martinambrus.rdforward.protocol.packet.classic.SpawnPlayerPacket) {
+            com.github.martinambrus.rdforward.protocol.packet.classic.SpawnPlayerPacket sp =
+                    (com.github.martinambrus.rdforward.protocol.packet.classic.SpawnPlayerPacket) packet;
+
+            if (sp.getPlayerId() == -1) {
+                return null;
+            }
+
+            int entityId = sp.getPlayerId() + 1;
+            int feetY = (int) sp.getY() - EYE_HEIGHT_FIXED;
+            // Classic yaw 0 = North; Alpha/Netty yaw 0 = South. Add 128 (180°) to convert.
+            int alphaYaw = (sp.getYaw() + 128) & 0xFF;
+            // Generate offline UUID from username
+            String uuid = generateOfflineUuid(sp.getPlayerName());
+            return new NettySpawnPlayerPacket(
+                    entityId, uuid, sp.getPlayerName(),
+                    (int) sp.getX(), feetY, (int) sp.getZ(),
+                    alphaYaw, sp.getPitch(), (short) 0);
+        }
+
+        if (packet instanceof PlayerTeleportPacket) {
+            PlayerTeleportPacket pt = (PlayerTeleportPacket) packet;
+
+            if (pt.getPlayerId() == -1) {
+                return null;
+            }
+
+            int entityId = pt.getPlayerId() + 1;
+            int feetY = (int) pt.getY() - EYE_HEIGHT_FIXED;
+            int alphaYaw = (pt.getYaw() + 128) & 0xFF;
+            return new EntityTeleportPacket(entityId,
+                    (int) pt.getX(), feetY, (int) pt.getZ(),
+                    alphaYaw, pt.getPitch());
+        }
+
+        if (packet instanceof PositionOrientationUpdatePacket) {
+            PositionOrientationUpdatePacket pou = (PositionOrientationUpdatePacket) packet;
+            int entityId = pou.getPlayerId() + 1;
+            return new EntityLookAndMovePacket(entityId,
+                    pou.getChangeX(), pou.getChangeY(), pou.getChangeZ(),
+                    pou.getYaw(), pou.getPitch());
+        }
+
+        if (packet instanceof PositionUpdatePacket) {
+            PositionUpdatePacket pu = (PositionUpdatePacket) packet;
+            int entityId = pu.getPlayerId() + 1;
+            return new EntityRelativeMovePacket(entityId,
+                    pu.getChangeX(), pu.getChangeY(), pu.getChangeZ());
+        }
+
+        if (packet instanceof OrientationUpdatePacket) {
+            OrientationUpdatePacket ou = (OrientationUpdatePacket) packet;
+            int entityId = ou.getPlayerId() + 1;
+            return new EntityLookPacket(entityId, ou.getYaw(), ou.getPitch());
+        }
+
+        if (packet instanceof DespawnPlayerPacket) {
+            DespawnPlayerPacket dp = (DespawnPlayerPacket) packet;
+            int entityId = dp.getPlayerId() + 1;
+            return new NettyDestroyEntitiesPacket(entityId);
+        }
+
+        if (packet instanceof MessagePacket) {
+            MessagePacket mp = (MessagePacket) packet;
+            String message = mp.getMessage();
+            // 1.7.2 chat messages are JSON text components
+            message = "{\"text\":\"" + message.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
+            return new NettyChatS2CPacket(message);
+        }
+
+        if (packet instanceof com.github.martinambrus.rdforward.protocol.packet.classic.DisconnectPacket) {
+            com.github.martinambrus.rdforward.protocol.packet.classic.DisconnectPacket dp =
+                    (com.github.martinambrus.rdforward.protocol.packet.classic.DisconnectPacket) packet;
+            String reason = dp.getReason();
+            reason = "{\"text\":\"" + reason.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
+            return new NettyDisconnectPacket(reason);
+        }
+
+        // Drop Classic-only packets
+        return null;
+    }
+
+    private boolean isNettyPacket(Packet packet) {
+        String packageName = packet.getClass().getPackage().getName();
+        return packageName.endsWith(".netty") || packageName.endsWith(".alpha");
+    }
+
+    /**
+     * Generate an offline-mode UUID v3 from a username (same as MC offline mode).
+     * Format: "OfflinePlayer:" + username -> MD5 -> UUID v3 with hyphens.
+     */
+    static String generateOfflineUuid(String username) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+            byte[] hash = md.digest(("OfflinePlayer:" + username).getBytes(
+                    java.nio.charset.Charset.forName("UTF-8")));
+            hash[6] = (byte) (hash[6] & 0x0f | 0x30); // version 3
+            hash[8] = (byte) (hash[8] & 0x3f | 0x80); // variant 2
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 16; i++) {
+                sb.append(String.format("%02x", hash[i]));
+                if (i == 3 || i == 5 || i == 7 || i == 9) sb.append('-');
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            // Fallback: deterministic fake UUID
+            return "00000000-0000-3000-8000-000000000000";
+        }
+    }
+}

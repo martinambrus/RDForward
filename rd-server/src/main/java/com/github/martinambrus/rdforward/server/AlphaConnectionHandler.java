@@ -244,9 +244,12 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 verifyToken = new byte[4];
                 new java.security.SecureRandom().nextBytes(verifyToken);
 
-                // Send Encryption Key Request (no S2C Handshake for v39+)
+                // Send Encryption Key Request (no S2C Handshake for v39+).
+                // serverId="-" signals offline mode: the client checks
+                // !"-".equals(serverId) to decide whether to authenticate
+                // with Mojang's session server. Sending "" would trigger auth.
                 ctx.writeAndFlush(new EncryptionKeyRequestPacket(
-                        "", rsaKeyPair.getPublic().getEncoded(), verifyToken));
+                        "-", rsaKeyPair.getPublic().getEncoded(), verifyToken));
                 awaitingEncryptionResponse = true;
             } catch (Exception e) {
                 System.err.println("Failed to generate RSA keypair: " + e.getMessage());

@@ -260,7 +260,128 @@ public final class McDataTypes {
     }
 
     // ========================================================================
-    // VarInt (1.7+ / post-Netty format, for future use)
+    // Netty-era string and slot helpers (1.7.2+)
+    // ========================================================================
+
+    private static final java.nio.charset.Charset UTF_8 = java.nio.charset.Charset.forName("UTF-8");
+
+    /**
+     * Read a VarInt-prefixed UTF-8 string (1.7.2+ format).
+     * Wire format: [VarInt byteLength] [byteLength bytes UTF-8]
+     */
+    public static String readVarIntString(ByteBuf buf) {
+        int length = readVarInt(buf);
+        if (length < 0) {
+            throw new IllegalStateException("VarIntString byte count is negative: " + length);
+        }
+        byte[] bytes = new byte[length];
+        buf.readBytes(bytes);
+        return new String(bytes, UTF_8);
+    }
+
+    /**
+     * Write a VarInt-prefixed UTF-8 string (1.7.2+ format).
+     * Wire format: [VarInt byteLength] [byteLength bytes UTF-8]
+     */
+    public static void writeVarIntString(ByteBuf buf, String value) {
+        byte[] bytes = value.getBytes(UTF_8);
+        writeVarInt(buf, bytes.length);
+        buf.writeBytes(bytes);
+    }
+
+    /**
+     * Skip a Netty-era item slot in C2S packets (1.7.2+ format).
+     * Wire format: [short itemId] [if >= 0: byte count, short damage,
+     *   short nbtLength (-1 = no NBT, else nbtLength bytes of gzipped NBT)]
+     */
+    public static void skipNettySlotData(ByteBuf buf) {
+        short itemId = buf.readShort();
+        if (itemId >= 0) {
+            buf.skipBytes(1); // count
+            buf.skipBytes(2); // damage
+            short nbtLength = buf.readShort();
+            if (nbtLength > 0) {
+                buf.skipBytes(nbtLength);
+            }
+        }
+    }
+
+    /**
+     * Write an empty Netty-era item slot (1.7.2+ format).
+     * Wire format: short(-1)
+     */
+    public static void writeEmptyNettySlot(ByteBuf buf) {
+        buf.writeShort(-1);
+    }
+
+    /**
+     * Write a Netty-era item slot with item data (1.7.2+ format).
+     * Wire format: [short itemId, byte count, short damage, short nbtLength (-1 = no NBT)]
+     */
+    public static void writeNettySlotItem(ByteBuf buf, int itemId, int count, int damage) {
+        buf.writeShort(itemId);
+        buf.writeByte(count);
+        buf.writeShort(damage);
+        buf.writeShort(-1); // no NBT data
+    }
+
+    /**
+     * Skip an NBT compound tag (starting after the 0x0A compound start byte).
+     * Reads nested tags until TAG_End (0x00) closes the compound.
+     */
+    private static void skipNbtCompound(ByteBuf buf) {
+        // We already read the 0x0A byte. Now skip the compound contents.
+        while (true) {
+            byte tagType = buf.readByte();
+            if (tagType == 0) return; // TAG_End
+            // Skip tag name
+            int nameLen = buf.readUnsignedShort();
+            buf.skipBytes(nameLen);
+            // Skip tag payload
+            skipNbtPayload(buf, tagType);
+        }
+    }
+
+    /**
+     * Skip the payload of an NBT tag by type.
+     */
+    private static void skipNbtPayload(ByteBuf buf, byte type) {
+        switch (type) {
+            case 1: buf.skipBytes(1); break; // TAG_Byte
+            case 2: buf.skipBytes(2); break; // TAG_Short
+            case 3: buf.skipBytes(4); break; // TAG_Int
+            case 4: buf.skipBytes(8); break; // TAG_Long
+            case 5: buf.skipBytes(4); break; // TAG_Float
+            case 6: buf.skipBytes(8); break; // TAG_Double
+            case 7: // TAG_Byte_Array
+                int baLen = buf.readInt();
+                buf.skipBytes(baLen);
+                break;
+            case 8: // TAG_String
+                int strLen = buf.readUnsignedShort();
+                buf.skipBytes(strLen);
+                break;
+            case 9: // TAG_List
+                byte listType = buf.readByte();
+                int listLen = buf.readInt();
+                for (int i = 0; i < listLen; i++) {
+                    skipNbtPayload(buf, listType);
+                }
+                break;
+            case 10: // TAG_Compound
+                skipNbtCompound(buf);
+                break;
+            case 11: // TAG_Int_Array
+                int iaLen = buf.readInt();
+                buf.skipBytes(iaLen * 4);
+                break;
+            default:
+                throw new IllegalStateException("Unknown NBT tag type: " + type);
+        }
+    }
+
+    // ========================================================================
+    // VarInt (1.7+ / post-Netty format)
     // ========================================================================
 
     /**

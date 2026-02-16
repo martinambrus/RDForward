@@ -216,13 +216,17 @@ public class ChunkManager {
             return Integer.compare(distA, distB);
         });
 
+        int sentCount = 0;
         for (ChunkCoord coord : toSend) {
             AlphaChunk chunk = getOrLoadChunk(coord);
             if (chunk != null) {
                 sendChunkToPlayer(player, chunk);
                 current.add(coord);
+                sentCount++;
             }
         }
+        System.out.println("[ChunkManager] Sent " + sentCount + " initial chunks to " + player.getUsername()
+                + " centered at chunk (" + centerChunkX + ", " + centerChunkZ + ")");
     }
 
     /**
