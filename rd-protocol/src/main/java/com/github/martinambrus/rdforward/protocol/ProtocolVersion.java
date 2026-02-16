@@ -263,12 +263,22 @@ public enum ProtocolVersion {
     RELEASE_1_4_2(47, 25, Family.RELEASE, "Release 1.4.2 (v47)", 92),
 
     /**
+     * Minecraft Release 1.4.4-1.4.5 (November 2012).
+     * Wire format nearly identical to v47. Entity metadata type IDs renumbered
+     * again, but we only send empty metadata (0x7F terminator), so no impact.
+     * Map item data packet changed from unsigned-byte to short length prefix,
+     * but we don't send map data. No C2S format changes.
+     * Real MC protocol version 49.
+     */
+    RELEASE_1_4_4(49, 26, Family.RELEASE, "Release 1.4.4 (v49)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 26, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 27, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -394,6 +404,7 @@ public enum ProtocolVersion {
             case 29: return "Release 1.2.4-1.2.5";
             case 39: return "Release 1.3.1-1.3.2";
             case 47: return "Release 1.4.2";
+            case 49: return "Release 1.4.4-1.4.5";
             default: return null;
         }
     }
