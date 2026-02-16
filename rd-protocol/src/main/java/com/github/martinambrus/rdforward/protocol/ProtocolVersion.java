@@ -193,6 +193,18 @@ public enum ProtocolVersion {
     BETA_1_8(17, 18, Family.BETA, "Beta 1.8 (v17)", 92),
 
     /**
+     * Minecraft Beta 1.9 Prerelease 5-6 - protocol version 21.
+     * Hybrid wire format: uses v17's S2C packet formats (Login, Respawn, KeepAlive,
+     * MapChunk, PreChunk, BlockChange, SpawnPlayer, DestroyEntity) but v22's
+     * conditional-NBT item slot format for all C2S packets containing items
+     * (BlockPlacement, WindowClick, CreativeSlot) and S2C SetSlot/WindowItems.
+     * No encryption, old Handshake format ("username;host:port"), no PlayerAbilities.
+     * ViaLegacy skips this version entirely (jumps v17 to v22).
+     * Real MC protocol version 21.
+     */
+    BETA_1_9_PRE5(21, 19, Family.BETA, "Beta 1.9-pre5 (v21)", 92),
+
+    /**
      * Minecraft Release 1.0.0 (the first official release after Beta).
      * Wire protocol nearly identical to v17 — the only significant change is
      * that item slots gained NBT tag data after the damage field. This affects
@@ -201,7 +213,7 @@ public enum ProtocolVersion {
      * New C2S packets: EnchantItem (0x6C), PlayerAbilities (0xCA, now a real packet).
      * Real MC protocol version 22.
      */
-    RELEASE_1_0(22, 19, Family.RELEASE, "Release 1.0.0 (v22)", 92),
+    RELEASE_1_0(22, 20, Family.RELEASE, "Release 1.0.0 (v22)", 92),
 
     /**
      * Minecraft Release 1.1 (January 2012).
@@ -210,7 +222,7 @@ public enum ProtocolVersion {
      * from v22 (conditional NBT for damageable items).
      * Real MC protocol version 23.
      */
-    RELEASE_1_1(23, 20, Family.RELEASE, "Release 1.1 (v23)", 92),
+    RELEASE_1_1(23, 21, Family.RELEASE, "Release 1.1 (v23)", 92),
 
     /**
      * Minecraft Release 1.2.1 (March 2012).
@@ -218,7 +230,7 @@ public enum ProtocolVersion {
      * Chunk format overhauled to section-based with 256 height + biome data.
      * InputPacket (0x1B) removed. Real MC protocol version 28.
      */
-    RELEASE_1_2_1(28, 21, Family.RELEASE, "Release 1.2.1 (v28)", 92),
+    RELEASE_1_2_1(28, 22, Family.RELEASE, "Release 1.2.1 (v28)", 92),
 
     /**
      * Minecraft Release 1.2.4-1.2.5 (March 2012).
@@ -227,7 +239,7 @@ public enum ProtocolVersion {
      * same format as v22). No other wire format changes.
      * Real MC protocol version 29.
      */
-    RELEASE_1_2_4(29, 22, Family.RELEASE, "Release 1.2.4 (v29)", 92),
+    RELEASE_1_2_4(29, 23, Family.RELEASE, "Release 1.2.4 (v29)", 92),
 
     /**
      * Minecraft Release 1.3.1 (August 2012).
@@ -239,7 +251,7 @@ public enum ProtocolVersion {
      * DestroyEntity changed to variable-length array. SpawnPlayer gained metadata.
      * Real MC protocol version 39.
      */
-    RELEASE_1_3_1(39, 23, Family.RELEASE, "Release 1.3.1 (v39)", 92),
+    RELEASE_1_3_1(39, 24, Family.RELEASE, "Release 1.3.1 (v39)", 92),
 
     /**
      * Minecraft Release 1.4.2 (October 2012).
@@ -248,7 +260,7 @@ public enum ProtocolVersion {
      * only send empty metadata (0x7F terminator), so no impact.
      * Real MC protocol version 47.
      */
-    RELEASE_1_4_2(47, 24, Family.RELEASE, "Release 1.4.2 (v47)", 92),
+    RELEASE_1_4_2(47, 25, Family.RELEASE, "Release 1.4.2 (v47)", 92),
 
     /**
      * Minecraft Bedrock Edition (1.26.0+).
@@ -256,7 +268,7 @@ public enum ProtocolVersion {
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 25, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 26, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -375,6 +387,7 @@ public enum ProtocolVersion {
             case 13: return "Beta 1.6.1-1.7_01 (or Alpha 1.0.15)";
             case 14: return "Beta 1.7.2-1.7.3 (or Alpha 1.0.16-1.0.16_02)";
             case 17: return "Beta 1.8-1.8.1";
+            case 21: return "Beta 1.9 Prerelease 5-6";
             case 22: return "Release 1.0.0";
             case 23: return "Release 1.1";
             case 28: return "Release 1.2.1";

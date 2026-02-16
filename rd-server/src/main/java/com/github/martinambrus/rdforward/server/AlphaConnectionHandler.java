@@ -1026,7 +1026,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     private void giveItem(ChannelHandlerContext ctx, int itemId, int count) {
         if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
             ctx.writeAndFlush(new SetSlotPacketV39(0, 36, itemId, count, 0));
-        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_0)) {
+        } else if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_9_PRE5)) {
             ctx.writeAndFlush(new SetSlotPacketV22(0, 36, itemId, count, 0));
         } else if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)) {
             ctx.writeAndFlush(new SetSlotPacket(0, 36, itemId, count, 0));

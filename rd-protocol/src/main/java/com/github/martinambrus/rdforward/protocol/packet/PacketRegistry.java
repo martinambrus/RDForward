@@ -115,7 +115,7 @@ public class PacketRegistry {
      * not PlayerIdentification; 0x03 = Chat, not LevelDataChunk).
      */
     private static void registerAlphaPackets() {
-        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8, ProtocolVersion.RELEASE_1_0, ProtocolVersion.RELEASE_1_1, ProtocolVersion.RELEASE_1_2_1, ProtocolVersion.RELEASE_1_2_4, ProtocolVersion.RELEASE_1_3_1, ProtocolVersion.RELEASE_1_4_2};
+        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8, ProtocolVersion.BETA_1_9_PRE5, ProtocolVersion.RELEASE_1_0, ProtocolVersion.RELEASE_1_1, ProtocolVersion.RELEASE_1_2_1, ProtocolVersion.RELEASE_1_2_4, ProtocolVersion.RELEASE_1_3_1, ProtocolVersion.RELEASE_1_4_2};
 
         for (ProtocolVersion v : alphaVersions) {
             // === Bidirectional packets ===
@@ -279,7 +279,7 @@ public class PacketRegistry {
         // Beta changed several packet wire formats and added new packets.
         // Release 1.0.0 (v22) shares the same base registrations as Beta, with
         // version-specific overrides for item slot format (NBT tags).
-        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8, ProtocolVersion.RELEASE_1_0, ProtocolVersion.RELEASE_1_1, ProtocolVersion.RELEASE_1_2_1, ProtocolVersion.RELEASE_1_2_4, ProtocolVersion.RELEASE_1_3_1, ProtocolVersion.RELEASE_1_4_2};
+        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8, ProtocolVersion.BETA_1_9_PRE5, ProtocolVersion.RELEASE_1_0, ProtocolVersion.RELEASE_1_1, ProtocolVersion.RELEASE_1_2_1, ProtocolVersion.RELEASE_1_2_4, ProtocolVersion.RELEASE_1_3_1, ProtocolVersion.RELEASE_1_4_2};
         for (ProtocolVersion betaV : betaVersions) {
             // Override C2S packets that changed format:
             register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x0F, new PacketFactory() {
@@ -434,11 +434,11 @@ public class PacketRegistry {
                 });
             }
 
-            // Release v22+ (Release 1.0.0+): Item slots gained NBT tag data after
+            // v21+ (Beta 1.9-pre5+): Item slots gained conditional NBT tag data after
             // damage. All packets containing item data need v22 variants. CreativeSlot
             // changed from unconditional 4-short format to conditional item with NBT.
             // New C2S packets: EnchantItem (0x6C), PlayerAbilities (0xCA, now a real packet).
-            if (betaV.getVersionNumber() >= 22) {
+            if (betaV.getVersionNumber() >= 21) {
                 register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x0F, new PacketFactory() {
                     public Packet create() { return new PlayerBlockPlacementPacketV22(); }
                 });
