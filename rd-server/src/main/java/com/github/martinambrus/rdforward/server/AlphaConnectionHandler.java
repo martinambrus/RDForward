@@ -188,6 +188,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 || packet instanceof InputPacket
                 || packet instanceof CustomPayloadPacket
                 || packet instanceof ClientSettingsPacket
+                || packet instanceof ClientSettingsPacketV47
                 || packet instanceof TabCompletePacket) {
             // Silently accept (not yet implemented server-side)
         } else if (packet instanceof KeepAlivePacket) {

@@ -54,14 +54,30 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
         int firstByte = buf.getUnsignedByte(buf.readerIndex());
 
         if (firstByte == 0xFE) {
-            // Beta 1.8+ server list ping: respond with Disconnect containing
-            // "motd§currentPlayers§maxPlayers" and close the connection.
-            // Write raw bytes (bypassing packet encoder) since this is a
-            // separate connection from the actual game Handshake.
+            // Server list ping. Two formats exist:
+            // - Old (Beta 1.8 - 1.3.2): client sends 0xFE alone.
+            //   Response: 0xFF + String16("motd§playerCount§maxPlayers")
+            // - New (1.4.2+): client sends 0xFE 0x01 (+ optional 0xFA payload).
+            //   Response: 0xFF + String16("§1\0protocol\0version\0motd\0players\0max")
+            //   where \0 is the null character (U+0000).
+            boolean newPing = buf.readableBytes() >= 2
+                    && buf.getUnsignedByte(buf.readerIndex() + 1) == 0x01;
             buf.release();
-            String response = "RDForward Server\u00A7"
-                    + playerManager.getPlayerCount() + "\u00A7"
-                    + PlayerManager.MAX_PLAYERS;
+
+            String response;
+            if (newPing) {
+                response = "\u00A71\u0000"
+                        + "47\u0000"
+                        + "1.4.2\u0000"
+                        + "RDForward Server\u0000"
+                        + playerManager.getPlayerCount() + "\u0000"
+                        + PlayerManager.MAX_PLAYERS;
+            } else {
+                response = "RDForward Server\u00A7"
+                        + playerManager.getPlayerCount() + "\u00A7"
+                        + PlayerManager.MAX_PLAYERS;
+            }
+
             ByteBuf out = ctx.alloc().buffer();
             out.writeByte(0xFF); // Disconnect packet ID
             McDataTypes.writeString16(out, response);
