@@ -283,7 +283,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             // Beta 1.8+ has native creative mode: gameMode=1 enables instant break,
             // creative inventory, flying, and no fall damage on the client.
             ctx.writeAndFlush(new LoginS2CPacketV17(entityId, 0L, 1,
-                    (byte) 0, (byte) 0, (byte) 128, (byte) 127));
+                    (byte) 0, (byte) 0, (byte) 128, (byte) 20));
         } else if (clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_2_0)) {
             ctx.writeAndFlush(new LoginS2CPacket(entityId, 0L, (byte) 0));
         } else {
@@ -440,6 +440,16 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 + ", version " + clientVersion.getVersionNumber()
                 + ", ID " + player.getPlayerId()
                 + ", " + playerManager.getPlayerCount() + " online)");
+
+        // Send existing tab list entries to the new player, and broadcast new entry to all v17+
+        if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
+            for (ConnectedPlayer existing : playerManager.getAllPlayers()) {
+                if (existing != player) {
+                    ctx.writeAndFlush(new PlayerListItemPacket(existing.getUsername(), true, 0));
+                }
+            }
+        }
+        playerManager.broadcastPlayerListAdd(player);
 
         playerManager.broadcastChat((byte) 0, player.getUsername() + " joined the game");
         ServerEvents.PLAYER_JOIN.invoker().onPlayerJoin(player.getUsername(), clientVersion);
@@ -941,6 +951,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ServerEvents.PLAYER_LEAVE.invoker().onPlayerLeave(player.getUsername());
             world.rememberPlayerPosition(player);
             chunkManager.removePlayer(player);
+            playerManager.broadcastPlayerListRemove(player);
             playerManager.broadcastChat((byte) 0, player.getUsername() + " left the game");
             playerManager.broadcastPlayerDespawn(player);
             playerManager.removePlayer(ctx.channel());

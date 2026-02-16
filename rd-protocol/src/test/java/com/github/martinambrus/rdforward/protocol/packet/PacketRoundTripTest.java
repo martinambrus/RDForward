@@ -923,6 +923,67 @@ class PacketRoundTripTest {
         assertFalse(PacketRegistry.hasPacket(ProtocolVersion.BETA_1_7_3, PacketDirection.CLIENT_TO_SERVER, 0x6B));
     }
 
+    // === Player List Item (Tab list) Packets ===
+
+    @Test
+    void playerListItemAddRoundTrip() {
+        McDataTypes.STRING16_MODE.set(true);
+        try {
+            PlayerListItemPacket original = new PlayerListItemPacket("TestPlayer", true, 0);
+            ByteBuf buf = Unpooled.buffer();
+            try {
+                original.write(buf);
+                PlayerListItemPacket decoded = (PlayerListItemPacket) PacketRegistry.createPacket(
+                        ProtocolVersion.BETA_1_8, PacketDirection.SERVER_TO_CLIENT, 0xC9);
+                assertNotNull(decoded);
+                decoded.read(buf);
+                assertEquals(0, buf.readableBytes(), "Not all bytes consumed");
+                assertEquals("TestPlayer", decoded.getUsername());
+                assertTrue(decoded.isOnline());
+                assertEquals(0, decoded.getPing());
+            } finally {
+                buf.release();
+            }
+        } finally {
+            McDataTypes.STRING16_MODE.remove();
+        }
+    }
+
+    @Test
+    void playerListItemRemoveRoundTrip() {
+        McDataTypes.STRING16_MODE.set(true);
+        try {
+            PlayerListItemPacket original = new PlayerListItemPacket("TestPlayer", false, 0);
+            ByteBuf buf = Unpooled.buffer();
+            try {
+                original.write(buf);
+                PlayerListItemPacket decoded = (PlayerListItemPacket) PacketRegistry.createPacket(
+                        ProtocolVersion.RELEASE_1_0, PacketDirection.SERVER_TO_CLIENT, 0xC9);
+                assertNotNull(decoded);
+                decoded.read(buf);
+                assertEquals(0, buf.readableBytes(), "Not all bytes consumed");
+                assertEquals("TestPlayer", decoded.getUsername());
+                assertFalse(decoded.isOnline());
+                assertEquals(0, decoded.getPing());
+            } finally {
+                buf.release();
+            }
+        } finally {
+            McDataTypes.STRING16_MODE.remove();
+        }
+    }
+
+    @Test
+    void playerListItemRegisteredForV17Plus() {
+        // 0xC9 S2C should be registered for Beta 1.8 and Release 1.0.0
+        assertTrue(PacketRegistry.hasPacket(ProtocolVersion.BETA_1_8, PacketDirection.SERVER_TO_CLIENT, 0xC9));
+        assertTrue(PacketRegistry.hasPacket(ProtocolVersion.RELEASE_1_0, PacketDirection.SERVER_TO_CLIENT, 0xC9));
+        // Should NOT be registered for pre-v17 versions
+        assertFalse(PacketRegistry.hasPacket(ProtocolVersion.BETA_1_7_3, PacketDirection.SERVER_TO_CLIENT, 0xC9));
+        assertFalse(PacketRegistry.hasPacket(ProtocolVersion.BETA_1_0, PacketDirection.SERVER_TO_CLIENT, 0xC9));
+        assertFalse(PacketRegistry.hasPacket(ProtocolVersion.ALPHA_1_2_5, PacketDirection.SERVER_TO_CLIENT, 0xC9));
+    }
+
     @Test
     void rubyDungSharesClassicPacketRegistry() {
         // RubyDung uses same packets as Classic

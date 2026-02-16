@@ -427,6 +427,11 @@ public class PacketRegistry {
                 });
                 // Note: 0xCA PlayerAbilities does not exist as a packet in Beta 1.8.
                 // Abilities are derived client-side from the gameMode in Login/Respawn.
+
+                // Player List Item (Tab list). Same format in Beta 1.8 and Release 1.0.0.
+                register(betaV, PacketDirection.SERVER_TO_CLIENT, 0xC9, new PacketFactory() {
+                    public Packet create() { return new PlayerListItemPacket(); }
+                });
             }
 
             // Release v22+ (Release 1.0.0+): Item slots gained NBT tag data after

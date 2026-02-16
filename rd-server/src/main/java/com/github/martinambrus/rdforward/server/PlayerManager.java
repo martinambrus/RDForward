@@ -178,6 +178,34 @@ public class PlayerManager {
     }
 
     /**
+     * Broadcast a Tab list "add" entry for the given player to all v17+ players.
+     */
+    public void broadcastPlayerListAdd(ConnectedPlayer newPlayer) {
+        com.github.martinambrus.rdforward.protocol.packet.alpha.PlayerListItemPacket packet =
+                new com.github.martinambrus.rdforward.protocol.packet.alpha.PlayerListItemPacket(
+                        newPlayer.getUsername(), true, 0);
+        for (ConnectedPlayer p : playersById.values()) {
+            if (p.getProtocolVersion().isAtLeast(ProtocolVersion.BETA_1_8)) {
+                p.sendPacket(packet);
+            }
+        }
+    }
+
+    /**
+     * Broadcast a Tab list "remove" entry for the given player to all v17+ players.
+     */
+    public void broadcastPlayerListRemove(ConnectedPlayer leavingPlayer) {
+        com.github.martinambrus.rdforward.protocol.packet.alpha.PlayerListItemPacket packet =
+                new com.github.martinambrus.rdforward.protocol.packet.alpha.PlayerListItemPacket(
+                        leavingPlayer.getUsername(), false, 0);
+        for (ConnectedPlayer p : playersById.values()) {
+            if (p.getProtocolVersion().isAtLeast(ProtocolVersion.BETA_1_8)) {
+                p.sendPacket(packet);
+            }
+        }
+    }
+
+    /**
      * Find an online player by username (case-insensitive).
      * Returns null if no player with that name is connected.
      */
@@ -203,6 +231,7 @@ public class PlayerManager {
         if (existing == null) return;
 
         System.out.println("Kicking duplicate login for " + existing.getUsername());
+        broadcastPlayerListRemove(existing);
         world.rememberPlayerPosition(existing);
         broadcastChat((byte) 0, existing.getUsername() + " left the game");
         broadcastPlayerDespawn(existing);
