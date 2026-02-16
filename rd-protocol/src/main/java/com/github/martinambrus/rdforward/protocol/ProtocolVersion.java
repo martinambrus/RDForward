@@ -284,12 +284,22 @@ public enum ProtocolVersion {
     RELEASE_1_4_6(51, 27, Family.RELEASE, "Release 1.4.6 (v51)", 92),
 
     /**
+     * Minecraft Release 1.5-1.5.1 (March 2013).
+     * Wire format nearly identical to v51. S2C changes: AddEntity minecart type
+     * remapping, OpenScreen gained boolean field — we send neither. C2S:
+     * WindowClick gained new mode values 4/5 (Q-drop, drag) but same wire format.
+     * All silently consumed. No packet class changes needed.
+     * Real MC protocol version 60.
+     */
+    RELEASE_1_5(60, 28, Family.RELEASE, "Release 1.5.1 (v60)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 28, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 29, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -417,6 +427,7 @@ public enum ProtocolVersion {
             case 47: return "Release 1.4.2";
             case 49: return "Release 1.4.4-1.4.5";
             case 51: return "Release 1.4.6-1.4.7";
+            case 60: return "Release 1.5-1.5.1";
             default: return null;
         }
     }
