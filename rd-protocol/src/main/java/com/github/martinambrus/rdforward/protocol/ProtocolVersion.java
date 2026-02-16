@@ -302,7 +302,7 @@ public enum ProtocolVersion {
     RELEASE_1_5_2(61, 29, Family.RELEASE, "Release 1.5.2 (v61)", 92),
 
     /**
-     * Minecraft Release 1.6.1-1.6.2 (July 2013).
+     * Minecraft Release 1.6.1 (July 2013).
      * PlayerAbilities (0xCA) speeds changed from byte to float.
      * Chat (0x03) S2C messages changed from plain text to JSON text components.
      * Login, encryption, handshake, chunk format all unchanged from v39+.
@@ -311,12 +311,20 @@ public enum ProtocolVersion {
     RELEASE_1_6_1(73, 30, Family.RELEASE, "Release 1.6.1 (v73)", 92),
 
     /**
+     * Minecraft Release 1.6.2-1.6.4 (July 2013).
+     * Entity Properties (0x2C) gained modifier list (short count + modifiers per property).
+     * Wire format otherwise identical to v73 (ViaLegacy Protocolr1_6_2Tor1_6_4 is empty).
+     * Real MC protocol version 74.
+     */
+    RELEASE_1_6_2(74, 31, Family.RELEASE, "Release 1.6.2 (v74)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 31, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 32, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -446,7 +454,8 @@ public enum ProtocolVersion {
             case 51: return "Release 1.4.6-1.4.7";
             case 60: return "Release 1.5-1.5.1";
             case 61: return "Release 1.5.2";
-            case 73: return "Release 1.6.1-1.6.2";
+            case 73: return "Release 1.6.1";
+            case 74: return "Release 1.6.2-1.6.4";
             default: return null;
         }
     }

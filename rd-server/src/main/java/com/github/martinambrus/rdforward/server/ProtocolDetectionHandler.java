@@ -156,6 +156,7 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
      */
     private static String pingVersionString(int protocolVersion) {
         switch (protocolVersion) {
+            case 74: return "1.6.4";
             case 73: return "1.6.2";
             case 61: return "1.5.2";
             case 60: return "1.5.1";

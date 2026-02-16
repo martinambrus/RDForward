@@ -460,8 +460,14 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.writeAndFlush(new PlayerAbilitiesPacketV73(0x0D, 0.05f, 0.1f));
             // v73+: client relies on Entity Properties for movement speed.
             // Without this, it defaults to EntityLivingBase's 0.7 instead of 0.1.
-            ctx.writeAndFlush(new EntityPropertiesPacket(entityId,
-                    "generic.movementSpeed", 0.10000000149011612));
+            // v74+ added modifier list (short count + modifiers) per property.
+            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_6_2)) {
+                ctx.writeAndFlush(new EntityPropertiesPacketV74(entityId,
+                        "generic.movementSpeed", 0.10000000149011612));
+            } else {
+                ctx.writeAndFlush(new EntityPropertiesPacket(entityId,
+                        "generic.movementSpeed", 0.10000000149011612));
+            }
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
             ctx.writeAndFlush(new PlayerAbilitiesPacketV39(0x0D, 12, 25));
         }
