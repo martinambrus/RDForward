@@ -294,12 +294,20 @@ public enum ProtocolVersion {
     RELEASE_1_5(60, 28, Family.RELEASE, "Release 1.5.1 (v60)", 92),
 
     /**
+     * Minecraft Release 1.5.2 (May 2013).
+     * Wire format identical to v60 (ViaLegacy StatelessProtocol with zero
+     * transformations). Pure protocol version bump.
+     * Real MC protocol version 61.
+     */
+    RELEASE_1_5_2(61, 29, Family.RELEASE, "Release 1.5.2 (v61)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 29, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 30, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -428,6 +436,7 @@ public enum ProtocolVersion {
             case 49: return "Release 1.4.4-1.4.5";
             case 51: return "Release 1.4.6-1.4.7";
             case 60: return "Release 1.5-1.5.1";
+            case 61: return "Release 1.5.2";
             default: return null;
         }
     }
