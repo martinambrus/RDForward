@@ -221,12 +221,21 @@ public enum ProtocolVersion {
     RELEASE_1_2_1(28, 21, Family.RELEASE, "Release 1.2.1 (v28)", 92),
 
     /**
+     * Minecraft Release 1.2.4-1.2.5 (March 2012).
+     * Wire protocol nearly identical to v28. The only change is that
+     * PlayerAbilities (0xCA) is now sent C2S by the client (4 booleans,
+     * same format as v22). No other wire format changes.
+     * Real MC protocol version 29.
+     */
+    RELEASE_1_2_4(29, 22, Family.RELEASE, "Release 1.2.4 (v29)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 22, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 23, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -348,6 +357,7 @@ public enum ProtocolVersion {
             case 22: return "Release 1.0.0";
             case 23: return "Release 1.1";
             case 28: return "Release 1.2.1";
+            case 29: return "Release 1.2.4-1.2.5";
             default: return null;
         }
     }
