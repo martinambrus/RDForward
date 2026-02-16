@@ -1,6 +1,8 @@
 package com.github.martinambrus.rdforward.server;
 
+import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.MapChunkPacket;
+import com.github.martinambrus.rdforward.protocol.packet.alpha.MapChunkPacketV28;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.PreChunkPacket;
 import com.github.martinambrus.rdforward.world.WorldGenerator;
 import com.github.martinambrus.rdforward.world.alpha.AlphaChunk;
@@ -383,34 +385,59 @@ public class ChunkManager {
 
     /**
      * Send a chunk to a player via PreChunkPacket + MapChunkPacket.
+     * Uses section-based v28 format for Release 1.2.1+ clients.
      */
     private void sendChunkToPlayer(ConnectedPlayer player, AlphaChunk chunk) {
-        // First: tell client to allocate the chunk column
-        player.sendPacket(new PreChunkPacket(chunk.getXPos(), chunk.getZPos(), true));
+        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_2_1)) {
+            // v28+: section-based chunk format, no PreChunk needed
+            try {
+                AlphaChunk.V28ChunkData v28Data = chunk.serializeForV28Protocol();
+                player.sendPacket(new MapChunkPacketV28(
+                    chunk.getXPos(), chunk.getZPos(), true,
+                    v28Data.getPrimaryBitMask(), (short) 0,
+                    v28Data.getCompressedData()
+                ));
+            } catch (IOException e) {
+                System.err.println("Failed to serialize v28 chunk (" + chunk.getXPos() + ", " + chunk.getZPos()
+                    + ") for player " + player.getUsername() + ": " + e.getMessage());
+            }
+        } else {
+            // Pre-v28: flat chunk format with PreChunk allocation
+            // First: tell client to allocate the chunk column
+            player.sendPacket(new PreChunkPacket(chunk.getXPos(), chunk.getZPos(), true));
 
-        // Then: send the compressed chunk data
-        try {
-            byte[] compressed = chunk.serializeForAlphaProtocol();
-            int blockX = chunk.getXPos() * AlphaChunk.WIDTH;
-            int blockZ = chunk.getZPos() * AlphaChunk.DEPTH;
-            player.sendPacket(new MapChunkPacket(
-                blockX, (short) 0, blockZ,
-                AlphaChunk.WIDTH - 1,   // sizeX = 15 (width - 1)
-                AlphaChunk.HEIGHT - 1,  // sizeY = 127 (height - 1)
-                AlphaChunk.DEPTH - 1,   // sizeZ = 15 (depth - 1)
-                compressed
-            ));
-        } catch (IOException e) {
-            System.err.println("Failed to serialize chunk (" + chunk.getXPos() + ", " + chunk.getZPos()
-                + ") for player " + player.getUsername() + ": " + e.getMessage());
+            // Then: send the compressed chunk data
+            try {
+                byte[] compressed = chunk.serializeForAlphaProtocol();
+                int blockX = chunk.getXPos() * AlphaChunk.WIDTH;
+                int blockZ = chunk.getZPos() * AlphaChunk.DEPTH;
+                player.sendPacket(new MapChunkPacket(
+                    blockX, (short) 0, blockZ,
+                    AlphaChunk.WIDTH - 1,   // sizeX = 15 (width - 1)
+                    AlphaChunk.HEIGHT - 1,  // sizeY = 127 (height - 1)
+                    AlphaChunk.DEPTH - 1,   // sizeZ = 15 (depth - 1)
+                    compressed
+                ));
+            } catch (IOException e) {
+                System.err.println("Failed to serialize chunk (" + chunk.getXPos() + ", " + chunk.getZPos()
+                    + ") for player " + player.getUsername() + ": " + e.getMessage());
+            }
         }
     }
 
     /**
      * Tell a player's client to unload a chunk.
+     * v28+ uses a MapChunkPacketV28 with primaryBitMask=0, groundUpContinuous=true.
+     * Earlier versions use PreChunkPacket with mode=false.
      */
     private void sendChunkUnload(ConnectedPlayer player, ChunkCoord coord) {
-        player.sendPacket(new PreChunkPacket(coord.getX(), coord.getZ(), false));
+        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_2_1)) {
+            player.sendPacket(new MapChunkPacketV28(
+                coord.getX(), coord.getZ(), true,
+                (short) 0, (short) 0, new byte[0]));
+        } else {
+            player.sendPacket(new PreChunkPacket(coord.getX(), coord.getZ(), false));
+        }
     }
 
     /**

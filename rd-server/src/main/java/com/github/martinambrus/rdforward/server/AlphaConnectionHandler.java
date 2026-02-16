@@ -280,7 +280,11 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         int entityId = player.getPlayerId() + 1;
 
         // Send LoginS2C (format varies by version)
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_1)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_2_1)) {
+            // Release 1.2.1+: no seed, int dimension, levelType remains.
+            ctx.writeAndFlush(new LoginS2CPacketV28(entityId, "default", 1,
+                    0, (byte) 0, (byte) 0, (byte) 20));
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_1)) {
             // Release 1.1+ added levelType String16 between seed and gameMode.
             ctx.writeAndFlush(new LoginS2CPacketV23(entityId, 0L, "default", 1,
                     (byte) 0, (byte) 0, (byte) 128, (byte) 20));

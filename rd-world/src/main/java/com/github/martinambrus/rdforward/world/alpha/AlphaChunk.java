@@ -339,6 +339,160 @@ public class AlphaChunk {
         return baos.toByteArray();
     }
 
+    /**
+     * Serialize this chunk's data for the Release 1.2.1+ protocol (v28) MapChunkPacket.
+     *
+     * The v28 format uses section-based encoding with 16x16x16 sub-chunks.
+     * Our 128-tall chunk maps to sections 0-7. Each section's blocks use YZX
+     * ordering: index = (y & 15) * 256 + z * 16 + x.
+     *
+     * Uncompressed data layout (for each section in primaryBitMask):
+     *   4096 bytes block type LSBs
+     * Then for each section in primaryBitMask:
+     *   2048 bytes metadata nibbles
+     * Then for each section in primaryBitMask:
+     *   2048 bytes block light nibbles
+     * Then for each section in primaryBitMask:
+     *   2048 bytes sky light nibbles
+     * If groundUpContinuous: 256 bytes biome data (all plains = 1)
+     *
+     * @return result array: [0] = compressed data, [1..2] = primaryBitMask as
+     *         two bytes (low, high). Use {@code (result[1][0] & 0xFF) | ((result[1][1] & 0xFF) << 8)}
+     *         to reconstruct the short.
+     */
+    public V28ChunkData serializeForV28Protocol() throws IOException {
+        // Determine which sections (0-7) contain non-air blocks.
+        // Our chunk is 128 tall, so sections 0-7 (each 16 blocks tall).
+        int primaryBitMask = 0;
+        for (int section = 0; section < 8; section++) {
+            int baseY = section * 16;
+            boolean hasBlocks = false;
+            for (int x = 0; x < WIDTH && !hasBlocks; x++) {
+                for (int z = 0; z < DEPTH && !hasBlocks; z++) {
+                    for (int ly = 0; ly < 16; ly++) {
+                        if (getBlock(x, baseY + ly, z) != 0) {
+                            hasBlocks = true;
+                        }
+                    }
+                }
+            }
+            if (hasBlocks) {
+                primaryBitMask |= (1 << section);
+            }
+        }
+
+        // Count sections for buffer sizing
+        int sectionCount = Integer.bitCount(primaryBitMask);
+
+        // Each section contributes: 4096 (blocks) + 2048 (metadata) + 2048 (blockLight) + 2048 (skyLight)
+        // Plus 256 bytes biome data for ground-up continuous
+        int uncompressedSize = sectionCount * (4096 + 2048 + 2048 + 2048) + 256;
+        byte[] uncompressed = new byte[uncompressedSize];
+        int offset = 0;
+
+        // Write block type LSBs for each section
+        for (int section = 0; section < 8; section++) {
+            if ((primaryBitMask & (1 << section)) == 0) continue;
+            int baseY = section * 16;
+            for (int ly = 0; ly < 16; ly++) {
+                for (int z = 0; z < DEPTH; z++) {
+                    for (int x = 0; x < WIDTH; x++) {
+                        uncompressed[offset++] = (byte) getBlock(x, baseY + ly, z);
+                    }
+                }
+            }
+        }
+
+        // Write metadata nibbles for each section
+        for (int section = 0; section < 8; section++) {
+            if ((primaryBitMask & (1 << section)) == 0) continue;
+            int baseY = section * 16;
+            for (int ly = 0; ly < 16; ly++) {
+                for (int z = 0; z < DEPTH; z++) {
+                    for (int x = 0; x < WIDTH; x += 2) {
+                        int low = getBlockData(x, baseY + ly, z) & 0x0F;
+                        int high = getBlockData(x + 1, baseY + ly, z) & 0x0F;
+                        uncompressed[offset++] = (byte) (low | (high << 4));
+                    }
+                }
+            }
+        }
+
+        // Write block light nibbles for each section
+        for (int section = 0; section < 8; section++) {
+            if ((primaryBitMask & (1 << section)) == 0) continue;
+            int baseY = section * 16;
+            for (int ly = 0; ly < 16; ly++) {
+                for (int z = 0; z < DEPTH; z++) {
+                    for (int x = 0; x < WIDTH; x += 2) {
+                        int low = getBlockLight(x, baseY + ly, z) & 0x0F;
+                        int high = getBlockLight(x + 1, baseY + ly, z) & 0x0F;
+                        uncompressed[offset++] = (byte) (low | (high << 4));
+                    }
+                }
+            }
+        }
+
+        // Write sky light nibbles for each section
+        for (int section = 0; section < 8; section++) {
+            if ((primaryBitMask & (1 << section)) == 0) continue;
+            int baseY = section * 16;
+            for (int ly = 0; ly < 16; ly++) {
+                for (int z = 0; z < DEPTH; z++) {
+                    for (int x = 0; x < WIDTH; x += 2) {
+                        int low = getSkyLight(x, baseY + ly, z) & 0x0F;
+                        int high = getSkyLight(x + 1, baseY + ly, z) & 0x0F;
+                        uncompressed[offset++] = (byte) (low | (high << 4));
+                    }
+                }
+            }
+        }
+
+        // addBitMask = 0, so no add data sections
+
+        // Biome data: 256 bytes, all plains (1)
+        Arrays.fill(uncompressed, offset, offset + 256, (byte) 1);
+        offset += 256;
+
+        // Zlib compress
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        DeflaterOutputStream dos = new DeflaterOutputStream(baos, new Deflater(Deflater.BEST_SPEED));
+        dos.write(uncompressed, 0, offset);
+        dos.close();
+
+        return new V28ChunkData(baos.toByteArray(), (short) primaryBitMask);
+    }
+
+    /**
+     * Result container for v28 chunk serialization.
+     */
+    public static class V28ChunkData {
+        private final byte[] compressedData;
+        private final short primaryBitMask;
+
+        public V28ChunkData(byte[] compressedData, short primaryBitMask) {
+            this.compressedData = compressedData;
+            this.primaryBitMask = primaryBitMask;
+        }
+
+        public byte[] getCompressedData() { return compressedData; }
+        public short getPrimaryBitMask() { return primaryBitMask; }
+    }
+
+    /**
+     * Get the 4-bit block light for a block at local coordinates.
+     */
+    public int getBlockLight(int x, int y, int z) {
+        return getNibble(blockLight, blockIndex(x, y, z));
+    }
+
+    /**
+     * Get the 4-bit sky light for a block at local coordinates.
+     */
+    public int getSkyLight(int x, int y, int z) {
+        return getNibble(skyLight, blockIndex(x, y, z));
+    }
+
     // === Raw array access for serialization ===
 
     public byte[] getBlocks() { return blocks; }

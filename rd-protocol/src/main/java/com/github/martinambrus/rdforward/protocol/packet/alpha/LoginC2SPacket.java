@@ -39,8 +39,19 @@ import io.netty.buffer.ByteBuf;
  *   [byte]     max players (0, not used)
  *   Note: Beta 1.8 removed the "unused" String16 field.
  *
- * Wire format (v23+, Release 1.1+):
+ * Wire format (v23, Release 1.1):
  *   Same as v17 but with [string16] level type inserted after seed and before game mode.
+ *
+ * Wire format (v28+, Release 1.2.1+):
+ *   [int]      protocol version (28)
+ *   [string16] username
+ *   [string16] level type ("default")
+ *   [int]      game mode (0, not used)
+ *   [int]      dimension (0)
+ *   [byte]     difficulty (0, not used)
+ *   [byte]     world height (0, not used)
+ *   [byte]     max players (0, not used)
+ *   Note: seed removed, dimension changed from byte to int.
  */
 public class LoginC2SPacket implements Packet {
 
@@ -79,7 +90,15 @@ public class LoginC2SPacket implements Packet {
     public void write(ByteBuf buf) {
         buf.writeInt(protocolVersion);
         McDataTypes.writeStringAdaptive(buf, username);
-        if (protocolVersion >= 17) {
+        if (protocolVersion >= 28) {
+            // Release 1.2.1+: no seed, int dimension
+            McDataTypes.writeStringAdaptive(buf, "default");
+            buf.writeInt(0);   // gameMode
+            buf.writeInt(dimension);
+            buf.writeByte(0);  // difficulty
+            buf.writeByte(0);  // worldHeight
+            buf.writeByte(0);  // maxPlayers
+        } else if (protocolVersion >= 17) {
             // Beta 1.8+: no "unused" String16, additional fields after mapSeed
             buf.writeLong(mapSeed);
             if (protocolVersion >= 23) {
@@ -104,7 +123,15 @@ public class LoginC2SPacket implements Packet {
     public void read(ByteBuf buf) {
         protocolVersion = buf.readInt();
         username = McDataTypes.readStringAdaptive(buf);
-        if (protocolVersion >= 17) {
+        if (protocolVersion >= 28) {
+            // Release 1.2.1+: no seed, int dimension
+            McDataTypes.readStringAdaptive(buf); // levelType
+            buf.readInt();   // gameMode
+            dimension = (byte) buf.readInt();
+            buf.readByte();  // difficulty
+            buf.readByte();  // worldHeight
+            buf.readByte();  // maxPlayers
+        } else if (protocolVersion >= 17) {
             // Beta 1.8+: no "unused" String16, additional fields after mapSeed
             mapSeed = buf.readLong();
             if (protocolVersion >= 23) {

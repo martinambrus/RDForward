@@ -213,12 +213,20 @@ public enum ProtocolVersion {
     RELEASE_1_1(23, 20, Family.RELEASE, "Release 1.1 (v23)", 92),
 
     /**
+     * Minecraft Release 1.2.1 (March 2012).
+     * Seed removed from Login S2C/C2S and Respawn. Dimension changed from byte to int.
+     * Chunk format overhauled to section-based with 256 height + biome data.
+     * InputPacket (0x1B) removed. Real MC protocol version 28.
+     */
+    RELEASE_1_2_1(28, 21, Family.RELEASE, "Release 1.2.1 (v28)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 21, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 22, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -339,6 +347,7 @@ public enum ProtocolVersion {
             case 17: return "Beta 1.8-1.8.1";
             case 22: return "Release 1.0.0";
             case 23: return "Release 1.1";
+            case 28: return "Release 1.2.1";
             default: return null;
         }
     }

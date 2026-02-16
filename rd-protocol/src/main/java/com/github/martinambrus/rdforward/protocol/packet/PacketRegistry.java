@@ -115,7 +115,7 @@ public class PacketRegistry {
      * not PlayerIdentification; 0x03 = Chat, not LevelDataChunk).
      */
     private static void registerAlphaPackets() {
-        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8, ProtocolVersion.RELEASE_1_0, ProtocolVersion.RELEASE_1_1};
+        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8, ProtocolVersion.RELEASE_1_0, ProtocolVersion.RELEASE_1_1, ProtocolVersion.RELEASE_1_2_1};
 
         for (ProtocolVersion v : alphaVersions) {
             // === Bidirectional packets ===
@@ -279,7 +279,7 @@ public class PacketRegistry {
         // Beta changed several packet wire formats and added new packets.
         // Release 1.0.0 (v22) shares the same base registrations as Beta, with
         // version-specific overrides for item slot format (NBT tags).
-        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8, ProtocolVersion.RELEASE_1_0, ProtocolVersion.RELEASE_1_1};
+        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8, ProtocolVersion.RELEASE_1_0, ProtocolVersion.RELEASE_1_1, ProtocolVersion.RELEASE_1_2_1};
         for (ProtocolVersion betaV : betaVersions) {
             // Override C2S packets that changed format:
             register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x0F, new PacketFactory() {
@@ -477,6 +477,23 @@ public class PacketRegistry {
                 register(betaV, PacketDirection.CLIENT_TO_SERVER, 0xFA, new PacketFactory() {
                     public Packet create() { return new CustomPayloadPacket(); }
                 });
+            }
+
+            // Release v28+ (Release 1.2.1+): Seed removed from Login/Respawn,
+            // dimension byte→int. InputPacket (0x1B) removed. MapChunk changed
+            // to section-based format.
+            if (betaV.getVersionNumber() >= 28) {
+                register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x01, new PacketFactory() {
+                    public Packet create() { return new LoginS2CPacketV28(); }
+                });
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x09, new PacketFactory() {
+                    public Packet create() { return new RespawnPacketV28(); }
+                });
+                register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x33, new PacketFactory() {
+                    public Packet create() { return new MapChunkPacketV28(); }
+                });
+                // InputPacket (0x1B) removed in 12w01a (between v23 and v28)
+                REGISTRY.remove(registryKey(betaV, PacketDirection.CLIENT_TO_SERVER, 0x1B));
             }
         }
     }
