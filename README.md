@@ -192,6 +192,48 @@ All 7 game source files were modified:
 The `NativeLauncher` and `FabricNativeLauncher` were simplified since LWJGL 3 auto-extracts
 natives from classpath JARs.
 
+## References & Acknowledgments
+
+This project would not be possible without the following open source projects, tools, and community resources.
+
+### Libraries & Dependencies
+
+| Library | Usage |
+|---------|-------|
+| [Netty](https://github.com/netty/netty) | TCP networking framework (pipeline-based protocol handling) |
+| [CloudburstMC Protocol](https://github.com/CloudburstMC/Protocol) | Bedrock Edition networking (RakNet + codec) |
+| [LWJGL 3](https://github.com/LWJGL/lwjgl3) | OpenGL/GLFW bindings for rendering and input |
+| [libGDX](https://github.com/libgdx/libgdx) | Cross-platform game framework (desktop + Android) |
+| [Fabric Loader](https://github.com/FabricMC/fabric-loader) | Mod loading framework |
+| [SpongePowered Mixin](https://github.com/SpongePowered/Mixin) | Bytecode-level code injection for modding |
+| [Querz NBT](https://github.com/Querz/NBT) | NBT serialization for world persistence |
+| [ASM](https://gitlab.ow2.org/asm/asm) | Java bytecode manipulation (transitive via Mixin) |
+| [SLF4J](https://github.com/qos-ch/slf4j) | Logging facade |
+
+### Protocol Research & Implementation References
+
+| Project / Resource | How it helped |
+|--------------------|---------------|
+| [ViaVersion](https://github.com/ViaVersion/ViaVersion) / [ViaLegacy](https://github.com/ViaVersion/ViaLegacy) | Primary reference for understanding wire format differences between Minecraft protocol versions (Alpha through Release 1.3.x). Version translation logic and packet format changes were cross-referenced against ViaLegacy's protocol classes. |
+| [GeyserMC](https://github.com/GeyserMC/Geyser) | Reference for Bedrock Edition protocol conventions — position semantics (eye vs feet level per packet type), rotation field ordering in MovePlayerPacket/AddPlayerPacket/PlayerAuthInputPacket. |
+| [NukkitX](https://github.com/CloudburstMC/Nukkit) | Reference for Bedrock Edition protocol conventions — confirmed position and rotation field semantics alongside GeyserMC sources. |
+| [wiki.vg](https://wiki.vg/Protocol) / [minecraft.wiki](https://minecraft.wiki) | Community-maintained Minecraft protocol documentation. Used for packet formats, field types, and version-specific wire format details across all supported protocol versions. |
+| [Minecraft Wiki](https://minecraft.wiki) | Official Minecraft server JAR downloads for decompilation and protocol version history. |
+
+### Tools
+
+| Tool | Usage |
+|------|-------|
+| [CFR Decompiler](https://github.com/leibnitz27/cfr) | Decompiling Minecraft Alpha/Beta client and server JARs to verify exact wire formats, field orders, and client-side behavior. |
+| [Vineflower](https://github.com/Vineflower/vineflower) | Decompiler used in the BuildTools setup process for RubyDung. |
+| [MultiMC](https://github.com/MultiMC/Launcher) | Source of historical Minecraft client JARs (from its library cache) used for protocol analysis and decompilation. |
+
+### Inspiration
+
+| Project | Influence |
+|---------|-----------|
+| [Spigot BuildTools](https://www.spigotmc.org/wiki/buildtools/) | Inspired the build approach — downloading copyrighted code at build time rather than redistributing it. |
+
 ## License
 
 MIT License — see [LICENSE](LICENSE) for details.
