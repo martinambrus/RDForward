@@ -67,8 +67,8 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
             String response;
             if (newPing) {
                 response = "\u00A71\u0000"
-                        + "49\u0000"
-                        + "1.4.4\u0000"
+                        + "51\u0000"
+                        + "1.4.7\u0000"
                         + "RDForward Server\u0000"
                         + playerManager.getPlayerCount() + "\u0000"
                         + PlayerManager.MAX_PLAYERS;

@@ -273,12 +273,23 @@ public enum ProtocolVersion {
     RELEASE_1_4_4(49, 26, Family.RELEASE, "Release 1.4.4 (v49)", 92),
 
     /**
+     * Minecraft Release 1.4.6-1.4.7 (December 2012).
+     * Wire format nearly identical to v49. S2C changes: SpawnItem redesigned as
+     * AddEntity + SetEntityData, AddEntity gained pitch/yaw fields, bulk chunk
+     * format updated — none of which we send. C2S: PlayerDigging status 3/4
+     * renumbered (drop item stack vs single), but irrelevant since v17+ uses
+     * creative mode and doesn't need drop replenishment.
+     * Real MC protocol version 51.
+     */
+    RELEASE_1_4_6(51, 27, Family.RELEASE, "Release 1.4.6 (v51)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 27, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 28, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -405,6 +416,7 @@ public enum ProtocolVersion {
             case 39: return "Release 1.3.1-1.3.2";
             case 47: return "Release 1.4.2";
             case 49: return "Release 1.4.4-1.4.5";
+            case 51: return "Release 1.4.6-1.4.7";
             default: return null;
         }
     }
