@@ -178,6 +178,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 || packet instanceof CreativeSlotPacketV39
                 || packet instanceof PlayerAbilitiesPacket
                 || packet instanceof PlayerAbilitiesPacketV39
+                || packet instanceof PlayerAbilitiesPacketV73
                 || packet instanceof EnchantItemPacket) {
             // Creative mode actions — silently accept
         } else if (packet instanceof UseEntityPacket
@@ -185,6 +186,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 || packet instanceof UpdateSignPacket
                 || packet instanceof EntityEquipmentPacket
                 || packet instanceof EntityActionPacket
+                || packet instanceof EntityActionPacketV73
                 || packet instanceof InputPacket
                 || packet instanceof CustomPayloadPacket
                 || packet instanceof ClientSettingsPacket
@@ -454,7 +456,13 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // v39+: send PlayerAbilities after login (flags: invulnerable+allowFlying+creative).
         // Bit 1 (flying) is deliberately NOT set so the player spawns on the ground
         // instead of mid-air. Players can still fly by double-tapping jump.
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_6_1)) {
+            ctx.writeAndFlush(new PlayerAbilitiesPacketV73(0x0D, 0.05f, 0.1f));
+            // v73+: client relies on Entity Properties for movement speed.
+            // Without this, it defaults to EntityLivingBase's 0.7 instead of 0.1.
+            ctx.writeAndFlush(new EntityPropertiesPacket(entityId,
+                    "generic.movementSpeed", 0.10000000149011612));
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
             ctx.writeAndFlush(new PlayerAbilitiesPacketV39(0x0D, 12, 25));
         }
 

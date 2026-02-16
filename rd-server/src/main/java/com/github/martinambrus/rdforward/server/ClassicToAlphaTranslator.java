@@ -186,7 +186,12 @@ public class ClassicToAlphaTranslator extends ChannelOutboundHandlerAdapter {
         if (packet instanceof MessagePacket) {
             // Classic 0x0D Message -> Alpha 0x03 Chat
             MessagePacket mp = (MessagePacket) packet;
-            return new ChatPacket(mp.getMessage());
+            String message = mp.getMessage();
+            // v73+ (Release 1.6.1+): chat messages are JSON text components
+            if (clientVersion != null && clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_6_1)) {
+                message = "{\"text\":\"" + message.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
+            }
+            return new ChatPacket(message);
         }
 
         if (packet instanceof com.github.martinambrus.rdforward.protocol.packet.classic.DisconnectPacket) {

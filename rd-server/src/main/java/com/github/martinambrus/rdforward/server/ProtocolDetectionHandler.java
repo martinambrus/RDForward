@@ -54,21 +54,46 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
         int firstByte = buf.getUnsignedByte(buf.readerIndex());
 
         if (firstByte == 0xFE) {
-            // Server list ping. Two formats exist:
+            // Server list ping. Three formats exist:
             // - Old (Beta 1.8 - 1.3.2): client sends 0xFE alone.
             //   Response: 0xFF + String16("motd§playerCount§maxPlayers")
-            // - New (1.4.2+): client sends 0xFE 0x01 (+ optional 0xFA payload).
+            // - New (1.4.2 - 1.5.2): client sends 0xFE 0x01 (no payload).
             //   Response: 0xFF + String16("§1\0protocol\0version\0motd\0players\0max")
-            //   where \0 is the null character (U+0000).
+            // - New with MC|PingHost (1.6+): client sends 0xFE 0x01 0xFA + payload
+            //   containing the client's protocol version. Response same as above,
+            //   but we mirror the client's version so every client sees "compatible".
             boolean newPing = buf.readableBytes() >= 2
                     && buf.getUnsignedByte(buf.readerIndex() + 1) == 0x01;
+
+            // Try to parse client protocol version from MC|PingHost (1.6+ only).
+            int clientProtocol = -1;
+            if (newPing && buf.readableBytes() > 2
+                    && buf.getUnsignedByte(buf.readerIndex() + 2) == 0xFA) {
+                int savedIndex = buf.readerIndex();
+                try {
+                    buf.skipBytes(3); // FE 01 FA
+                    int channelNameLen = buf.readUnsignedShort();
+                    buf.skipBytes(channelNameLen * 2); // UTF-16BE channel name
+                    buf.readShort(); // data length
+                    clientProtocol = buf.readUnsignedByte();
+                } catch (Exception e) {
+                    // Buffer underflow — fall back to default
+                }
+                buf.readerIndex(savedIndex);
+            }
             buf.release();
 
             String response;
             if (newPing) {
+                // Mirror the client's protocol version so it sees "compatible".
+                // For 1.4.2-1.5.2 (no MC|PingHost), report the latest pre-1.6
+                // version we support so the newest client in that range matches.
+                int reportProtocol = clientProtocol > 0 ? clientProtocol : 61;
+                String reportVersion = clientProtocol > 0
+                        ? pingVersionString(clientProtocol) : "1.5.2";
                 response = "\u00A71\u0000"
-                        + "61\u0000"
-                        + "1.5.2\u0000"
+                        + reportProtocol + "\u0000"
+                        + reportVersion + "\u0000"
                         + "RDForward Server\u0000"
                         + playerManager.getPlayerCount() + "\u0000"
                         + PlayerManager.MAX_PLAYERS;
@@ -122,6 +147,23 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
             ChannelPipeline pipeline = ctx.pipeline();
             pipeline.remove(this);
             pipeline.fireChannelRead(buf);
+        }
+    }
+
+    /**
+     * Map a protocol version number to a game version string for server list display.
+     * Returns the latest game version for a given protocol number.
+     */
+    private static String pingVersionString(int protocolVersion) {
+        switch (protocolVersion) {
+            case 73: return "1.6.2";
+            case 61: return "1.5.2";
+            case 60: return "1.5.1";
+            case 51: return "1.4.7";
+            case 49: return "1.4.5";
+            case 47: return "1.4.2";
+            case 39: return "1.3.2";
+            default: return "RDForward";
         }
     }
 }

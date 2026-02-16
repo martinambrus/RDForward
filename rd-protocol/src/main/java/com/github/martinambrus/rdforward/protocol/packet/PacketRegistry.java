@@ -115,7 +115,7 @@ public class PacketRegistry {
      * not PlayerIdentification; 0x03 = Chat, not LevelDataChunk).
      */
     private static void registerAlphaPackets() {
-        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8, ProtocolVersion.BETA_1_9_PRE5, ProtocolVersion.RELEASE_1_0, ProtocolVersion.RELEASE_1_1, ProtocolVersion.RELEASE_1_2_1, ProtocolVersion.RELEASE_1_2_4, ProtocolVersion.RELEASE_1_3_1, ProtocolVersion.RELEASE_1_4_2, ProtocolVersion.RELEASE_1_4_4, ProtocolVersion.RELEASE_1_4_6, ProtocolVersion.RELEASE_1_5, ProtocolVersion.RELEASE_1_5_2};
+        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8, ProtocolVersion.BETA_1_9_PRE5, ProtocolVersion.RELEASE_1_0, ProtocolVersion.RELEASE_1_1, ProtocolVersion.RELEASE_1_2_1, ProtocolVersion.RELEASE_1_2_4, ProtocolVersion.RELEASE_1_3_1, ProtocolVersion.RELEASE_1_4_2, ProtocolVersion.RELEASE_1_4_4, ProtocolVersion.RELEASE_1_4_6, ProtocolVersion.RELEASE_1_5, ProtocolVersion.RELEASE_1_5_2, ProtocolVersion.RELEASE_1_6_1};
 
         for (ProtocolVersion v : alphaVersions) {
             // === Bidirectional packets ===
@@ -279,7 +279,7 @@ public class PacketRegistry {
         // Beta changed several packet wire formats and added new packets.
         // Release 1.0.0 (v22) shares the same base registrations as Beta, with
         // version-specific overrides for item slot format (NBT tags).
-        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8, ProtocolVersion.BETA_1_9_PRE5, ProtocolVersion.RELEASE_1_0, ProtocolVersion.RELEASE_1_1, ProtocolVersion.RELEASE_1_2_1, ProtocolVersion.RELEASE_1_2_4, ProtocolVersion.RELEASE_1_3_1, ProtocolVersion.RELEASE_1_4_2, ProtocolVersion.RELEASE_1_4_4, ProtocolVersion.RELEASE_1_4_6, ProtocolVersion.RELEASE_1_5, ProtocolVersion.RELEASE_1_5_2};
+        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8, ProtocolVersion.BETA_1_9_PRE5, ProtocolVersion.RELEASE_1_0, ProtocolVersion.RELEASE_1_1, ProtocolVersion.RELEASE_1_2_1, ProtocolVersion.RELEASE_1_2_4, ProtocolVersion.RELEASE_1_3_1, ProtocolVersion.RELEASE_1_4_2, ProtocolVersion.RELEASE_1_4_4, ProtocolVersion.RELEASE_1_4_6, ProtocolVersion.RELEASE_1_5, ProtocolVersion.RELEASE_1_5_2, ProtocolVersion.RELEASE_1_6_1};
         for (ProtocolVersion betaV : betaVersions) {
             // Override C2S packets that changed format:
             register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x0F, new PacketFactory() {
@@ -561,6 +561,20 @@ public class PacketRegistry {
                 REGISTRY.remove(registryKey(betaV, PacketDirection.SERVER_TO_CLIENT, 0x02));
                 // S2C PreChunk (0x32) removed in v39
                 REGISTRY.remove(registryKey(betaV, PacketDirection.SERVER_TO_CLIENT, 0x32));
+            }
+
+            // Release v73+ (Release 1.6.1+): PlayerAbilities speeds changed from byte to float.
+            // EntityAction gained int jumpBoost for horse riding.
+            if (betaV.getVersionNumber() >= 73) {
+                register(betaV, PacketDirection.SERVER_TO_CLIENT, 0xCA, new PacketFactory() {
+                    public Packet create() { return new PlayerAbilitiesPacketV73(); }
+                });
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0xCA, new PacketFactory() {
+                    public Packet create() { return new PlayerAbilitiesPacketV73(); }
+                });
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x13, new PacketFactory() {
+                    public Packet create() { return new EntityActionPacketV73(); }
+                });
             }
 
             // Release v47+ (Release 1.4.2+): ClientSettings (0xCC) gained boolean showCape.
