@@ -204,12 +204,21 @@ public enum ProtocolVersion {
     RELEASE_1_0(22, 19, Family.RELEASE, "Release 1.0.0 (v22)", 92),
 
     /**
+     * Minecraft Release 1.1 (January 2012).
+     * Added levelType String16 to Login S2C, Login C2S, and Respawn packets.
+     * New bidirectional Custom Payload (0xFA) packet. Item slot format unchanged
+     * from v22 (conditional NBT for damageable items).
+     * Real MC protocol version 23.
+     */
+    RELEASE_1_1(23, 20, Family.RELEASE, "Release 1.1 (v23)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 20, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 21, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -329,6 +338,7 @@ public enum ProtocolVersion {
             case 14: return "Beta 1.7.2-1.7.3 (or Alpha 1.0.16-1.0.16_02)";
             case 17: return "Beta 1.8-1.8.1";
             case 22: return "Release 1.0.0";
+            case 23: return "Release 1.1";
             default: return null;
         }
     }

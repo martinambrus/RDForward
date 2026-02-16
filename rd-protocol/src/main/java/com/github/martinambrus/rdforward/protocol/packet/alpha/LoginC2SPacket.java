@@ -38,6 +38,9 @@ import io.netty.buffer.ByteBuf;
  *   [byte]     world height (0, not used)
  *   [byte]     max players (0, not used)
  *   Note: Beta 1.8 removed the "unused" String16 field.
+ *
+ * Wire format (v23+, Release 1.1+):
+ *   Same as v17 but with [string16] level type inserted after seed and before game mode.
  */
 public class LoginC2SPacket implements Packet {
 
@@ -79,6 +82,10 @@ public class LoginC2SPacket implements Packet {
         if (protocolVersion >= 17) {
             // Beta 1.8+: no "unused" String16, additional fields after mapSeed
             buf.writeLong(mapSeed);
+            if (protocolVersion >= 23) {
+                // Release 1.1+: levelType inserted between seed and gameMode
+                McDataTypes.writeStringAdaptive(buf, "default");
+            }
             buf.writeInt(0);   // gameMode (not used)
             buf.writeByte(dimension);
             buf.writeByte(0);  // difficulty
@@ -100,6 +107,10 @@ public class LoginC2SPacket implements Packet {
         if (protocolVersion >= 17) {
             // Beta 1.8+: no "unused" String16, additional fields after mapSeed
             mapSeed = buf.readLong();
+            if (protocolVersion >= 23) {
+                // Release 1.1+: levelType inserted between seed and gameMode
+                McDataTypes.readStringAdaptive(buf);
+            }
             buf.readInt();   // gameMode (not used)
             dimension = buf.readByte();
             buf.readByte();  // difficulty
