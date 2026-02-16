@@ -451,9 +451,11 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.writeAndFlush(new LoginS2CPacketV2(entityId));
         }
 
-        // v39+: send PlayerAbilities after login (flags: invulnerable+flying+allowFlying+creative)
+        // v39+: send PlayerAbilities after login (flags: invulnerable+allowFlying+creative).
+        // Bit 1 (flying) is deliberately NOT set so the player spawns on the ground
+        // instead of mid-air. Players can still fly by double-tapping jump.
         if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
-            ctx.writeAndFlush(new PlayerAbilitiesPacketV39(0x0F, 12, 25));
+            ctx.writeAndFlush(new PlayerAbilitiesPacketV39(0x0D, 12, 25));
         }
 
         // Determine spawn position
@@ -471,13 +473,19 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             spawnPitch = (savedPos[4] & 0xFF) * 360.0f / 256.0f;
 
             // Snap feet to nearest block surface if within fixed-point tolerance.
-            // Even with Math.round on save, fixed-point can shift feet up to
-            // 1/64 block below a surface. If feet are that close to the NEXT
-            // integer Y, snap upward to prevent sinking into the block.
+            // Eye-level Y is saved as fixed-point (round(eyeY*32)/32), so the
+            // round-trip through fixed-point + eye height subtraction can shift
+            // feet up to ~0.02 blocks from their original integer position.
+            // Snap UP if close to the next integer (prevents sinking into block).
+            // Snap DOWN if slightly above an integer (prevents creative-mode
+            // clients from detecting "not on ground" and enabling flying).
             double feetY = spawnY - PLAYER_EYE_HEIGHT;
             double fracFeet = feetY - Math.floor(feetY);
             if (fracFeet > 1.0 - (1.0 / 16.0)) {
                 feetY = Math.ceil(feetY);
+                spawnY = feetY + PLAYER_EYE_HEIGHT;
+            } else if (fracFeet > 0 && fracFeet < (1.0 / 16.0)) {
+                feetY = Math.floor(feetY);
                 spawnY = feetY + PLAYER_EYE_HEIGHT;
             }
 
