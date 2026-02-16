@@ -115,7 +115,7 @@ public class PacketRegistry {
      * not PlayerIdentification; 0x03 = Chat, not LevelDataChunk).
      */
     private static void registerAlphaPackets() {
-        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8, ProtocolVersion.RELEASE_1_0, ProtocolVersion.RELEASE_1_1, ProtocolVersion.RELEASE_1_2_1, ProtocolVersion.RELEASE_1_2_4};
+        ProtocolVersion[] alphaVersions = {ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8, ProtocolVersion.RELEASE_1_0, ProtocolVersion.RELEASE_1_1, ProtocolVersion.RELEASE_1_2_1, ProtocolVersion.RELEASE_1_2_4, ProtocolVersion.RELEASE_1_3_1};
 
         for (ProtocolVersion v : alphaVersions) {
             // === Bidirectional packets ===
@@ -279,7 +279,7 @@ public class PacketRegistry {
         // Beta changed several packet wire formats and added new packets.
         // Release 1.0.0 (v22) shares the same base registrations as Beta, with
         // version-specific overrides for item slot format (NBT tags).
-        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8, ProtocolVersion.RELEASE_1_0, ProtocolVersion.RELEASE_1_1, ProtocolVersion.RELEASE_1_2_1, ProtocolVersion.RELEASE_1_2_4};
+        ProtocolVersion[] betaVersions = {ProtocolVersion.BETA_1_0, ProtocolVersion.BETA_1_2, ProtocolVersion.BETA_1_3, ProtocolVersion.BETA_1_4, ProtocolVersion.BETA_1_5, ProtocolVersion.BETA_1_6, ProtocolVersion.BETA_1_7, ProtocolVersion.BETA_1_7_3, ProtocolVersion.BETA_1_8, ProtocolVersion.RELEASE_1_0, ProtocolVersion.RELEASE_1_1, ProtocolVersion.RELEASE_1_2_1, ProtocolVersion.RELEASE_1_2_4, ProtocolVersion.RELEASE_1_3_1};
         for (ProtocolVersion betaV : betaVersions) {
             // Override C2S packets that changed format:
             register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x0F, new PacketFactory() {
@@ -494,6 +494,73 @@ public class PacketRegistry {
                 });
                 // InputPacket (0x1B) removed in 12w01a (between v23 and v28)
                 REGISTRY.remove(registryKey(betaV, PacketDirection.CLIENT_TO_SERVER, 0x1B));
+            }
+
+            // Release v39+ (Release 1.3.1+): Mandatory encryption, new handshake,
+            // Login C2S replaced by ClientStatuses, PreChunk removed, MapChunk unused
+            // int removed, BlockChange block ID byte->short, PlayerAbilities format
+            // changed, item slot NBT unconditional, BlockPlacement gains cursor bytes,
+            // DestroyEntity variable-length, SpawnPlayer gained metadata.
+            if (betaV.getVersionNumber() >= 39) {
+                // S2C packets
+                register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x01, new PacketFactory() {
+                    public Packet create() { return new LoginS2CPacketV39(); }
+                });
+                register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x33, new PacketFactory() {
+                    public Packet create() { return new MapChunkPacketV39(); }
+                });
+                register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x35, new PacketFactory() {
+                    public Packet create() { return new BlockChangePacketV39(); }
+                });
+                register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x1D, new PacketFactory() {
+                    public Packet create() { return new DestroyEntityPacketV39(); }
+                });
+                register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x14, new PacketFactory() {
+                    public Packet create() { return new SpawnPlayerPacketV39(); }
+                });
+                register(betaV, PacketDirection.SERVER_TO_CLIENT, 0xFD, new PacketFactory() {
+                    public Packet create() { return new EncryptionKeyRequestPacket(); }
+                });
+                register(betaV, PacketDirection.SERVER_TO_CLIENT, 0xFC, new PacketFactory() {
+                    public Packet create() { return new EncryptionKeyResponsePacket(); }
+                });
+                register(betaV, PacketDirection.SERVER_TO_CLIENT, 0xCA, new PacketFactory() {
+                    public Packet create() { return new PlayerAbilitiesPacketV39(); }
+                });
+                register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x67, new PacketFactory() {
+                    public Packet create() { return new SetSlotPacketV39(); }
+                });
+                // C2S packets
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0xFC, new PacketFactory() {
+                    public Packet create() { return new EncryptionKeyResponsePacket(); }
+                });
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0xCD, new PacketFactory() {
+                    public Packet create() { return new ClientStatusPacket(); }
+                });
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x0F, new PacketFactory() {
+                    public Packet create() { return new PlayerBlockPlacementPacketV39(); }
+                });
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x6B, new PacketFactory() {
+                    public Packet create() { return new CreativeSlotPacketV39(); }
+                });
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x66, new PacketFactory() {
+                    public Packet create() { return new WindowClickPacketV39(); }
+                });
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0xCA, new PacketFactory() {
+                    public Packet create() { return new PlayerAbilitiesPacketV39(); }
+                });
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0xCB, new PacketFactory() {
+                    public Packet create() { return new TabCompletePacket(); }
+                });
+                register(betaV, PacketDirection.CLIENT_TO_SERVER, 0xCC, new PacketFactory() {
+                    public Packet create() { return new ClientSettingsPacket(); }
+                });
+                // C2S Respawn (0x09) replaced by ClientStatuses (0xCD)
+                REGISTRY.remove(registryKey(betaV, PacketDirection.CLIENT_TO_SERVER, 0x09));
+                // S2C Handshake (0x02) not sent in v39 (replaced by EncryptionKeyRequest)
+                REGISTRY.remove(registryKey(betaV, PacketDirection.SERVER_TO_CLIENT, 0x02));
+                // S2C PreChunk (0x32) removed in v39
+                REGISTRY.remove(registryKey(betaV, PacketDirection.SERVER_TO_CLIENT, 0x32));
             }
         }
     }

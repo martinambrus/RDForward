@@ -3,12 +3,18 @@ package com.github.martinambrus.rdforward.server;
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.codec.RawPacketDecoder;
 import com.github.martinambrus.rdforward.protocol.codec.RawPacketEncoder;
+import com.github.martinambrus.rdforward.protocol.crypto.CipherDecoder;
+import com.github.martinambrus.rdforward.protocol.crypto.CipherEncoder;
+import com.github.martinambrus.rdforward.protocol.crypto.MinecraftCipher;
 import com.github.martinambrus.rdforward.protocol.event.EventResult;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.*;
 import com.github.martinambrus.rdforward.protocol.packet.classic.PlayerTeleportPacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
 import com.github.martinambrus.rdforward.server.api.CommandRegistry;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.util.Arrays;
 import java.util.List;
 import com.github.martinambrus.rdforward.server.event.ServerEvents;
 import com.github.martinambrus.rdforward.world.BlockRegistry;
@@ -16,6 +22,7 @@ import io.netty.channel.ChannelHandlerContext;
 import java.util.concurrent.TimeUnit;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.timeout.ReadTimeoutException;
+import javax.crypto.Cipher;
 
 import java.util.Map;
 
@@ -64,6 +71,12 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     private ConnectedPlayer player;
     private boolean loginComplete = false;
 
+    // v39+ encryption state
+    private KeyPair rsaKeyPair;
+    private byte[] verifyToken;
+    private boolean awaitingEncryptionResponse = false;
+    private boolean awaitingClientStatus = false;
+
     /**
      * Server-side estimate of the player's cobblestone count. Corrected by
      * inventory sync packets (0x05) from the client. Used to calculate how
@@ -95,6 +108,10 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         if (!loginComplete) {
             if (packet instanceof HandshakeC2SPacket) {
                 handleHandshake(ctx, (HandshakeC2SPacket) packet);
+            } else if (packet instanceof EncryptionKeyResponsePacket) {
+                handleEncryptionResponse(ctx, (EncryptionKeyResponsePacket) packet);
+            } else if (packet instanceof ClientStatusPacket) {
+                handleClientStatus(ctx, (ClientStatusPacket) packet);
             } else if (packet instanceof LoginC2SPacket) {
                 // Pre-rewrite clients (v13) skip Handshake and send Login directly.
                 // Extract username from the Login packet if no Handshake was received.
@@ -138,6 +155,12 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             giveItem(ctx, BlockRegistry.COBBLESTONE, droppedCount);
         } else if (packet instanceof RespawnPacket) {
             handleRespawn(ctx);
+        } else if (packet instanceof ClientStatusPacket) {
+            // v39+ respawn uses ClientStatusPacket with payload=1
+            ClientStatusPacket cs = (ClientStatusPacket) packet;
+            if (cs.getPayload() == ClientStatusPacket.RESPAWN) {
+                handleRespawn(ctx);
+            }
         } else if (packet instanceof WindowClickPacket) {
             // Silently accept — cobblestone replenishment happens on CloseWindow
         } else if (packet instanceof CloseWindowPacket) {
@@ -152,7 +175,9 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             }
         } else if (packet instanceof CreativeSlotPacket
                 || packet instanceof CreativeSlotPacketV22
+                || packet instanceof CreativeSlotPacketV39
                 || packet instanceof PlayerAbilitiesPacket
+                || packet instanceof PlayerAbilitiesPacketV39
                 || packet instanceof EnchantItemPacket) {
             // Creative mode actions — silently accept
         } else if (packet instanceof UseEntityPacket
@@ -161,7 +186,9 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 || packet instanceof EntityEquipmentPacket
                 || packet instanceof EntityActionPacket
                 || packet instanceof InputPacket
-                || packet instanceof CustomPayloadPacket) {
+                || packet instanceof CustomPayloadPacket
+                || packet instanceof ClientSettingsPacket
+                || packet instanceof TabCompletePacket) {
             // Silently accept (not yet implemented server-side)
         } else if (packet instanceof KeepAlivePacket) {
             // Silently accept
@@ -173,6 +200,60 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     private void handleHandshake(ChannelHandlerContext ctx, HandshakeC2SPacket packet) {
         pendingUsername = packet.getUsername();
 
+        if (packet.isV39Format()) {
+            // v39+ Handshake: protocol version + username + hostname + port.
+            // Username is already extracted, no ";host:port" suffix stripping needed.
+            detectedString16 = true;
+
+            // Configure codec for String16
+            RawPacketDecoder decoder = ctx.pipeline().get(RawPacketDecoder.class);
+            if (decoder != null) {
+                decoder.setUseString16(true);
+            }
+            RawPacketEncoder encoder = ctx.pipeline().get(RawPacketEncoder.class);
+            if (encoder != null) {
+                encoder.setUseString16(true);
+            }
+
+            // Determine client version immediately from handshake protocol version
+            clientVersion = ProtocolVersion.fromNumber(packet.getProtocolVersion(),
+                    ProtocolVersion.Family.RELEASE);
+            if (clientVersion == null) {
+                String[] messages = buildUnsupportedVersionMessages(packet.getProtocolVersion());
+                System.out.println("Rejected client"
+                        + (pendingUsername != null ? " (" + pendingUsername + ")" : "")
+                        + ": " + messages[1]);
+                ctx.writeAndFlush(new DisconnectPacket(messages[0]));
+                ctx.close();
+                return;
+            }
+
+            // Update decoder protocol version for v39 packet registry
+            if (decoder != null) {
+                decoder.setProtocolVersion(clientVersion);
+            }
+
+            // Generate RSA keypair and verify token for encryption handshake
+            try {
+                KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
+                keyGen.initialize(1024);
+                rsaKeyPair = keyGen.generateKeyPair();
+                verifyToken = new byte[4];
+                new java.security.SecureRandom().nextBytes(verifyToken);
+
+                // Send Encryption Key Request (no S2C Handshake for v39+)
+                ctx.writeAndFlush(new EncryptionKeyRequestPacket(
+                        "", rsaKeyPair.getPublic().getEncoded(), verifyToken));
+                awaitingEncryptionResponse = true;
+            } catch (Exception e) {
+                System.err.println("Failed to generate RSA keypair: " + e.getMessage());
+                ctx.writeAndFlush(new DisconnectPacket("Encryption error"));
+                ctx.close();
+            }
+            return;
+        }
+
+        // Pre-v39 Handshake: single string field.
         // Beta 1.8+ sends "username;host:port" in the Handshake. Strip the
         // ";host:port" suffix to get just the username.
         int semicolon = pendingUsername.indexOf(';');
@@ -201,6 +282,68 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         ctx.writeAndFlush(new HandshakeS2CPacket("-"));
     }
 
+    private void handleEncryptionResponse(ChannelHandlerContext ctx, EncryptionKeyResponsePacket packet) {
+        if (!awaitingEncryptionResponse || rsaKeyPair == null) {
+            ctx.writeAndFlush(new DisconnectPacket("Unexpected encryption response"));
+            ctx.close();
+            return;
+        }
+        awaitingEncryptionResponse = false;
+
+        try {
+            // Decrypt shared secret and verify token using RSA private key
+            Cipher rsaCipher = Cipher.getInstance("RSA");
+            rsaCipher.init(Cipher.DECRYPT_MODE, rsaKeyPair.getPrivate());
+            byte[] sharedSecret = rsaCipher.doFinal(packet.getData1());
+
+            rsaCipher.init(Cipher.DECRYPT_MODE, rsaKeyPair.getPrivate());
+            byte[] decryptedToken = rsaCipher.doFinal(packet.getData2());
+
+            // Verify the token matches
+            if (!Arrays.equals(decryptedToken, verifyToken)) {
+                System.err.println("Encryption verify token mismatch for " + pendingUsername);
+                ctx.writeAndFlush(new DisconnectPacket("Encryption verification failed"));
+                ctx.close();
+                return;
+            }
+
+            // Send empty EncryptionKeyResponse to signal "enable encryption now"
+            ctx.writeAndFlush(new EncryptionKeyResponsePacket(new byte[0], new byte[0]))
+                    .addListener(future -> {
+                if (!future.isSuccess()) {
+                    ctx.close();
+                    return;
+                }
+                // Install cipher handlers in the pipeline
+                MinecraftCipher decryptCipher = new MinecraftCipher(Cipher.DECRYPT_MODE, sharedSecret);
+                MinecraftCipher encryptCipher = new MinecraftCipher(Cipher.ENCRYPT_MODE, sharedSecret);
+                ctx.pipeline().addBefore("decoder", "decrypt", new CipherDecoder(decryptCipher));
+                ctx.pipeline().addBefore("encoder", "encrypt", new CipherEncoder(encryptCipher));
+
+                awaitingClientStatus = true;
+            });
+        } catch (Exception e) {
+            System.err.println("Encryption handshake failed for " + pendingUsername + ": " + e.getMessage());
+            ctx.writeAndFlush(new DisconnectPacket("Encryption error"));
+            ctx.close();
+        }
+    }
+
+    private void handleClientStatus(ChannelHandlerContext ctx, ClientStatusPacket packet) {
+        if (packet.getPayload() == ClientStatusPacket.INITIAL_SPAWN) {
+            if (!awaitingClientStatus) {
+                ctx.writeAndFlush(new DisconnectPacket("Unexpected client status"));
+                ctx.close();
+                return;
+            }
+            awaitingClientStatus = false;
+            // clientVersion was already set in handleHandshake for v39+
+            handleLogin(ctx, clientVersion.getVersionNumber());
+        } else if (packet.getPayload() == ClientStatusPacket.RESPAWN) {
+            handleRespawn(ctx);
+        }
+    }
+
     private void handleLogin(ChannelHandlerContext ctx, int loginProtocolVersion) {
         if (pendingUsername == null) {
             ctx.writeAndFlush(new DisconnectPacket("Handshake not received"));
@@ -208,31 +351,34 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
-        // Determine protocol version from the client's login packet.
-        // String16 detection from Handshake disambiguates version clashes:
-        // v13 is shared by Alpha 1.0.15 and Beta 1.6.1-1.7, v14 by Alpha
-        // 1.0.16 and Beta 1.7.2-1.7.3. String16 means Beta 1.5+ for certain.
-        if (detectedString16) {
-            clientVersion = ProtocolVersion.fromNumber(loginProtocolVersion,
-                    ProtocolVersion.Family.BETA, ProtocolVersion.Family.RELEASE);
-        } else {
-            clientVersion = ProtocolVersion.fromNumber(loginProtocolVersion,
-                    ProtocolVersion.Family.ALPHA, ProtocolVersion.Family.BETA);
-        }
+        // For v39+ clients, clientVersion was already set in handleHandshake.
+        // For pre-v39 clients, determine protocol version from the login packet.
         if (clientVersion == null) {
-            String[] messages = buildUnsupportedVersionMessages(loginProtocolVersion);
-            System.out.println("Rejected client"
-                    + (pendingUsername != null ? " (" + pendingUsername + ")" : "")
-                    + ": " + messages[1]);
-            ctx.writeAndFlush(new DisconnectPacket(messages[0]));
-            ctx.close();
-            return;
-        }
+            // String16 detection from Handshake disambiguates version clashes:
+            // v13 is shared by Alpha 1.0.15 and Beta 1.6.1-1.7, v14 by Alpha
+            // 1.0.16 and Beta 1.7.2-1.7.3. String16 means Beta 1.5+ for certain.
+            if (detectedString16) {
+                clientVersion = ProtocolVersion.fromNumber(loginProtocolVersion,
+                        ProtocolVersion.Family.BETA, ProtocolVersion.Family.RELEASE);
+            } else {
+                clientVersion = ProtocolVersion.fromNumber(loginProtocolVersion,
+                        ProtocolVersion.Family.ALPHA, ProtocolVersion.Family.BETA);
+            }
+            if (clientVersion == null) {
+                String[] messages = buildUnsupportedVersionMessages(loginProtocolVersion);
+                System.out.println("Rejected client"
+                        + (pendingUsername != null ? " (" + pendingUsername + ")" : "")
+                        + ": " + messages[1]);
+                ctx.writeAndFlush(new DisconnectPacket(messages[0]));
+                ctx.close();
+                return;
+            }
 
-        // Update decoder's protocol version if needed
-        RawPacketDecoder decoder = ctx.pipeline().get(RawPacketDecoder.class);
-        if (decoder != null) {
-            decoder.setProtocolVersion(clientVersion);
+            // Update decoder's protocol version if needed
+            RawPacketDecoder decoder = ctx.pipeline().get(RawPacketDecoder.class);
+            if (decoder != null) {
+                decoder.setProtocolVersion(clientVersion);
+            }
         }
 
         // Beta 1.8+ uses KeepAlivePacketV17 (with int ID). Tell the translator
@@ -242,6 +388,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ClassicToAlphaTranslator translator = ctx.pipeline().get(ClassicToAlphaTranslator.class);
             if (translator != null) {
                 translator.setDropPing(true);
+                translator.setClientVersion(clientVersion);
             }
         }
 
@@ -280,7 +427,11 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         int entityId = player.getPlayerId() + 1;
 
         // Send LoginS2C (format varies by version)
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_2_1)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
+            // Release 1.3.1+: no empty username, gameMode/dimension as byte.
+            ctx.writeAndFlush(new LoginS2CPacketV39(entityId, "default", 1,
+                    0, (byte) 0, (byte) 0, (byte) 20));
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_2_1)) {
             // Release 1.2.1+: no seed, int dimension, levelType remains.
             ctx.writeAndFlush(new LoginS2CPacketV28(entityId, "default", 1,
                     0, (byte) 0, (byte) 0, (byte) 20));
@@ -297,6 +448,11 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.writeAndFlush(new LoginS2CPacket(entityId, 0L, (byte) 0));
         } else {
             ctx.writeAndFlush(new LoginS2CPacketV2(entityId));
+        }
+
+        // v39+: send PlayerAbilities after login (flags: invulnerable+flying+allowFlying+creative)
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
+            ctx.writeAndFlush(new PlayerAbilitiesPacketV39(0x0F, 12, 25));
         }
 
         // Determine spawn position
@@ -394,10 +550,19 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             if (existing != player) {
                 int existingEntityId = existing.getPlayerId() + 1;
                 int existingFeetY = (int) existing.getY() - PLAYER_EYE_HEIGHT_FIXED;
-                ctx.writeAndFlush(new com.github.martinambrus.rdforward.protocol.packet.alpha.SpawnPlayerPacket(
-                        existingEntityId, existing.getUsername(),
-                        (int) existing.getX(), existingFeetY, (int) existing.getZ(),
-                        (existing.getYaw() + 128) & 0xFF, existing.getPitch() & 0xFF, (short) 0));
+                int alphaYaw = (existing.getYaw() + 128) & 0xFF;
+                int pitch = existing.getPitch() & 0xFF;
+                if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
+                    ctx.writeAndFlush(new SpawnPlayerPacketV39(
+                            existingEntityId, existing.getUsername(),
+                            (int) existing.getX(), existingFeetY, (int) existing.getZ(),
+                            alphaYaw, pitch, (short) 0));
+                } else {
+                    ctx.writeAndFlush(new com.github.martinambrus.rdforward.protocol.packet.alpha.SpawnPlayerPacket(
+                            existingEntityId, existing.getUsername(),
+                            (int) existing.getX(), existingFeetY, (int) existing.getZ(),
+                            alphaYaw, pitch, (short) 0));
+                }
             }
         }
 
@@ -731,11 +896,11 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Other versions: use server version's block range.
         if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
             if (itemId < 1 || itemId > BlockRegistry.MAX_BLOCK_ID) {
-                ctx.writeAndFlush(new BlockChangePacket(targetX, targetY, targetZ, 0, 0));
+                sendBlockChange(ctx, targetX, targetY, targetZ, 0, 0);
                 return;
             }
         } else if (!BlockRegistry.isValidBlock(itemId, serverVersion)) {
-            ctx.writeAndFlush(new BlockChangePacket(targetX, targetY, targetZ, 0, 0));
+            sendBlockChange(ctx, targetX, targetY, targetZ, 0, 0);
             return;
         }
 
@@ -743,7 +908,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             // Cancel the client's predicted block immediately (otherwise the
             // phantom block persists for ~4 seconds, allowing further building
             // above the world height limit).
-            ctx.writeAndFlush(new BlockChangePacket(targetX, targetY, targetZ, 0, 0));
+            sendBlockChange(ctx, targetX, targetY, targetZ, 0, 0);
             // Don't decrement trackedCobblestone — the client's own OOB check
             // usually prevents consumption. But during rapid jumping, some
             // clicks may target in-bounds side faces that the client consumes
@@ -772,7 +937,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         boolean overlapsY = targetY < feetY + 1.8 && feetY < targetY + 1;
         boolean overlapsZ = targetZ < pz + 0.3 && pz - 0.3 < targetZ + 1;
         if (overlapsX && overlapsY && overlapsZ) {
-            ctx.writeAndFlush(new BlockChangePacket(targetX, targetY, targetZ, 0, 0));
+            sendBlockChange(ctx, targetX, targetY, targetZ, 0, 0);
             // Count as consumed for v2+: during rapid jumping the client's
             // position is ahead of the server's, so the client's own overlap
             // check may pass (consuming the item) while the server's check
@@ -821,8 +986,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         // Confirm block to this Alpha client. Without server confirmation,
         // the client reverts its predicted blocks after ~4 seconds (80 ticks).
-        ctx.writeAndFlush(new BlockChangePacket(
-                targetX, targetY, targetZ, itemId & 0xFF, 0));
+        sendBlockChange(ctx, targetX, targetY, targetZ, itemId & 0xFF, 0);
 
         // If the world block differs from held item (e.g. grass at surface),
         // send a delayed conversion so the client sees: cobble placed → transforms to grass
@@ -831,7 +995,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             final int fBlockType = worldBlockType & 0xFF;
             ctx.executor().schedule(() -> {
                 if (ctx.channel().isActive()) {
-                    ctx.writeAndFlush(new BlockChangePacket(fx, fy, fz, fBlockType, 0));
+                    sendBlockChange(ctx, fx, fy, fz, fBlockType, 0);
                 }
             }, 200, TimeUnit.MILLISECONDS);
         }
@@ -859,7 +1023,9 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
      * which targets a specific slot — we always use hotbar slot 0 (window slot 36).
      */
     private void giveItem(ChannelHandlerContext ctx, int itemId, int count) {
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_0)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
+            ctx.writeAndFlush(new SetSlotPacketV39(0, 36, itemId, count, 0));
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_0)) {
             ctx.writeAndFlush(new SetSlotPacketV22(0, 36, itemId, count, 0));
         } else if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)) {
             ctx.writeAndFlush(new SetSlotPacket(0, 36, itemId, count, 0));
@@ -1032,6 +1198,18 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
 
         return new String[]{clientMsg.toString(), consoleMsg.toString()};
+    }
+
+    /**
+     * Send a BlockChange packet to this client using the correct format for its version.
+     * v39+ uses short block ID (BlockChangePacketV39), pre-v39 uses byte (BlockChangePacket).
+     */
+    private void sendBlockChange(ChannelHandlerContext ctx, int x, int y, int z, int blockType, int metadata) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
+            ctx.writeAndFlush(new BlockChangePacketV39(x, y, z, blockType, metadata));
+        } else {
+            ctx.writeAndFlush(new BlockChangePacket(x, y, z, blockType, metadata));
+        }
     }
 
     private static short toFixedPoint(double d) {

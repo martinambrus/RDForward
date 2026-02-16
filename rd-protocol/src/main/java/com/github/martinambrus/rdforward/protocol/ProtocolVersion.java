@@ -230,12 +230,24 @@ public enum ProtocolVersion {
     RELEASE_1_2_4(29, 22, Family.RELEASE, "Release 1.2.4 (v29)", 92),
 
     /**
+     * Minecraft Release 1.3.1 (August 2012).
+     * Mandatory encryption (RSA + AES/CFB8) added to login flow. New handshake
+     * format (byte protocolVer + String16 username + String16 hostname + int port).
+     * Login C2S replaced by ClientStatuses (0xCD). PreChunk removed. MapChunk unused
+     * int removed. BlockChange block ID byte->short. PlayerAbilities format changed.
+     * Item slot NBT now unconditional. BlockPlacement gains cursor offset bytes.
+     * DestroyEntity changed to variable-length array. SpawnPlayer gained metadata.
+     * Real MC protocol version 39.
+     */
+    RELEASE_1_3_1(39, 23, Family.RELEASE, "Release 1.3.1 (v39)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 23, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 24, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -358,6 +370,7 @@ public enum ProtocolVersion {
             case 23: return "Release 1.1";
             case 28: return "Release 1.2.1";
             case 29: return "Release 1.2.4-1.2.5";
+            case 39: return "Release 1.3.1-1.3.2";
             default: return null;
         }
     }

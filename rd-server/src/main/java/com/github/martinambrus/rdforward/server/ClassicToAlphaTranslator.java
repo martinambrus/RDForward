@@ -1,5 +1,6 @@
 package com.github.martinambrus.rdforward.server;
 
+import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.*;
 import com.github.martinambrus.rdforward.protocol.packet.classic.*;
@@ -37,8 +38,19 @@ public class ClassicToAlphaTranslator extends ChannelOutboundHandlerAdapter {
      */
     private volatile boolean dropPing = false;
 
+    /**
+     * Client protocol version, used to select correct packet variants for
+     * v39+ (BlockChangePacketV39, DestroyEntityPacketV39, SpawnPlayerPacketV39).
+     * Set by AlphaConnectionHandler after determining the client version.
+     */
+    private volatile ProtocolVersion clientVersion;
+
     public void setDropPing(boolean dropPing) {
         this.dropPing = dropPing;
+    }
+
+    public void setClientVersion(ProtocolVersion clientVersion) {
+        this.clientVersion = clientVersion;
     }
 
     @Override
@@ -83,6 +95,10 @@ public class ClassicToAlphaTranslator extends ChannelOutboundHandlerAdapter {
         if (packet instanceof SetBlockServerPacket) {
             // Classic 0x06 SetBlock -> Alpha 0x35 BlockChange
             SetBlockServerPacket sb = (SetBlockServerPacket) packet;
+            if (clientVersion != null && clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
+                return new BlockChangePacketV39(sb.getX(), sb.getY(), sb.getZ(),
+                        sb.getBlockType(), 0);
+            }
             return new BlockChangePacket(sb.getX(), sb.getY(), sb.getZ(),
                     sb.getBlockType(), 0);
         }
@@ -102,6 +118,12 @@ public class ClassicToAlphaTranslator extends ChannelOutboundHandlerAdapter {
             int feetY = (int) sp.getY() - EYE_HEIGHT_FIXED;
             // Classic yaw 0 = North; Alpha yaw 0 = South. Add 128 (180°) to convert.
             int alphaYaw = (sp.getYaw() + 128) & 0xFF;
+            if (clientVersion != null && clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
+                return new SpawnPlayerPacketV39(
+                        entityId, sp.getPlayerName(),
+                        (int) sp.getX(), feetY, (int) sp.getZ(),
+                        alphaYaw, sp.getPitch(), (short) 0);
+            }
             return new com.github.martinambrus.rdforward.protocol.packet.alpha.SpawnPlayerPacket(
                     entityId, sp.getPlayerName(),
                     (int) sp.getX(), feetY, (int) sp.getZ(),
@@ -155,6 +177,9 @@ public class ClassicToAlphaTranslator extends ChannelOutboundHandlerAdapter {
             // Classic 0x0C -> Alpha 0x1D DestroyEntity
             DespawnPlayerPacket dp = (DespawnPlayerPacket) packet;
             int entityId = dp.getPlayerId() + 1;
+            if (clientVersion != null && clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
+                return new DestroyEntityPacketV39(entityId);
+            }
             return new DestroyEntityPacket(entityId);
         }
 
