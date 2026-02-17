@@ -481,12 +481,21 @@ public enum ProtocolVersion {
     RELEASE_1_14(477, 49, Family.RELEASE, "Release 1.14 (v477)", 92),
 
     /**
+     * Minecraft Release 1.14.1 (May 2019).
+     * Wire format identical to v477 — same packet IDs, same wire formats.
+     * Only data-level changes: Villager/Wandering Trader entity metadata indices
+     * shifted (irrelevant — we don't send entity metadata for mobs).
+     * Netty protocol version 480.
+     */
+    RELEASE_1_14_1(480, 50, Family.RELEASE, "Release 1.14.1 (v480)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 50, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 51, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -627,6 +636,7 @@ public enum ProtocolVersion {
             case 401: return "Release 1.13.1";
             case 404: return "Release 1.13.2";
             case 477: return "Release 1.14";
+            case 480: return "Release 1.14.1";
             case 51: return "Release 1.4.6-1.4.7";
             case 60: return "Release 1.5-1.5.1";
             case 61: return "Release 1.5.2";
