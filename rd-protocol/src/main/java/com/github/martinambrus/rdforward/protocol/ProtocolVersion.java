@@ -393,12 +393,21 @@ public enum ProtocolVersion {
     RELEASE_1_9_4(110, 39, Family.RELEASE, "Release 1.9.4 (v110)", 92),
 
     /**
+     * Minecraft Release 1.10-1.10.2 (June 2016).
+     * Wire format identical to v110 — zero packet ID or format changes.
+     * Only data-level changes: sound pitch byte→float (we don't send sounds),
+     * resource pack status hash removed (we don't handle), new sound IDs.
+     * Netty protocol version 210.
+     */
+    RELEASE_1_10(210, 40, Family.RELEASE, "Release 1.10.2 (v210)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 40, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 41, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -529,6 +538,7 @@ public enum ProtocolVersion {
             case 108: return "Release 1.9.1";
             case 109: return "Release 1.9.2";
             case 110: return "Release 1.9.4";
+            case 210: return "Release 1.10-1.10.2";
             case 51: return "Release 1.4.6-1.4.7";
             case 60: return "Release 1.5-1.5.1";
             case 61: return "Release 1.5.2";
