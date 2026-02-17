@@ -9,6 +9,7 @@ import com.github.martinambrus.rdforward.protocol.crypto.MinecraftCipher;
 import com.github.martinambrus.rdforward.protocol.packet.ConnectionState;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.KeepAlivePacketV17;
+import com.github.martinambrus.rdforward.protocol.packet.alpha.MapChunkPacketV39;
 import com.github.martinambrus.rdforward.protocol.packet.netty.*;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -20,6 +21,8 @@ import java.security.SecureRandom;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.zip.DataFormatException;
+import java.util.zip.Inflater;
 
 /**
  * Netty protocol handler for bot clients (1.7.2+ / v4-v47).
@@ -123,6 +126,9 @@ public class BotNettyPacketHandler extends SimpleChannelInboundHandler<Packet> {
             ctx.writeAndFlush(new KeepAlivePacketV17(ka.getKeepAliveId()));
         } else if (packet instanceof MapChunkPacketV47 mcV47) {
             processV47Chunk(mcV47);
+        } else if (packet instanceof MapChunkPacketV39 mcV39) {
+            processSectionedChunk(mcV39.getChunkX(), mcV39.getChunkZ(),
+                    mcV39.getPrimaryBitMask(), mcV39.getCompressedData());
         } else if (packet instanceof NettyDisconnectPacket disconnect) {
             System.err.println("BotNetty disconnected: " + disconnect.getJsonReason());
             ctx.close();
@@ -215,6 +221,53 @@ public class BotNettyPacketHandler extends SimpleChannelInboundHandler<Packet> {
         }
 
         session.recordChunkBlocks(packet.getChunkX(), packet.getChunkZ(), blockIds);
+    }
+
+    /**
+     * Decompress section-based chunk data (V39, used by 1.7.x Netty path)
+     * and convert from section YZX layout to AlphaChunk YZX layout.
+     */
+    private void processSectionedChunk(int chunkX, int chunkZ, short primaryBitMask, byte[] compressedData) {
+        byte[] decompressed = decompress(compressedData);
+        if (decompressed == null) return;
+
+        byte[] blockIds = new byte[32768];
+        int offset = 0;
+
+        for (int section = 0; section < 16; section++) {
+            if ((primaryBitMask & (1 << section)) == 0) continue;
+            if (offset + 4096 > decompressed.length) break;
+
+            int baseY = section * 16;
+            for (int i = 0; i < 4096; i++) {
+                int sy = (i >> 8) & 15;
+                int sz = (i >> 4) & 15;
+                int sx = i & 15;
+                int alphaIndex = (baseY + sy) + sz * 128 + sx * 2048;
+                blockIds[alphaIndex] = decompressed[offset + i];
+            }
+            offset += 4096;
+        }
+
+        session.recordChunkBlocks(chunkX, chunkZ, blockIds);
+    }
+
+    private byte[] decompress(byte[] compressed) {
+        try {
+            Inflater inflater = new Inflater();
+            inflater.setInput(compressed);
+            byte[] buf = new byte[4096];
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream(compressed.length * 4);
+            while (!inflater.finished()) {
+                int count = inflater.inflate(buf);
+                if (count == 0 && inflater.needsInput()) break;
+                out.write(buf, 0, count);
+            }
+            inflater.end();
+            return out.toByteArray();
+        } catch (DataFormatException e) {
+            return null;
+        }
     }
 
     private void setCodecState(ChannelHandlerContext ctx, ConnectionState state) {

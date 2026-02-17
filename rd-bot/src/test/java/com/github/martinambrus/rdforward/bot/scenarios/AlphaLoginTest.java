@@ -70,18 +70,19 @@ class AlphaLoginTest {
             BotSession session = bot.getSession();
             assertTrue(session.isLoginComplete(), "Login should complete");
 
-            // Wait a bit for AddToInventory packet
-            Thread.sleep(500);
-
-            // Check that we received an AddToInventory packet with cobblestone (ID 4)
+            // Poll for AddToInventory packet with cobblestone (ID 4, count 64)
             boolean receivedCobble = false;
-            for (Packet p : session.getReceivedPackets()) {
-                if (p instanceof AddToInventoryPacket inv) {
-                    if (inv.getItemId() == 4 && inv.getCount() == 64) {
-                        receivedCobble = true;
-                        break;
+            long deadline = System.currentTimeMillis() + 5000;
+            while (!receivedCobble && System.currentTimeMillis() < deadline) {
+                for (Packet p : session.getReceivedPackets()) {
+                    if (p instanceof AddToInventoryPacket inv) {
+                        if (inv.getItemId() == 4 && inv.getCount() == 64) {
+                            receivedCobble = true;
+                            break;
+                        }
                     }
                 }
+                if (!receivedCobble) Thread.sleep(50);
             }
             assertTrue(receivedCobble, "Should receive 64 cobblestone via AddToInventory");
         } finally {
