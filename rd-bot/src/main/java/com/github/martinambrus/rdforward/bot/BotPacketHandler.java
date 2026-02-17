@@ -108,6 +108,12 @@ public class BotPacketHandler extends SimpleChannelInboundHandler<Packet> {
             session.recordSpawnPlayer(spV39.getEntityId(), spV39.getPlayerName());
         } else if (packet instanceof SpawnPlayerPacket spawnPlayer) {
             session.recordSpawnPlayer(spawnPlayer.getEntityId(), spawnPlayer.getPlayerName());
+        } else if (packet instanceof DestroyEntityPacketV39 deV39) {
+            for (int id : deV39.getEntityIds()) {
+                session.recordDespawn(id);
+            }
+        } else if (packet instanceof DestroyEntityPacket de) {
+            session.recordDespawn(de.getEntityId());
         } else if (packet instanceof KeepAlivePacket) {
             if (packet instanceof KeepAlivePacketV17 ka17) {
                 ctx.writeAndFlush(new KeepAlivePacketV17(ka17.getKeepAliveId()));

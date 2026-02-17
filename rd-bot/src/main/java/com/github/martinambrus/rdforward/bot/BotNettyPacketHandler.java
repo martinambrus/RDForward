@@ -109,6 +109,14 @@ public class BotNettyPacketHandler extends SimpleChannelInboundHandler<Packet> {
             session.recordSpawnPlayer(spV5.getEntityId(), spV5.getPlayerName());
         } else if (packet instanceof NettySpawnPlayerPacket sp) {
             session.recordSpawnPlayer(sp.getEntityId(), sp.getPlayerName());
+        } else if (packet instanceof NettyDestroyEntitiesPacketV47 deV47) {
+            for (int id : deV47.getEntityIds()) {
+                session.recordDespawn(id);
+            }
+        } else if (packet instanceof NettyDestroyEntitiesPacket de) {
+            for (int id : de.getEntityIds()) {
+                session.recordDespawn(id);
+            }
         } else if (packet instanceof KeepAlivePacketV47 kaV47) {
             ctx.writeAndFlush(new KeepAlivePacketV47(kaV47.getKeepAliveId()));
         } else if (packet instanceof KeepAlivePacketV17 ka) {

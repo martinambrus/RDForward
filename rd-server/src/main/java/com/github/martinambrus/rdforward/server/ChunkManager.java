@@ -399,12 +399,16 @@ public class ChunkManager {
      */
     private void sendChunkToPlayer(ConnectedPlayer player, AlphaChunk chunk) {
         if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_9)) {
-            // v109: paletted sections, VarInt primaryBitMask, block entity count at end
+            // v109: paletted sections, VarInt primaryBitMask
+            // v110 (1.9.4) adds block entity count at end; v107-v109 do not
             AlphaChunk.V109ChunkData v109Data = chunk.serializeForV109Protocol();
+            boolean writeBlockEntityCount = player.getProtocolVersion()
+                    .isAtLeast(ProtocolVersion.RELEASE_1_9_4);
             player.sendPacket(new MapChunkPacketV109(
                 chunk.getXPos(), chunk.getZPos(), true,
                 v109Data.getPrimaryBitMask(),
-                v109Data.getRawData()
+                v109Data.getRawData(),
+                writeBlockEntityCount
             ));
         } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_8)) {
             // v47: ushort blockStates, raw (uncompressed), VarInt data size

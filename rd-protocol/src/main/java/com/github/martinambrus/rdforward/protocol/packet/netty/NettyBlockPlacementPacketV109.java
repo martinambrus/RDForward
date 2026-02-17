@@ -13,12 +13,12 @@ import io.netty.buffer.ByteBuf;
  * returns cobblestone.
  *
  * Wire format:
- *   [Position] location (packed long)
- *   [VarInt]   face
- *   [VarInt]   hand
- *   [byte]     cursorX
- *   [byte]     cursorY
- *   [byte]     cursorZ
+ *   [Position]      location (packed long)
+ *   [VarInt]        face
+ *   [VarInt]        hand
+ *   [Unsigned Byte] cursorX (0-16, 16ths of block face)
+ *   [Unsigned Byte] cursorY
+ *   [Unsigned Byte] cursorZ
  */
 public class NettyBlockPlacementPacketV109 implements Packet, BlockPlacementData {
 
@@ -37,9 +37,9 @@ public class NettyBlockPlacementPacketV109 implements Packet, BlockPlacementData
         McDataTypes.writePosition(buf, x, y, z);
         McDataTypes.writeVarInt(buf, face);
         McDataTypes.writeVarInt(buf, 0); // main hand
-        buf.writeByte(0);
-        buf.writeByte(0);
-        buf.writeByte(0);
+        buf.writeByte(0); // cursorX
+        buf.writeByte(0); // cursorY
+        buf.writeByte(0); // cursorZ
     }
 
     @Override
@@ -50,7 +50,7 @@ public class NettyBlockPlacementPacketV109 implements Packet, BlockPlacementData
         z = pos[2];
         face = McDataTypes.readVarInt(buf);
         McDataTypes.readVarInt(buf); // hand
-        buf.skipBytes(3); // cursorX, cursorY, cursorZ
+        buf.skipBytes(3); // cursorX, cursorY, cursorZ (3 unsigned bytes)
     }
 
     @Override

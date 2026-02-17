@@ -7,8 +7,7 @@ import io.netty.buffer.ByteBuf;
 /**
  * 1.9 Play state, S2C packet 0x20: Chunk Data.
  *
- * 1.9 changed primaryBitMask from ushort to VarInt, uses paletted section format,
- * and appends VarInt block entity count at the end.
+ * 1.9 changed primaryBitMask from ushort to VarInt, uses paletted section format.
  *
  * Wire format:
  *   [int]     chunkX
@@ -17,7 +16,10 @@ import io.netty.buffer.ByteBuf;
  *   [VarInt]  primaryBitMask
  *   [VarInt]  dataSize
  *   [byte[]]  data (dataSize bytes, uncompressed, paletted sections)
- *   [VarInt]  blockEntityCount (0 for us)
+ *   [VarInt]  blockEntityCount (1.9.4/v110+ only; absent in v107-v109)
+ *
+ * In 1.9.0-1.9.2 (v107-v109), the packet ends after data — no block entity field.
+ * In 1.9.4 (v110+), a VarInt block entity count + NBT compounds are appended.
  */
 public class MapChunkPacketV109 implements Packet {
 
@@ -26,16 +28,19 @@ public class MapChunkPacketV109 implements Packet {
     private boolean groundUpContinuous;
     private int primaryBitMask;
     private byte[] data;
+    private boolean writeBlockEntityCount;
 
     public MapChunkPacketV109() {}
 
     public MapChunkPacketV109(int chunkX, int chunkZ, boolean groundUpContinuous,
-                               int primaryBitMask, byte[] data) {
+                               int primaryBitMask, byte[] data,
+                               boolean writeBlockEntityCount) {
         this.chunkX = chunkX;
         this.chunkZ = chunkZ;
         this.groundUpContinuous = groundUpContinuous;
         this.primaryBitMask = primaryBitMask;
         this.data = data;
+        this.writeBlockEntityCount = writeBlockEntityCount;
     }
 
     @Override
@@ -49,7 +54,9 @@ public class MapChunkPacketV109 implements Packet {
         McDataTypes.writeVarInt(buf, primaryBitMask);
         McDataTypes.writeVarInt(buf, data.length);
         buf.writeBytes(data);
-        McDataTypes.writeVarInt(buf, 0); // block entity count
+        if (writeBlockEntityCount) {
+            McDataTypes.writeVarInt(buf, 0); // block entity count (v110+)
+        }
     }
 
     @Override

@@ -43,4 +43,6 @@ public class NettyDestroyEntitiesPacket implements Packet {
             entityIds[i] = buf.readInt();
         }
     }
+
+    public int[] getEntityIds() { return entityIds; }
 }

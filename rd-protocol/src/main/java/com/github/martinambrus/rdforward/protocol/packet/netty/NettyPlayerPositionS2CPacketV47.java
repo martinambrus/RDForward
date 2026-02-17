@@ -10,7 +10,7 @@ import io.netty.buffer.ByteBuf;
  *
  * Wire format:
  *   [double] x
- *   [double] y (eye-level)
+ *   [double] y (feet-level; 1.8+ changed from eye-level to feet-level)
  *   [double] z
  *   [float]  yaw
  *   [float]  pitch

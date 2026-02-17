@@ -42,4 +42,6 @@ public class NettyDestroyEntitiesPacketV47 implements Packet {
             entityIds[i] = McDataTypes.readVarInt(buf);
         }
     }
+
+    public int[] getEntityIds() { return entityIds; }
 }

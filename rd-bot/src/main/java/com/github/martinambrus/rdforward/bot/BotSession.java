@@ -9,10 +9,12 @@ import com.github.martinambrus.rdforward.protocol.packet.netty.NettyChatC2SPacke
 import com.github.martinambrus.rdforward.protocol.packet.netty.PlayerDiggingPacketV47;
 import io.netty.channel.Channel;
 
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 
 /**
@@ -39,6 +41,14 @@ public class BotSession {
     private final ConcurrentHashMap<Long, Integer> blockChanges = new ConcurrentHashMap<>();
     /** entityId -> playerName from SpawnPlayerPacket. */
     private final ConcurrentHashMap<Integer, String> spawnedPlayers = new ConcurrentHashMap<>();
+    /** Entity IDs seen in DestroyEntity packets. */
+    private final Set<Integer> despawnedEntities = ConcurrentHashMap.newKeySet();
+    /** Incremented each time the server sends a position update. */
+    private final AtomicInteger positionUpdateCount = new AtomicInteger();
+    /** Packed (chunkX, chunkZ) -> byte[32768] block IDs in AlphaChunk YZX order. */
+    private final ConcurrentHashMap<Long, byte[]> chunkBlocks = new ConcurrentHashMap<>();
+    /** Spawn Y (set once during markLoginComplete from current y). */
+    private volatile double spawnY = Double.NaN;
 
     // Listeners for wait-for-packet
     private final CopyOnWriteArrayList<PacketListener<?>> packetListeners = new CopyOnWriteArrayList<>();
@@ -65,9 +75,13 @@ public class BotSession {
         this.z = z;
         this.yaw = yaw;
         this.pitch = pitch;
+        positionUpdateCount.incrementAndGet();
     }
 
     void markLoginComplete() {
+        if (Double.isNaN(spawnY)) {
+            spawnY = y;
+        }
         this.loginComplete = true;
         loginLatch.countDown();
     }
@@ -82,6 +96,14 @@ public class BotSession {
 
     void recordSpawnPlayer(int entityId, String playerName) {
         spawnedPlayers.put(entityId, playerName);
+    }
+
+    void recordDespawn(int entityId) {
+        despawnedEntities.add(entityId);
+    }
+
+    void recordChunkBlocks(int chunkX, int chunkZ, byte[] blockIds) {
+        chunkBlocks.put(packChunkCoord(chunkX, chunkZ), blockIds);
     }
 
     // ---- Wait methods ----
@@ -204,6 +226,43 @@ public class BotSession {
         return val != null ? val : -1;
     }
 
+    /**
+     * Wait for an entity to be despawned (DestroyEntity received).
+     * Returns true if seen before timeout, false otherwise.
+     */
+    public boolean waitForDespawn(int entityId, long timeoutMs) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            if (despawnedEntities.contains(entityId)) {
+                return true;
+            }
+            Thread.sleep(50);
+        }
+        return despawnedEntities.contains(entityId);
+    }
+
+    /**
+     * Returns the current position update count (incremented on each S2C position packet).
+     */
+    public int getPositionUpdateCount() {
+        return positionUpdateCount.get();
+    }
+
+    /**
+     * Wait for a position update beyond the given previous count.
+     * Returns true if a new update arrived before timeout.
+     */
+    public boolean waitForPositionUpdate(int previousCount, long timeoutMs) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            if (positionUpdateCount.get() > previousCount) {
+                return true;
+            }
+            Thread.sleep(50);
+        }
+        return positionUpdateCount.get() > previousCount;
+    }
+
     // ---- Send methods ----
 
     public void sendPacket(Packet packet) {
@@ -285,8 +344,53 @@ public class BotSession {
     public ConcurrentHashMap<Integer, String> getSpawnedPlayers() { return spawnedPlayers; }
     public ConcurrentHashMap<Long, Integer> getBlockChanges() { return blockChanges; }
     public Channel getChannel() { return channel; }
+    public double getSpawnY() { return spawnY; }
+
+    /**
+     * Returns the block ID at the given world coordinates, or -1 if the
+     * chunk data for that position has not been received.
+     */
+    public int getBlockAt(int worldX, int worldY, int worldZ) {
+        int chunkX = worldX >> 4;
+        int chunkZ = worldZ >> 4;
+        byte[] blocks = chunkBlocks.get(packChunkCoord(chunkX, chunkZ));
+        if (blocks == null) return -1;
+        int localX = worldX & 15;
+        int localZ = worldZ & 15;
+        // AlphaChunk YZX order: index = y + z*128 + x*2048
+        if (worldY < 0 || worldY >= 128) return -1;
+        int index = worldY + localZ * 128 + localX * 2048;
+        return blocks[index] & 0xFF;
+    }
+
+    /**
+     * Returns true if the bot is standing on solid ground: the block at
+     * feet level is air and the block below is solid (non-zero).
+     * Returns false if chunk data is missing.
+     */
+    public boolean isOnGround() {
+        // Alpha S2C Y = eyes; Netty 1.7.x Y = eyes; Netty 1.8+ Y = feet
+        double feetY;
+        if (version.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+            feetY = y;
+        } else {
+            feetY = y - (double) 1.62f;
+        }
+        int blockX = (int) Math.floor(x);
+        int feetBlockY = (int) Math.floor(feetY);
+        int blockZ = (int) Math.floor(z);
+
+        int feetBlock = getBlockAt(blockX, feetBlockY, blockZ);
+        int belowBlock = getBlockAt(blockX, feetBlockY - 1, blockZ);
+        if (feetBlock == -1 || belowBlock == -1) return false;
+        return feetBlock == 0 && belowBlock != 0;
+    }
 
     // ---- Helpers ----
+
+    private static long packChunkCoord(int chunkX, int chunkZ) {
+        return ((long) chunkX & 0xFFFFFFFFL) << 32 | ((long) chunkZ & 0xFFFFFFFFL);
+    }
 
     private static long packCoords(int x, int y, int z) {
         return ((long) x & 0xFFFFFFFFL) << 32 | ((long) y & 0xFFL) << 24 | ((long) z & 0xFFFFFFL);

@@ -640,35 +640,34 @@ public class AlphaChunk {
             }
 
             int paletteSize = paletteMap.size();
-            int bitsPerBlock = Math.max(4, 32 - Integer.numberOfLeadingZeros(paletteSize - 1));
-            if (paletteSize == 1) bitsPerBlock = 4; // min 4 bits
+
+            // Use global palette mode (bitsPerBlock=13) to bypass section palette.
+            // In global mode, data array contains raw global block state IDs directly.
+            int bitsPerBlock = 13;
 
             // Write bitsPerBlock
             baos.write(bitsPerBlock);
 
-            // Write palette
-            writeVarIntToStream(baos, paletteSize);
-            for (int paletteEntry : paletteMap.keySet()) {
-                writeVarIntToStream(baos, paletteEntry);
-            }
+            // Write empty palette (global palette mode: VarInt(0))
+            writeVarIntToStream(baos, 0);
 
-            // Pack block indices into longs
+            // Pack raw global block state IDs into longs
             // 1.9-1.12: entries span across long boundaries
             int totalBits = 4096 * bitsPerBlock;
             int longsNeeded = (totalBits + 63) / 64;
             long[] dataArray = new long[longsNeeded];
 
-            int mask = (1 << bitsPerBlock) - 1;
+            long mask = (1L << bitsPerBlock) - 1;
             for (int i = 0; i < 4096; i++) {
-                int paletteIndex = paletteMap.get(blockStates[i]);
+                long stateId = blockStates[i]; // raw global block state ID
                 int bitIndex = i * bitsPerBlock;
                 int longIndex = bitIndex / 64;
                 int bitOffset = bitIndex % 64;
-                dataArray[longIndex] |= ((long) paletteIndex & mask) << bitOffset;
+                dataArray[longIndex] |= (stateId & mask) << bitOffset;
                 // Check if entry spans two longs
                 if (bitOffset + bitsPerBlock > 64) {
                     int bitsInFirst = 64 - bitOffset;
-                    dataArray[longIndex + 1] |= ((long) paletteIndex & mask) >> bitsInFirst;
+                    dataArray[longIndex + 1] |= (stateId & mask) >> bitsInFirst;
                 }
             }
 

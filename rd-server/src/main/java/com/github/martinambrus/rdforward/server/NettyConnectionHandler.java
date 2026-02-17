@@ -412,14 +412,15 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         chunkManager.sendInitialChunks(player, spawnBlockX, spawnBlockZ);
 
         // Send player position
-        // S2C Y is eye-level for 1.7.2; 1.8 uses flags byte; 1.9+ adds teleportId.
+        // S2C Y: 1.7.2 = eye-level (client subtracts yOffset=1.62); 1.8+ = feet-level.
         float alphaSpawnYaw = (spawnYaw + 180.0f) % 360.0f;
+        double clientY = isV47 ? spawnY - PLAYER_EYE_HEIGHT : spawnY;
         if (isV109) {
             ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV109(
-                    spawnX, spawnY, spawnZ, alphaSpawnYaw, spawnPitch, ++nextTeleportId));
+                    spawnX, clientY, spawnZ, alphaSpawnYaw, spawnPitch, ++nextTeleportId));
         } else if (isV47) {
             ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV47(
-                    spawnX, spawnY, spawnZ, alphaSpawnYaw, spawnPitch));
+                    spawnX, clientY, spawnZ, alphaSpawnYaw, spawnPitch));
         } else {
             ctx.writeAndFlush(new NettyPlayerPositionS2CPacket(
                     spawnX, spawnY, spawnZ, alphaSpawnYaw, spawnPitch, false));
@@ -800,13 +801,14 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         double spawnZ = safe[2] + 0.5;
         player.updatePositionDouble(spawnX, spawnEyeY, spawnZ, yaw, 0);
 
+        // S2C Y: 1.7.2 = eye-level; 1.8+ = feet-level.
         float alphaYaw = (yaw + 180.0f) % 360.0f;
         if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_9)) {
             ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV109(
-                    spawnX, spawnEyeY, spawnZ, alphaYaw, 0, ++nextTeleportId));
+                    spawnX, spawnFeetY, spawnZ, alphaYaw, 0, ++nextTeleportId));
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
             ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV47(
-                    spawnX, spawnEyeY, spawnZ, alphaYaw, 0));
+                    spawnX, spawnFeetY, spawnZ, alphaYaw, 0));
         } else {
             ctx.writeAndFlush(new NettyPlayerPositionS2CPacket(
                     spawnX, spawnEyeY, spawnZ, alphaYaw, 0, false));
