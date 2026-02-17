@@ -443,12 +443,23 @@ public enum ProtocolVersion {
     RELEASE_1_12_2(340, 45, Family.RELEASE, "Release 1.12.2 (v340)", 92),
 
     /**
+     * Minecraft Release 1.13-1.13.1 (July 2018) - "The Flattening".
+     * Biggest DATA format change in MC history: numeric blockId<<4|metadata replaced
+     * by global block state IDs, item damage removed from slot wire format, item IDs
+     * renumbered. All Play state packet IDs reshuffled. New mandatory S2C packets
+     * (DeclareCommands, UpdateRecipes, UpdateTags). Chunk biome array changed from
+     * byte[256] to int[256]. Global palette bitsPerBlock changed from 13 to 14.
+     * Netty protocol version 393.
+     */
+    RELEASE_1_13(393, 46, Family.RELEASE, "Release 1.13 (v393)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 46, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 47, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -585,6 +596,7 @@ public enum ProtocolVersion {
             case 335: return "Release 1.12";
             case 338: return "Release 1.12.1";
             case 340: return "Release 1.12.2";
+            case 393: return "Release 1.13-1.13.1";
             case 51: return "Release 1.4.6-1.4.7";
             case 60: return "Release 1.5-1.5.1";
             case 61: return "Release 1.5.2";
