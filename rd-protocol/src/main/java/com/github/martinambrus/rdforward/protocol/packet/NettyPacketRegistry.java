@@ -570,7 +570,18 @@ public class NettyPacketRegistry {
         // === V108 (1.9.1) S2C forward entry — JoinGame dimension byte→int ===
         registerV108S2C(0x23, new PacketFactory() { public Packet create() { return new JoinGamePacketV108(); } });
 
-        // === V338 (1.12.1) S2C forward entry — PlayerPosition shifted by PlaceGhostRecipe ===
+        // === V335 (1.12) S2C forward shadow entries (block stale V109 IDs for bot decoder) ===
+        // In V335, Recipe inserted at 0x30 (was DestroyEntities in V109) and
+        // SpawnPosition moved from 0x43 to 0x45. Shadow with NoOp to prevent V109 fallthrough.
+        registerV335S2C(0x30, noOpFactory);
+        registerV335S2C(0x43, noOpFactory);
+
+        // === V338 (1.12.1) S2C forward entries ===
+        // PlaceGhostRecipe inserted at 0x2B (was PlayerAbilities in V109) and
+        // PlayerListItem moved to 0x2E (was PlayerPosition in V109). Shadow with NoOp.
+        registerV338S2C(0x2B, noOpFactory);
+        registerV338S2C(0x2E, noOpFactory);
+        // PlayerPosition shifted from 0x2E to 0x2F
         registerV338S2C(0x2F, new PacketFactory() { public Packet create() { return new NettyPlayerPositionS2CPacketV109(); } });
 
         // === V340 (1.12.2) S2C forward entry — KeepAlive changed to Long ===
@@ -682,6 +693,10 @@ public class NettyPacketRegistry {
 
     private static void registerV108S2C(int packetId, PacketFactory factory) {
         REGISTRY_V108.put(key(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, packetId), factory);
+    }
+
+    private static void registerV335S2C(int packetId, PacketFactory factory) {
+        REGISTRY_V335.put(key(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, packetId), factory);
     }
 
     private static void registerV338S2C(int packetId, PacketFactory factory) {
