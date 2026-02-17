@@ -5,6 +5,8 @@ import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.*;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlacementPacket;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlacementPacketV47;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlacementPacketV109;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlacementPacketV315;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyChatC2SPacket;
 import com.github.martinambrus.rdforward.protocol.packet.netty.PlayerDiggingPacketV47;
 import io.netty.channel.Channel;
@@ -362,8 +364,18 @@ public class BotSession {
      * protocol version.
      */
     public void sendBlockPlace(int x, int y, int z, int direction, int itemId) {
+        if (version.isAtLeast(ProtocolVersion.RELEASE_1_11)) {
+            // Netty 1.11+: packed Position, VarInt face, VarInt hand, float cursors
+            sendPacket(new NettyBlockPlacementPacketV315(x, y, z, direction));
+            return;
+        }
+        if (version.isAtLeast(ProtocolVersion.RELEASE_1_9)) {
+            // Netty 1.9-1.10: packed Position, VarInt face, VarInt hand, byte cursors
+            sendPacket(new NettyBlockPlacementPacketV109(x, y, z, direction));
+            return;
+        }
         if (version.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
-            // Netty 1.8+: packed Position coordinates, V47 slot format
+            // Netty 1.8: packed Position coordinates, V47 slot format
             sendPacket(new NettyBlockPlacementPacketV47(x, y, z, direction, (short) itemId));
             return;
         }

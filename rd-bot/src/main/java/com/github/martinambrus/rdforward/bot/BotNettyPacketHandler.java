@@ -148,6 +148,8 @@ public class BotNettyPacketHandler extends SimpleChannelInboundHandler<Packet> {
             for (int id : de.getEntityIds()) {
                 session.recordDespawn(id);
             }
+        } else if (packet instanceof NettySetSlotPacketV47 ss) {
+            session.recordSetSlot(ss.getSlotIndex(), ss.getItemId(), ss.getCount());
         } else if (packet instanceof KeepAlivePacketV47 kaV47) {
             ctx.writeAndFlush(new KeepAlivePacketV47(kaV47.getKeepAliveId()));
         } else if (packet instanceof KeepAlivePacketV17 ka) {

@@ -76,4 +76,29 @@ class CrossVersionChatTest {
             releaseBot.disconnect();
         }
     }
+
+    @Test
+    void nettyV109AndAlphaCanChat() throws Exception {
+        BotClient v109Bot = testServer.createBot(ProtocolVersion.RELEASE_1_9_4, "V109Chatter");
+        BotClient alphaBot = testServer.createBot(ProtocolVersion.ALPHA_1_2_5, "AlphaChat2");
+        try {
+            BotSession v109Session = v109Bot.getSession();
+            BotSession alphaSession = alphaBot.getSession();
+            assertTrue(v109Session.isLoginComplete(), "V109 login should complete");
+            assertTrue(alphaSession.isLoginComplete(), "Alpha login should complete");
+
+            // V109 sends chat, Alpha should receive it
+            v109Session.sendChat("Hello from V109");
+            String received = alphaSession.waitForChat("Hello from V109", 3000);
+            assertNotNull(received, "Alpha bot should receive V109's chat message");
+
+            // Alpha sends chat, V109 should receive it
+            alphaSession.sendChat("Hello from Alpha2");
+            received = v109Session.waitForChat("Hello from Alpha2", 3000);
+            assertNotNull(received, "V109 bot should receive Alpha's chat message");
+        } finally {
+            v109Bot.disconnect();
+            alphaBot.disconnect();
+        }
+    }
 }

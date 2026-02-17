@@ -556,6 +556,7 @@ public class NettyPacketRegistry {
         registerV109S2C(0x05, new PacketFactory() { public Packet create() { return new NettySpawnPlayerPacketV109(); } });
         registerV109S2C(0x0B, new PacketFactory() { public Packet create() { return new NettyBlockChangePacketV47(); } });
         registerV109S2C(0x0F, new PacketFactory() { public Packet create() { return new NettyChatS2CPacketV47(); } });
+        registerV109S2C(0x16, new PacketFactory() { public Packet create() { return new NettySetSlotPacketV47(); } });
         registerV109S2C(0x1A, new PacketFactory() { public Packet create() { return new NettyDisconnectPacket(); } });
         registerV109S2C(0x1D, new PacketFactory() { public Packet create() { return new UnloadChunkPacketV109(); } });
         registerV109S2C(0x1F, new PacketFactory() { public Packet create() { return new KeepAlivePacketV47(); } });
@@ -581,7 +582,18 @@ public class NettyPacketRegistry {
         registerV109C2SReverse(KeepAlivePacketV47.class, 0x0B);
         registerV109C2SReverse(PlayerDiggingPacketV47.class, 0x13);
         registerV109C2SReverse(NettyBlockPlacementPacketV109.class, 0x1C);
+        registerV109C2SReverse(NettyBlockPlacementPacketV315.class, 0x1C);
         registerV109C2SReverse(KeepAlivePacketV340.class, 0x0B);
+
+        // === V335 (1.12) C2S reverse map entries (all IDs reshuffled) ===
+        registerV335C2SReverse(NettyChatC2SPacket.class, 0x03);
+        registerV335C2SReverse(KeepAlivePacketV47.class, 0x0C);
+        registerV335C2SReverse(PlayerDiggingPacketV47.class, 0x14);
+        registerV335C2SReverse(NettyBlockPlacementPacketV315.class, 0x1F);
+
+        // === V338 (1.12.1) C2S reverse map entries (0x01-0x10 shift back) ===
+        registerV338C2SReverse(NettyChatC2SPacket.class, 0x02);
+        registerV338C2SReverse(KeepAlivePacketV47.class, 0x0B);
 
         // === V335 (1.12) S2C reverse map overlay (delta from V110) ===
         // 3 new S2C packets (Recipe 0x30, SelectAdvancementsTab 0x36, UpdateAdvancements 0x4C)
@@ -682,6 +694,14 @@ public class NettyPacketRegistry {
 
     private static void registerV109C2SReverse(Class<? extends Packet> clazz, int packetId) {
         REVERSE_V109.put(reverseKey(ConnectionState.PLAY, PacketDirection.CLIENT_TO_SERVER, clazz), packetId);
+    }
+
+    private static void registerV335C2SReverse(Class<? extends Packet> clazz, int packetId) {
+        REVERSE_V335.put(reverseKey(ConnectionState.PLAY, PacketDirection.CLIENT_TO_SERVER, clazz), packetId);
+    }
+
+    private static void registerV338C2SReverse(Class<? extends Packet> clazz, int packetId) {
+        REVERSE_V338.put(reverseKey(ConnectionState.PLAY, PacketDirection.CLIENT_TO_SERVER, clazz), packetId);
     }
 
     private static void registerS2CReverse(Class<? extends Packet> clazz, int packetId) {

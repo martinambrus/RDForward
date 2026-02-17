@@ -128,4 +128,34 @@ class CreativeBlockPlacementTest {
             bot.disconnect();
         }
     }
+
+    @Test
+    void nettyV109BlockIdsConvertToCobblestone() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_9_4, "V109Sweep");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            int baseX = 180, z = 180;
+            assertTrue(session.waitForChunkAt(baseX, z, 5000), "Chunk data should arrive");
+
+            int[] blockIds = {1, 2, 3, 5, 7, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+                    44, 45, 46, 48, 49};
+
+            for (int i = 0; i < blockIds.length; i++) {
+                int x = baseX + i;
+
+                session.sendDigging(0, x, 41, z, 1);
+                assertEquals(0, session.waitForBlockChangeValue(x, 41, z, 0, 3000),
+                        "Block at (" + x + ",41," + z + ") should break to air");
+
+                session.sendBlockPlace(x, 40, z, 1, blockIds[i]);
+                int blockType = session.waitForBlockChangeValue(x, 41, z, COBBLESTONE, 3000);
+                assertEquals(COBBLESTONE, blockType,
+                        "Block ID " + blockIds[i] + " should convert to cobblestone below surface (V109)");
+            }
+        } finally {
+            bot.disconnect();
+        }
+    }
 }

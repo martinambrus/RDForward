@@ -50,6 +50,16 @@ public class NettySetSlotPacketV47 implements Packet {
     public void read(ByteBuf buf) {
         windowId = buf.readByte();
         slotIndex = buf.readShort();
-        McDataTypes.skipV47SlotData(buf);
+        itemId = buf.readShort();
+        if (itemId >= 0) {
+            count = buf.readByte();
+            damage = buf.readShort();
+            McDataTypes.skipV47SlotNbt(buf);
+        }
     }
+
+    public int getWindowId() { return windowId; }
+    public int getSlotIndex() { return slotIndex; }
+    public int getItemId() { return itemId; }
+    public int getCount() { return count; }
 }

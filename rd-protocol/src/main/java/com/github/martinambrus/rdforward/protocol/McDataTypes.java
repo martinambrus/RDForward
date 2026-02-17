@@ -427,6 +427,17 @@ public final class McDataTypes {
     }
 
     /**
+     * Skip the NBT trailer of a 1.8+ slot (after itemId/count/damage have been read).
+     * Wire format: byte 0x00 = TAG_End (no data), byte 0x0A = TAG_Compound (skip compound).
+     */
+    public static void skipV47SlotNbt(ByteBuf buf) {
+        byte nbtType = buf.readByte();
+        if (nbtType == 0x0A) {
+            skipNbtCompound(buf);
+        }
+    }
+
+    /**
      * Skip a 1.8+ C2S item slot (V47 format).
      * Wire format: [short itemId, if >= 0: byte count, short damage, NBT...]
      * NBT: byte 0x00 = TAG_End (no data), byte 0x0A = TAG_Compound (skip compound).

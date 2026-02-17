@@ -80,4 +80,54 @@ class CrossVersionBlockTest {
             betaBot.disconnect();
         }
     }
+
+    @Test
+    void nettyV109PlacementVisibleToAlpha() throws Exception {
+        BotClient v109Bot = testServer.createBot(ProtocolVersion.RELEASE_1_9_4, "V109Placer");
+        BotClient alphaBot = testServer.createBot(ProtocolVersion.ALPHA_1_2_5, "AlphaWatch2");
+        try {
+            BotSession v109Session = v109Bot.getSession();
+            BotSession alphaSession = alphaBot.getSession();
+            assertTrue(v109Session.isLoginComplete(), "V109 login should complete");
+            assertTrue(alphaSession.isLoginComplete(), "Alpha login should complete");
+
+            Thread.sleep(500);
+
+            int placeX = 50;
+            int placeY = 42;
+            int placeZ = 50;
+            v109Session.sendBlockPlace(placeX, placeY, placeZ, 1, 4);
+
+            int blockType = alphaSession.waitForBlockChange(placeX, placeY + 1, placeZ, 3000);
+            assertTrue(blockType > 0, "Alpha bot should see V109's block placement");
+        } finally {
+            v109Bot.disconnect();
+            alphaBot.disconnect();
+        }
+    }
+
+    @Test
+    void alphaPlacementVisibleToNettyV109() throws Exception {
+        BotClient alphaBot = testServer.createBot(ProtocolVersion.ALPHA_1_2_5, "AlphaPlacer2");
+        BotClient v109Bot = testServer.createBot(ProtocolVersion.RELEASE_1_9_4, "V109Watch");
+        try {
+            BotSession alphaSession = alphaBot.getSession();
+            BotSession v109Session = v109Bot.getSession();
+            assertTrue(alphaSession.isLoginComplete(), "Alpha login should complete");
+            assertTrue(v109Session.isLoginComplete(), "V109 login should complete");
+
+            Thread.sleep(500);
+
+            int placeX = 55;
+            int placeY = 42;
+            int placeZ = 55;
+            alphaSession.sendBlockPlace(placeX, placeY, placeZ, 1, 4);
+
+            int blockType = v109Session.waitForBlockChange(placeX, placeY + 1, placeZ, 3000);
+            assertTrue(blockType > 0, "V109 bot should see Alpha's block placement");
+        } finally {
+            alphaBot.disconnect();
+            v109Bot.disconnect();
+        }
+    }
 }
