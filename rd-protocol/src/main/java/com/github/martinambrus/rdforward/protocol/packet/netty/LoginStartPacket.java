@@ -15,6 +15,10 @@ public class LoginStartPacket implements Packet {
 
     public LoginStartPacket() {}
 
+    public LoginStartPacket(String username) {
+        this.username = username;
+    }
+
     @Override
     public int getPacketId() { return 0x00; }
 

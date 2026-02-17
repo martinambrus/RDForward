@@ -29,6 +29,22 @@ public class NettyBlockPlacementPacketV47 implements Packet, BlockPlacementData 
 
     public NettyBlockPlacementPacketV47() {}
 
+    public NettyBlockPlacementPacketV47(int x, int y, int z, int direction) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.direction = direction;
+        this.heldItemId = -1;
+    }
+
+    public NettyBlockPlacementPacketV47(int x, int y, int z, int direction, short heldItemId) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.direction = direction;
+        this.heldItemId = heldItemId;
+    }
+
     @Override
     public int getPacketId() { return 0x08; }
 
@@ -36,7 +52,11 @@ public class NettyBlockPlacementPacketV47 implements Packet, BlockPlacementData 
     public void write(ByteBuf buf) {
         McDataTypes.writePosition(buf, x, y, z);
         buf.writeByte(direction);
-        McDataTypes.writeEmptyV47Slot(buf);
+        if (heldItemId >= 0) {
+            McDataTypes.writeV47SlotItem(buf, heldItemId, 64, 0);
+        } else {
+            McDataTypes.writeEmptyV47Slot(buf);
+        }
         buf.writeByte(0);
         buf.writeByte(0);
         buf.writeByte(0);

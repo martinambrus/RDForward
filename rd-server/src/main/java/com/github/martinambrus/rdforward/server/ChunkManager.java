@@ -5,7 +5,9 @@ import com.github.martinambrus.rdforward.protocol.packet.alpha.MapChunkPacket;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.MapChunkPacketV28;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.MapChunkPacketV39;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.PreChunkPacket;
+import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV109;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV47;
+import com.github.martinambrus.rdforward.protocol.packet.netty.UnloadChunkPacketV109;
 import com.github.martinambrus.rdforward.world.WorldGenerator;
 import com.github.martinambrus.rdforward.world.alpha.AlphaChunk;
 import com.github.martinambrus.rdforward.world.alpha.AlphaLevelFormat;
@@ -396,7 +398,15 @@ public class ChunkManager {
      * v47 (1.8) uses ushort blockStates and no compression.
      */
     private void sendChunkToPlayer(ConnectedPlayer player, AlphaChunk chunk) {
-        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_9)) {
+            // v109: paletted sections, VarInt primaryBitMask, block entity count at end
+            AlphaChunk.V109ChunkData v109Data = chunk.serializeForV109Protocol();
+            player.sendPacket(new MapChunkPacketV109(
+                chunk.getXPos(), chunk.getZPos(), true,
+                v109Data.getPrimaryBitMask(),
+                v109Data.getRawData()
+            ));
+        } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_8)) {
             // v47: ushort blockStates, raw (uncompressed), VarInt data size
             AlphaChunk.V47ChunkData v47Data = chunk.serializeForV47Protocol();
             player.sendPacket(new MapChunkPacketV47(
@@ -459,7 +469,10 @@ public class ChunkManager {
      * v47 uses MapChunkPacketV47 with groundUpContinuous=true, primaryBitMask=0.
      */
     private void sendChunkUnload(ConnectedPlayer player, ChunkCoord coord) {
-        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_9)) {
+            // v109: dedicated UnloadChunk packet
+            player.sendPacket(new UnloadChunkPacketV109(coord.getX(), coord.getZ()));
+        } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_8)) {
             // v47 chunk unload: send empty chunk (primaryBitMask=0, biome-only data, raw)
             player.sendPacket(new MapChunkPacketV47(
                 coord.getX(), coord.getZ(), true, 0, new byte[256]));

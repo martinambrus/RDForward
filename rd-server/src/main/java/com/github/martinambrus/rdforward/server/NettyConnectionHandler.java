@@ -60,6 +60,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     private java.util.concurrent.ScheduledFuture<?> keepAliveTask;
     private int keepAliveCounter = 0;
 
+    // Teleport ID counter for 1.9+ clients
+    private int nextTeleportId = 0;
+
     public NettyConnectionHandler(ProtocolVersion serverVersion, ServerWorld world,
                                    PlayerManager playerManager, ChunkManager chunkManager) {
         this.serverVersion = serverVersion;
@@ -118,10 +121,14 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             }
         }
 
-        // Set the decoder's protocol version for version-aware C2S packet deserialization
+        // Set codec protocol versions for version-aware packet encoding/decoding
         NettyPacketDecoder decoder = ctx.pipeline().get(NettyPacketDecoder.class);
         if (decoder != null) {
             decoder.setProtocolVersion(pv);
+        }
+        NettyPacketEncoder encoder = ctx.pipeline().get(NettyPacketEncoder.class);
+        if (encoder != null) {
+            encoder.setProtocolVersion(pv);
         }
 
         if (packet.getNextState() == 1) {
@@ -143,7 +150,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
         String versionName;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_9)) {
+            versionName = "1.9.4";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
             versionName = "1.8";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_7_6)) {
             versionName = "1.7.10";
@@ -313,6 +322,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
+        boolean isV109 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_9);
         boolean isV47 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8);
         int entityId = player.getPlayerId() + 1;
 
@@ -402,9 +412,12 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         chunkManager.sendInitialChunks(player, spawnBlockX, spawnBlockZ);
 
         // Send player position
-        // S2C Y is eye-level for 1.7.2; 1.8 uses flags byte instead of onGround boolean.
+        // S2C Y is eye-level for 1.7.2; 1.8 uses flags byte; 1.9+ adds teleportId.
         float alphaSpawnYaw = (spawnYaw + 180.0f) % 360.0f;
-        if (isV47) {
+        if (isV109) {
+            ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV109(
+                    spawnX, spawnY, spawnZ, alphaSpawnYaw, spawnPitch, ++nextTeleportId));
+        } else if (isV47) {
             ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV47(
                     spawnX, spawnY, spawnZ, alphaSpawnYaw, spawnPitch));
         } else {
@@ -412,18 +425,28 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                     spawnX, spawnY, spawnZ, alphaSpawnYaw, spawnPitch, false));
         }
 
-        // Send existing players — for 1.8, PlayerListItem ADD must precede SpawnPlayer
+        // Send existing players — for 1.8+, PlayerListItem ADD must precede SpawnPlayer
         // because the client resolves player name from tab list by UUID.
         for (ConnectedPlayer existing : playerManager.getAllPlayers()) {
             if (existing != player) {
                 int existingEntityId = existing.getPlayerId() + 1;
-                int existingFeetY = (int) existing.getY() - PLAYER_EYE_HEIGHT_FIXED;
                 int alphaYaw = (existing.getYaw() + 128) & 0xFF;
                 int pitch = existing.getPitch() & 0xFF;
                 String existingUuid = ClassicToNettyTranslator.generateOfflineUuid(existing.getUsername());
 
-                if (isV47) {
-                    // 1.8: PlayerListItem ADD before SpawnPlayer
+                if (isV109) {
+                    // 1.9: PlayerListItem ADD before SpawnPlayer (double coords)
+                    double ex = existing.getX() / 32.0;
+                    double ey = (existing.getY() - PLAYER_EYE_HEIGHT_FIXED) / 32.0;
+                    double ez = existing.getZ() / 32.0;
+                    ctx.writeAndFlush(NettyPlayerListItemPacketV47.addPlayer(
+                            existingUuid, existing.getUsername(), 1, 0));
+                    ctx.writeAndFlush(new NettySpawnPlayerPacketV109(
+                            existingEntityId, existingUuid, ex, ey, ez,
+                            alphaYaw, pitch));
+                } else if (isV47) {
+                    // 1.8: PlayerListItem ADD before SpawnPlayer (fixed-point coords)
+                    int existingFeetY = (int) existing.getY() - PLAYER_EYE_HEIGHT_FIXED;
                     ctx.writeAndFlush(NettyPlayerListItemPacketV47.addPlayer(
                             existingUuid, existing.getUsername(), 1, 0));
                     ctx.writeAndFlush(new NettySpawnPlayerPacketV47(
@@ -431,6 +454,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                             (int) existing.getX(), existingFeetY, (int) existing.getZ(),
                             alphaYaw, pitch, (short) 0));
                 } else {
+                    int existingFeetY = (int) existing.getY() - PLAYER_EYE_HEIGHT_FIXED;
                     Packet spawnPacket = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_7_6)
                             ? new NettySpawnPlayerPacketV5(
                                     existingEntityId, existingUuid, existing.getUsername(),
@@ -558,7 +582,12 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 || packet instanceof NettyPluginMessagePacket
                 || packet instanceof NettyPluginMessagePacketV47
                 || packet instanceof NettyUseEntityPacket
-                || packet instanceof NettyUseEntityPacketV47) {
+                || packet instanceof NettyUseEntityPacketV47
+                || packet instanceof TeleportConfirmPacketV109
+                || packet instanceof UseItemPacketV109
+                || packet instanceof AnimationPacketV109
+                || packet instanceof NettyClientSettingsPacketV109
+                || packet instanceof NettyTabCompletePacketV109) {
             // Silently accept
         }
     }
@@ -772,7 +801,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         player.updatePositionDouble(spawnX, spawnEyeY, spawnZ, yaw, 0);
 
         float alphaYaw = (yaw + 180.0f) % 360.0f;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_9)) {
+            ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV109(
+                    spawnX, spawnEyeY, spawnZ, alphaYaw, 0, ++nextTeleportId));
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
             ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV47(
                     spawnX, spawnEyeY, spawnZ, alphaYaw, 0));
         } else {

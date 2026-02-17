@@ -36,6 +36,16 @@ public class PlayerBlockPlacementPacketV39 implements Packet, BlockPlacementData
 
     public PlayerBlockPlacementPacketV39() {}
 
+    public PlayerBlockPlacementPacketV39(int x, int y, int z, int direction, short itemId, byte amount, short damage) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.direction = direction;
+        this.itemId = itemId;
+        this.amount = amount;
+        this.damage = damage;
+    }
+
     @Override
     public int getPacketId() {
         return 0x0F;

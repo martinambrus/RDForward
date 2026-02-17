@@ -577,6 +577,179 @@ public class AlphaChunk {
     }
 
     /**
+     * Serialize this chunk's data for the 1.9 (v109) MapChunkPacket.
+     *
+     * The v109 format uses paletted section encoding. Each section contains:
+     *   1. byte bitsPerBlock (min 4, = ceil(log2(uniqueBlockStates)))
+     *   2. VarInt paletteLength + VarInt[] palette (global block state IDs)
+     *   3. VarInt dataArrayLength + long[] dataArray (packed palette indices)
+     *   4. byte[2048] blockLight nibbles
+     *   5. byte[2048] skyLight nibbles
+     * After all sections: byte[256] biome data (all plains=1)
+     *
+     * In 1.9-1.12, entries can span across long boundaries (bits are packed
+     * consecutively without padding per long).
+     *
+     * @return V109ChunkData with raw (uncompressed) data and primaryBitMask
+     */
+    public V109ChunkData serializeForV109Protocol() {
+        // Determine which sections (0-7) contain non-air blocks.
+        int primaryBitMask = 0;
+        for (int section = 0; section < 8; section++) {
+            int baseY = section * 16;
+            boolean hasBlocks = false;
+            for (int x = 0; x < WIDTH && !hasBlocks; x++) {
+                for (int z = 0; z < DEPTH && !hasBlocks; z++) {
+                    for (int ly = 0; ly < 16; ly++) {
+                        if (getBlock(x, baseY + ly, z) != 0) {
+                            hasBlocks = true;
+                        }
+                    }
+                }
+            }
+            if (hasBlocks) {
+                primaryBitMask |= (1 << section);
+            }
+        }
+
+        // Build the raw data using a ByteArrayOutputStream for simplicity
+        // since paletted sections have variable size.
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(16384);
+
+        for (int section = 0; section < 8; section++) {
+            if ((primaryBitMask & (1 << section)) == 0) continue;
+            int baseY = section * 16;
+
+            // Collect unique block states and build palette
+            // Block state = (blockId << 4) | metadata
+            java.util.LinkedHashMap<Integer, Integer> paletteMap = new java.util.LinkedHashMap<>();
+            int[] blockStates = new int[4096];
+            for (int ly = 0; ly < 16; ly++) {
+                for (int z = 0; z < DEPTH; z++) {
+                    for (int x = 0; x < WIDTH; x++) {
+                        int blockId = getBlock(x, baseY + ly, z);
+                        int meta = getBlockData(x, baseY + ly, z);
+                        int state = (blockId << 4) | (meta & 0x0F);
+                        int idx = (ly * 16 + z) * 16 + x;
+                        blockStates[idx] = state;
+                        if (!paletteMap.containsKey(state)) {
+                            paletteMap.put(state, paletteMap.size());
+                        }
+                    }
+                }
+            }
+
+            int paletteSize = paletteMap.size();
+            int bitsPerBlock = Math.max(4, 32 - Integer.numberOfLeadingZeros(paletteSize - 1));
+            if (paletteSize == 1) bitsPerBlock = 4; // min 4 bits
+
+            // Write bitsPerBlock
+            baos.write(bitsPerBlock);
+
+            // Write palette
+            writeVarIntToStream(baos, paletteSize);
+            for (int paletteEntry : paletteMap.keySet()) {
+                writeVarIntToStream(baos, paletteEntry);
+            }
+
+            // Pack block indices into longs
+            // 1.9-1.12: entries span across long boundaries
+            int totalBits = 4096 * bitsPerBlock;
+            int longsNeeded = (totalBits + 63) / 64;
+            long[] dataArray = new long[longsNeeded];
+
+            int mask = (1 << bitsPerBlock) - 1;
+            for (int i = 0; i < 4096; i++) {
+                int paletteIndex = paletteMap.get(blockStates[i]);
+                int bitIndex = i * bitsPerBlock;
+                int longIndex = bitIndex / 64;
+                int bitOffset = bitIndex % 64;
+                dataArray[longIndex] |= ((long) paletteIndex & mask) << bitOffset;
+                // Check if entry spans two longs
+                if (bitOffset + bitsPerBlock > 64) {
+                    int bitsInFirst = 64 - bitOffset;
+                    dataArray[longIndex + 1] |= ((long) paletteIndex & mask) >> bitsInFirst;
+                }
+            }
+
+            // Write dataArrayLength + data
+            writeVarIntToStream(baos, longsNeeded);
+            for (int i = 0; i < longsNeeded; i++) {
+                writeLongToStream(baos, dataArray[i]);
+            }
+
+            // Write block light nibbles (2048 bytes)
+            for (int ly = 0; ly < 16; ly++) {
+                for (int z = 0; z < DEPTH; z++) {
+                    for (int x = 0; x < WIDTH; x += 2) {
+                        int low = getBlockLight(x, baseY + ly, z) & 0x0F;
+                        int high = getBlockLight(x + 1, baseY + ly, z) & 0x0F;
+                        baos.write(low | (high << 4));
+                    }
+                }
+            }
+
+            // Write sky light nibbles (2048 bytes)
+            for (int ly = 0; ly < 16; ly++) {
+                for (int z = 0; z < DEPTH; z++) {
+                    for (int x = 0; x < WIDTH; x += 2) {
+                        int low = getSkyLight(x, baseY + ly, z) & 0x0F;
+                        int high = getSkyLight(x + 1, baseY + ly, z) & 0x0F;
+                        baos.write(low | (high << 4));
+                    }
+                }
+            }
+        }
+
+        // Biome data: 256 bytes, all plains (1)
+        byte[] biomes = new byte[256];
+        Arrays.fill(biomes, (byte) 1);
+        baos.write(biomes, 0, 256);
+
+        return new V109ChunkData(baos.toByteArray(), primaryBitMask);
+    }
+
+    /** Write a VarInt to a ByteArrayOutputStream (for chunk serialization). */
+    private static void writeVarIntToStream(ByteArrayOutputStream out, int value) {
+        while (true) {
+            if ((value & ~0x7F) == 0) {
+                out.write(value);
+                return;
+            }
+            out.write((value & 0x7F) | 0x80);
+            value >>>= 7;
+        }
+    }
+
+    /** Write a big-endian long to a ByteArrayOutputStream. */
+    private static void writeLongToStream(ByteArrayOutputStream out, long value) {
+        out.write((int) (value >> 56) & 0xFF);
+        out.write((int) (value >> 48) & 0xFF);
+        out.write((int) (value >> 40) & 0xFF);
+        out.write((int) (value >> 32) & 0xFF);
+        out.write((int) (value >> 24) & 0xFF);
+        out.write((int) (value >> 16) & 0xFF);
+        out.write((int) (value >> 8) & 0xFF);
+        out.write((int) value & 0xFF);
+    }
+
+    /**
+     * Result container for v109 chunk serialization.
+     */
+    public static class V109ChunkData {
+        private final byte[] rawData;
+        private final int primaryBitMask;
+
+        public V109ChunkData(byte[] rawData, int primaryBitMask) {
+            this.rawData = rawData;
+            this.primaryBitMask = primaryBitMask;
+        }
+
+        public byte[] getRawData() { return rawData; }
+        public int getPrimaryBitMask() { return primaryBitMask; }
+    }
+
+    /**
      * Result container for v28 chunk serialization.
      */
     public static class V28ChunkData {

@@ -59,4 +59,11 @@ public class NettyPlayerPositionS2CPacket implements Packet {
         pitch = buf.readFloat();
         onGround = buf.readBoolean();
     }
+
+    public double getX() { return x; }
+    public double getY() { return y; }
+    public double getZ() { return z; }
+    public float getYaw() { return yaw; }
+    public float getPitch() { return pitch; }
+    public boolean isOnGround() { return onGround; }
 }

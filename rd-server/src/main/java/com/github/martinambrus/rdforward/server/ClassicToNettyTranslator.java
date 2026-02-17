@@ -51,6 +51,7 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
     }
 
     private Packet translate(Packet packet) {
+        boolean isV109 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_9);
         boolean isV47 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8);
 
         // PlayerListItemPacket is in the .alpha package but needs translation
@@ -101,6 +102,13 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
             int alphaYaw = (sp.getYaw() + 128) & 0xFF;
             // Generate offline UUID from username
             String uuid = generateOfflineUuid(sp.getPlayerName());
+            if (isV109) {
+                // 1.9: double coordinates (convert from fixed-point /32)
+                return new NettySpawnPlayerPacketV109(
+                        entityId, uuid,
+                        sp.getX() / 32.0, feetY / 32.0, sp.getZ() / 32.0,
+                        alphaYaw, sp.getPitch());
+            }
             if (isV47) {
                 return new NettySpawnPlayerPacketV47(
                         entityId, uuid,
@@ -129,6 +137,12 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
             int entityId = pt.getPlayerId() + 1;
             int feetY = (int) pt.getY() - EYE_HEIGHT_FIXED;
             int alphaYaw = (pt.getYaw() + 128) & 0xFF;
+            if (isV109) {
+                // 1.9: double coordinates
+                return new EntityTeleportPacketV109(entityId,
+                        pt.getX() / 32.0, feetY / 32.0, pt.getZ() / 32.0,
+                        alphaYaw, pt.getPitch());
+            }
             if (isV47) {
                 return new EntityTeleportPacketV47(entityId,
                         (int) pt.getX(), feetY, (int) pt.getZ(),
@@ -142,6 +156,14 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
         if (packet instanceof PositionOrientationUpdatePacket) {
             PositionOrientationUpdatePacket pou = (PositionOrientationUpdatePacket) packet;
             int entityId = pou.getPlayerId() + 1;
+            if (isV109) {
+                // 1.9: short deltas, scale 1/4096 (was 1/32). Multiply by 128.
+                return new EntityLookAndMovePacketV109(entityId,
+                        (short) (pou.getChangeX() * 128),
+                        (short) (pou.getChangeY() * 128),
+                        (short) (pou.getChangeZ() * 128),
+                        pou.getYaw(), pou.getPitch());
+            }
             if (isV47) {
                 return new EntityLookAndMovePacketV47(entityId,
                         pou.getChangeX(), pou.getChangeY(), pou.getChangeZ(),
@@ -155,6 +177,13 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
         if (packet instanceof PositionUpdatePacket) {
             PositionUpdatePacket pu = (PositionUpdatePacket) packet;
             int entityId = pu.getPlayerId() + 1;
+            if (isV109) {
+                // 1.9: short deltas, scale 1/4096 (was 1/32). Multiply by 128.
+                return new EntityRelativeMovePacketV109(entityId,
+                        (short) (pu.getChangeX() * 128),
+                        (short) (pu.getChangeY() * 128),
+                        (short) (pu.getChangeZ() * 128));
+            }
             if (isV47) {
                 return new EntityRelativeMovePacketV47(entityId,
                         pu.getChangeX(), pu.getChangeY(), pu.getChangeZ());

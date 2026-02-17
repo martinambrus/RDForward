@@ -93,4 +93,8 @@ public class NettySpawnPlayerPacket implements Packet {
             // Skip metadata entry based on type — we don't parse it
         }
     }
+
+    public int getEntityId() { return entityId; }
+    public String getPlayerName() { return playerName; }
+    public String getUuid() { return uuid; }
 }

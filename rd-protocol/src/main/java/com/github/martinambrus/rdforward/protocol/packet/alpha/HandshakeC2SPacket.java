@@ -46,6 +46,14 @@ public class HandshakeC2SPacket implements Packet {
         this.username = username;
     }
 
+    public HandshakeC2SPacket(int protocolVersion, String username, String hostname, int port) {
+        this.v39Format = true;
+        this.protocolVersion = protocolVersion;
+        this.username = username;
+        this.hostname = hostname;
+        this.port = port;
+    }
+
     @Override
     public int getPacketId() {
         return 0x02;

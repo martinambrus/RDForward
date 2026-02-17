@@ -57,4 +57,10 @@ public class NettyPlayerPositionS2CPacketV47 implements Packet {
         pitch = buf.readFloat();
         buf.readByte(); // flags
     }
+
+    public double getX() { return x; }
+    public double getY() { return y; }
+    public double getZ() { return z; }
+    public float getYaw() { return yaw; }
+    public float getPitch() { return pitch; }
 }

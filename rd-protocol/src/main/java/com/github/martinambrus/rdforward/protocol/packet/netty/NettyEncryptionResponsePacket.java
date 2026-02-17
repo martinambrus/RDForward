@@ -19,6 +19,11 @@ public class NettyEncryptionResponsePacket implements Packet {
 
     public NettyEncryptionResponsePacket() {}
 
+    public NettyEncryptionResponsePacket(byte[] sharedSecret, byte[] verifyToken) {
+        this.sharedSecret = sharedSecret;
+        this.verifyToken = verifyToken;
+    }
+
     @Override
     public int getPacketId() { return 0x01; }
 

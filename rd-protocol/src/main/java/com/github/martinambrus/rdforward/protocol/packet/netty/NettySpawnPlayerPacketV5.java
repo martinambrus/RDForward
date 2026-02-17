@@ -98,4 +98,8 @@ public class NettySpawnPlayerPacketV5 implements Packet {
             if (b == 0x7F) break;
         }
     }
+
+    public int getEntityId() { return entityId; }
+    public String getPlayerName() { return playerName; }
+    public String getUuid() { return uuid; }
 }

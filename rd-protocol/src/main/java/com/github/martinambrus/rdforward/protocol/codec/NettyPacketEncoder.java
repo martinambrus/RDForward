@@ -15,13 +15,23 @@ import io.netty.handler.codec.MessageToByteEncoder;
  * Looks up the packet ID via NettyPacketRegistry reverse map, writes
  * VarInt packetId + packet payload into the output buffer. The buffer
  * is then framed by VarIntFrameEncoder.
+ *
+ * Version-aware: for v107+ (1.9) clients, uses V109 reverse map where
+ * all Play state S2C packet IDs are remapped.
  */
 public class NettyPacketEncoder extends MessageToByteEncoder<Packet> {
 
     private volatile ConnectionState connectionState;
+    private final PacketDirection direction;
+    private volatile int protocolVersion = 4; // Default to 1.7.2
 
     public NettyPacketEncoder(ConnectionState initialState) {
+        this(initialState, PacketDirection.SERVER_TO_CLIENT);
+    }
+
+    public NettyPacketEncoder(ConnectionState initialState, PacketDirection direction) {
         this.connectionState = initialState;
+        this.direction = direction;
     }
 
     @Override
@@ -29,7 +39,7 @@ public class NettyPacketEncoder extends MessageToByteEncoder<Packet> {
         int packetId;
         try {
             packetId = NettyPacketRegistry.getPacketId(connectionState,
-                    PacketDirection.SERVER_TO_CLIENT, packet.getClass());
+                    direction, packet.getClass(), protocolVersion);
         } catch (IllegalArgumentException e) {
             System.err.println("NettyPacketEncoder: " + e.getMessage());
             return;
@@ -41,5 +51,9 @@ public class NettyPacketEncoder extends MessageToByteEncoder<Packet> {
 
     public void setConnectionState(ConnectionState state) {
         this.connectionState = state;
+    }
+
+    public void setProtocolVersion(int protocolVersion) {
+        this.protocolVersion = protocolVersion;
     }
 }

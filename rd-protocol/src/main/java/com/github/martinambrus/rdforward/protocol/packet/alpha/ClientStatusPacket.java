@@ -20,6 +20,10 @@ public class ClientStatusPacket implements Packet {
 
     public ClientStatusPacket() {}
 
+    public ClientStatusPacket(byte payload) {
+        this.payload = payload;
+    }
+
     @Override
     public int getPacketId() {
         return 0xCD;

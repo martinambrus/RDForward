@@ -22,6 +22,13 @@ public class NettyHandshakePacket implements Packet {
 
     public NettyHandshakePacket() {}
 
+    public NettyHandshakePacket(int protocolVersion, String serverAddress, int serverPort, int nextState) {
+        this.protocolVersion = protocolVersion;
+        this.serverAddress = serverAddress;
+        this.serverPort = serverPort;
+        this.nextState = nextState;
+    }
+
     @Override
     public int getPacketId() { return 0x00; }
 

@@ -271,9 +271,19 @@ public class PacketRegistry {
             public Packet create() { return new LoginS2CPacketV2(); }
         });
 
+        // Pre-rewrite Alpha (v13/v14) also uses the shorter Login packet
+        // (no mapSeed/dimension), same as post-rewrite v1/v2. The server sends
+        // LoginS2CPacketV2 for all pre-1.2.0 clients.
+        register(ProtocolVersion.ALPHA_1_0_15, PacketDirection.SERVER_TO_CLIENT, 0x01, new PacketFactory() {
+            public Packet create() { return new LoginS2CPacketV2(); }
+        });
+        register(ProtocolVersion.ALPHA_1_0_16, PacketDirection.SERVER_TO_CLIENT, 0x01, new PacketFactory() {
+            public Packet create() { return new LoginS2CPacketV2(); }
+        });
+
         // Pre-rewrite Alpha (v10-v14) uses identical wire formats to post-rewrite
-        // (v1-v6) for all packets including 0x0F (BlockPlacement) and 0x15
-        // (PickupSpawn). No version-specific overrides needed.
+        // (v1-v6) for all other packets including 0x0F (BlockPlacement) and 0x15
+        // (PickupSpawn). No further version-specific overrides needed.
 
         // === Beta + Release overrides (v7+) ===
         // Beta changed several packet wire formats and added new packets.
@@ -565,6 +575,7 @@ public class PacketRegistry {
 
             // Release v73+ (Release 1.6.1+): PlayerAbilities speeds changed from byte to float.
             // EntityAction gained int jumpBoost for horse riding.
+            // Entity Properties (0x2C) now sent by server for movement speed.
             if (betaV.getVersionNumber() >= 73) {
                 register(betaV, PacketDirection.SERVER_TO_CLIENT, 0xCA, new PacketFactory() {
                     public Packet create() { return new PlayerAbilitiesPacketV73(); }
@@ -574,6 +585,17 @@ public class PacketRegistry {
                 });
                 register(betaV, PacketDirection.CLIENT_TO_SERVER, 0x13, new PacketFactory() {
                     public Packet create() { return new EntityActionPacketV73(); }
+                });
+                // v73 Entity Properties has no modifier list
+                register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x2C, new PacketFactory() {
+                    public Packet create() { return new EntityPropertiesPacket(); }
+                });
+            }
+
+            // Release v74+ (Release 1.6.2+): Entity Properties gained modifier list.
+            if (betaV.getVersionNumber() >= 74) {
+                register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x2C, new PacketFactory() {
+                    public Packet create() { return new EntityPropertiesPacketV74(); }
                 });
             }
 

@@ -94,4 +94,6 @@ public class NettySpawnPlayerPacketV47 implements Packet {
             if (b == 0x7F) break;
         }
     }
+
+    public int getEntityId() { return entityId; }
 }

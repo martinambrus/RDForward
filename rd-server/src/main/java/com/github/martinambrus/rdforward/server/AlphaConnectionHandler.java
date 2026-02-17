@@ -1003,7 +1003,9 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         if (result == EventResult.CANCEL) return;
 
         // Set block directly in world (bypasses tick queue to avoid double-broadcast)
-        if (!world.setBlock(targetX, targetY, targetZ, worldBlockType)) return;
+        if (!world.setBlock(targetX, targetY, targetZ, worldBlockType)) {
+            return;
+        }
         chunkManager.setBlock(targetX, targetY, targetZ, worldBlockType);
 
         // Broadcast grass/cobblestone to all other players (Classic translator handles Alpha)

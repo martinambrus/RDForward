@@ -292,6 +292,12 @@ public class RDServer {
     }
 
     public int getPort() { return port; }
+    public int getActualPort() {
+        if (serverChannel != null) {
+            return ((InetSocketAddress) serverChannel.localAddress()).getPort();
+        }
+        return port;
+    }
     public ProtocolVersion getProtocolVersion() { return protocolVersion; }
     public ServerWorld getWorld() { return world; }
     public PlayerManager getPlayerManager() { return playerManager; }

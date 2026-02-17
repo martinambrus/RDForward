@@ -28,6 +28,12 @@ public class NettyPacketRegistry {
     /** V47 overlay: C2S packets that differ in 1.8. Checked first for v47+ clients. */
     private static final Map<String, PacketFactory> REGISTRY_V47 = new HashMap<String, PacketFactory>();
 
+    /** V109 overlay: C2S packets with remapped IDs for 1.9+. Checked first for v107+ clients. */
+    private static final Map<String, PacketFactory> REGISTRY_V109 = new HashMap<String, PacketFactory>();
+
+    /** V109 S2C reverse map: packet class -> v109 packet ID. Checked first for v107+ encoder. */
+    private static final Map<String, Integer> REVERSE_V109 = new HashMap<String, Integer>();
+
     /** Reverse map: (state, direction, className) -> packetId */
     private static final Map<String, Integer> REVERSE = new HashMap<String, Integer>();
 
@@ -205,7 +211,65 @@ public class NettyPacketRegistry {
             public Packet create() { return new NettyPluginMessagePacket(); }
         }, NettyPluginMessagePacket.class);
 
-        // === V47 (1.8) LOGIN state overrides ===
+        // === V47 (1.8) LOGIN state S2C overrides ===
+        registerV47S2C(ConnectionState.LOGIN, 0x01, new PacketFactory() {
+            public Packet create() { return new NettyEncryptionRequestPacketV47(); }
+        });
+
+        // === V47 (1.8) PLAY state S2C overrides ===
+        registerV47S2C(ConnectionState.PLAY, 0x00, new PacketFactory() {
+            public Packet create() { return new KeepAlivePacketV47(); }
+        });
+        registerV47S2C(ConnectionState.PLAY, 0x01, new PacketFactory() {
+            public Packet create() { return new JoinGamePacketV47(); }
+        });
+        registerV47S2C(ConnectionState.PLAY, 0x02, new PacketFactory() {
+            public Packet create() { return new NettyChatS2CPacketV47(); }
+        });
+        registerV47S2C(ConnectionState.PLAY, 0x05, new PacketFactory() {
+            public Packet create() { return new SpawnPositionPacketV47(); }
+        });
+        registerV47S2C(ConnectionState.PLAY, 0x08, new PacketFactory() {
+            public Packet create() { return new NettyPlayerPositionS2CPacketV47(); }
+        });
+        registerV47S2C(ConnectionState.PLAY, 0x0C, new PacketFactory() {
+            public Packet create() { return new NettySpawnPlayerPacketV47(); }
+        });
+        registerV47S2C(ConnectionState.PLAY, 0x13, new PacketFactory() {
+            public Packet create() { return new NettyDestroyEntitiesPacketV47(); }
+        });
+        registerV47S2C(ConnectionState.PLAY, 0x15, new PacketFactory() {
+            public Packet create() { return new EntityRelativeMovePacketV47(); }
+        });
+        registerV47S2C(ConnectionState.PLAY, 0x16, new PacketFactory() {
+            public Packet create() { return new EntityLookPacketV47(); }
+        });
+        registerV47S2C(ConnectionState.PLAY, 0x17, new PacketFactory() {
+            public Packet create() { return new EntityLookAndMovePacketV47(); }
+        });
+        registerV47S2C(ConnectionState.PLAY, 0x18, new PacketFactory() {
+            public Packet create() { return new EntityTeleportPacketV47(); }
+        });
+        registerV47S2C(ConnectionState.PLAY, 0x20, new PacketFactory() {
+            public Packet create() { return new NettyEntityPropertiesPacketV47(); }
+        });
+        registerV47S2C(ConnectionState.PLAY, 0x21, new PacketFactory() {
+            public Packet create() { return new MapChunkPacketV47(); }
+        });
+        registerV47S2C(ConnectionState.PLAY, 0x23, new PacketFactory() {
+            public Packet create() { return new NettyBlockChangePacketV47(); }
+        });
+        registerV47S2C(ConnectionState.PLAY, 0x2F, new PacketFactory() {
+            public Packet create() { return new NettySetSlotPacketV47(); }
+        });
+        registerV47S2C(ConnectionState.PLAY, 0x30, new PacketFactory() {
+            public Packet create() { return new NettyWindowItemsPacketV47(); }
+        });
+        registerV47S2C(ConnectionState.PLAY, 0x38, new PacketFactory() {
+            public Packet create() { return new NettyPlayerListItemPacketV47(); }
+        });
+
+        // === V47 (1.8) LOGIN state C2S overrides ===
         registerV47C2S(ConnectionState.LOGIN, 0x01, new PacketFactory() {
             public Packet create() { return new NettyEncryptionResponsePacketV47(); }
         });
@@ -278,6 +342,116 @@ public class NettyPacketRegistry {
         registerS2CReverse(NettyPlayerListItemPacketV47.class, 0x38);
         // V47 LOGIN S2C reverse entry
         registerS2CLoginReverse(NettyEncryptionRequestPacketV47.class, 0x01);
+
+        // === V47 C2S reverse map entries (for bot encoder lookup) ===
+        REVERSE.put(reverseKey(ConnectionState.LOGIN, PacketDirection.CLIENT_TO_SERVER,
+                NettyEncryptionResponsePacketV47.class), 0x01);
+        registerC2SReverse(KeepAlivePacketV47.class, 0x00);
+        registerC2SReverse(NettyBlockPlacementPacketV47.class, 0x08);
+
+        // === V109 (1.9) PLAY state C2S overrides (ALL IDs remapped) ===
+        registerV109C2S(0x00, new PacketFactory() {
+            public Packet create() { return new TeleportConfirmPacketV109(); }
+        });
+        registerV109C2S(0x01, new PacketFactory() {
+            public Packet create() { return new NettyTabCompletePacketV109(); }
+        });
+        registerV109C2S(0x02, new PacketFactory() {
+            public Packet create() { return new NettyChatC2SPacket(); }
+        });
+        registerV109C2S(0x03, new PacketFactory() {
+            public Packet create() { return new ClientCommandPacket(); }
+        });
+        registerV109C2S(0x04, new PacketFactory() {
+            public Packet create() { return new NettyClientSettingsPacketV109(); }
+        });
+        registerV109C2S(0x05, new PacketFactory() {
+            public Packet create() { return new ConfirmTransactionPacket(); }
+        });
+        registerV109C2S(0x06, new PacketFactory() {
+            public Packet create() { return new EnchantItemPacket(); }
+        });
+        registerV109C2S(0x07, new PacketFactory() {
+            public Packet create() { return new NettyWindowClickPacketV47(); }
+        });
+        registerV109C2S(0x08, new PacketFactory() {
+            public Packet create() { return new CloseWindowPacket(); }
+        });
+        registerV109C2S(0x09, new PacketFactory() {
+            public Packet create() { return new NettyPluginMessagePacketV47(); }
+        });
+        registerV109C2S(0x0A, new PacketFactory() {
+            public Packet create() { return new NettyUseEntityPacketV47(); }
+        });
+        registerV109C2S(0x0B, new PacketFactory() {
+            public Packet create() { return new KeepAlivePacketV47(); }
+        });
+        registerV109C2S(0x0C, new PacketFactory() {
+            public Packet create() { return new PlayerPositionPacketV47(); }
+        });
+        registerV109C2S(0x0D, new PacketFactory() {
+            public Packet create() { return new PlayerPositionAndLookC2SPacketV47(); }
+        });
+        registerV109C2S(0x0E, new PacketFactory() {
+            public Packet create() { return new PlayerLookPacket(); }
+        });
+        registerV109C2S(0x0F, new PacketFactory() {
+            public Packet create() { return new PlayerOnGroundPacket(); }
+        });
+        registerV109C2S(0x12, new PacketFactory() {
+            public Packet create() { return new PlayerAbilitiesPacketV73(); }
+        });
+        registerV109C2S(0x13, new PacketFactory() {
+            public Packet create() { return new PlayerDiggingPacketV47(); }
+        });
+        registerV109C2S(0x14, new PacketFactory() {
+            public Packet create() { return new NettyEntityActionPacketV47(); }
+        });
+        registerV109C2S(0x15, new PacketFactory() {
+            public Packet create() { return new NettySteerVehiclePacketV47(); }
+        });
+        registerV109C2S(0x17, new PacketFactory() {
+            public Packet create() { return new HoldingChangePacketBeta(); }
+        });
+        registerV109C2S(0x18, new PacketFactory() {
+            public Packet create() { return new NettyCreativeSlotPacketV47(); }
+        });
+        registerV109C2S(0x19, new PacketFactory() {
+            public Packet create() { return new NettyUpdateSignPacketV47(); }
+        });
+        registerV109C2S(0x1A, new PacketFactory() {
+            public Packet create() { return new AnimationPacketV109(); }
+        });
+        registerV109C2S(0x1C, new PacketFactory() {
+            public Packet create() { return new NettyBlockPlacementPacketV109(); }
+        });
+        registerV109C2S(0x1D, new PacketFactory() {
+            public Packet create() { return new UseItemPacketV109(); }
+        });
+
+        // === V109 S2C reverse map entries (encoder lookup for v107+ clients) ===
+        // V109-specific packet classes (new wire formats)
+        registerV109S2CReverse(NettySpawnPlayerPacketV109.class, 0x05);
+        registerV109S2CReverse(EntityRelativeMovePacketV109.class, 0x25);
+        registerV109S2CReverse(EntityLookAndMovePacketV109.class, 0x26);
+        registerV109S2CReverse(NettyPlayerPositionS2CPacketV109.class, 0x2E);
+        registerV109S2CReverse(MapChunkPacketV109.class, 0x20);
+        registerV109S2CReverse(UnloadChunkPacketV109.class, 0x1D);
+        registerV109S2CReverse(EntityTeleportPacketV109.class, 0x4A);
+        // Reused V47 packet classes with remapped IDs
+        registerV109S2CReverse(NettyBlockChangePacketV47.class, 0x0B);
+        registerV109S2CReverse(NettyChatS2CPacketV47.class, 0x0F);
+        registerV109S2CReverse(NettyWindowItemsPacketV47.class, 0x14);
+        registerV109S2CReverse(NettySetSlotPacketV47.class, 0x16);
+        registerV109S2CReverse(NettyDisconnectPacket.class, 0x1A);
+        registerV109S2CReverse(KeepAlivePacketV47.class, 0x1F);
+        registerV109S2CReverse(JoinGamePacketV47.class, 0x23);
+        registerV109S2CReverse(EntityLookPacketV47.class, 0x27);
+        registerV109S2CReverse(PlayerAbilitiesPacketV73.class, 0x2B);
+        registerV109S2CReverse(NettyPlayerListItemPacketV47.class, 0x2D);
+        registerV109S2CReverse(NettyDestroyEntitiesPacketV47.class, 0x30);
+        registerV109S2CReverse(SpawnPositionPacketV47.class, 0x43);
+        registerV109S2CReverse(NettyEntityPropertiesPacketV47.class, 0x4B);
     }
 
     private static void registerC2S(ConnectionState state, int packetId,
@@ -296,8 +470,24 @@ public class NettyPacketRegistry {
         REGISTRY_V47.put(key(state, PacketDirection.CLIENT_TO_SERVER, packetId), factory);
     }
 
+    private static void registerV47S2C(ConnectionState state, int packetId, PacketFactory factory) {
+        REGISTRY_V47.put(key(state, PacketDirection.SERVER_TO_CLIENT, packetId), factory);
+    }
+
+    private static void registerV109C2S(int packetId, PacketFactory factory) {
+        REGISTRY_V109.put(key(ConnectionState.PLAY, PacketDirection.CLIENT_TO_SERVER, packetId), factory);
+    }
+
+    private static void registerV109S2CReverse(Class<? extends Packet> clazz, int packetId) {
+        REVERSE_V109.put(reverseKey(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, clazz), packetId);
+    }
+
     private static void registerS2CReverse(Class<? extends Packet> clazz, int packetId) {
         REVERSE.put(reverseKey(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, clazz), packetId);
+    }
+
+    private static void registerC2SReverse(Class<? extends Packet> clazz, int packetId) {
+        REVERSE.put(reverseKey(ConnectionState.PLAY, PacketDirection.CLIENT_TO_SERVER, clazz), packetId);
     }
 
     private static void registerS2CLoginReverse(Class<? extends Packet> clazz, int packetId) {
@@ -310,11 +500,18 @@ public class NettyPacketRegistry {
     }
 
     /**
-     * Version-aware packet creation. For v47+ clients, checks V47 overlay first
-     * for C2S packets with changed wire formats, then falls back to the base registry.
+     * Version-aware packet creation. Checks version-specific overlays first
+     * (V109 for v107+, V47 for v47+), then falls back to the base registry.
      */
     public static Packet createPacket(ConnectionState state, PacketDirection direction,
                                        int packetId, int protocolVersion) {
+        if (protocolVersion >= 107) {
+            String k = key(state, direction, packetId);
+            PacketFactory factory = REGISTRY_V109.get(k);
+            if (factory != null) {
+                return factory.create();
+            }
+        }
         if (protocolVersion >= 47) {
             String k = key(state, direction, packetId);
             PacketFactory factory = REGISTRY_V47.get(k);
@@ -333,6 +530,23 @@ public class NettyPacketRegistry {
                     + " in " + state + " " + direction);
         }
         return id;
+    }
+
+    /**
+     * Version-aware packet ID lookup for the encoder.
+     * For v107+ clients, checks V109 reverse map first (all S2C IDs remapped).
+     * Falls back to the base REVERSE map for older versions.
+     */
+    public static int getPacketId(ConnectionState state, PacketDirection direction,
+                                   Class<? extends Packet> clazz, int protocolVersion) {
+        if (protocolVersion >= 107) {
+            String rk = reverseKey(state, direction, clazz);
+            Integer id = REVERSE_V109.get(rk);
+            if (id != null) {
+                return id;
+            }
+        }
+        return getPacketId(state, direction, clazz);
     }
 
     private static String key(ConnectionState state, PacketDirection direction, int packetId) {

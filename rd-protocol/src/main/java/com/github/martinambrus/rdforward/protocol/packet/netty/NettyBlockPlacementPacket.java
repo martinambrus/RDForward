@@ -31,6 +31,22 @@ public class NettyBlockPlacementPacket implements Packet, BlockPlacementData {
 
     public NettyBlockPlacementPacket() {}
 
+    public NettyBlockPlacementPacket(int x, int y, int z, int direction) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.direction = direction;
+        this.heldItemId = -1;
+    }
+
+    public NettyBlockPlacementPacket(int x, int y, int z, int direction, short heldItemId) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.direction = direction;
+        this.heldItemId = heldItemId;
+    }
+
     @Override
     public int getPacketId() { return 0x08; }
 
@@ -40,7 +56,11 @@ public class NettyBlockPlacementPacket implements Packet, BlockPlacementData {
         buf.writeByte(y);
         buf.writeInt(z);
         buf.writeByte(direction);
-        McDataTypes.writeEmptyNettySlot(buf);
+        if (heldItemId >= 0) {
+            McDataTypes.writeNettySlotItem(buf, heldItemId, 64, 0);
+        } else {
+            McDataTypes.writeEmptyNettySlot(buf);
+        }
         buf.writeByte(cursorX);
         buf.writeByte(cursorY);
         buf.writeByte(cursorZ);

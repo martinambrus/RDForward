@@ -15,6 +15,10 @@ public class NettyChatC2SPacket implements Packet {
 
     public NettyChatC2SPacket() {}
 
+    public NettyChatC2SPacket(String message) {
+        this.message = message;
+    }
+
     @Override
     public int getPacketId() { return 0x01; }
 
