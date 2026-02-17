@@ -121,6 +121,8 @@ public class BotNettyPacketHandler extends SimpleChannelInboundHandler<Packet> {
             ctx.writeAndFlush(new KeepAlivePacketV47(kaV47.getKeepAliveId()));
         } else if (packet instanceof KeepAlivePacketV17 ka) {
             ctx.writeAndFlush(new KeepAlivePacketV17(ka.getKeepAliveId()));
+        } else if (packet instanceof MapChunkPacketV47 mcV47) {
+            processV47Chunk(mcV47);
         } else if (packet instanceof NettyDisconnectPacket disconnect) {
             System.err.println("BotNetty disconnected: " + disconnect.getJsonReason());
             ctx.close();
@@ -177,6 +179,42 @@ public class BotNettyPacketHandler extends SimpleChannelInboundHandler<Packet> {
             System.err.println("BotNettyPacketHandler encryption error: " + e.getMessage());
             ctx.close();
         }
+    }
+
+    /**
+     * Parse V47 (1.8) chunk data: ushort blockStates per section,
+     * extracting block IDs (state >> 4) into AlphaChunk YZX layout.
+     */
+    private void processV47Chunk(MapChunkPacketV47 packet) {
+        byte[] data = packet.getData();
+        int primaryBitMask = packet.getPrimaryBitMask();
+        byte[] blockIds = new byte[32768];
+        int offset = 0;
+
+        for (int section = 0; section < 16; section++) {
+            if ((primaryBitMask & (1 << section)) == 0) continue;
+            // Each section has 4096 ushort block states (8192 bytes)
+            if (offset + 8192 > data.length) break;
+
+            int baseY = section * 16;
+            for (int i = 0; i < 4096; i++) {
+                // Section YZX: index = (y&15)<<8 | z<<4 | x
+                int sy = (i >> 8) & 15;
+                int sz = (i >> 4) & 15;
+                int sx = i & 15;
+                // Read ushort little-endian block state
+                int lo = data[offset + i * 2] & 0xFF;
+                int hi = data[offset + i * 2 + 1] & 0xFF;
+                int blockState = lo | (hi << 8);
+                int blockId = blockState >> 4;
+                // AlphaChunk YZX: index = y + z*128 + x*2048
+                int alphaIndex = (baseY + sy) + sz * 128 + sx * 2048;
+                blockIds[alphaIndex] = (byte) blockId;
+            }
+            offset += 8192;
+        }
+
+        session.recordChunkBlocks(packet.getChunkX(), packet.getChunkZ(), blockIds);
     }
 
     private void setCodecState(ChannelHandlerContext ctx, ConnectionState state) {

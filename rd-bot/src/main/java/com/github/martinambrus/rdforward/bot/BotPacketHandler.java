@@ -16,6 +16,8 @@ import java.security.SecureRandom;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.zip.DataFormatException;
+import java.util.zip.Inflater;
 
 /**
  * Netty inbound handler for the bot client.
@@ -114,6 +116,14 @@ public class BotPacketHandler extends SimpleChannelInboundHandler<Packet> {
             }
         } else if (packet instanceof DestroyEntityPacket de) {
             session.recordDespawn(de.getEntityId());
+        } else if (packet instanceof MapChunkPacket mc) {
+            processAlphaChunk(mc);
+        } else if (packet instanceof MapChunkPacketV39 mcV39) {
+            processSectionedChunk(mcV39.getChunkX(), mcV39.getChunkZ(),
+                    mcV39.getPrimaryBitMask(), mcV39.getCompressedData());
+        } else if (packet instanceof MapChunkPacketV28 mcV28) {
+            processSectionedChunk(mcV28.getChunkX(), mcV28.getChunkZ(),
+                    mcV28.getPrimaryBitMask(), mcV28.getCompressedData());
         } else if (packet instanceof KeepAlivePacket) {
             if (packet instanceof KeepAlivePacketV17 ka17) {
                 ctx.writeAndFlush(new KeepAlivePacketV17(ka17.getKeepAliveId()));
@@ -180,6 +190,73 @@ public class BotPacketHandler extends SimpleChannelInboundHandler<Packet> {
         } catch (Exception e) {
             System.err.println("BotPacketHandler cipher setup error: " + e.getMessage());
             ctx.close();
+        }
+    }
+
+    /**
+     * Decompress Alpha chunk data and extract the first 32768 bytes (block IDs).
+     * Only processes full 16x128x16 chunks (sizeX=15, sizeY=127, sizeZ=15).
+     */
+    private void processAlphaChunk(MapChunkPacket mc) {
+        // Only process full chunk columns
+        if (mc.getSizeX() != 15 || mc.getSizeY() != 127 || mc.getSizeZ() != 15) return;
+        // Must be chunk-aligned origin
+        if ((mc.getX() & 15) != 0 || (mc.getZ() & 15) != 0) return;
+
+        byte[] decompressed = decompress(mc.getCompressedData());
+        if (decompressed == null || decompressed.length < 32768) return;
+
+        byte[] blockIds = new byte[32768];
+        System.arraycopy(decompressed, 0, blockIds, 0, 32768);
+        session.recordChunkBlocks(mc.getX() >> 4, mc.getZ() >> 4, blockIds);
+    }
+
+    /**
+     * Decompress section-based chunk data (V28/V39) and convert from section
+     * YZX layout to AlphaChunk YZX layout.
+     */
+    private void processSectionedChunk(int chunkX, int chunkZ, short primaryBitMask, byte[] compressedData) {
+        byte[] decompressed = decompress(compressedData);
+        if (decompressed == null) return;
+
+        byte[] blockIds = new byte[32768];
+        int offset = 0;
+
+        for (int section = 0; section < 16; section++) {
+            if ((primaryBitMask & (1 << section)) == 0) continue;
+            if (offset + 4096 > decompressed.length) break;
+
+            int baseY = section * 16;
+            for (int i = 0; i < 4096; i++) {
+                // Section YZX: index = (y&15)<<8 | z<<4 | x
+                int sy = (i >> 8) & 15;
+                int sz = (i >> 4) & 15;
+                int sx = i & 15;
+                // AlphaChunk YZX: index = y + z*128 + x*2048
+                int alphaIndex = (baseY + sy) + sz * 128 + sx * 2048;
+                blockIds[alphaIndex] = decompressed[offset + i];
+            }
+            offset += 4096;
+        }
+
+        session.recordChunkBlocks(chunkX, chunkZ, blockIds);
+    }
+
+    private byte[] decompress(byte[] compressed) {
+        try {
+            Inflater inflater = new Inflater();
+            inflater.setInput(compressed);
+            byte[] buf = new byte[4096];
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream(compressed.length * 4);
+            while (!inflater.finished()) {
+                int count = inflater.inflate(buf);
+                if (count == 0 && inflater.needsInput()) break;
+                out.write(buf, 0, count);
+            }
+            inflater.end();
+            return out.toByteArray();
+        } catch (DataFormatException e) {
+            return null;
         }
     }
 

@@ -61,4 +61,9 @@ public class MapChunkPacketV47 implements Packet {
         data = new byte[dataSize];
         buf.readBytes(data);
     }
+
+    public int getChunkX() { return chunkX; }
+    public int getChunkZ() { return chunkZ; }
+    public int getPrimaryBitMask() { return primaryBitMask; }
+    public byte[] getData() { return data; }
 }

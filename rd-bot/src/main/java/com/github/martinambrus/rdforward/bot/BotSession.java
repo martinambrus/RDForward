@@ -242,6 +242,22 @@ public class BotSession {
     }
 
     /**
+     * Wait for chunk data at the given world coordinates to be available.
+     * Returns true if the chunk was received before timeout.
+     */
+    public boolean waitForChunkAt(int worldX, int worldZ, long timeoutMs) throws InterruptedException {
+        int chunkX = worldX >> 4;
+        int chunkZ = worldZ >> 4;
+        long key = packChunkCoord(chunkX, chunkZ);
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            if (chunkBlocks.containsKey(key)) return true;
+            Thread.sleep(50);
+        }
+        return chunkBlocks.containsKey(key);
+    }
+
+    /**
      * Returns the current position update count (incremented on each S2C position packet).
      */
     public int getPositionUpdateCount() {
