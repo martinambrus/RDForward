@@ -51,11 +51,19 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
     }
 
     private Packet translate(Packet packet) {
+        boolean isV47 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8);
+
         // PlayerListItemPacket is in the .alpha package but needs translation
         // to NettyPlayerListItemPacket — check before isNettyPacket() which
         // passes .alpha packets through unchanged.
         if (packet instanceof PlayerListItemPacket) {
             PlayerListItemPacket pli = (PlayerListItemPacket) packet;
+            if (isV47) {
+                String uuid = generateOfflineUuid(pli.getUsername());
+                return pli.isOnline()
+                        ? NettyPlayerListItemPacketV47.addPlayer(uuid, pli.getUsername(), 1, pli.getPing())
+                        : NettyPlayerListItemPacketV47.removePlayer(uuid);
+            }
             return new NettyPlayerListItemPacket(pli.getUsername(), pli.isOnline(), pli.getPing());
         }
 
@@ -71,6 +79,10 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
 
         if (packet instanceof SetBlockServerPacket) {
             SetBlockServerPacket sb = (SetBlockServerPacket) packet;
+            if (isV47) {
+                return new NettyBlockChangePacketV47(sb.getX(), sb.getY(), sb.getZ(),
+                        sb.getBlockType(), 0);
+            }
             return new NettyBlockChangePacket(sb.getX(), sb.getY(), sb.getZ(),
                     sb.getBlockType(), 0);
         }
@@ -89,6 +101,12 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
             int alphaYaw = (sp.getYaw() + 128) & 0xFF;
             // Generate offline UUID from username
             String uuid = generateOfflineUuid(sp.getPlayerName());
+            if (isV47) {
+                return new NettySpawnPlayerPacketV47(
+                        entityId, uuid,
+                        (int) sp.getX(), feetY, (int) sp.getZ(),
+                        alphaYaw, sp.getPitch(), (short) 0);
+            }
             if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_7_6)) {
                 return new NettySpawnPlayerPacketV5(
                         entityId, uuid, sp.getPlayerName(),
@@ -111,6 +129,11 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
             int entityId = pt.getPlayerId() + 1;
             int feetY = (int) pt.getY() - EYE_HEIGHT_FIXED;
             int alphaYaw = (pt.getYaw() + 128) & 0xFF;
+            if (isV47) {
+                return new EntityTeleportPacketV47(entityId,
+                        (int) pt.getX(), feetY, (int) pt.getZ(),
+                        alphaYaw, pt.getPitch());
+            }
             return new EntityTeleportPacket(entityId,
                     (int) pt.getX(), feetY, (int) pt.getZ(),
                     alphaYaw, pt.getPitch());
@@ -119,6 +142,11 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
         if (packet instanceof PositionOrientationUpdatePacket) {
             PositionOrientationUpdatePacket pou = (PositionOrientationUpdatePacket) packet;
             int entityId = pou.getPlayerId() + 1;
+            if (isV47) {
+                return new EntityLookAndMovePacketV47(entityId,
+                        pou.getChangeX(), pou.getChangeY(), pou.getChangeZ(),
+                        pou.getYaw(), pou.getPitch());
+            }
             return new EntityLookAndMovePacket(entityId,
                     pou.getChangeX(), pou.getChangeY(), pou.getChangeZ(),
                     pou.getYaw(), pou.getPitch());
@@ -127,6 +155,10 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
         if (packet instanceof PositionUpdatePacket) {
             PositionUpdatePacket pu = (PositionUpdatePacket) packet;
             int entityId = pu.getPlayerId() + 1;
+            if (isV47) {
+                return new EntityRelativeMovePacketV47(entityId,
+                        pu.getChangeX(), pu.getChangeY(), pu.getChangeZ());
+            }
             return new EntityRelativeMovePacket(entityId,
                     pu.getChangeX(), pu.getChangeY(), pu.getChangeZ());
         }
@@ -134,20 +166,29 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
         if (packet instanceof OrientationUpdatePacket) {
             OrientationUpdatePacket ou = (OrientationUpdatePacket) packet;
             int entityId = ou.getPlayerId() + 1;
+            if (isV47) {
+                return new EntityLookPacketV47(entityId, ou.getYaw(), ou.getPitch());
+            }
             return new EntityLookPacket(entityId, ou.getYaw(), ou.getPitch());
         }
 
         if (packet instanceof DespawnPlayerPacket) {
             DespawnPlayerPacket dp = (DespawnPlayerPacket) packet;
             int entityId = dp.getPlayerId() + 1;
+            if (isV47) {
+                return new NettyDestroyEntitiesPacketV47(entityId);
+            }
             return new NettyDestroyEntitiesPacket(entityId);
         }
 
         if (packet instanceof MessagePacket) {
             MessagePacket mp = (MessagePacket) packet;
             String message = mp.getMessage();
-            // 1.7.2 chat messages are JSON text components
+            // Chat messages are JSON text components
             message = "{\"text\":\"" + message.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
+            if (isV47) {
+                return new NettyChatS2CPacketV47(message, (byte) 0);
+            }
             return new NettyChatS2CPacket(message);
         }
 

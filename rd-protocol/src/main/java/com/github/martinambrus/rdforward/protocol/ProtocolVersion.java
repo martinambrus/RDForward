@@ -350,12 +350,24 @@ public enum ProtocolVersion {
     RELEASE_1_7_6(5, 34, Family.RELEASE, "Release 1.7.6 (v5)", 92),
 
     /**
+     * Minecraft Release 1.8-1.8.9 (September 2014).
+     * Extensive wire format changes from 1.7: Position packed longs, VarInt entity IDs,
+     * restructured PlayerListItem (action-based with UUID), new chunk section format
+     * (ushort blockStates instead of byte blocks + nibble metadata), item slot NBT uses
+     * byte(0x00) TAG_End instead of short(-1), removed stance from C2S position packets,
+     * S2C PlayerPositionAndLook uses byte flags instead of boolean onGround.
+     * Netty protocol version 47 (clashes with pre-Netty Release 1.4.2 v47 — disambiguated
+     * in NettyConnectionHandler by hardcoding pv==47 to RELEASE_1_8 for Netty clients).
+     */
+    RELEASE_1_8(47, 35, Family.RELEASE, "Release 1.8 (v47)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 35, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 36, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -480,7 +492,7 @@ public enum ProtocolVersion {
             case 28: return "Release 1.2.1";
             case 29: return "Release 1.2.4-1.2.5";
             case 39: return "Release 1.3.1-1.3.2";
-            case 47: return "Release 1.4.2";
+            case 47: return "Release 1.4.2 (or Release 1.8-1.8.9 Netty)";
             case 49: return "Release 1.4.4-1.4.5";
             case 51: return "Release 1.4.6-1.4.7";
             case 60: return "Release 1.5-1.5.1";

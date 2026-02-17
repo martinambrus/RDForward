@@ -5,6 +5,7 @@ import com.github.martinambrus.rdforward.protocol.packet.alpha.MapChunkPacket;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.MapChunkPacketV28;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.MapChunkPacketV39;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.PreChunkPacket;
+import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV47;
 import com.github.martinambrus.rdforward.world.WorldGenerator;
 import com.github.martinambrus.rdforward.world.alpha.AlphaChunk;
 import com.github.martinambrus.rdforward.world.alpha.AlphaLevelFormat;
@@ -392,9 +393,18 @@ public class ChunkManager {
      * Send a chunk to a player via PreChunkPacket + MapChunkPacket.
      * Uses section-based v28 format for Release 1.2.1+ clients.
      * PreChunk is required for v28/v29 (1.2.x) but removed in v39 (1.3.1+).
+     * v47 (1.8) uses ushort blockStates and no compression.
      */
     private void sendChunkToPlayer(ConnectedPlayer player, AlphaChunk chunk) {
-        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
+        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+            // v47: ushort blockStates, raw (uncompressed), VarInt data size
+            AlphaChunk.V47ChunkData v47Data = chunk.serializeForV47Protocol();
+            player.sendPacket(new MapChunkPacketV47(
+                chunk.getXPos(), chunk.getZPos(), true,
+                v47Data.getPrimaryBitMask() & 0xFFFF,
+                v47Data.getRawData()
+            ));
+        } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
             // v39+: no PreChunk, use MapChunkPacketV39 (no unused int)
             try {
                 AlphaChunk.V28ChunkData v28Data = chunk.serializeForV28Protocol();
@@ -446,9 +456,14 @@ public class ChunkManager {
      * Tell a player's client to unload a chunk.
      * Pre-v39 uses PreChunkPacket with mode=false.
      * v39+ uses MapChunkPacketV39 with groundUpContinuous=true, primaryBitMask=0.
+     * v47 uses MapChunkPacketV47 with groundUpContinuous=true, primaryBitMask=0.
      */
     private void sendChunkUnload(ConnectedPlayer player, ChunkCoord coord) {
-        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
+        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+            // v47 chunk unload: send empty chunk (primaryBitMask=0, biome-only data, raw)
+            player.sendPacket(new MapChunkPacketV47(
+                coord.getX(), coord.getZ(), true, 0, new byte[256]));
+        } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
             // v39+ chunk unload: send an empty chunk (primaryBitMask=0, biome-only data)
             try {
                 java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();

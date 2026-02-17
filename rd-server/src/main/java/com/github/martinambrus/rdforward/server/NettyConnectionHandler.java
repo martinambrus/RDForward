@@ -88,6 +88,8 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             case LOGIN:
                 if (packet instanceof LoginStartPacket) {
                     handleLoginStart(ctx, (LoginStartPacket) packet);
+                } else if (packet instanceof NettyEncryptionResponsePacketV47) {
+                    handleEncryptionResponseV47(ctx, (NettyEncryptionResponsePacketV47) packet);
                 } else if (packet instanceof NettyEncryptionResponsePacket) {
                     handleEncryptionResponse(ctx, (NettyEncryptionResponsePacket) packet);
                 }
@@ -105,9 +107,21 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleHandshake(ChannelHandlerContext ctx, NettyHandshakePacket packet) {
         int pv = packet.getProtocolVersion();
-        ProtocolVersion resolved = ProtocolVersion.fromNumber(pv, ProtocolVersion.Family.RELEASE);
-        if (resolved != null) {
-            clientVersion = resolved;
+        // Protocol version 47 clashes: pre-Netty Release 1.4.2 and Netty 1.8 both use 47.
+        // In the Netty handler, pv 47 always means 1.8 (pre-Netty clients never reach here).
+        if (pv == 47) {
+            clientVersion = ProtocolVersion.RELEASE_1_8;
+        } else {
+            ProtocolVersion resolved = ProtocolVersion.fromNumber(pv, ProtocolVersion.Family.RELEASE);
+            if (resolved != null) {
+                clientVersion = resolved;
+            }
+        }
+
+        // Set the decoder's protocol version for version-aware C2S packet deserialization
+        NettyPacketDecoder decoder = ctx.pipeline().get(NettyPacketDecoder.class);
+        if (decoder != null) {
+            decoder.setProtocolVersion(pv);
         }
 
         if (packet.getNextState() == 1) {
@@ -128,8 +142,14 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     // ========================================================================
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
-        String versionName = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_7_6)
-                ? "1.7.10" : "1.7.5";
+        String versionName;
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+            versionName = "1.8";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_7_6)) {
+            versionName = "1.7.10";
+        } else {
+            versionName = "1.7.5";
+        }
         int protocol = clientVersion.getVersionNumber();
         String json = "{"
                 + "\"version\":{\"name\":\"" + versionName + "\",\"protocol\":" + protocol + "},"
@@ -159,8 +179,13 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             verifyToken = new byte[4];
             new java.security.SecureRandom().nextBytes(verifyToken);
 
-            ctx.writeAndFlush(new NettyEncryptionRequestPacket(
-                    "", rsaKeyPair.getPublic().getEncoded(), verifyToken));
+            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+                ctx.writeAndFlush(new NettyEncryptionRequestPacketV47(
+                        "", rsaKeyPair.getPublic().getEncoded(), verifyToken));
+            } else {
+                ctx.writeAndFlush(new NettyEncryptionRequestPacket(
+                        "", rsaKeyPair.getPublic().getEncoded(), verifyToken));
+            }
             awaitingEncryptionResponse = true;
         } catch (Exception e) {
             System.err.println("Failed to generate RSA keypair: " + e.getMessage());
@@ -170,6 +195,52 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleEncryptionResponse(ChannelHandlerContext ctx,
                                            NettyEncryptionResponsePacket packet) {
+        if (!awaitingEncryptionResponse || rsaKeyPair == null) {
+            sendLoginDisconnect(ctx, "Unexpected encryption response");
+            return;
+        }
+        awaitingEncryptionResponse = false;
+
+        try {
+            Cipher rsaCipher = Cipher.getInstance("RSA");
+            rsaCipher.init(Cipher.DECRYPT_MODE, rsaKeyPair.getPrivate());
+            byte[] sharedSecret = rsaCipher.doFinal(packet.getSharedSecret());
+
+            rsaCipher.init(Cipher.DECRYPT_MODE, rsaKeyPair.getPrivate());
+            byte[] decryptedToken = rsaCipher.doFinal(packet.getVerifyToken());
+
+            if (!Arrays.equals(decryptedToken, verifyToken)) {
+                System.err.println("Encryption verify token mismatch for " + pendingUsername);
+                sendLoginDisconnect(ctx, "Encryption verification failed");
+                return;
+            }
+
+            // Install cipher handlers in the pipeline
+            MinecraftCipher decryptCipher = new MinecraftCipher(Cipher.DECRYPT_MODE, sharedSecret);
+            MinecraftCipher encryptCipher = new MinecraftCipher(Cipher.ENCRYPT_MODE, sharedSecret);
+            ctx.pipeline().addBefore("decoder", "decrypt", new CipherDecoder(decryptCipher));
+            ctx.pipeline().addBefore("encoder", "encrypt", new CipherEncoder(encryptCipher));
+
+            // Send LoginSuccess — this transitions to PLAY state
+            String uuid = ClassicToNettyTranslator.generateOfflineUuid(pendingUsername);
+            ctx.writeAndFlush(new LoginSuccessPacket(uuid, pendingUsername));
+
+            // Transition to PLAY state
+            state = ConnectionState.PLAY;
+            setCodecState(ctx, ConnectionState.PLAY);
+
+            // Now proceed with join game
+            handleJoinGame(ctx);
+
+        } catch (Exception e) {
+            System.err.println("Encryption handshake failed for " + pendingUsername
+                    + ": " + e.getMessage());
+            sendLoginDisconnect(ctx, "Encryption error");
+        }
+    }
+
+    private void handleEncryptionResponseV47(ChannelHandlerContext ctx,
+                                              NettyEncryptionResponsePacketV47 packet) {
         if (!awaitingEncryptionResponse || rsaKeyPair == null) {
             sendLoginDisconnect(ctx, "Unexpected encryption response");
             return;
@@ -242,20 +313,31 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
+        boolean isV47 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8);
         int entityId = player.getPlayerId() + 1;
 
         // Send JoinGame
         // maxPlayers=20 limits the tab list to a single compact column.
         // Using the actual MAX_PLAYERS (128) creates a huge multi-column grid.
-        ctx.writeAndFlush(new JoinGamePacket(entityId, 1, 0, 0,
-                20, "default"));
+        if (isV47) {
+            ctx.writeAndFlush(new JoinGamePacketV47(entityId, 1, 0, 0,
+                    20, "default"));
+        } else {
+            ctx.writeAndFlush(new JoinGamePacket(entityId, 1, 0, 0,
+                    20, "default"));
+        }
 
         // Send PlayerAbilities (creative: invulnerable + allowFlying + creative = 0x0D)
         ctx.writeAndFlush(new PlayerAbilitiesPacketV73(0x0D, 0.05f, 0.1f));
 
         // Send Entity Properties for movement speed
-        ctx.writeAndFlush(new NettyEntityPropertiesPacket(entityId,
-                "generic.movementSpeed", 0.10000000149011612));
+        if (isV47) {
+            ctx.writeAndFlush(new NettyEntityPropertiesPacketV47(entityId,
+                    "generic.movementSpeed", 0.10000000149011612));
+        } else {
+            ctx.writeAndFlush(new NettyEntityPropertiesPacket(entityId,
+                    "generic.movementSpeed", 0.10000000149011612));
+        }
 
         // Determine spawn position
         Map<String, short[]> savedPositions = world.loadPlayerPositions();
@@ -308,22 +390,30 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         int spawnBlockX = (int) Math.floor(spawnX);
         int spawnBlockY = (int) Math.floor(spawnY);
         int spawnBlockZ = (int) Math.floor(spawnZ);
-        ctx.writeAndFlush(new SpawnPositionPacket(spawnBlockX, spawnBlockY, spawnBlockZ));
+        if (isV47) {
+            ctx.writeAndFlush(new SpawnPositionPacketV47(spawnBlockX, spawnBlockY, spawnBlockZ));
+        } else {
+            ctx.writeAndFlush(new SpawnPositionPacket(spawnBlockX, spawnBlockY, spawnBlockZ));
+        }
 
-        // Send chunks BEFORE player position — the 1.7.2 client applies
-        // gravity immediately on receiving position, so chunks must be
-        // loaded first to prevent falling through unloaded terrain.
+        // Send chunks BEFORE player position — the client applies gravity
+        // immediately on receiving position, so chunks must be loaded first.
         chunkManager.addPlayer(player);
         chunkManager.sendInitialChunks(player, spawnBlockX, spawnBlockZ);
 
-        // Send player position — 1.7.2 S2C Y is eye-level (posY), not feet.
-        // The client does posY = Y, then feetY = posY - 1.62.
+        // Send player position
+        // S2C Y is eye-level for 1.7.2; 1.8 uses flags byte instead of onGround boolean.
         float alphaSpawnYaw = (spawnYaw + 180.0f) % 360.0f;
-        ctx.writeAndFlush(new NettyPlayerPositionS2CPacket(
-                spawnX, spawnY, spawnZ, alphaSpawnYaw, spawnPitch, false));
+        if (isV47) {
+            ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV47(
+                    spawnX, spawnY, spawnZ, alphaSpawnYaw, spawnPitch));
+        } else {
+            ctx.writeAndFlush(new NettyPlayerPositionS2CPacket(
+                    spawnX, spawnY, spawnZ, alphaSpawnYaw, spawnPitch, false));
+        }
 
-        // Send existing players
-        boolean useV5Spawn = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_7_6);
+        // Send existing players — for 1.8, PlayerListItem ADD must precede SpawnPlayer
+        // because the client resolves player name from tab list by UUID.
         for (ConnectedPlayer existing : playerManager.getAllPlayers()) {
             if (existing != player) {
                 int existingEntityId = existing.getPlayerId() + 1;
@@ -331,47 +421,70 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 int alphaYaw = (existing.getYaw() + 128) & 0xFF;
                 int pitch = existing.getPitch() & 0xFF;
                 String existingUuid = ClassicToNettyTranslator.generateOfflineUuid(existing.getUsername());
-                Packet spawnPacket = useV5Spawn
-                        ? new NettySpawnPlayerPacketV5(
-                                existingEntityId, existingUuid, existing.getUsername(),
-                                (int) existing.getX(), existingFeetY, (int) existing.getZ(),
-                                alphaYaw, pitch, (short) 0)
-                        : new NettySpawnPlayerPacket(
-                                existingEntityId, existingUuid, existing.getUsername(),
-                                (int) existing.getX(), existingFeetY, (int) existing.getZ(),
-                                alphaYaw, pitch, (short) 0);
-                ctx.writeAndFlush(spawnPacket);
+
+                if (isV47) {
+                    // 1.8: PlayerListItem ADD before SpawnPlayer
+                    ctx.writeAndFlush(NettyPlayerListItemPacketV47.addPlayer(
+                            existingUuid, existing.getUsername(), 1, 0));
+                    ctx.writeAndFlush(new NettySpawnPlayerPacketV47(
+                            existingEntityId, existingUuid,
+                            (int) existing.getX(), existingFeetY, (int) existing.getZ(),
+                            alphaYaw, pitch, (short) 0));
+                } else {
+                    Packet spawnPacket = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_7_6)
+                            ? new NettySpawnPlayerPacketV5(
+                                    existingEntityId, existingUuid, existing.getUsername(),
+                                    (int) existing.getX(), existingFeetY, (int) existing.getZ(),
+                                    alphaYaw, pitch, (short) 0)
+                            : new NettySpawnPlayerPacket(
+                                    existingEntityId, existingUuid, existing.getUsername(),
+                                    (int) existing.getX(), existingFeetY, (int) existing.getZ(),
+                                    alphaYaw, pitch, (short) 0);
+                    ctx.writeAndFlush(spawnPacket);
+                }
             }
         }
 
-        // Broadcast new player spawn to everyone else
-        playerManager.broadcastPlayerSpawn(player);
-
+        // Configure translator with client version BEFORE broadcasts —
+        // broadcastPlayerListAdd sends to ALL players including this one,
+        // so the translator must know the version to emit the correct format.
         loginComplete = true;
-
-        // Configure translator with client version for version-aware packet translation
         ClassicToNettyTranslator translator = ctx.pipeline().get(ClassicToNettyTranslator.class);
         if (translator != null) {
             translator.setClientVersion(clientVersion);
         }
 
+        // Broadcast new player spawn to everyone else
+        // PlayerListItem ADD is broadcast before spawn (handled by translator for v47 clients)
+        playerManager.broadcastPlayerListAdd(player);
+        playerManager.broadcastPlayerSpawn(player);
+
         // Give 1 cobblestone for right-click
-        ctx.writeAndFlush(new NettySetSlotPacket(0, 36, BlockRegistry.COBBLESTONE, 1, 0));
+        if (isV47) {
+            ctx.writeAndFlush(new NettySetSlotPacketV47(0, 36, BlockRegistry.COBBLESTONE, 1, 0));
+        } else {
+            ctx.writeAndFlush(new NettySetSlotPacket(0, 36, BlockRegistry.COBBLESTONE, 1, 0));
+        }
 
         // Start KeepAlive heartbeat
         keepAliveTask = ctx.executor().scheduleAtFixedRate(() -> {
             if (ctx.channel().isActive()) {
-                ctx.writeAndFlush(new KeepAlivePacketV17(++keepAliveCounter));
+                if (isV47) {
+                    ctx.writeAndFlush(new KeepAlivePacketV47(++keepAliveCounter));
+                } else {
+                    ctx.writeAndFlush(new KeepAlivePacketV17(++keepAliveCounter));
+                }
             }
         }, 10, 10, TimeUnit.SECONDS);
 
-        // Send tab list entries
-        for (ConnectedPlayer existing : playerManager.getAllPlayers()) {
-            if (existing != player) {
-                ctx.writeAndFlush(new NettyPlayerListItemPacket(existing.getUsername(), true, 0));
+        // Send tab list entries (for v4/v5 using old format; v47 already sent ADD_PLAYER above)
+        if (!isV47) {
+            for (ConnectedPlayer existing : playerManager.getAllPlayers()) {
+                if (existing != player) {
+                    ctx.writeAndFlush(new NettyPlayerListItemPacket(existing.getUsername(), true, 0));
+                }
             }
         }
-        playerManager.broadcastPlayerListAdd(player);
 
         playerManager.broadcastChat((byte) 0, player.getUsername() + " joined the game");
         ServerEvents.PLAYER_JOIN.invoker().onPlayerJoin(player.getUsername(), clientVersion);
@@ -389,7 +502,16 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     private void handlePlayPacket(ChannelHandlerContext ctx, Packet packet) {
         if (!loginComplete) return;
 
-        if (packet instanceof PlayerPositionAndLookC2SPacket) {
+        // V47 position packets (must be checked before base Alpha versions)
+        if (packet instanceof PlayerPositionAndLookC2SPacketV47) {
+            PlayerPositionAndLookC2SPacketV47 p = (PlayerPositionAndLookC2SPacketV47) packet;
+            float classicYaw = (p.getYaw() + 180.0f) % 360.0f;
+            updatePosition(ctx, p.getX(), p.getY(), p.getZ(), classicYaw, p.getPitch());
+        } else if (packet instanceof PlayerPositionPacketV47) {
+            PlayerPositionPacketV47 p = (PlayerPositionPacketV47) packet;
+            updatePosition(ctx, p.getX(), p.getY(), p.getZ(),
+                    player.getFloatYaw(), player.getFloatPitch());
+        } else if (packet instanceof PlayerPositionAndLookC2SPacket) {
             handlePositionAndLook(ctx, (PlayerPositionAndLookC2SPacket) packet);
         } else if (packet instanceof PlayerPositionPacket) {
             handlePosition(ctx, (PlayerPositionPacket) packet);
@@ -397,6 +519,8 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             handleLook(ctx, (PlayerLookPacket) packet);
         } else if (packet instanceof PlayerOnGroundPacket) {
             // No-op
+        } else if (packet instanceof PlayerDiggingPacketV47) {
+            handleDiggingV47(ctx, (PlayerDiggingPacketV47) packet);
         } else if (packet instanceof PlayerDiggingPacket) {
             handleDigging(ctx, (PlayerDiggingPacket) packet);
         } else if (packet instanceof BlockPlacementData) {
@@ -408,22 +532,33 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             if (cmd.getActionId() == ClientCommandPacket.RESPAWN) {
                 handleRespawn(ctx);
             }
-        } else if (packet instanceof KeepAlivePacketV17
+        } else if (packet instanceof KeepAlivePacketV47
+                || packet instanceof KeepAlivePacketV17
                 || packet instanceof HoldingChangePacketBeta
                 || packet instanceof AnimationPacket
+                || packet instanceof AnimationPacketV47
                 || packet instanceof NettyEntityActionPacket
+                || packet instanceof NettyEntityActionPacketV47
                 || packet instanceof NettySteerVehiclePacket
+                || packet instanceof NettySteerVehiclePacketV47
                 || packet instanceof CloseWindowPacket
                 || packet instanceof NettyWindowClickPacket
+                || packet instanceof NettyWindowClickPacketV47
                 || packet instanceof ConfirmTransactionPacket
                 || packet instanceof NettyCreativeSlotPacket
+                || packet instanceof NettyCreativeSlotPacketV47
                 || packet instanceof EnchantItemPacket
                 || packet instanceof NettyUpdateSignPacket
+                || packet instanceof NettyUpdateSignPacketV47
                 || packet instanceof PlayerAbilitiesPacketV73
                 || packet instanceof NettyTabCompletePacket
+                || packet instanceof NettyTabCompletePacketV47
                 || packet instanceof NettyClientSettingsPacket
+                || packet instanceof NettyClientSettingsPacketV47
                 || packet instanceof NettyPluginMessagePacket
-                || packet instanceof NettyUseEntityPacket) {
+                || packet instanceof NettyPluginMessagePacketV47
+                || packet instanceof NettyUseEntityPacket
+                || packet instanceof NettyUseEntityPacketV47) {
             // Silently accept
         }
     }
@@ -475,6 +610,26 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 new PlayerTeleportPacket(player.getPlayerId(),
                         fixedX, fixedY, fixedZ, byteYaw & 0xFF, bytePitch & 0xFF),
                 player);
+    }
+
+    private void handleDiggingV47(ChannelHandlerContext ctx, PlayerDiggingPacketV47 packet) {
+        if (player == null) return;
+
+        if (packet.getStatus() == PlayerDiggingPacketV47.STATUS_STARTED
+                || packet.getStatus() == PlayerDiggingPacketV47.STATUS_FINISHED) {
+            int x = packet.getX();
+            int y = packet.getY();
+            int z = packet.getZ();
+            if (!world.inBounds(x, y, z)) return;
+            byte existingBlock = world.getBlock(x, y, z);
+            if (existingBlock == 0) return;
+
+            EventResult result = ServerEvents.BLOCK_BREAK.invoker()
+                    .onBlockBreak(player.getUsername(), x, y, z, existingBlock & 0xFF);
+            if (result == EventResult.CANCEL) return;
+
+            world.queueBlockChange(x, y, z, (byte) 0);
+        }
     }
 
     private void handleDigging(ChannelHandlerContext ctx, PlayerDiggingPacket packet) {
@@ -617,9 +772,13 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         player.updatePositionDouble(spawnX, spawnEyeY, spawnZ, yaw, 0);
 
         float alphaYaw = (yaw + 180.0f) % 360.0f;
-        // S2C Y is eye-level for 1.7.2
-        ctx.writeAndFlush(new NettyPlayerPositionS2CPacket(
-                spawnX, spawnEyeY, spawnZ, alphaYaw, 0, false));
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+            ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV47(
+                    spawnX, spawnEyeY, spawnZ, alphaYaw, 0));
+        } else {
+            ctx.writeAndFlush(new NettyPlayerPositionS2CPacket(
+                    spawnX, spawnEyeY, spawnZ, alphaYaw, 0, false));
+        }
 
         chunkManager.updatePlayerChunks(player);
 
@@ -635,7 +794,11 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void sendBlockChange(ChannelHandlerContext ctx, int x, int y, int z,
                                   int blockType, int metadata) {
-        ctx.writeAndFlush(new NettyBlockChangePacket(x, y, z, blockType, metadata));
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+            ctx.writeAndFlush(new NettyBlockChangePacketV47(x, y, z, blockType, metadata));
+        } else {
+            ctx.writeAndFlush(new NettyBlockChangePacket(x, y, z, blockType, metadata));
+        }
     }
 
     private void sendPlayDisconnect(ChannelHandlerContext ctx, String reason) {

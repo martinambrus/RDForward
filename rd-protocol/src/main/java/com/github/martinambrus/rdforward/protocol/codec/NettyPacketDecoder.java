@@ -23,6 +23,7 @@ import java.util.List;
 public class NettyPacketDecoder extends MessageToMessageDecoder<ByteBuf> {
 
     private volatile ConnectionState connectionState;
+    private volatile int protocolVersion = 4; // Default to 1.7.2
 
     public NettyPacketDecoder(ConnectionState initialState) {
         this.connectionState = initialState;
@@ -35,7 +36,7 @@ public class NettyPacketDecoder extends MessageToMessageDecoder<ByteBuf> {
         int packetId = McDataTypes.readVarInt(msg);
 
         Packet packet = NettyPacketRegistry.createPacket(connectionState,
-                PacketDirection.CLIENT_TO_SERVER, packetId);
+                PacketDirection.CLIENT_TO_SERVER, packetId, protocolVersion);
 
         if (packet == null) {
             // Unknown packet — log and skip (frame is already bounded)
@@ -69,5 +70,13 @@ public class NettyPacketDecoder extends MessageToMessageDecoder<ByteBuf> {
 
     public ConnectionState getConnectionState() {
         return connectionState;
+    }
+
+    public void setProtocolVersion(int protocolVersion) {
+        this.protocolVersion = protocolVersion;
+    }
+
+    public int getProtocolVersion() {
+        return protocolVersion;
     }
 }

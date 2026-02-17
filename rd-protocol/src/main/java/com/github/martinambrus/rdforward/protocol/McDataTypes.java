@@ -381,6 +381,72 @@ public final class McDataTypes {
     }
 
     // ========================================================================
+    // 1.8+ (v47) Position and Slot helpers
+    // ========================================================================
+
+    /**
+     * Write a packed Position long (1.8+ format).
+     * Bit layout: x (26 bits, signed) | y (12 bits, unsigned) | z (26 bits, signed)
+     * Encoded as: ((x & 0x3FFFFFF) << 38) | ((y & 0xFFF) << 26) | (z & 0x3FFFFFF)
+     */
+    public static void writePosition(ByteBuf buf, int x, int y, int z) {
+        long val = ((long)(x & 0x3FFFFFF) << 38) | ((long)(y & 0xFFF) << 26) | (z & 0x3FFFFFF);
+        buf.writeLong(val);
+    }
+
+    /**
+     * Read a packed Position long (1.8+ format).
+     * Returns int[3] = {x, y, z} with sign extension for x and z.
+     */
+    public static int[] readPosition(ByteBuf buf) {
+        long val = buf.readLong();
+        int x = (int)(val >> 38);
+        int y = (int)((val >> 26) & 0xFFF);
+        int z = (int)(val << 38 >> 38); // sign-extend 26-bit z
+        return new int[]{x, y, z};
+    }
+
+    /**
+     * Write a 1.8+ item slot with data (V47 format).
+     * Wire format: [short itemId, byte count, short damage, byte 0x00 (TAG_End)]
+     * 1.8 uses byte(0x00) TAG_End for no NBT, instead of 1.7's short(-1).
+     */
+    public static void writeV47SlotItem(ByteBuf buf, int itemId, int count, int damage) {
+        buf.writeShort(itemId);
+        buf.writeByte(count);
+        buf.writeShort(damage);
+        buf.writeByte(0x00); // TAG_End = no NBT
+    }
+
+    /**
+     * Write an empty 1.8+ item slot (V47 format).
+     * Wire format: short(-1)
+     */
+    public static void writeEmptyV47Slot(ByteBuf buf) {
+        buf.writeShort(-1);
+    }
+
+    /**
+     * Skip a 1.8+ C2S item slot (V47 format).
+     * Wire format: [short itemId, if >= 0: byte count, short damage, NBT...]
+     * NBT: byte 0x00 = TAG_End (no data), byte 0x0A = TAG_Compound (skip compound).
+     */
+    public static void skipV47SlotData(ByteBuf buf) {
+        short itemId = buf.readShort();
+        if (itemId >= 0) {
+            buf.skipBytes(1); // count
+            buf.skipBytes(2); // damage
+            // NBT: peek at type byte
+            byte nbtType = buf.readByte();
+            if (nbtType == 0x0A) {
+                // TAG_Compound — skip its contents
+                skipNbtCompound(buf);
+            }
+            // else 0x00 = TAG_End, nothing more to skip
+        }
+    }
+
+    // ========================================================================
     // VarInt (1.7+ / post-Netty format)
     // ========================================================================
 
