@@ -6,6 +6,7 @@ import com.github.martinambrus.rdforward.protocol.packet.alpha.*;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlacementPacket;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlacementPacketV47;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyChatC2SPacket;
+import com.github.martinambrus.rdforward.protocol.packet.netty.PlayerDiggingPacketV47;
 import io.netty.channel.Channel;
 
 import java.util.concurrent.ConcurrentHashMap;
@@ -182,6 +183,27 @@ public class BotSession {
         return -1;
     }
 
+    /**
+     * Wait for a block change at specific coordinates to reach the expected value.
+     * Useful for waiting for a block to become air (0) after breaking.
+     * Returns the block type, or -1 on timeout.
+     */
+    public int waitForBlockChangeValue(int x, int y, int z, int expectedValue, long timeoutMs)
+            throws InterruptedException {
+        long key = packCoords(x, y, z);
+        long deadline = System.currentTimeMillis() + timeoutMs;
+
+        while (System.currentTimeMillis() < deadline) {
+            Integer val = blockChanges.get(key);
+            if (val != null && val == expectedValue) {
+                return val;
+            }
+            Thread.sleep(50);
+        }
+        Integer val = blockChanges.get(key);
+        return val != null ? val : -1;
+    }
+
     // ---- Send methods ----
 
     public void sendPacket(Packet packet) {
@@ -241,7 +263,11 @@ public class BotSession {
     }
 
     public void sendDigging(int status, int x, int y, int z, int face) {
-        sendPacket(new PlayerDiggingPacket(status, x, y, z, face));
+        if (version.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+            sendPacket(new PlayerDiggingPacketV47(status, x, y, z, face));
+        } else {
+            sendPacket(new PlayerDiggingPacket(status, x, y, z, face));
+        }
     }
 
     // ---- Getters ----

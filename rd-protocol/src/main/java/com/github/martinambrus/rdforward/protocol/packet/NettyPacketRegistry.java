@@ -348,6 +348,7 @@ public class NettyPacketRegistry {
                 NettyEncryptionResponsePacketV47.class), 0x01);
         registerC2SReverse(KeepAlivePacketV47.class, 0x00);
         registerC2SReverse(NettyBlockPlacementPacketV47.class, 0x08);
+        registerC2SReverse(PlayerDiggingPacketV47.class, 0x07);
 
         // === V109 (1.9) PLAY state C2S overrides (ALL IDs remapped) ===
         registerV109C2S(0x00, new PacketFactory() {

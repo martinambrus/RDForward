@@ -28,6 +28,14 @@ public class PlayerDiggingPacketV47 implements Packet {
 
     public PlayerDiggingPacketV47() {}
 
+    public PlayerDiggingPacketV47(int status, int x, int y, int z, int face) {
+        this.status = status;
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.face = face;
+    }
+
     @Override
     public int getPacketId() { return 0x07; }
 
