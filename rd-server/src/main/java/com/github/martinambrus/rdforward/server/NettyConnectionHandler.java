@@ -150,7 +150,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
         String versionName;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_11)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_12)) {
+            versionName = "1.12.2";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_11)) {
             versionName = "1.11.2";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_10)) {
             versionName = "1.10.2";
@@ -501,9 +503,12 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
 
         // Start KeepAlive heartbeat
+        boolean isV340 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_12_2);
         keepAliveTask = ctx.executor().scheduleAtFixedRate(() -> {
             if (ctx.channel().isActive()) {
-                if (isV47) {
+                if (isV340) {
+                    ctx.writeAndFlush(new KeepAlivePacketV340(++keepAliveCounter));
+                } else if (isV47) {
                     ctx.writeAndFlush(new KeepAlivePacketV47(++keepAliveCounter));
                 } else {
                     ctx.writeAndFlush(new KeepAlivePacketV17(++keepAliveCounter));
@@ -597,7 +602,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 || packet instanceof UseItemPacketV109
                 || packet instanceof AnimationPacketV109
                 || packet instanceof NettyClientSettingsPacketV109
-                || packet instanceof NettyTabCompletePacketV109) {
+                || packet instanceof NettyTabCompletePacketV109
+                || packet instanceof KeepAlivePacketV340
+                || packet instanceof NoOpPacket) {
             // Silently accept
         }
     }

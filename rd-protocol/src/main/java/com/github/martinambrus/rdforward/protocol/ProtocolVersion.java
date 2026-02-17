@@ -417,12 +417,38 @@ public enum ProtocolVersion {
     RELEASE_1_11_2(316, 42, Family.RELEASE, "Release 1.11.2 (v316)", 92),
 
     /**
+     * Minecraft Release 1.12 (June 2017).
+     * 3 new S2C packets (Recipe, SelectAdvancementsTab, UpdateAdvancements) and
+     * 3 new C2S packets (CraftingRecipePlacement, RecipeBookUpdate, SeenAdvancements)
+     * cause all Play state packet IDs to reshuffle. Entity movement packets shift +1,
+     * DestroyEntities +1, SpawnPosition +2, EntityTeleport +2, EntityProperties +3.
+     * C2S movement packets reordered (OnGround before Position).
+     * Netty protocol version 335.
+     */
+    RELEASE_1_12(335, 43, Family.RELEASE, "Release 1.12 (v335)", 92),
+
+    /**
+     * Minecraft Release 1.12.1 (August 2017).
+     * New S2C PlaceGhostRecipe (0x2B) shifts PlayerAbilities and later packets +1.
+     * C2S CraftingRecipePlacement (0x01) removed, PlaceRecipe added at 0x12.
+     * Netty protocol version 338.
+     */
+    RELEASE_1_12_1(338, 44, Family.RELEASE, "Release 1.12.1 (v338)", 92),
+
+    /**
+     * Minecraft Release 1.12.2 (September 2017).
+     * KeepAlive changed from VarInt to Long (8 bytes) for both C2S and S2C.
+     * All packet IDs identical to v338. Netty protocol version 340.
+     */
+    RELEASE_1_12_2(340, 45, Family.RELEASE, "Release 1.12.2 (v340)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 43, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 46, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -556,6 +582,9 @@ public enum ProtocolVersion {
             case 210: return "Release 1.10-1.10.2";
             case 315: return "Release 1.11";
             case 316: return "Release 1.11.1-1.11.2";
+            case 335: return "Release 1.12";
+            case 338: return "Release 1.12.1";
+            case 340: return "Release 1.12.2";
             case 51: return "Release 1.4.6-1.4.7";
             case 60: return "Release 1.5-1.5.1";
             case 61: return "Release 1.5.2";
