@@ -34,6 +34,9 @@ public class NettyPacketRegistry {
     /** V109 S2C reverse map: packet class -> v109 packet ID. Checked first for v107+ encoder. */
     private static final Map<String, Integer> REVERSE_V109 = new HashMap<String, Integer>();
 
+    /** V110 S2C reverse map overlay: packets shifted by UPDATE_SIGN removal at 0x46 in v110. */
+    private static final Map<String, Integer> REVERSE_V110 = new HashMap<String, Integer>();
+
     /** Reverse map: (state, direction, className) -> packetId */
     private static final Map<String, Integer> REVERSE = new HashMap<String, Integer>();
 
@@ -454,6 +457,12 @@ public class NettyPacketRegistry {
         registerV109S2CReverse(NettyDestroyEntitiesPacketV47.class, 0x30);
         registerV109S2CReverse(SpawnPositionPacketV47.class, 0x43);
         registerV109S2CReverse(NettyEntityPropertiesPacketV47.class, 0x4B);
+
+        // === V110 (1.9.4) S2C reverse map overlay ===
+        // V110 removed UPDATE_SIGN at 0x46, shifting all packets >= 0x46 down by 1.
+        // Only 2 of our S2C packets are >= 0x46:
+        registerV110S2CReverse(EntityTeleportPacketV109.class, 0x49);  // was 0x4A
+        registerV110S2CReverse(NettyEntityPropertiesPacketV47.class, 0x4A);  // was 0x4B
     }
 
     private static void registerC2S(ConnectionState state, int packetId,
@@ -482,6 +491,10 @@ public class NettyPacketRegistry {
 
     private static void registerV109S2CReverse(Class<? extends Packet> clazz, int packetId) {
         REVERSE_V109.put(reverseKey(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, clazz), packetId);
+    }
+
+    private static void registerV110S2CReverse(Class<? extends Packet> clazz, int packetId) {
+        REVERSE_V110.put(reverseKey(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, clazz), packetId);
     }
 
     private static void registerS2CReverse(Class<? extends Packet> clazz, int packetId) {
@@ -536,11 +549,19 @@ public class NettyPacketRegistry {
 
     /**
      * Version-aware packet ID lookup for the encoder.
-     * For v107+ clients, checks V109 reverse map first (all S2C IDs remapped).
+     * For v110+ clients, checks V110 overlay first (UPDATE_SIGN removed at 0x46).
+     * For v107+ clients, checks V109 reverse map (all S2C IDs remapped).
      * Falls back to the base REVERSE map for older versions.
      */
     public static int getPacketId(ConnectionState state, PacketDirection direction,
                                    Class<? extends Packet> clazz, int protocolVersion) {
+        if (protocolVersion >= 110) {
+            String rk = reverseKey(state, direction, clazz);
+            Integer id = REVERSE_V110.get(rk);
+            if (id != null) {
+                return id;
+            }
+        }
         if (protocolVersion >= 107) {
             String rk = reverseKey(state, direction, clazz);
             Integer id = REVERSE_V109.get(rk);
