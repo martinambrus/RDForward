@@ -15,7 +15,10 @@ import java.util.Set;
  */
 public class TestServer {
 
-    private static final String[] STALE_FILES = {"server-world.dat", "server-players.dat"};
+    private static final String[] STALE_FILES = {
+            "server-world.dat", "server-players.dat",
+            "banned-players.txt", "banned-ips.txt"
+    };
     private static final String STALE_DIR = "world";
 
     private RDServer server;

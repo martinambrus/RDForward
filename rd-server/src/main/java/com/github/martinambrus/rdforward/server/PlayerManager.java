@@ -2,14 +2,23 @@ package com.github.martinambrus.rdforward.server;
 
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
+import com.github.martinambrus.rdforward.protocol.packet.alpha.PlayerPositionAndLookS2CPacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.DespawnPlayerPacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.MessagePacket;
+import com.github.martinambrus.rdforward.protocol.packet.classic.PlayerTeleportPacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.SpawnPlayerPacket;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettyPlayerPositionS2CPacket;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettyPlayerPositionS2CPacketV47;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettyPlayerPositionS2CPacketV109;
 import io.netty.channel.Channel;
+import org.cloudburstmc.math.vector.Vector3f;
+import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket;
 
+import java.net.InetSocketAddress;
 import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Manages connected players on the server.
@@ -25,6 +34,12 @@ public class PlayerManager {
 
     /** Maximum number of simultaneous players (MC Classic limit: 128). */
     public static final int MAX_PLAYERS = 128;
+
+    /** Player eye height matching Alpha client precision. */
+    private static final double PLAYER_EYE_HEIGHT = (double) 1.62f;
+
+    /** Counter for Netty 1.9+ teleport IDs. */
+    private static final AtomicInteger teleportIdCounter = new AtomicInteger();
 
     /** Map from channel to player (for looking up player by network connection). */
     private final Map<Channel, ConnectedPlayer> playersByChannel = new ConcurrentHashMap<>();
@@ -263,6 +278,116 @@ public class PlayerManager {
         }
         playersById.remove(existing.getPlayerId());
         usedIds[existing.getPlayerId()] = false;
+    }
+
+    /**
+     * Kick a player by username. Broadcasts leave message and cleans up.
+     *
+     * @param username the username to kick (case-insensitive)
+     * @param reason   the kick reason shown to the player and in chat
+     * @param world    the server world (to save position)
+     * @return true if the player was found and kicked
+     */
+    public boolean kickPlayer(String username, String reason, ServerWorld world) {
+        ConnectedPlayer existing = getPlayerByName(username);
+        if (existing == null) return false;
+
+        broadcastPlayerListRemove(existing);
+        world.rememberPlayerPosition(existing);
+        broadcastChat((byte) 0, existing.getUsername() + " was kicked: " + reason);
+        broadcastPlayerDespawn(existing);
+
+        if (existing.getBedrockSession() != null) {
+            existing.getBedrockSession().disconnect(reason);
+        } else {
+            existing.sendPacket(new com.github.martinambrus.rdforward.protocol.packet.classic.DisconnectPacket(reason));
+            existing.disconnect();
+        }
+
+        if (existing.getChannel() != null) {
+            playersByChannel.remove(existing.getChannel());
+        }
+        playersById.remove(existing.getPlayerId());
+        usedIds[existing.getPlayerId()] = false;
+        return true;
+    }
+
+    /**
+     * Teleport a player to the given coordinates and broadcast the move to others.
+     *
+     * Sends the correct S2C position packet based on the target's protocol version.
+     *
+     * @param target      the player to teleport
+     * @param x           world X
+     * @param eyeY        eye-level Y (internal convention)
+     * @param z           world Z
+     * @param classicYaw  yaw in Classic convention (0=North)
+     * @param pitch       pitch in degrees
+     * @param chunkManager chunk manager for updating tracked chunks
+     */
+    public void teleportPlayer(ConnectedPlayer target, double x, double eyeY, double z,
+                                float classicYaw, float pitch, ChunkManager chunkManager) {
+        target.updatePositionDouble(x, eyeY, z, classicYaw, pitch);
+
+        double feetY = eyeY - PLAYER_EYE_HEIGHT;
+        float alphaYaw = (classicYaw + 180.0f) % 360.0f;
+
+        ProtocolVersion version = target.getProtocolVersion();
+
+        if (version == ProtocolVersion.BEDROCK) {
+            // Bedrock MovePlayerPacket uses eye-level Y
+            float bedrockYaw = (classicYaw - 180.0f + 360.0f) % 360.0f;
+            MovePlayerPacket move = new MovePlayerPacket();
+            move.setRuntimeEntityId(target.getPlayerId() + 1);
+            move.setPosition(Vector3f.from((float) x, (float) eyeY, (float) z));
+            move.setRotation(Vector3f.from(pitch, bedrockYaw, bedrockYaw));
+            move.setMode(MovePlayerPacket.Mode.TELEPORT);
+            move.setOnGround(true);
+            target.getBedrockSession().getSession().sendPacket(move);
+        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_9)) {
+            target.sendPacket(new NettyPlayerPositionS2CPacketV109(
+                    x, feetY, z, alphaYaw, pitch, teleportIdCounter.incrementAndGet()));
+        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+            target.sendPacket(new NettyPlayerPositionS2CPacketV47(
+                    x, feetY, z, alphaYaw, pitch));
+        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_7_2)) {
+            target.sendPacket(new NettyPlayerPositionS2CPacket(
+                    x, eyeY, z, alphaYaw, pitch, false));
+        } else {
+            // Pre-Netty (Alpha/Beta/pre-1.7): S2C y=eyes, stance=feet
+            target.sendPacket(new PlayerPositionAndLookS2CPacket(
+                    x, eyeY, feetY, z, alphaYaw, pitch, true));
+        }
+
+        chunkManager.updatePlayerChunks(target);
+
+        // Broadcast position to other players
+        short fixedX = (short) (x * 32);
+        short fixedY = (short) (eyeY * 32);
+        short fixedZ = (short) (z * 32);
+        byte byteYaw = (byte) ((classicYaw / 360.0f) * 256);
+        byte bytePitch = (byte) ((pitch / 360.0f) * 256);
+        broadcastPacketExcept(
+                new PlayerTeleportPacket(target.getPlayerId(),
+                        fixedX, fixedY, fixedZ, byteYaw & 0xFF, bytePitch & 0xFF),
+                target);
+    }
+
+    /**
+     * Extract the IP address string from a player's connection.
+     * Returns null if unable to determine.
+     */
+    public static String extractIp(ConnectedPlayer player) {
+        if (player.getBedrockSession() != null) {
+            java.net.SocketAddress addr = player.getBedrockSession().getSession().getPeer().getSocketAddress();
+            if (addr instanceof InetSocketAddress) {
+                return ((InetSocketAddress) addr).getAddress().getHostAddress();
+            }
+        }
+        if (player.getChannel() != null && player.getChannel().remoteAddress() instanceof InetSocketAddress) {
+            return ((InetSocketAddress) player.getChannel().remoteAddress()).getAddress().getHostAddress();
+        }
+        return null;
     }
 
     /**

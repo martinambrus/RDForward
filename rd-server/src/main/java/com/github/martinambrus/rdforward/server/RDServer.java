@@ -4,6 +4,7 @@ import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.codec.PacketDecoder;
 import com.github.martinambrus.rdforward.protocol.codec.PacketEncoder;
 import com.github.martinambrus.rdforward.protocol.packet.PacketDirection;
+import com.github.martinambrus.rdforward.server.api.BanManager;
 import com.github.martinambrus.rdforward.server.api.CommandRegistry;
 import com.github.martinambrus.rdforward.server.api.PermissionManager;
 import com.github.martinambrus.rdforward.server.api.Scheduler;
@@ -113,6 +114,7 @@ public class RDServer {
     public void start() throws InterruptedException {
         // Initialize mod APIs
         PermissionManager.load();
+        BanManager.load();
         Scheduler.init();
         registerBuiltInCommands();
 
@@ -366,6 +368,152 @@ public class RDServer {
             }
             PermissionManager.removeOp(ctx.getArgs()[0]);
             ctx.reply("Removed " + ctx.getArgs()[0] + " from operators.");
+        });
+
+        CommandRegistry.registerOp("kick", "Kick a player from the server", ctx -> {
+            if (ctx.getArgs().length == 0) {
+                ctx.reply("Usage: kick <player> [reason]");
+                return;
+            }
+            String reason = ctx.getArgs().length > 1
+                    ? String.join(" ", java.util.Arrays.copyOfRange(ctx.getArgs(), 1, ctx.getArgs().length))
+                    : "Kicked by operator";
+            if (playerManager.kickPlayer(ctx.getArgs()[0], reason, world)) {
+                ctx.reply("Kicked " + ctx.getArgs()[0]);
+            } else {
+                ctx.reply("Player not found: " + ctx.getArgs()[0]);
+            }
+        });
+
+        CommandRegistry.registerOp("tp", "Teleport players", ctx -> {
+            String[] args = ctx.getArgs();
+            if (args.length == 1) {
+                // /tp <player> — teleport sender to target
+                if (ctx.isConsole()) {
+                    ctx.reply("Cannot tp from console without specifying a target");
+                    return;
+                }
+                ConnectedPlayer sender = playerManager.getPlayerByName(ctx.getSenderName());
+                ConnectedPlayer target = playerManager.getPlayerByName(args[0]);
+                if (sender == null) {
+                    ctx.reply("Sender not found");
+                    return;
+                }
+                if (target == null) {
+                    ctx.reply("Player not found: " + args[0]);
+                    return;
+                }
+                playerManager.teleportPlayer(sender, target.getDoubleX(), target.getDoubleY(),
+                        target.getDoubleZ(), target.getFloatYaw(), target.getFloatPitch(), chunkManager);
+                ctx.reply("Teleported to " + target.getUsername());
+            } else if (args.length == 2) {
+                // /tp <player1> <player2> — teleport player1 to player2
+                ConnectedPlayer p1 = playerManager.getPlayerByName(args[0]);
+                ConnectedPlayer p2 = playerManager.getPlayerByName(args[1]);
+                if (p1 == null) {
+                    ctx.reply("Player not found: " + args[0]);
+                    return;
+                }
+                if (p2 == null) {
+                    ctx.reply("Player not found: " + args[1]);
+                    return;
+                }
+                playerManager.teleportPlayer(p1, p2.getDoubleX(), p2.getDoubleY(),
+                        p2.getDoubleZ(), p2.getFloatYaw(), p2.getFloatPitch(), chunkManager);
+                ctx.reply("Teleported " + p1.getUsername() + " to " + p2.getUsername());
+            } else if (args.length == 4) {
+                // /tp <player> <x> <y> <z>
+                ConnectedPlayer target = playerManager.getPlayerByName(args[0]);
+                if (target == null) {
+                    ctx.reply("Player not found: " + args[0]);
+                    return;
+                }
+                try {
+                    double x = Double.parseDouble(args[1]);
+                    double y = Double.parseDouble(args[2]);
+                    double z = Double.parseDouble(args[3]);
+                    double eyeY = y + (double) 1.62f;
+                    playerManager.teleportPlayer(target, x, eyeY, z,
+                            target.getFloatYaw(), target.getFloatPitch(), chunkManager);
+                    ctx.reply("Teleported " + target.getUsername() + " to "
+                            + args[1] + " " + args[2] + " " + args[3]);
+                } catch (NumberFormatException e) {
+                    ctx.reply("Invalid coordinates");
+                }
+            } else {
+                ctx.reply("Usage: /tp <player> | /tp <player1> <player2> | /tp <player> <x> <y> <z>");
+            }
+        });
+
+        CommandRegistry.registerOp("ban", "Ban a player", ctx -> {
+            if (ctx.getArgs().length == 0) {
+                ctx.reply("Usage: ban <player>");
+                return;
+            }
+            BanManager.banPlayer(ctx.getArgs()[0]);
+            playerManager.kickPlayer(ctx.getArgs()[0], "Banned", world);
+            ctx.reply("Banned " + ctx.getArgs()[0]);
+        });
+
+        CommandRegistry.registerOp("banip", "Ban an IP address", ctx -> {
+            if (ctx.getArgs().length == 0) {
+                ctx.reply("Usage: banip <player|ip>");
+                return;
+            }
+            String arg = ctx.getArgs()[0];
+            if (arg.contains(".") || arg.contains(":")) {
+                // IP literal
+                BanManager.banIp(arg);
+                // Kick any player with this IP
+                for (ConnectedPlayer p : playerManager.getAllPlayers()) {
+                    String pip = PlayerManager.extractIp(p);
+                    if (arg.equals(pip)) {
+                        playerManager.kickPlayer(p.getUsername(), "IP banned", world);
+                    }
+                }
+                ctx.reply("Banned IP " + arg);
+            } else {
+                // Player name — look up their IP
+                ConnectedPlayer target = playerManager.getPlayerByName(arg);
+                if (target == null) {
+                    ctx.reply("Player not found and not a valid IP");
+                    return;
+                }
+                String ip = PlayerManager.extractIp(target);
+                if (ip == null) {
+                    ctx.reply("Could not determine IP for " + arg);
+                    return;
+                }
+                BanManager.banIp(ip);
+                playerManager.kickPlayer(target.getUsername(), "IP banned", world);
+                ctx.reply("Banned IP " + ip);
+            }
+        });
+
+        CommandRegistry.registerOp("unban", "Unban a player or IP", ctx -> {
+            if (ctx.getArgs().length == 0) {
+                java.util.Set<String> players = BanManager.getBannedPlayers();
+                java.util.Set<String> ips = BanManager.getBannedIps();
+                if (players.isEmpty() && ips.isEmpty()) {
+                    ctx.reply("No banned players or IPs.");
+                } else {
+                    if (!players.isEmpty()) {
+                        ctx.reply("Banned players: " + String.join(", ", players));
+                    }
+                    if (!ips.isEmpty()) {
+                        ctx.reply("Banned IPs: " + String.join(", ", ips));
+                    }
+                }
+                ctx.reply("Usage: unban <player|ip>");
+                return;
+            }
+            String arg = ctx.getArgs()[0];
+            if (arg.contains(".") || arg.contains(":")) {
+                BanManager.unbanIp(arg);
+            } else {
+                BanManager.unbanPlayer(arg);
+            }
+            ctx.reply("Unbanned " + arg);
         });
     }
 

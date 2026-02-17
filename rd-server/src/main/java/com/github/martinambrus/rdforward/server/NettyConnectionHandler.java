@@ -151,7 +151,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
         String versionName;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_14)) {
+            versionName = "1.14";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13)) {
             versionName = "1.13.1";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_12)) {
             versionName = "1.12.2";
@@ -319,6 +321,20 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
+        // Ban check — reject banned players/IPs before registration
+        {
+            String ip = null;
+            if (ctx.channel().remoteAddress() instanceof java.net.InetSocketAddress) {
+                ip = ((java.net.InetSocketAddress) ctx.channel().remoteAddress())
+                        .getAddress().getHostAddress();
+            }
+            if (com.github.martinambrus.rdforward.server.api.BanManager.isPlayerBanned(pendingUsername)
+                    || (ip != null && com.github.martinambrus.rdforward.server.api.BanManager.isIpBanned(ip))) {
+                sendPlayDisconnect(ctx, "You are banned from this server");
+                return;
+            }
+        }
+
         // Kick duplicate player
         if (!pendingUsername.trim().isEmpty()) {
             playerManager.kickDuplicatePlayer(pendingUsername.trim(), world);
@@ -331,6 +347,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
+        boolean isV477 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_14);
         boolean isV393 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13);
         boolean isV109 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_9);
         boolean isV47 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8);
@@ -339,9 +356,12 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Send JoinGame
         // maxPlayers=20 limits the tab list to a single compact column.
         // Using the actual MAX_PLAYERS (128) creates a huge multi-column grid.
+        // v477 (1.14) removed difficulty from JoinGame and added viewDistance.
         // v108 (1.9.1) changed dimension from byte to int.
-        boolean isV108 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_9_1);
-        if (isV108) {
+        if (isV477) {
+            ctx.writeAndFlush(new JoinGamePacketV477(entityId, 1, 0,
+                    20, "default", ChunkManager.DEFAULT_VIEW_DISTANCE));
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_9_1)) {
             ctx.writeAndFlush(new JoinGamePacketV108(entityId, 1, 0, 0,
                     20, "default"));
         } else if (isV47) {
@@ -350,6 +370,11 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         } else {
             ctx.writeAndFlush(new JoinGamePacket(entityId, 1, 0, 0,
                     20, "default"));
+        }
+
+        // 1.14+: Send chunk cache radius (view distance) right after JoinGame
+        if (isV477) {
+            ctx.writeAndFlush(new SetChunkCacheRadiusPacketV477(ChunkManager.DEFAULT_VIEW_DISTANCE));
         }
 
         // 1.13+: Send mandatory DeclareCommands, UpdateRecipes, UpdateTags, Brand
@@ -437,6 +462,11 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         // Send chunks BEFORE player position — the client applies gravity
         // immediately on receiving position, so chunks must be loaded first.
+        // 1.14+: Send chunk cache center before chunks.
+        if (isV477) {
+            ctx.writeAndFlush(new SetChunkCacheCenterPacketV477(
+                    spawnBlockX >> 4, spawnBlockZ >> 4));
+        }
         chunkManager.addPlayer(player);
         chunkManager.sendInitialChunks(player, spawnBlockX, spawnBlockZ);
 
@@ -518,6 +548,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         adapter.initPlayer(player.getUsername());
 
         // Give 1 cobblestone for right-click
+        // v404 (1.13.2)+ uses boolean+VarInt slot format (also used by v477/1.14)
         boolean isV404 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13_2);
         if (isV404) {
             ctx.writeAndFlush(new NettySetSlotPacketV404(0, 36,

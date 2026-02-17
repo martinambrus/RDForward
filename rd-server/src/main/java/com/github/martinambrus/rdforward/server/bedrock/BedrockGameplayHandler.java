@@ -96,6 +96,20 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
      * sends StartGame, chunks, and PLAYER_SPAWN.
      */
     public void onReady() {
+        // Ban check — reject banned players/IPs before registration
+        {
+            String ip = null;
+            java.net.SocketAddress peerAddr = session.getPeer().getSocketAddress();
+            if (peerAddr instanceof java.net.InetSocketAddress) {
+                ip = ((java.net.InetSocketAddress) peerAddr).getAddress().getHostAddress();
+            }
+            if (com.github.martinambrus.rdforward.server.api.BanManager.isPlayerBanned(username)
+                    || (ip != null && com.github.martinambrus.rdforward.server.api.BanManager.isIpBanned(ip))) {
+                session.disconnect("You are banned from this server");
+                return;
+            }
+        }
+
         // If a non-blank username is already online, kick the old connection
         if (username != null && !username.trim().isEmpty()) {
             playerManager.kickDuplicatePlayer(username.trim(), world);

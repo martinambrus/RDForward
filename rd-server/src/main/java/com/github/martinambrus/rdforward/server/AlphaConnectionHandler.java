@@ -414,6 +414,21 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             }
         }
 
+        // Ban check — reject banned players/IPs before registration
+        {
+            String ip = null;
+            if (ctx.channel().remoteAddress() instanceof java.net.InetSocketAddress) {
+                ip = ((java.net.InetSocketAddress) ctx.channel().remoteAddress())
+                        .getAddress().getHostAddress();
+            }
+            if (com.github.martinambrus.rdforward.server.api.BanManager.isPlayerBanned(pendingUsername)
+                    || (ip != null && com.github.martinambrus.rdforward.server.api.BanManager.isIpBanned(ip))) {
+                ctx.writeAndFlush(new DisconnectPacket("You are banned from this server"));
+                ctx.close();
+                return;
+            }
+        }
+
         // If a non-blank username is already online, kick the old connection
         if (pendingUsername != null && !pendingUsername.trim().isEmpty()) {
             playerManager.kickDuplicatePlayer(pendingUsername.trim(), world);
