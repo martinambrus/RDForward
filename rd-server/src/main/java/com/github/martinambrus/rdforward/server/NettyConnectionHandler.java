@@ -329,7 +329,12 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Send JoinGame
         // maxPlayers=20 limits the tab list to a single compact column.
         // Using the actual MAX_PLAYERS (128) creates a huge multi-column grid.
-        if (isV47) {
+        // v108 (1.9.1) changed dimension from byte to int.
+        boolean isV108 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_9_1);
+        if (isV108) {
+            ctx.writeAndFlush(new JoinGamePacketV108(entityId, 1, 0, 0,
+                    20, "default"));
+        } else if (isV47) {
             ctx.writeAndFlush(new JoinGamePacketV47(entityId, 1, 0, 0,
                     20, "default"));
         } else {

@@ -447,6 +447,7 @@ public class NettyPacketRegistry {
         registerV109S2CReverse(NettyDisconnectPacket.class, 0x1A);
         registerV109S2CReverse(KeepAlivePacketV47.class, 0x1F);
         registerV109S2CReverse(JoinGamePacketV47.class, 0x23);
+        registerV109S2CReverse(JoinGamePacketV108.class, 0x23);
         registerV109S2CReverse(EntityLookPacketV47.class, 0x27);
         registerV109S2CReverse(PlayerAbilitiesPacketV73.class, 0x2B);
         registerV109S2CReverse(NettyPlayerListItemPacketV47.class, 0x2D);
