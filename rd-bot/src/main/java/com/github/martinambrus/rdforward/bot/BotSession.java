@@ -50,12 +50,20 @@ public class BotSession {
     /** Spawn Y (set once during markLoginComplete from current y). */
     private volatile double spawnY = Double.NaN;
 
+    // Inventory tracking — AddToInventory accumulator (Alpha v1-v6, slot-less 0x11 packets)
+    private final ConcurrentHashMap<Integer, AtomicInteger> receivedItemTotals = new ConcurrentHashMap<>();
+
+    // Inventory tracking — SetSlot tracker (Beta+, 0x67 packets target specific slots)
+    private final int[] slotItemIds = new int[45];
+    private final int[] slotCounts = new int[45];
+
     // Listeners for wait-for-packet
     private final CopyOnWriteArrayList<PacketListener<?>> packetListeners = new CopyOnWriteArrayList<>();
 
     public BotSession(Channel channel, ProtocolVersion version) {
         this.channel = channel;
         this.version = version;
+        java.util.Arrays.fill(slotItemIds, -1);
     }
 
     // ---- Recording methods (called by BotPacketHandler) ----
@@ -104,6 +112,18 @@ public class BotSession {
 
     void recordChunkBlocks(int chunkX, int chunkZ, byte[] blockIds) {
         chunkBlocks.put(packChunkCoord(chunkX, chunkZ), blockIds);
+    }
+
+    void recordAddToInventory(int itemId, int count) {
+        receivedItemTotals.computeIfAbsent(itemId, k -> new AtomicInteger())
+                .addAndGet(count);
+    }
+
+    void recordSetSlot(int slot, int itemId, int count) {
+        if (slot >= 0 && slot < slotItemIds.length) {
+            slotItemIds[slot] = itemId;
+            slotCounts[slot] = count;
+        }
     }
 
     // ---- Wait methods ----
@@ -277,6 +297,43 @@ public class BotSession {
             Thread.sleep(50);
         }
         return positionUpdateCount.get() > previousCount;
+    }
+
+    // ---- Inventory query/wait methods ----
+
+    public int getReceivedItemTotal(int itemId) {
+        AtomicInteger total = receivedItemTotals.get(itemId);
+        return total != null ? total.get() : 0;
+    }
+
+    public boolean waitForReceivedItemTotal(int itemId, int minTotal, long timeoutMs)
+            throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            if (getReceivedItemTotal(itemId) >= minTotal) return true;
+            Thread.sleep(50);
+        }
+        return getReceivedItemTotal(itemId) >= minTotal;
+    }
+
+    public int getSlotItemId(int slot) {
+        if (slot < 0 || slot >= slotItemIds.length) return -1;
+        return slotItemIds[slot];
+    }
+
+    public int getSlotCount(int slot) {
+        if (slot < 0 || slot >= slotCounts.length) return 0;
+        return slotCounts[slot];
+    }
+
+    public boolean waitForSlotItem(int slot, int expectedItemId, long timeoutMs)
+            throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            if (getSlotItemId(slot) == expectedItemId) return true;
+            Thread.sleep(50);
+        }
+        return getSlotItemId(slot) == expectedItemId;
     }
 
     // ---- Send methods ----

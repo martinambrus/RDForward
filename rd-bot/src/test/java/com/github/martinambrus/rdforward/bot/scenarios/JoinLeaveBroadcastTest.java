@@ -42,10 +42,12 @@ class JoinLeaveBroadcastTest {
             String joinMsg = observerSession.waitForChat("JoinBot joined the game", 3000);
             assertNotNull(joinMsg, "Observer should receive join broadcast");
 
-            // Second bot leaves — observer should see leave message
+            // Second bot leaves — observer should see leave message.
+            // channel.close() is async; give the server time to fire channelInactive.
             joiner.disconnect();
+            Thread.sleep(200);
 
-            String leaveMsg = observerSession.waitForChat("JoinBot left the game", 3000);
+            String leaveMsg = observerSession.waitForChat("JoinBot left the game", 5000);
             assertNotNull(leaveMsg, "Observer should receive leave broadcast");
         } finally {
             observer.disconnect();

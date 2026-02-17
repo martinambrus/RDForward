@@ -43,12 +43,14 @@ class PlayerDespawnTest {
             assertNotNull(observerSession.waitForPlayerSpawn(3000),
                     "Observer should see leaver spawn");
 
-            // Leaver disconnects
+            // Leaver disconnects — channel.close() is async; give the server
+            // time to fire channelInactive and broadcast the despawn.
             leaver.disconnect();
             leaver = null;
+            Thread.sleep(200);
 
             // Observer should receive DestroyEntity for the leaver
-            assertTrue(observerSession.waitForDespawn(leaverEntityId, 3000),
+            assertTrue(observerSession.waitForDespawn(leaverEntityId, 5000),
                     "Observer should receive DestroyEntity for disconnected player");
         } finally {
             observer.disconnect();

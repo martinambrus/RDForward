@@ -279,6 +279,12 @@ public class RDServer {
         if (workerGroup != null) {
             workerGroup.shutdownGracefully();
         }
+
+        // Clear static event listeners and scheduler state so that
+        // subsequent server instances (e.g. in test suites) start clean.
+        ServerEvents.clearAll();
+        Scheduler.reset();
+
         System.out.println("RDForward server stopped.");
     }
 

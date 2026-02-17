@@ -91,6 +91,16 @@ public class BotPacketHandler extends SimpleChannelInboundHandler<Packet> {
         } else if (packet instanceof LoginS2CPacketV2 loginV2) {
             session.recordLogin(loginV2.getEntityId());
         }
+        // --- Inventory packets ---
+        else if (packet instanceof AddToInventoryPacket inv) {
+            session.recordAddToInventory(inv.getItemId(), inv.getCount() & 0xFF);
+        } else if (packet instanceof SetSlotPacketV39 ssV39) {
+            session.recordSetSlot(ssV39.getSlot(), ssV39.getItemId(), ssV39.getCount() & 0xFF);
+        } else if (packet instanceof SetSlotPacketV22 ssV22) {
+            session.recordSetSlot(ssV22.getSlot(), ssV22.getItemId(), ssV22.getCount() & 0xFF);
+        } else if (packet instanceof SetSlotPacket ss) {
+            session.recordSetSlot(ss.getSlot(), ss.getItemId(), ss.getCount() & 0xFF);
+        }
         // --- Game state packets ---
         else if (packet instanceof PlayerPositionAndLookS2CPacket posLook) {
             session.recordPosition(posLook.getX(), posLook.getY(), posLook.getZ(),

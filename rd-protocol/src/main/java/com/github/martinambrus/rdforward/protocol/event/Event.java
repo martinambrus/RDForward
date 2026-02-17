@@ -71,6 +71,16 @@ public final class Event<T> {
     }
 
     /**
+     * Remove all registered listeners and reset the invoker to the no-op default.
+     * Used during server shutdown to prevent stale listeners from accumulating
+     * across restarts in the same JVM (e.g. test suites).
+     */
+    public void clearListeners() {
+        handlers.clear();
+        invoker = emptyInvoker;
+    }
+
+    /**
      * Returns the number of registered listeners.
      */
     public int listenerCount() {

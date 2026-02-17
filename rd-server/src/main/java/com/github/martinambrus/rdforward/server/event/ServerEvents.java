@@ -96,4 +96,20 @@ public final class ServerEvents {
                 for (WorldSaveCallback l : listeners) l.onWorldSave();
             }
     );
+
+    /**
+     * Clear all listeners from every event. Called during server shutdown
+     * to prevent stale listeners from accumulating across restarts in the
+     * same JVM (e.g. test suites).
+     */
+    public static void clearAll() {
+        BLOCK_BREAK.clearListeners();
+        BLOCK_PLACE.clearListeners();
+        PLAYER_JOIN.clearListeners();
+        PLAYER_LEAVE.clearListeners();
+        PLAYER_MOVE.clearListeners();
+        CHAT.clearListeners();
+        SERVER_TICK.clearListeners();
+        WORLD_SAVE.clearListeners();
+    }
 }

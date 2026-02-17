@@ -40,6 +40,15 @@ public final class Scheduler {
     }
 
     /**
+     * Reset the scheduler state. Called during server shutdown so that
+     * a subsequent {@link #init()} re-registers with the (cleared) tick event.
+     */
+    public static void reset() {
+        initialized = false;
+        tasks.clear();
+    }
+
+    /**
      * Schedule a task to run after a delay.
      *
      * @param delayTicks number of ticks to wait (20 ticks = 1 second)
