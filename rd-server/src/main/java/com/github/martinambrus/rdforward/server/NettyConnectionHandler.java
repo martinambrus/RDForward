@@ -518,7 +518,11 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         adapter.initPlayer(player.getUsername());
 
         // Give 1 cobblestone for right-click
-        if (isV393) {
+        boolean isV404 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13_2);
+        if (isV404) {
+            ctx.writeAndFlush(new NettySetSlotPacketV404(0, 36,
+                    BlockStateMapper.toV393ItemId(BlockRegistry.COBBLESTONE), 1));
+        } else if (isV393) {
             ctx.writeAndFlush(new NettySetSlotPacketV393(0, 36,
                     BlockStateMapper.toV393ItemId(BlockRegistry.COBBLESTONE), 1));
         } else if (isV47) {
