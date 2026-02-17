@@ -4,4 +4,6 @@ dependencies {
     implementation project(':rd-protocol')
     implementation project(':rd-server')
     implementation project(':rd-world')
+    // CloudburstMC Protocol: Bedrock bot client (RakNet transport + codec)
+    implementation 'org.cloudburstmc.protocol:bedrock-connection:3.0.0.Beta12-SNAPSHOT'
 }

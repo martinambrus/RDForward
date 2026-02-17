@@ -10,7 +10,16 @@ import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlaceme
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyChatC2SPacket;
 import com.github.martinambrus.rdforward.protocol.packet.netty.PlayerDiggingPacketV47;
 import io.netty.channel.Channel;
+import org.cloudburstmc.math.vector.Vector3f;
+import org.cloudburstmc.math.vector.Vector3i;
+import org.cloudburstmc.protocol.bedrock.BedrockClientSession;
+import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData;
+import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType;
+import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction;
+import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket;
+import com.github.martinambrus.rdforward.server.bedrock.BedrockProtocolConstants;
 
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -27,6 +36,7 @@ import java.util.function.Predicate;
 public class BotSession {
 
     private final Channel channel;
+    private final BedrockClientSession bedrockSession;
     private final ProtocolVersion version;
 
     // Login state
@@ -49,6 +59,8 @@ public class BotSession {
     private final AtomicInteger positionUpdateCount = new AtomicInteger();
     /** Packed (chunkX, chunkZ) -> byte[32768] block IDs in AlphaChunk YZX order. */
     private final ConcurrentHashMap<Long, byte[]> chunkBlocks = new ConcurrentHashMap<>();
+    /** Packed (chunkX, chunkZ) set for Bedrock chunks (received, not yet parsed). */
+    private final Set<Long> bedrockChunksReceived = ConcurrentHashMap.newKeySet();
     /** Spawn Y (set once during markLoginComplete from current y). */
     private volatile double spawnY = Double.NaN;
 
@@ -64,6 +76,14 @@ public class BotSession {
 
     public BotSession(Channel channel, ProtocolVersion version) {
         this.channel = channel;
+        this.bedrockSession = null;
+        this.version = version;
+        java.util.Arrays.fill(slotItemIds, -1);
+    }
+
+    BotSession(BedrockClientSession bedrockSession, ProtocolVersion version) {
+        this.channel = null;
+        this.bedrockSession = bedrockSession;
         this.version = version;
         java.util.Arrays.fill(slotItemIds, -1);
     }
@@ -114,6 +134,10 @@ public class BotSession {
 
     void recordChunkBlocks(int chunkX, int chunkZ, byte[] blockIds) {
         chunkBlocks.put(packChunkCoord(chunkX, chunkZ), blockIds);
+    }
+
+    void recordBedrockChunk(int chunkX, int chunkZ) {
+        bedrockChunksReceived.add(packChunkCoord(chunkX, chunkZ));
     }
 
     void recordAddToInventory(int itemId, int count) {
@@ -210,6 +234,31 @@ public class BotSession {
     }
 
     /**
+     * Wait for a player with the given name to appear in spawnedPlayers.
+     * Works across all protocol versions since both TCP and Bedrock bots
+     * populate spawnedPlayers via recordSpawnPlayer().
+     *
+     * @return the entity ID of the spawned player, or null on timeout
+     */
+    public Integer waitForSpawnedPlayer(String name, long timeoutMs) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            for (Map.Entry<Integer, String> entry : spawnedPlayers.entrySet()) {
+                if (entry.getValue().equals(name)) {
+                    return entry.getKey();
+                }
+            }
+            Thread.sleep(50);
+        }
+        for (Map.Entry<Integer, String> entry : spawnedPlayers.entrySet()) {
+            if (entry.getValue().equals(name)) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
      * Wait for a block change at specific coordinates.
      * Returns the block type, or -1 on timeout.
      */
@@ -273,10 +322,10 @@ public class BotSession {
         long key = packChunkCoord(chunkX, chunkZ);
         long deadline = System.currentTimeMillis() + timeoutMs;
         while (System.currentTimeMillis() < deadline) {
-            if (chunkBlocks.containsKey(key)) return true;
+            if (chunkBlocks.containsKey(key) || bedrockChunksReceived.contains(key)) return true;
             Thread.sleep(50);
         }
-        return chunkBlocks.containsKey(key);
+        return chunkBlocks.containsKey(key) || bedrockChunksReceived.contains(key);
     }
 
     /**
@@ -345,6 +394,19 @@ public class BotSession {
     }
 
     public void sendChat(String message) {
+        if (version == ProtocolVersion.BEDROCK) {
+            org.cloudburstmc.protocol.bedrock.packet.TextPacket text =
+                    new org.cloudburstmc.protocol.bedrock.packet.TextPacket();
+            text.setType(org.cloudburstmc.protocol.bedrock.packet.TextPacket.Type.CHAT);
+            text.setSourceName("");
+            text.setMessage(message);
+            text.setNeedsTranslation(false);
+            text.setXuid("");
+            text.setPlatformChatId("");
+            text.setFilteredMessage("");
+            bedrockSession.sendPacketImmediately(text);
+            return;
+        }
         if (version.isAtLeast(ProtocolVersion.RELEASE_1_7_2)) {
             sendPacket(new NettyChatC2SPacket(message));
         } else {
@@ -364,6 +426,23 @@ public class BotSession {
      * protocol version.
      */
     public void sendBlockPlace(int x, int y, int z, int direction, int itemId) {
+        if (version == ProtocolVersion.BEDROCK) {
+            InventoryTransactionPacket pkt = new InventoryTransactionPacket();
+            pkt.setTransactionType(InventoryTransactionType.ITEM_USE);
+            pkt.setActionType(0); // click block (place)
+            pkt.setBlockPosition(Vector3i.from(x, y, z));
+            pkt.setBlockFace(direction);
+            pkt.setHotbarSlot(0);
+            pkt.setItemInHand(ItemData.AIR);
+            pkt.setPlayerPosition(Vector3f.ZERO);
+            pkt.setClickPosition(Vector3f.ZERO);
+            pkt.setHeadPosition(Vector3f.ZERO);
+            pkt.setBlockDefinition(BedrockProtocolConstants.getBlockDefinitions().getDefinition(0));
+            pkt.setTriggerType(ItemUseTransaction.TriggerType.PLAYER_INPUT);
+            pkt.setClientInteractPrediction(ItemUseTransaction.PredictedResult.SUCCESS);
+            bedrockSession.sendPacketImmediately(pkt);
+            return;
+        }
         if (version.isAtLeast(ProtocolVersion.RELEASE_1_11)) {
             // Netty 1.11+: packed Position, VarInt face, VarInt hand, float cursors
             sendPacket(new NettyBlockPlacementPacketV315(x, y, z, direction));
@@ -407,6 +486,24 @@ public class BotSession {
     }
 
     public void sendDigging(int status, int x, int y, int z, int face) {
+        if (version == ProtocolVersion.BEDROCK) {
+            // Use InventoryTransaction with actionType=2 (break) for creative mode
+            InventoryTransactionPacket pkt = new InventoryTransactionPacket();
+            pkt.setTransactionType(InventoryTransactionType.ITEM_USE);
+            pkt.setActionType(2); // break
+            pkt.setBlockPosition(Vector3i.from(x, y, z));
+            pkt.setBlockFace(face);
+            pkt.setHotbarSlot(0);
+            pkt.setItemInHand(ItemData.AIR);
+            pkt.setPlayerPosition(Vector3f.ZERO);
+            pkt.setClickPosition(Vector3f.ZERO);
+            pkt.setHeadPosition(Vector3f.ZERO);
+            pkt.setBlockDefinition(BedrockProtocolConstants.getBlockDefinitions().getDefinition(0));
+            pkt.setTriggerType(ItemUseTransaction.TriggerType.PLAYER_INPUT);
+            pkt.setClientInteractPrediction(ItemUseTransaction.PredictedResult.SUCCESS);
+            bedrockSession.sendPacketImmediately(pkt);
+            return;
+        }
         if (version.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
             sendPacket(new PlayerDiggingPacketV47(status, x, y, z, face));
         } else {

@@ -31,6 +31,7 @@ public class TestServer {
     public void start() throws InterruptedException {
         deleteStaleFiles();
         server = new RDServer(0);
+        server.setBedrockPort(0); // random port for test isolation
         server.start();
         port = server.getActualPort();
         botGroup = new NioEventLoopGroup(2);
@@ -104,6 +105,19 @@ public class TestServer {
             warmup.disconnect();
         }
         warmedUp.add(key);
+    }
+
+    /**
+     * Create a connected Bedrock bot client.
+     *
+     * @param username the bot's username
+     * @return a connected BotBedrockClient with login complete
+     */
+    public BotBedrockClient createBedrockBot(String username) throws Exception {
+        int bedrockPort = server.getActualBedrockPort();
+        BotBedrockClient bot = new BotBedrockClient("localhost", bedrockPort, username, botGroup);
+        bot.connectSync(10000);
+        return bot;
     }
 
     public int getPort() {

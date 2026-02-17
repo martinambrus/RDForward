@@ -64,6 +64,7 @@ public class RDServer {
     private static final String DEFAULT_WORLD_DIR = "world";
 
     private final int port;
+    private int bedrockPort = BedrockProtocolConstants.DEFAULT_PORT;
     private final ProtocolVersion protocolVersion;
     private final WorldGenerator worldGenerator;
     private final long worldSeed;
@@ -165,10 +166,9 @@ public class RDServer {
     }
 
     /**
-     * Start the Bedrock Edition UDP/RakNet server on port 19132.
+     * Start the Bedrock Edition UDP/RakNet server.
      */
     private void startBedrockServer() {
-        int bedrockPort = BedrockProtocolConstants.DEFAULT_PORT;
 
         // Initialize block mapper, chunk converter, and registry data
         bedrockBlockMapper = new BedrockBlockMapper(BedrockProtocolConstants.getVanillaBlockStates());
@@ -234,7 +234,7 @@ public class RDServer {
 
         try {
             bedrockChannel = bedrockBootstrap.bind(bedrockPort).sync().channel();
-            System.out.println("Bedrock server started on port " + bedrockPort
+            System.out.println("Bedrock server started on port " + getActualBedrockPort()
                     + " (protocol: " + BedrockProtocolConstants.CODEC.getMinecraftVersion()
                     + ", version " + BedrockProtocolConstants.CODEC.getProtocolVersion() + ")");
 
@@ -303,6 +303,13 @@ public class RDServer {
             return ((InetSocketAddress) serverChannel.localAddress()).getPort();
         }
         return port;
+    }
+    public void setBedrockPort(int bedrockPort) { this.bedrockPort = bedrockPort; }
+    public int getActualBedrockPort() {
+        if (bedrockChannel != null) {
+            return ((InetSocketAddress) bedrockChannel.localAddress()).getPort();
+        }
+        return bedrockPort;
     }
     public ProtocolVersion getProtocolVersion() { return protocolVersion; }
     public ServerWorld getWorld() { return world; }
