@@ -204,7 +204,29 @@ class BotBedrockPacketHandler implements BedrockPacketHandler {
     @Override
     public PacketSignal handle(GameRulesChangedPacket packet) { return PacketSignal.HANDLED; }
     @Override
-    public PacketSignal handle(SetTimePacket packet) { return PacketSignal.HANDLED; }
+    public PacketSignal handle(SetTimePacket packet) {
+        if (botSession != null) {
+            botSession.recordTimeUpdate(packet.getTime());
+        }
+        return PacketSignal.HANDLED;
+    }
+
+    @Override
+    public PacketSignal handle(LevelEventPacket packet) {
+        if (botSession != null) {
+            org.cloudburstmc.protocol.bedrock.data.LevelEventType type = packet.getType();
+            if (type == org.cloudburstmc.protocol.bedrock.data.LevelEvent.START_RAINING) {
+                botSession.recordWeatherChange(1); // rain started
+            } else if (type == org.cloudburstmc.protocol.bedrock.data.LevelEvent.STOP_RAINING) {
+                botSession.recordWeatherChange(2); // rain stopped
+            } else if (type == org.cloudburstmc.protocol.bedrock.data.LevelEvent.START_THUNDERSTORM) {
+                botSession.recordWeatherChange(3); // thunder started
+            } else if (type == org.cloudburstmc.protocol.bedrock.data.LevelEvent.STOP_THUNDERSTORM) {
+                botSession.recordWeatherChange(4); // thunder stopped
+            }
+        }
+        return PacketSignal.HANDLED;
+    }
     @Override
     public PacketSignal handle(PlayerListPacket packet) { return PacketSignal.HANDLED; }
     @Override

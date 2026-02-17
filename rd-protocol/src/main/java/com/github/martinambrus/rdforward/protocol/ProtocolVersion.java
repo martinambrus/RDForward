@@ -469,12 +469,24 @@ public enum ProtocolVersion {
     RELEASE_1_13_2(404, 48, Family.RELEASE, "Release 1.13.2 (v404)", 92),
 
     /**
+     * Minecraft Release 1.14 (April 2019).
+     * All S2C/C2S packet IDs reshuffled. Chunk sections no longer include light
+     * data (moved to a new UpdateLight packet). Heightmaps added as NBT in the
+     * chunk packet. Short blockCount added per chunk section. ViewDistance field
+     * added to JoinGame. Difficulty removed from JoinGame. New mandatory packets:
+     * SetChunkCacheCenter, SetChunkCacheRadius, UpdateLight.
+     * Item slot format unchanged from v404 (boolean+VarInt).
+     * Netty protocol version 477.
+     */
+    RELEASE_1_14(477, 49, Family.RELEASE, "Release 1.14 (v477)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 49, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 50, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -614,6 +626,7 @@ public enum ProtocolVersion {
             case 393: return "Release 1.13";
             case 401: return "Release 1.13.1";
             case 404: return "Release 1.13.2";
+            case 477: return "Release 1.14";
             case 51: return "Release 1.4.6-1.4.7";
             case 60: return "Release 1.5-1.5.1";
             case 61: return "Release 1.5.2";

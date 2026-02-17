@@ -860,6 +860,147 @@ public class AlphaChunk {
         return new V109ChunkData(baos.toByteArray(), primaryBitMask);
     }
 
+    /**
+     * Serialize this chunk's data for the 1.14 (v477) MapChunkPacket.
+     *
+     * Key differences from v393:
+     * 1. Each section starts with a short blockCount (non-air blocks)
+     * 2. Same 14-bit global palette, same spanning packing
+     * 3. NO block light or sky light data in sections (moved to UpdateLight packet)
+     * 4. Biomes: still int[256] (same as v393; int[1024] is 1.15+)
+     *
+     * @return V477ChunkData with raw data, primaryBitMask, and per-section light arrays
+     */
+    public V477ChunkData serializeForV477Protocol() {
+        int primaryBitMask = 0;
+        int[] sectionBlockCounts = new int[8];
+        for (int section = 0; section < 8; section++) {
+            int baseY = section * 16;
+            int nonAirCount = 0;
+            for (int x = 0; x < WIDTH; x++) {
+                for (int z = 0; z < DEPTH; z++) {
+                    for (int ly = 0; ly < 16; ly++) {
+                        if (getBlock(x, baseY + ly, z) != 0) {
+                            nonAirCount++;
+                        }
+                    }
+                }
+            }
+            if (nonAirCount > 0) {
+                primaryBitMask |= (1 << section);
+                sectionBlockCounts[section] = nonAirCount;
+            }
+        }
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(16384);
+
+        byte[][] skyLightSections = new byte[8][];
+        byte[][] blockLightSections = new byte[8][];
+
+        for (int section = 0; section < 8; section++) {
+            if ((primaryBitMask & (1 << section)) == 0) continue;
+            int baseY = section * 16;
+
+            // Write blockCount (short, big-endian)
+            writeShortToStream(baos, sectionBlockCounts[section]);
+
+            int bitsPerBlock = 14;
+            baos.write(bitsPerBlock);
+
+            // 1.14 global palette: NO palette length prefix (same as 1.13)
+
+            int totalBits = 4096 * bitsPerBlock;
+            int longsNeeded = (totalBits + 63) / 64;
+            long[] dataArray = new long[longsNeeded];
+
+            long mask = (1L << bitsPerBlock) - 1;
+            for (int ly = 0; ly < 16; ly++) {
+                for (int z = 0; z < DEPTH; z++) {
+                    for (int x = 0; x < WIDTH; x++) {
+                        int blockId = getBlock(x, baseY + ly, z);
+                        long stateId = com.github.martinambrus.rdforward.protocol
+                                .BlockStateMapper.toV393BlockState(blockId);
+                        int i = (ly * 16 + z) * 16 + x;
+                        int bitIndex = i * bitsPerBlock;
+                        int longIndex = bitIndex / 64;
+                        int bitOffset = bitIndex % 64;
+                        dataArray[longIndex] |= (stateId & mask) << bitOffset;
+                        if (bitOffset + bitsPerBlock > 64) {
+                            int bitsInFirst = 64 - bitOffset;
+                            dataArray[longIndex + 1] |= (stateId & mask) >> bitsInFirst;
+                        }
+                    }
+                }
+            }
+
+            writeVarIntToStream(baos, longsNeeded);
+            for (int i = 0; i < longsNeeded; i++) {
+                writeLongToStream(baos, dataArray[i]);
+            }
+
+            // NO light data in sections for 1.14+
+
+            // Collect light data for UpdateLight packet
+            byte[] sectionSkyLight = new byte[2048];
+            byte[] sectionBlockLight = new byte[2048];
+            int lightIdx = 0;
+            for (int ly = 0; ly < 16; ly++) {
+                for (int z = 0; z < DEPTH; z++) {
+                    for (int x = 0; x < WIDTH; x += 2) {
+                        int skyLow = getSkyLight(x, baseY + ly, z) & 0x0F;
+                        int skyHigh = getSkyLight(x + 1, baseY + ly, z) & 0x0F;
+                        sectionSkyLight[lightIdx] = (byte) (skyLow | (skyHigh << 4));
+
+                        int blkLow = getBlockLight(x, baseY + ly, z) & 0x0F;
+                        int blkHigh = getBlockLight(x + 1, baseY + ly, z) & 0x0F;
+                        sectionBlockLight[lightIdx] = (byte) (blkLow | (blkHigh << 4));
+
+                        lightIdx++;
+                    }
+                }
+            }
+            skyLightSections[section] = sectionSkyLight;
+            blockLightSections[section] = sectionBlockLight;
+        }
+
+        // Biome data: int[256] (4 bytes each, all plains=1)
+        for (int i = 0; i < 256; i++) {
+            writeIntToStream(baos, 1);
+        }
+
+        return new V477ChunkData(baos.toByteArray(), primaryBitMask,
+                skyLightSections, blockLightSections);
+    }
+
+    /** Write a big-endian short to a ByteArrayOutputStream. */
+    private static void writeShortToStream(ByteArrayOutputStream out, int value) {
+        out.write((value >> 8) & 0xFF);
+        out.write(value & 0xFF);
+    }
+
+    /**
+     * Result container for v477 chunk serialization.
+     */
+    public static class V477ChunkData {
+        private final byte[] rawData;
+        private final int primaryBitMask;
+        private final byte[][] skyLightSections;
+        private final byte[][] blockLightSections;
+
+        public V477ChunkData(byte[] rawData, int primaryBitMask,
+                              byte[][] skyLightSections, byte[][] blockLightSections) {
+            this.rawData = rawData;
+            this.primaryBitMask = primaryBitMask;
+            this.skyLightSections = skyLightSections;
+            this.blockLightSections = blockLightSections;
+        }
+
+        public byte[] getRawData() { return rawData; }
+        public int getPrimaryBitMask() { return primaryBitMask; }
+        public byte[][] getSkyLightSections() { return skyLightSections; }
+        public byte[][] getBlockLightSections() { return blockLightSections; }
+    }
+
     /** Write a big-endian int to a ByteArrayOutputStream. */
     private static void writeIntToStream(ByteArrayOutputStream out, int value) {
         out.write((value >> 24) & 0xFF);

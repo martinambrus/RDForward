@@ -73,6 +73,14 @@ public class BotSession {
     private final int[] slotItemIds = new int[45];
     private final int[] slotCounts = new int[45];
 
+    // Time tracking
+    private volatile long lastTimeOfDay = -1;
+    private final AtomicInteger timeUpdateCount = new AtomicInteger();
+
+    // Weather tracking
+    private volatile int lastWeatherReason = -1;
+    private final AtomicInteger weatherChangeCount = new AtomicInteger();
+
     // Listeners for wait-for-packet
     private final CopyOnWriteArrayList<PacketListener<?>> packetListeners = new CopyOnWriteArrayList<>();
 
@@ -152,6 +160,16 @@ public class BotSession {
             slotItemIds[slot] = itemId;
             slotCounts[slot] = count;
         }
+    }
+
+    void recordTimeUpdate(long timeOfDay) {
+        this.lastTimeOfDay = timeOfDay;
+        timeUpdateCount.incrementAndGet();
+    }
+
+    void recordWeatherChange(int reason) {
+        this.lastWeatherReason = reason;
+        weatherChangeCount.incrementAndGet();
     }
 
     // ---- Wait methods ----
@@ -350,6 +368,31 @@ public class BotSession {
             Thread.sleep(50);
         }
         return positionUpdateCount.get() > previousCount;
+    }
+
+    // ---- Time/weather query/wait methods ----
+
+    public long getLastTimeOfDay() { return lastTimeOfDay; }
+    public int getTimeUpdateCount() { return timeUpdateCount.get(); }
+    public int getLastWeatherReason() { return lastWeatherReason; }
+    public int getWeatherChangeCount() { return weatherChangeCount.get(); }
+
+    public boolean waitForTimeUpdate(int previousCount, long timeoutMs) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            if (timeUpdateCount.get() > previousCount) return true;
+            Thread.sleep(50);
+        }
+        return timeUpdateCount.get() > previousCount;
+    }
+
+    public boolean waitForWeatherChange(int previousCount, long timeoutMs) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            if (weatherChangeCount.get() > previousCount) return true;
+            Thread.sleep(50);
+        }
+        return weatherChangeCount.get() > previousCount;
     }
 
     // ---- Inventory query/wait methods ----

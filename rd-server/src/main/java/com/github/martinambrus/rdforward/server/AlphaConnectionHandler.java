@@ -638,6 +638,18 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             }
         }
 
+        // Send initial time update (Alpha 1.2.0+ supports day/night cycle)
+        if (clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_2_0)) {
+            long timeOfDay = world.isTimeFrozen() ? -world.getWorldTime() : world.getWorldTime();
+            ctx.writeAndFlush(new TimeUpdatePacket(timeOfDay));
+        }
+
+        // Send initial weather state (Beta 1.5+ supports weather)
+        if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_5)
+                && world.getWeather() != ServerWorld.WeatherState.CLEAR) {
+            ctx.writeAndFlush(new ChangeGameStatePacket(ChangeGameStatePacket.BEGIN_RAIN, 0));
+        }
+
         // Beta 1.8+ requires periodic KeepAlive with int ID (client times out otherwise)
         if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
             keepAliveTask = ctx.executor().scheduleAtFixedRate(() -> {

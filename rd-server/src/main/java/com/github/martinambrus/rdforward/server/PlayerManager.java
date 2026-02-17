@@ -2,17 +2,24 @@ package com.github.martinambrus.rdforward.server;
 
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
+import com.github.martinambrus.rdforward.protocol.packet.alpha.ChangeGameStatePacket;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.PlayerPositionAndLookS2CPacket;
+import com.github.martinambrus.rdforward.protocol.packet.alpha.TimeUpdatePacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.DespawnPlayerPacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.MessagePacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.PlayerTeleportPacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.SpawnPlayerPacket;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettyChangeGameStatePacket;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyPlayerPositionS2CPacket;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyPlayerPositionS2CPacketV47;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyPlayerPositionS2CPacketV109;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettyTimeUpdatePacket;
 import io.netty.channel.Channel;
 import org.cloudburstmc.math.vector.Vector3f;
+import org.cloudburstmc.protocol.bedrock.data.LevelEvent;
+import org.cloudburstmc.protocol.bedrock.packet.LevelEventPacket;
 import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket;
+import org.cloudburstmc.protocol.bedrock.packet.SetTimePacket;
 
 import java.net.InetSocketAddress;
 import java.util.Collection;
@@ -181,6 +188,82 @@ public class PlayerManager {
      */
     public void sendChat(ConnectedPlayer player, String message) {
         player.sendPacket(new MessagePacket((byte) 0, message));
+    }
+
+    /**
+     * Broadcast a time update to all players using version-appropriate packets.
+     *
+     * @param worldAge  total ticks since world creation (Netty format)
+     * @param timeOfDay current time of day (0-24000, negative = frozen)
+     */
+    public void broadcastTimeUpdate(long worldAge, long timeOfDay) {
+        TimeUpdatePacket preNetty = new TimeUpdatePacket(timeOfDay);
+        NettyTimeUpdatePacket netty = new NettyTimeUpdatePacket(worldAge, timeOfDay);
+
+        for (ConnectedPlayer player : playersById.values()) {
+            ProtocolVersion v = player.getProtocolVersion();
+            if (v == ProtocolVersion.BEDROCK) {
+                if (player.getBedrockSession() != null) {
+                    SetTimePacket stp = new SetTimePacket();
+                    stp.setTime((int) (timeOfDay % 24000));
+                    player.getBedrockSession().getSession().sendPacket(stp);
+                }
+            } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_7_2)) {
+                player.sendPacket(netty);
+            } else if (v.isAtLeast(ProtocolVersion.ALPHA_1_2_0)) {
+                player.sendPacket(preNetty);
+            }
+        }
+    }
+
+    /**
+     * Broadcast a weather state change to all players using version-appropriate packets.
+     *
+     * @param weather the new weather state
+     */
+    public void broadcastWeatherChange(ServerWorld.WeatherState weather) {
+        boolean isRaining = weather != ServerWorld.WeatherState.CLEAR;
+        boolean isThunder = weather == ServerWorld.WeatherState.THUNDER;
+
+        // Pre-Netty: reason 1=begin rain, 2=end rain
+        ChangeGameStatePacket preNetty = new ChangeGameStatePacket(
+                isRaining ? ChangeGameStatePacket.BEGIN_RAIN : ChangeGameStatePacket.END_RAIN, 0);
+        // Netty: reason 2=begin rain, 1=end rain (swapped from pre-Netty)
+        NettyChangeGameStatePacket nettyWeather = new NettyChangeGameStatePacket(
+                isRaining ? NettyChangeGameStatePacket.BEGIN_RAIN : NettyChangeGameStatePacket.END_RAIN, 0);
+        NettyChangeGameStatePacket nettyRainLevel = isRaining
+                ? new NettyChangeGameStatePacket(NettyChangeGameStatePacket.RAIN_LEVEL, 1.0f) : null;
+        NettyChangeGameStatePacket nettyThunderLevel = new NettyChangeGameStatePacket(
+                NettyChangeGameStatePacket.THUNDER_LEVEL, isThunder ? 1.0f : 0.0f);
+
+        for (ConnectedPlayer player : playersById.values()) {
+            ProtocolVersion v = player.getProtocolVersion();
+            if (v == ProtocolVersion.BEDROCK) {
+                if (player.getBedrockSession() != null) {
+                    LevelEventPacket lep = new LevelEventPacket();
+                    lep.setPosition(Vector3f.ZERO);
+                    if (isThunder) {
+                        lep.setType(LevelEvent.START_THUNDERSTORM);
+                        lep.setData(65535);
+                    } else if (isRaining) {
+                        lep.setType(LevelEvent.START_RAINING);
+                        lep.setData(65535);
+                    } else {
+                        lep.setType(LevelEvent.STOP_RAINING);
+                        lep.setData(0);
+                    }
+                    player.getBedrockSession().getSession().sendPacket(lep);
+                }
+            } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_7_2)) {
+                player.sendPacket(nettyWeather);
+                if (nettyRainLevel != null) {
+                    player.sendPacket(nettyRainLevel);
+                }
+                player.sendPacket(nettyThunderLevel);
+            } else if (v.isAtLeast(ProtocolVersion.BETA_1_5)) {
+                player.sendPacket(preNetty);
+            }
+        }
     }
 
     /**

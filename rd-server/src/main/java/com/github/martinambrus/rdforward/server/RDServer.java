@@ -490,6 +490,97 @@ public class RDServer {
             }
         });
 
+        CommandRegistry.registerOp("time", "Query or set the world time", ctx -> {
+            String[] args = ctx.getArgs();
+            if (args.length == 0) {
+                long time = world.getWorldTime() % 24000;
+                String phase;
+                if (time < 6000) phase = "morning";
+                else if (time < 12000) phase = "day";
+                else if (time < 18000) phase = "evening";
+                else phase = "night";
+                ctx.reply("Time: " + world.getWorldTime() + " (" + phase + ")"
+                        + (world.isTimeFrozen() ? " [frozen]" : ""));
+                return;
+            }
+            String sub = args[0].toLowerCase();
+            if (sub.equals("query")) {
+                long time = world.getWorldTime() % 24000;
+                ctx.reply("World time: " + world.getWorldTime() + " (day time: " + time + ")");
+            } else if (sub.equals("set") && args.length >= 2) {
+                long newTime;
+                switch (args[1].toLowerCase()) {
+                    case "day": newTime = 6000; break;
+                    case "noon": newTime = 6000; break;
+                    case "sunset": newTime = 12000; break;
+                    case "night": newTime = 18000; break;
+                    case "midnight": newTime = 18000; break;
+                    case "dawn": case "sunrise": newTime = 0; break;
+                    default:
+                        try {
+                            newTime = Long.parseLong(args[1]);
+                        } catch (NumberFormatException e) {
+                            ctx.reply("Invalid time: " + args[1]);
+                            return;
+                        }
+                }
+                world.setWorldTime(newTime);
+                long timeOfDay = world.isTimeFrozen() ? -newTime : newTime;
+                playerManager.broadcastTimeUpdate(0, timeOfDay);
+                ctx.reply("Set time to " + newTime);
+            } else if (sub.equals("freeze")) {
+                world.setTimeFrozen(true);
+                playerManager.broadcastTimeUpdate(0, -world.getWorldTime());
+                ctx.reply("Time frozen at " + world.getWorldTime());
+            } else if (sub.equals("unfreeze")) {
+                world.setTimeFrozen(false);
+                playerManager.broadcastTimeUpdate(0, world.getWorldTime());
+                ctx.reply("Time unfrozen");
+            } else {
+                ctx.reply("Usage: /time [query|set <value>|freeze|unfreeze]");
+            }
+        });
+
+        CommandRegistry.registerOp("weather", "Set the weather", ctx -> {
+            String[] args = ctx.getArgs();
+            if (args.length == 0) {
+                ctx.reply("Weather: " + world.getWeather().name().toLowerCase());
+                ctx.reply("Usage: /weather <clear|rain|thunder> [duration_seconds]");
+                return;
+            }
+            String type = args[0].toLowerCase();
+            int durationTicks = 0; // 0 = indefinite
+            if (args.length >= 2) {
+                try {
+                    int seconds = Integer.parseInt(args[1]);
+                    durationTicks = seconds * 20;
+                } catch (NumberFormatException e) {
+                    ctx.reply("Invalid duration: " + args[1]);
+                    return;
+                }
+            }
+            ServerWorld.WeatherState newWeather;
+            switch (type) {
+                case "clear":
+                    newWeather = ServerWorld.WeatherState.CLEAR;
+                    break;
+                case "rain":
+                    newWeather = ServerWorld.WeatherState.RAIN;
+                    break;
+                case "thunder":
+                    newWeather = ServerWorld.WeatherState.THUNDER;
+                    break;
+                default:
+                    ctx.reply("Unknown weather type: " + type);
+                    ctx.reply("Usage: /weather <clear|rain|thunder> [duration_seconds]");
+                    return;
+            }
+            world.setWeather(newWeather, durationTicks);
+            playerManager.broadcastWeatherChange(newWeather);
+            ctx.reply("Set weather to " + type
+                    + (durationTicks > 0 ? " for " + (durationTicks / 20) + " seconds" : ""));
+        });
+
         CommandRegistry.registerOp("unban", "Unban a player or IP", ctx -> {
             if (ctx.getArgs().length == 0) {
                 java.util.Set<String> players = BanManager.getBannedPlayers();

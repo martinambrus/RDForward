@@ -391,6 +391,13 @@ public class PacketRegistry {
                 });
             }
 
+            // Beta v11+ (Beta 1.5+): ChangeGameState (0x46) for weather (begin/end rain)
+            if (betaV.getVersionNumber() >= 11) {
+                register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x46, new PacketFactory() {
+                    public Packet create() { return new ChangeGameStatePacket(); }
+                });
+            }
+
             // Beta v11+ (Beta 1.5+): WindowClick added a 'shift' byte for shift-click
             // support and changed item damage from byte to short (no phantom KeepAlive
             // needed since v11 has a distinct protocol version with String16 encoding).

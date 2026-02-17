@@ -381,7 +381,8 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         if (isV393) {
             ctx.writeAndFlush(new DeclareCommandsPacketV393());
             ctx.writeAndFlush(new UpdateRecipesPacketV393());
-            ctx.writeAndFlush(new UpdateTagsPacketV393());
+            // 1.14 added entity_types as a 4th tag category
+            ctx.writeAndFlush(isV477 ? new UpdateTagsPacketV477() : new UpdateTagsPacketV393());
             // Brand plugin message — 1.13 client NPEs without it
             byte[] brand = "RDForward".getBytes(java.nio.charset.StandardCharsets.UTF_8);
             byte[] brandData = new byte[brand.length + 1];
@@ -458,6 +459,22 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.writeAndFlush(new SpawnPositionPacketV47(spawnBlockX, spawnBlockY, spawnBlockZ));
         } else {
             ctx.writeAndFlush(new SpawnPositionPacket(spawnBlockX, spawnBlockY, spawnBlockZ));
+        }
+
+        // Send initial time update
+        long timeOfDay = world.isTimeFrozen() ? -world.getWorldTime() : world.getWorldTime();
+        ctx.writeAndFlush(new NettyTimeUpdatePacket(0, timeOfDay));
+
+        // Send initial weather state
+        if (world.getWeather() != ServerWorld.WeatherState.CLEAR) {
+            ctx.writeAndFlush(new NettyChangeGameStatePacket(
+                    NettyChangeGameStatePacket.BEGIN_RAIN, 0));
+            ctx.writeAndFlush(new NettyChangeGameStatePacket(
+                    NettyChangeGameStatePacket.RAIN_LEVEL, 1.0f));
+            if (world.getWeather() == ServerWorld.WeatherState.THUNDER) {
+                ctx.writeAndFlush(new NettyChangeGameStatePacket(
+                        NettyChangeGameStatePacket.THUNDER_LEVEL, 1.0f));
+            }
         }
 
         // Send chunks BEFORE player position — the client applies gravity

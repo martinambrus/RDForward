@@ -118,6 +118,10 @@ public class BotPacketHandler extends SimpleChannelInboundHandler<Packet> {
         } else if (packet instanceof BlockChangePacket blockChange) {
             session.recordBlockChange(blockChange.getX(), blockChange.getY(),
                     blockChange.getZ(), blockChange.getBlockType());
+        } else if (packet instanceof TimeUpdatePacket timeUpdate) {
+            session.recordTimeUpdate(timeUpdate.getTime());
+        } else if (packet instanceof ChangeGameStatePacket gameState) {
+            session.recordWeatherChange(gameState.getReason());
         } else if (packet instanceof ChatPacket chat) {
             session.recordChat(chat.getMessage());
         } else if (packet instanceof SpawnPlayerPacketV39 spV39) {

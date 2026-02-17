@@ -159,6 +159,10 @@ public class BotNettyPacketHandler extends SimpleChannelInboundHandler<Packet> {
         } else if (packet instanceof MapChunkPacketV39 mcV39) {
             processSectionedChunk(mcV39.getChunkX(), mcV39.getChunkZ(),
                     mcV39.getPrimaryBitMask(), mcV39.getCompressedData());
+        } else if (packet instanceof NettyTimeUpdatePacket timeUpdate) {
+            session.recordTimeUpdate(timeUpdate.getTimeOfDay());
+        } else if (packet instanceof NettyChangeGameStatePacket gameState) {
+            session.recordWeatherChange(gameState.getReason());
         } else if (packet instanceof NettyDisconnectPacket disconnect) {
             System.err.println("BotNetty disconnected: " + disconnect.getJsonReason());
             ctx.close();

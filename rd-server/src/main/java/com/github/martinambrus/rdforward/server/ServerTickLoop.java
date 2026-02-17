@@ -26,6 +26,7 @@ public class ServerTickLoop implements Runnable {
     private static final long TICK_MS = 50; // 20 TPS
     private static final int PING_INTERVAL_TICKS = 40; // Every 2 seconds
     private static final int CHUNK_UPDATE_INTERVAL_TICKS = 5; // Every 250ms
+    private static final int TIME_BROADCAST_INTERVAL_TICKS = 20; // Every 1 second
     private static final int SAVE_INTERVAL_TICKS = 6000; // Every 5 minutes
 
     private final PlayerManager playerManager;
@@ -96,6 +97,9 @@ public class ServerTickLoop implements Runnable {
     private void tick() {
         tickCount++;
 
+        // Advance world time (day/night cycle + weather duration)
+        world.tickTime();
+
         // Process queued block changes and broadcast results
         List<SetBlockServerPacket> blockChanges = world.processPendingBlockChanges();
         for (SetBlockServerPacket sb : blockChanges) {
@@ -107,6 +111,12 @@ public class ServerTickLoop implements Runnable {
         // Send keep-alive pings periodically
         if (tickCount % PING_INTERVAL_TICKS == 0) {
             playerManager.broadcastPacket(new PingPacket());
+        }
+
+        // Broadcast time update periodically
+        if (tickCount % TIME_BROADCAST_INTERVAL_TICKS == 0) {
+            long timeOfDay = world.isTimeFrozen() ? -world.getWorldTime() : world.getWorldTime();
+            playerManager.broadcastTimeUpdate(tickCount, timeOfDay);
         }
 
         // Update chunk loading/unloading for all players periodically

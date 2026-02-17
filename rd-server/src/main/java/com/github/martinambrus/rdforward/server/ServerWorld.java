@@ -42,6 +42,14 @@ public class ServerWorld {
     private final byte[] blocks;
     private volatile boolean dirty = false;
 
+    // === Day/night cycle and weather ===
+    private volatile long worldTime = 6000; // 0=dawn, 6000=noon, 12000=sunset, 18000=midnight
+    private volatile boolean timeFrozen = false;
+    private volatile WeatherState weather = WeatherState.CLEAR;
+    private volatile int weatherDuration = 0; // ticks remaining (0=indefinite)
+
+    public enum WeatherState { CLEAR, RAIN, THUNDER }
+
     /** Queued block changes from clients, processed during tick loop. */
     private final Queue<PendingBlockChange> pendingBlockChanges = new ConcurrentLinkedQueue<>();
 
@@ -402,6 +410,39 @@ public class ServerWorld {
             }
         }
         return -1;
+    }
+
+    // === Time and weather methods ===
+
+    /**
+     * Advance world time by 1 tick (if not frozen) and decrement weather duration.
+     * Called once per server tick.
+     */
+    public void tickTime() {
+        if (!timeFrozen) {
+            worldTime++;
+        }
+        if (weatherDuration > 0) {
+            weatherDuration--;
+            if (weatherDuration == 0) {
+                weather = WeatherState.CLEAR;
+            }
+        }
+    }
+
+    public long getWorldTime() { return worldTime; }
+
+    public void setWorldTime(long time) { this.worldTime = time; }
+
+    public boolean isTimeFrozen() { return timeFrozen; }
+
+    public void setTimeFrozen(boolean frozen) { this.timeFrozen = frozen; }
+
+    public WeatherState getWeather() { return weather; }
+
+    public void setWeather(WeatherState state, int durationTicks) {
+        this.weather = state;
+        this.weatherDuration = durationTicks;
     }
 
     public int getWidth() { return width; }

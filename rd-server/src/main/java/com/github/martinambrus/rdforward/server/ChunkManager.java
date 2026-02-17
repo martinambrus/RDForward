@@ -7,7 +7,9 @@ import com.github.martinambrus.rdforward.protocol.packet.alpha.MapChunkPacketV39
 import com.github.martinambrus.rdforward.protocol.packet.alpha.PreChunkPacket;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV109;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV47;
+import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV477;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UnloadChunkPacketV109;
+import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacketV477;
 import com.github.martinambrus.rdforward.world.WorldGenerator;
 import com.github.martinambrus.rdforward.world.alpha.AlphaChunk;
 import com.github.martinambrus.rdforward.world.alpha.AlphaLevelFormat;
@@ -398,7 +400,47 @@ public class ChunkManager {
      * v47 (1.8) uses ushort blockStates and no compression.
      */
     private void sendChunkToPlayer(ConnectedPlayer player, AlphaChunk chunk) {
-        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_13)) {
+        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_14)) {
+            // v477: heightmaps NBT, no light in sections, blockCount per section
+            AlphaChunk.V477ChunkData v477Data = chunk.serializeForV477Protocol();
+            long[] heightmap = buildHeightmapLongArray(chunk);
+
+            player.sendPacket(new MapChunkPacketV477(
+                chunk.getXPos(), chunk.getZPos(), true,
+                v477Data.getPrimaryBitMask(),
+                heightmap, heightmap,
+                v477Data.getRawData()));
+
+            // Build UpdateLight from per-section light arrays
+            int skyLightMask = 0;
+            int blockLightMask = 0;
+            java.util.List<byte[]> skyArrays = new java.util.ArrayList<>();
+            java.util.List<byte[]> blockArrays = new java.util.ArrayList<>();
+
+            for (int section = 0; section < 8; section++) {
+                if (v477Data.getSkyLightSections()[section] != null) {
+                    // bit 0 = section -1, bit 1 = section 0, etc.
+                    skyLightMask |= (1 << (section + 1));
+                    skyArrays.add(v477Data.getSkyLightSections()[section]);
+                }
+                if (v477Data.getBlockLightSections()[section] != null) {
+                    blockLightMask |= (1 << (section + 1));
+                    blockArrays.add(v477Data.getBlockLightSections()[section]);
+                }
+            }
+
+            // Empty masks: sections not in the data masks (18-bit range)
+            int emptySkyLightMask = ~skyLightMask & 0x3FFFF;
+            int emptyBlockLightMask = ~blockLightMask & 0x3FFFF;
+
+            player.sendPacket(new UpdateLightPacketV477(
+                chunk.getXPos(), chunk.getZPos(),
+                skyLightMask, blockLightMask,
+                emptySkyLightMask, emptyBlockLightMask,
+                skyArrays.toArray(new byte[0][]),
+                blockArrays.toArray(new byte[0][])));
+
+        } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_13)) {
             // v393: same wire structure as v109 but with 1.13 global block state IDs,
             // 14-bit global palette, and int[256] biomes
             AlphaChunk.V109ChunkData v393Data = chunk.serializeForV393Protocol();
@@ -557,5 +599,40 @@ public class ChunkManager {
     public Set<ChunkCoord> getPlayerLoadedChunks(ConnectedPlayer player) {
         Set<ChunkCoord> chunks = playerChunks.get(player);
         return chunks != null ? chunks : new HashSet<>();
+    }
+
+    /**
+     * Build a heightmap long array for 1.14+ chunk packets.
+     *
+     * Each heightmap stores 256 values (16x16 columns) at 9 bits per entry,
+     * spanning-packed into longs (entries can span across long boundaries).
+     * 1.14's SimpleBitStorage still uses spanning packing.
+     *
+     * The value for each column is the Y of the highest non-air block + 1
+     * (0 for all-air columns).
+     *
+     * @return long array of 36 longs containing the packed heightmap
+     */
+    private static long[] buildHeightmapLongArray(AlphaChunk chunk) {
+        byte[] heightMap = chunk.getHeightMap();
+        int bitsPerEntry = 9;
+        int totalBits = 256 * bitsPerEntry; // 2304
+        int longsNeeded = (totalBits + 63) / 64; // 36
+        long[] result = new long[longsNeeded];
+        long mask = (1L << bitsPerEntry) - 1;
+
+        for (int i = 0; i < 256; i++) {
+            long value = heightMap[i] & 0xFF;
+            int bitIndex = i * bitsPerEntry;
+            int longIndex = bitIndex / 64;
+            int bitOffset = bitIndex % 64;
+            result[longIndex] |= (value & mask) << bitOffset;
+            if (bitOffset + bitsPerEntry > 64) {
+                int bitsInFirst = 64 - bitOffset;
+                result[longIndex + 1] |= (value & mask) >> bitsInFirst;
+            }
+        }
+
+        return result;
     }
 }

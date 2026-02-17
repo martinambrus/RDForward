@@ -231,8 +231,22 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         session.sendPacket(rulesPkt);
 
         SetTimePacket timePkt = new SetTimePacket();
-        timePkt.setTime(6000);
+        timePkt.setTime((int) (world.getWorldTime() % 24000));
         session.sendPacket(timePkt);
+
+        // Send initial weather state
+        if (world.getWeather() != com.github.martinambrus.rdforward.server.ServerWorld.WeatherState.CLEAR) {
+            org.cloudburstmc.protocol.bedrock.packet.LevelEventPacket lep =
+                    new org.cloudburstmc.protocol.bedrock.packet.LevelEventPacket();
+            lep.setPosition(org.cloudburstmc.math.vector.Vector3f.ZERO);
+            if (world.getWeather() == com.github.martinambrus.rdforward.server.ServerWorld.WeatherState.THUNDER) {
+                lep.setType(org.cloudburstmc.protocol.bedrock.data.LevelEvent.START_THUNDERSTORM);
+            } else {
+                lep.setType(org.cloudburstmc.protocol.bedrock.data.LevelEvent.START_RAINING);
+            }
+            lep.setData(65535);
+            session.sendPacket(lep);
+        }
 
         // NOTE: Existing players are sent in handle(SetLocalPlayerAsInitializedPacket)
         // after the client has loaded chunks. Sending AddPlayerPacket before chunks
@@ -271,7 +285,7 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         sgp.setDifficulty(0);
         sgp.setDefaultSpawn(Vector3i.from((int) x, (int) y, (int) z));
         sgp.setAchievementsDisabled(true);
-        sgp.setDayCycleStopTime(6000); // noon
+        sgp.setDayCycleStopTime(world.isTimeFrozen() ? (int) (world.getWorldTime() % 24000) : -1);
         sgp.setMultiplayerGame(true);
         sgp.setBroadcastingToLan(true);
         sgp.setXblBroadcastMode(GamePublishSetting.PUBLIC);
