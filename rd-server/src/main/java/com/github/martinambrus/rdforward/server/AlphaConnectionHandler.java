@@ -146,13 +146,14 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             // Silently accept (arm swing animation)
         } else if (packet instanceof PlayerInventoryPacket) {
             handleInventorySync((PlayerInventoryPacket) packet);
-        } else if (packet instanceof PickupSpawnPacket) {
-            // Give back dropped cobblestone immediately. Q-drops are single
-            // events that don't interfere with the client's input handling.
-            // Use the actual count from the packet (Q may drop a full stack).
-            int droppedCount = ((PickupSpawnPacket) packet).getCount() & 0xFF;
-            if (droppedCount < 1) droppedCount = 1;
-            giveItem(ctx, BlockRegistry.COBBLESTONE, droppedCount);
+        } else if (packet instanceof PickupSpawnPacket pickupSpawn) {
+            // Only replenish when the dropped item is cobblestone. Throwing
+            // other items (e.g. porkchops on v13/v14) should not give cobble.
+            if (pickupSpawn.getItemId() == BlockRegistry.COBBLESTONE) {
+                int droppedCount = pickupSpawn.getCount() & 0xFF;
+                if (droppedCount < 1) droppedCount = 1;
+                giveItem(ctx, BlockRegistry.COBBLESTONE, droppedCount);
+            }
         } else if (packet instanceof RespawnPacket) {
             handleRespawn(ctx);
         } else if (packet instanceof ClientStatusPacket) {

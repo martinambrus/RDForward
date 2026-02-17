@@ -4,6 +4,7 @@ import com.github.martinambrus.rdforward.bot.BotClient;
 import com.github.martinambrus.rdforward.bot.BotSession;
 import com.github.martinambrus.rdforward.bot.TestServer;
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
+import com.github.martinambrus.rdforward.protocol.packet.alpha.PickupSpawnPacket;
 import org.junit.jupiter.api.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -83,6 +84,31 @@ class PorkchopInventoryTest {
             Thread.sleep(500);
             assertEquals(0, session.getReceivedItemTotal(COOKED_PORKCHOP),
                     "v6 client should NOT receive porkchops");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void alphaV14ThrowingPorkchopDoesNotGiveCobblestone() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.ALPHA_1_0_16, "PorkThrow");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            // Wait for initial inventory: 64 cobble + 35 porkchops
+            assertTrue(session.waitForReceivedItemTotal(COBBLESTONE, 64, 5000),
+                    "Should receive 64 cobblestone");
+            assertTrue(session.waitForReceivedItemTotal(COOKED_PORKCHOP, 35, 5000),
+                    "Should receive 35 porkchops");
+
+            // Throw a porkchop (PickupSpawnPacket with porkchop item ID)
+            session.sendPacket(new PickupSpawnPacket(9999, COOKED_PORKCHOP, 1, 0, 0, 0));
+
+            // Brief wait to allow any erroneous replenishment to arrive
+            Thread.sleep(500);
+            assertEquals(64, session.getReceivedItemTotal(COBBLESTONE),
+                    "Throwing porkchop should NOT give extra cobblestone");
         } finally {
             bot.disconnect();
         }
