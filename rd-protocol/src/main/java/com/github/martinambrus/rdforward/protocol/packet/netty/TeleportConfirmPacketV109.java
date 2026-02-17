@@ -18,6 +18,10 @@ public class TeleportConfirmPacketV109 implements Packet {
 
     public TeleportConfirmPacketV109() {}
 
+    public TeleportConfirmPacketV109(int teleportId) {
+        this.teleportId = teleportId;
+    }
+
     @Override
     public int getPacketId() { return 0x00; }
 

@@ -148,4 +148,62 @@ class SpawnPositionTest {
             bot.disconnect();
         }
     }
+
+    @Test
+    void nettyV109SpawnFeetYIsCorrect() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_9_4, "SpawnV109Y");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            // V109 sends feet-level Y (same as V47).
+            assertEquals(43.0, session.getSpawnY(), 0.001,
+                    "V109 spawn Y should be feet-level 43.0");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void nettyV109BotIsOnGroundAfterSpawn() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_9_4, "SpawnV109Gnd");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            int blockX = (int) Math.floor(session.getX());
+            int blockZ = (int) Math.floor(session.getZ());
+            assertTrue(session.waitForChunkAt(blockX, blockZ, 5000),
+                    "Spawn chunk should be received");
+
+            assertTrue(session.isOnGround(),
+                    "V109 bot should be on ground after spawn");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void nettyV109FeetBlockIsAirAndBelowIsGrass() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_9_4, "SpawnV109Blk");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            // V109 Y is feet-level
+            int blockX = (int) Math.floor(session.getX());
+            int feetBlockY = (int) Math.floor(session.getY());
+            int blockZ = (int) Math.floor(session.getZ());
+
+            assertTrue(session.waitForChunkAt(blockX, blockZ, 5000),
+                    "Spawn chunk should be received");
+
+            assertEquals(0, session.getBlockAt(blockX, feetBlockY, blockZ),
+                    "Block at feet should be air (0)");
+            assertEquals(2, session.getBlockAt(blockX, feetBlockY - 1, blockZ),
+                    "Block below feet should be grass (2)");
+        } finally {
+            bot.disconnect();
+        }
+    }
 }

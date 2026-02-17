@@ -23,6 +23,8 @@ class CrossVersionSpawnTest {
             ProtocolVersion.RELEASE_1_5,    // Pre-Netty Release (eye-level Y)
             ProtocolVersion.RELEASE_1_7_6,  // Netty 1.7.x (eye-level Y)
             ProtocolVersion.RELEASE_1_8,    // Netty 1.8 (feet-level Y)
+            ProtocolVersion.RELEASE_1_9_4,  // Netty 1.9 (feet-level Y, paletted chunks)
+            ProtocolVersion.RELEASE_1_12_2, // Netty 1.12.2 (Long keepalive, same chunks)
     };
 
     @BeforeAll

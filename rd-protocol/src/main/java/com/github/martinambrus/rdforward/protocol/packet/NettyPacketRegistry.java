@@ -28,6 +28,9 @@ public class NettyPacketRegistry {
     /** V47 overlay: C2S packets that differ in 1.8. Checked first for v47+ clients. */
     private static final Map<String, PacketFactory> REGISTRY_V47 = new HashMap<String, PacketFactory>();
 
+    /** V108 overlay: S2C packets with changed wire formats in 1.9.1+ (dimension byte→int). */
+    private static final Map<String, PacketFactory> REGISTRY_V108 = new HashMap<String, PacketFactory>();
+
     /** V109 overlay: C2S packets with remapped IDs for 1.9+. Checked first for v107+ clients. */
     private static final Map<String, PacketFactory> REGISTRY_V109 = new HashMap<String, PacketFactory>();
 
@@ -549,6 +552,37 @@ public class NettyPacketRegistry {
         // === V340 (1.12.2) C2S overlay — KeepAlive changed from VarInt to Long ===
         registerV340C2S(0x0B, new PacketFactory() { public Packet create() { return new KeepAlivePacketV340(); } });
 
+        // === V109 (1.9) PLAY state S2C forward entries (for bot decoder, v107+) ===
+        registerV109S2C(0x05, new PacketFactory() { public Packet create() { return new NettySpawnPlayerPacketV109(); } });
+        registerV109S2C(0x0B, new PacketFactory() { public Packet create() { return new NettyBlockChangePacketV47(); } });
+        registerV109S2C(0x0F, new PacketFactory() { public Packet create() { return new NettyChatS2CPacketV47(); } });
+        registerV109S2C(0x1A, new PacketFactory() { public Packet create() { return new NettyDisconnectPacket(); } });
+        registerV109S2C(0x1D, new PacketFactory() { public Packet create() { return new UnloadChunkPacketV109(); } });
+        registerV109S2C(0x1F, new PacketFactory() { public Packet create() { return new KeepAlivePacketV47(); } });
+        registerV109S2C(0x20, new PacketFactory() { public Packet create() { return new MapChunkPacketV109(); } });
+        registerV109S2C(0x23, new PacketFactory() { public Packet create() { return new JoinGamePacketV47(); } });
+        registerV109S2C(0x2B, new PacketFactory() { public Packet create() { return new PlayerAbilitiesPacketV73(); } });
+        registerV109S2C(0x2E, new PacketFactory() { public Packet create() { return new NettyPlayerPositionS2CPacketV109(); } });
+        registerV109S2C(0x30, new PacketFactory() { public Packet create() { return new NettyDestroyEntitiesPacketV47(); } });
+        registerV109S2C(0x43, new PacketFactory() { public Packet create() { return new SpawnPositionPacketV47(); } });
+
+        // === V108 (1.9.1) S2C forward entry — JoinGame dimension byte→int ===
+        registerV108S2C(0x23, new PacketFactory() { public Packet create() { return new JoinGamePacketV108(); } });
+
+        // === V338 (1.12.1) S2C forward entry — PlayerPosition shifted by PlaceGhostRecipe ===
+        registerV338S2C(0x2F, new PacketFactory() { public Packet create() { return new NettyPlayerPositionS2CPacketV109(); } });
+
+        // === V340 (1.12.2) S2C forward entry — KeepAlive changed to Long ===
+        registerV340S2C(0x1F, new PacketFactory() { public Packet create() { return new KeepAlivePacketV340(); } });
+
+        // === V109 C2S reverse map entries (for bot encoder lookup, v107+ clients) ===
+        registerV109C2SReverse(TeleportConfirmPacketV109.class, 0x00);
+        registerV109C2SReverse(NettyChatC2SPacket.class, 0x02);
+        registerV109C2SReverse(KeepAlivePacketV47.class, 0x0B);
+        registerV109C2SReverse(PlayerDiggingPacketV47.class, 0x13);
+        registerV109C2SReverse(NettyBlockPlacementPacketV109.class, 0x1C);
+        registerV109C2SReverse(KeepAlivePacketV340.class, 0x0B);
+
         // === V335 (1.12) S2C reverse map overlay (delta from V110) ===
         // 3 new S2C packets (Recipe 0x30, SelectAdvancementsTab 0x36, UpdateAdvancements 0x4C)
         // shift entity movement +1, DestroyEntities +1, SpawnPosition +2, EntityTeleport +2, EntityProperties +3.
@@ -630,6 +664,26 @@ public class NettyPacketRegistry {
         REVERSE_V338.put(reverseKey(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, clazz), packetId);
     }
 
+    private static void registerV109S2C(int packetId, PacketFactory factory) {
+        REGISTRY_V109.put(key(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, packetId), factory);
+    }
+
+    private static void registerV108S2C(int packetId, PacketFactory factory) {
+        REGISTRY_V108.put(key(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, packetId), factory);
+    }
+
+    private static void registerV338S2C(int packetId, PacketFactory factory) {
+        REGISTRY_V338.put(key(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, packetId), factory);
+    }
+
+    private static void registerV340S2C(int packetId, PacketFactory factory) {
+        REGISTRY_V340.put(key(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, packetId), factory);
+    }
+
+    private static void registerV109C2SReverse(Class<? extends Packet> clazz, int packetId) {
+        REVERSE_V109.put(reverseKey(ConnectionState.PLAY, PacketDirection.CLIENT_TO_SERVER, clazz), packetId);
+    }
+
     private static void registerS2CReverse(Class<? extends Packet> clazz, int packetId) {
         REVERSE.put(reverseKey(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, clazz), packetId);
     }
@@ -677,6 +731,13 @@ public class NettyPacketRegistry {
         if (protocolVersion >= 315) {
             String k = key(state, direction, packetId);
             PacketFactory factory = REGISTRY_V315.get(k);
+            if (factory != null) {
+                return factory.create();
+            }
+        }
+        if (protocolVersion >= 108) {
+            String k = key(state, direction, packetId);
+            PacketFactory factory = REGISTRY_V108.get(k);
             if (factory != null) {
                 return factory.create();
             }

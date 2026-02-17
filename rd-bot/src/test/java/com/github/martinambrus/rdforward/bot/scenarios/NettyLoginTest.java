@@ -35,9 +35,19 @@ class NettyLoginTest {
 
     @ParameterizedTest(name = "{0}")
     @EnumSource(value = ProtocolVersion.class, names = {
-            "RELEASE_1_7_2", // v4 (Netty rewrite)
-            "RELEASE_1_7_6", // v5 (property list in SpawnPlayer)
-            "RELEASE_1_8"    // v47 (packed positions, VarInt entity IDs)
+            "RELEASE_1_7_2",  // v4 (Netty rewrite)
+            "RELEASE_1_7_6",  // v5 (property list in SpawnPlayer)
+            "RELEASE_1_8",    // v47 (packed positions, VarInt entity IDs)
+            "RELEASE_1_9",    // v107 (paletted chunks, teleportId)
+            "RELEASE_1_9_1",  // v108 (JoinGame int dimension)
+            "RELEASE_1_9_2",  // v109
+            "RELEASE_1_9_4",  // v110 (blockEntityCount in chunks)
+            "RELEASE_1_10",   // v210
+            "RELEASE_1_11",   // v315 (block placement float cursors)
+            "RELEASE_1_11_2", // v316
+            "RELEASE_1_12",   // v335 (C2S reshuffled)
+            "RELEASE_1_12_1", // v338 (PlaceGhostRecipe shifts S2C)
+            "RELEASE_1_12_2"  // v340 (Long keepalive)
     })
     void nettyLoginSucceeds(ProtocolVersion version) throws Exception {
         BotClient bot = testServer.createBot(version, "Netty_" + version.name());

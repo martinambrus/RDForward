@@ -68,15 +68,23 @@ public class MapChunkPacketV109 implements Packet {
         int dataSize = McDataTypes.readVarInt(buf);
         data = new byte[dataSize];
         buf.readBytes(data);
-        int blockEntityCount = McDataTypes.readVarInt(buf);
-        // Skip block entity NBT
-        for (int i = 0; i < blockEntityCount; i++) {
-            // Each block entity is an NBT compound; skip it
-            while (buf.readableBytes() > 0) {
-                byte t = buf.readByte();
-                if (t == 0) break;
-                buf.skipBytes(buf.readUnsignedShort()); // name
+        // v110+ appends blockEntityCount + NBT; v107-v109 end here
+        if (buf.readableBytes() > 0) {
+            int blockEntityCount = McDataTypes.readVarInt(buf);
+            // Skip block entity NBT
+            for (int i = 0; i < blockEntityCount; i++) {
+                // Each block entity is an NBT compound; skip it
+                while (buf.readableBytes() > 0) {
+                    byte t = buf.readByte();
+                    if (t == 0) break;
+                    buf.skipBytes(buf.readUnsignedShort()); // name
+                }
             }
         }
     }
+
+    public int getChunkX() { return chunkX; }
+    public int getChunkZ() { return chunkZ; }
+    public int getPrimaryBitMask() { return primaryBitMask; }
+    public byte[] getData() { return data; }
 }

@@ -8,9 +8,12 @@ import com.github.martinambrus.rdforward.protocol.crypto.CipherEncoder;
 import com.github.martinambrus.rdforward.protocol.crypto.MinecraftCipher;
 import com.github.martinambrus.rdforward.protocol.packet.ConnectionState;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
+import com.github.martinambrus.rdforward.protocol.McDataTypes;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.KeepAlivePacketV17;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.MapChunkPacketV39;
 import com.github.martinambrus.rdforward.protocol.packet.netty.*;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 
@@ -81,6 +84,31 @@ public class BotNettyPacketHandler extends SimpleChannelInboundHandler<Packet> {
             setCodecState(ctx, ConnectionState.PLAY);
         }
         // --- Play state packets ---
+        // V108+ JoinGame (int dimension) — must be checked before V47
+        else if (packet instanceof JoinGamePacketV108 jgV108) {
+            session.recordLogin(jgV108.getEntityId());
+        }
+        // V109 PlayerPosition (has teleportId) — must be checked before V47
+        else if (packet instanceof NettyPlayerPositionS2CPacketV109 posV109) {
+            session.recordPosition(posV109.getX(), posV109.getY(), posV109.getZ(),
+                    posV109.getYaw(), posV109.getPitch());
+            ctx.writeAndFlush(new TeleportConfirmPacketV109(posV109.getTeleportId()));
+            if (!session.isLoginComplete()) {
+                session.markLoginComplete();
+            }
+        }
+        // V109 MapChunk (paletted sections) — must be checked before V47
+        else if (packet instanceof MapChunkPacketV109 mcV109) {
+            processV109Chunk(mcV109);
+        }
+        // V109 SpawnPlayer (double coords, 1.9 metadata) — must be checked before V47
+        else if (packet instanceof NettySpawnPlayerPacketV109 spV109) {
+            session.recordSpawnPlayer(spV109.getEntityId(), "v109_player");
+        }
+        // V340 KeepAlive (Long format) — must be checked before V47
+        else if (packet instanceof KeepAlivePacketV340 kaV340) {
+            ctx.writeAndFlush(new KeepAlivePacketV340(kaV340.getKeepAliveId()));
+        }
         // V47 variants must be checked BEFORE base (no inheritance)
         else if (packet instanceof JoinGamePacketV47 jgV47) {
             session.recordLogin(jgV47.getEntityId());
@@ -218,6 +246,81 @@ public class BotNettyPacketHandler extends SimpleChannelInboundHandler<Packet> {
                 blockIds[alphaIndex] = (byte) blockId;
             }
             offset += 8192;
+        }
+
+        session.recordChunkBlocks(packet.getChunkX(), packet.getChunkZ(), blockIds);
+    }
+
+    /**
+     * Parse V109 (1.9-1.12) paletted chunk data.
+     * Unpacks section palettes and data arrays into AlphaChunk YZX layout.
+     */
+    private void processV109Chunk(MapChunkPacketV109 packet) {
+        byte[] data = packet.getData();
+        int primaryBitMask = packet.getPrimaryBitMask();
+        byte[] blockIds = new byte[32768];
+        ByteBuf buf = Unpooled.wrappedBuffer(data);
+
+        try {
+            for (int section = 0; section < 16; section++) {
+                if ((primaryBitMask & (1 << section)) == 0) continue;
+                int baseY = section * 16;
+
+                int bitsPerBlock = buf.readUnsignedByte();
+                int paletteLength = McDataTypes.readVarInt(buf);
+
+                int[] palette = null;
+                if (paletteLength > 0) {
+                    palette = new int[paletteLength];
+                    for (int i = 0; i < paletteLength; i++) {
+                        palette[i] = McDataTypes.readVarInt(buf);
+                    }
+                }
+
+                int dataArrayLength = McDataTypes.readVarInt(buf);
+                long[] dataArray = new long[dataArrayLength];
+                for (int i = 0; i < dataArrayLength; i++) {
+                    dataArray[i] = buf.readLong();
+                }
+
+                // Unpack block states (entries span long boundaries in 1.9-1.12)
+                long mask = (1L << bitsPerBlock) - 1;
+                for (int i = 0; i < 4096; i++) {
+                    int bitIndex = i * bitsPerBlock;
+                    int longIndex = bitIndex / 64;
+                    int bitOffset = bitIndex % 64;
+
+                    int stateId;
+                    if (longIndex < dataArray.length) {
+                        stateId = (int) ((dataArray[longIndex] >>> bitOffset) & mask);
+                        if (bitOffset + bitsPerBlock > 64 && longIndex + 1 < dataArray.length) {
+                            int bitsInFirst = 64 - bitOffset;
+                            stateId |= (int) ((dataArray[longIndex + 1] << bitsInFirst) & mask);
+                        }
+                    } else {
+                        stateId = 0;
+                    }
+
+                    int blockId;
+                    if (palette != null && stateId < palette.length) {
+                        blockId = palette[stateId] >> 4;
+                    } else {
+                        blockId = stateId >> 4;
+                    }
+
+                    // Section YZX → AlphaChunk YZX
+                    int sy = (i >> 8) & 15;
+                    int sz = (i >> 4) & 15;
+                    int sx = i & 15;
+                    int alphaIndex = (baseY + sy) + sz * 128 + sx * 2048;
+                    blockIds[alphaIndex] = (byte) blockId;
+                }
+
+                // Skip blockLight (2048 bytes) + skyLight (2048 bytes)
+                buf.skipBytes(4096);
+            }
+        } finally {
+            buf.release();
         }
 
         session.recordChunkBlocks(packet.getChunkX(), packet.getChunkZ(), blockIds);
