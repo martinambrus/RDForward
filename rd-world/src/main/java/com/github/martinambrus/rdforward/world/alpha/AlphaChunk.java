@@ -749,6 +749,125 @@ public class AlphaChunk {
     }
 
     /**
+     * Serialize this chunk's data for the 1.13 (v393) MapChunkPacket.
+     *
+     * Same structure as v109 but with two key differences:
+     * 1. Global palette bitsPerBlock is 14 (was 13 in 1.9-1.12)
+     * 2. Palette entries use 1.13 global block state IDs from BlockStateMapper
+     *    instead of legacy {@code (blockId << 4) | metadata}
+     * 3. Biome data is int[256] (4 bytes each) instead of byte[256]
+     *
+     * @return V109ChunkData with raw (uncompressed) data and primaryBitMask
+     */
+    public V109ChunkData serializeForV393Protocol() {
+        // Determine which sections (0-7) contain non-air blocks.
+        int primaryBitMask = 0;
+        for (int section = 0; section < 8; section++) {
+            int baseY = section * 16;
+            boolean hasBlocks = false;
+            for (int x = 0; x < WIDTH && !hasBlocks; x++) {
+                for (int z = 0; z < DEPTH && !hasBlocks; z++) {
+                    for (int ly = 0; ly < 16; ly++) {
+                        if (getBlock(x, baseY + ly, z) != 0) {
+                            hasBlocks = true;
+                        }
+                    }
+                }
+            }
+            if (hasBlocks) {
+                primaryBitMask |= (1 << section);
+            }
+        }
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(16384);
+
+        for (int section = 0; section < 8; section++) {
+            if ((primaryBitMask & (1 << section)) == 0) continue;
+            int baseY = section * 16;
+
+            // Use global palette mode (bitsPerBlock=14 for 1.13+)
+            int bitsPerBlock = 14;
+
+            // Write bitsPerBlock
+            baos.write(bitsPerBlock);
+
+            // Write empty palette (global palette mode: VarInt(0))
+            writeVarIntToStream(baos, 0);
+
+            // Convert legacy block IDs to 1.13 global block state IDs
+            // and pack into longs. 1.13 uses spanning packing (same as 1.9-1.12):
+            // entries CAN cross long boundaries. Non-spanning was introduced in 1.16.
+            int totalBits = 4096 * bitsPerBlock;
+            int longsNeeded = (totalBits + 63) / 64;
+            long[] dataArray = new long[longsNeeded];
+
+            long mask = (1L << bitsPerBlock) - 1;
+            for (int ly = 0; ly < 16; ly++) {
+                for (int z = 0; z < DEPTH; z++) {
+                    for (int x = 0; x < WIDTH; x++) {
+                        int blockId = getBlock(x, baseY + ly, z);
+                        long stateId = com.github.martinambrus.rdforward.protocol
+                                .BlockStateMapper.toV393BlockState(blockId);
+                        int i = (ly * 16 + z) * 16 + x;
+                        int bitIndex = i * bitsPerBlock;
+                        int longIndex = bitIndex / 64;
+                        int bitOffset = bitIndex % 64;
+                        dataArray[longIndex] |= (stateId & mask) << bitOffset;
+                        if (bitOffset + bitsPerBlock > 64) {
+                            int bitsInFirst = 64 - bitOffset;
+                            dataArray[longIndex + 1] |= (stateId & mask) >> bitsInFirst;
+                        }
+                    }
+                }
+            }
+
+            // Write dataArrayLength + data
+            writeVarIntToStream(baos, longsNeeded);
+            for (int i = 0; i < longsNeeded; i++) {
+                writeLongToStream(baos, dataArray[i]);
+            }
+
+            // Write block light nibbles (2048 bytes)
+            for (int ly = 0; ly < 16; ly++) {
+                for (int z = 0; z < DEPTH; z++) {
+                    for (int x = 0; x < WIDTH; x += 2) {
+                        int low = getBlockLight(x, baseY + ly, z) & 0x0F;
+                        int high = getBlockLight(x + 1, baseY + ly, z) & 0x0F;
+                        baos.write(low | (high << 4));
+                    }
+                }
+            }
+
+            // Write sky light nibbles (2048 bytes)
+            for (int ly = 0; ly < 16; ly++) {
+                for (int z = 0; z < DEPTH; z++) {
+                    for (int x = 0; x < WIDTH; x += 2) {
+                        int low = getSkyLight(x, baseY + ly, z) & 0x0F;
+                        int high = getSkyLight(x + 1, baseY + ly, z) & 0x0F;
+                        baos.write(low | (high << 4));
+                    }
+                }
+            }
+        }
+
+        // Biome data: int[256] (4 bytes each, all plains=1)
+        // 1.13 changed biomes from byte[256] to int[256]
+        for (int i = 0; i < 256; i++) {
+            writeIntToStream(baos, 1); // plains biome
+        }
+
+        return new V109ChunkData(baos.toByteArray(), primaryBitMask);
+    }
+
+    /** Write a big-endian int to a ByteArrayOutputStream. */
+    private static void writeIntToStream(ByteArrayOutputStream out, int value) {
+        out.write((value >> 24) & 0xFF);
+        out.write((value >> 16) & 0xFF);
+        out.write((value >> 8) & 0xFF);
+        out.write(value & 0xFF);
+    }
+
+    /**
      * Result container for v28 chunk serialization.
      */
     public static class V28ChunkData {

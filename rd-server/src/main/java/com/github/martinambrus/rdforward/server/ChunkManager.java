@@ -398,7 +398,17 @@ public class ChunkManager {
      * v47 (1.8) uses ushort blockStates and no compression.
      */
     private void sendChunkToPlayer(ConnectedPlayer player, AlphaChunk chunk) {
-        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_9)) {
+        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_13)) {
+            // v393: same wire structure as v109 but with 1.13 global block state IDs,
+            // 14-bit global palette, and int[256] biomes
+            AlphaChunk.V109ChunkData v393Data = chunk.serializeForV393Protocol();
+            player.sendPacket(new MapChunkPacketV109(
+                chunk.getXPos(), chunk.getZPos(), true,
+                v393Data.getPrimaryBitMask(),
+                v393Data.getRawData(),
+                true // writeBlockEntityCount (always for 1.9.4+)
+            ));
+        } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_9)) {
             // v109: paletted sections, VarInt primaryBitMask
             // v110 (1.9.4) adds block entity count at end; v107-v109 do not
             AlphaChunk.V109ChunkData v109Data = chunk.serializeForV109Protocol();

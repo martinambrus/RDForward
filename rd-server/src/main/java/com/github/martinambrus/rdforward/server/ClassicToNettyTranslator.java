@@ -1,5 +1,6 @@
 package com.github.martinambrus.rdforward.server;
 
+import com.github.martinambrus.rdforward.protocol.BlockStateMapper;
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.*;
@@ -51,6 +52,7 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
     }
 
     private Packet translate(Packet packet) {
+        boolean isV393 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13);
         boolean isV109 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_9);
         boolean isV47 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8);
 
@@ -80,6 +82,10 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
 
         if (packet instanceof SetBlockServerPacket) {
             SetBlockServerPacket sb = (SetBlockServerPacket) packet;
+            if (isV393) {
+                return new NettyBlockChangePacketV393(sb.getX(), sb.getY(), sb.getZ(),
+                        BlockStateMapper.toV393BlockState(sb.getBlockType()));
+            }
             if (isV47) {
                 return new NettyBlockChangePacketV47(sb.getX(), sb.getY(), sb.getZ(),
                         sb.getBlockType(), 0);

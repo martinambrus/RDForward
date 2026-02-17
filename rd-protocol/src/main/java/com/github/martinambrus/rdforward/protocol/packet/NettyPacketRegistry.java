@@ -712,6 +712,7 @@ public class NettyPacketRegistry {
         registerV393S2CReverse(UpdateTagsPacketV393.class, 0x55);
         // SpawnPlayer 0x05 is UNCHANGED from V338
         registerV393S2CReverse(NettySpawnPlayerPacketV109.class, 0x05);
+        registerV393S2CReverse(NettyPluginMessageS2CPacketV393.class, 0x19);
 
         // === V393 (1.13) C2S reverse map entries (for bot encoder) ===
         registerV393C2SReverse(NettyChatC2SPacket.class, 0x02);

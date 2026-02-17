@@ -15,6 +15,7 @@ import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerP
 import com.github.martinambrus.rdforward.protocol.packet.netty.*;
 import com.github.martinambrus.rdforward.server.api.CommandRegistry;
 import com.github.martinambrus.rdforward.server.event.ServerEvents;
+import com.github.martinambrus.rdforward.protocol.BlockStateMapper;
 import com.github.martinambrus.rdforward.world.BlockRegistry;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -150,7 +151,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
         String versionName;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_12)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13)) {
+            versionName = "1.13.1";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_12)) {
             versionName = "1.12.2";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_11)) {
             versionName = "1.11.2";
@@ -328,6 +331,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
+        boolean isV393 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13);
         boolean isV109 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_9);
         boolean isV47 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8);
         int entityId = player.getPlayerId() + 1;
@@ -346,6 +350,20 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         } else {
             ctx.writeAndFlush(new JoinGamePacket(entityId, 1, 0, 0,
                     20, "default"));
+        }
+
+        // 1.13+: Send mandatory DeclareCommands, UpdateRecipes, UpdateTags, Brand
+        if (isV393) {
+            ctx.writeAndFlush(new DeclareCommandsPacketV393());
+            ctx.writeAndFlush(new UpdateRecipesPacketV393());
+            ctx.writeAndFlush(new UpdateTagsPacketV393());
+            // Brand plugin message — 1.13 client NPEs without it
+            byte[] brand = "RDForward".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            byte[] brandData = new byte[brand.length + 1];
+            brandData[0] = (byte) brand.length;
+            System.arraycopy(brand, 0, brandData, 1, brand.length);
+            ctx.writeAndFlush(new NettyPluginMessageS2CPacketV393(
+                    "minecraft:brand", brandData));
         }
 
         // Send PlayerAbilities (creative: invulnerable + allowFlying + creative = 0x0D)
@@ -496,7 +514,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         playerManager.broadcastPlayerSpawn(player);
 
         // Give 1 cobblestone for right-click
-        if (isV47) {
+        if (isV393) {
+            ctx.writeAndFlush(new NettySetSlotPacketV393(0, 36,
+                    BlockStateMapper.toV393ItemId(BlockRegistry.COBBLESTONE), 1));
+        } else if (isV47) {
             ctx.writeAndFlush(new NettySetSlotPacketV47(0, 36, BlockRegistry.COBBLESTONE, 1, 0));
         } else {
             ctx.writeAndFlush(new NettySetSlotPacket(0, 36, BlockRegistry.COBBLESTONE, 1, 0));
@@ -844,7 +865,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void sendBlockChange(ChannelHandlerContext ctx, int x, int y, int z,
                                   int blockType, int metadata) {
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13)) {
+            ctx.writeAndFlush(new NettyBlockChangePacketV393(x, y, z,
+                    BlockStateMapper.toV393BlockState(blockType)));
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
             ctx.writeAndFlush(new NettyBlockChangePacketV47(x, y, z, blockType, metadata));
         } else {
             ctx.writeAndFlush(new NettyBlockChangePacket(x, y, z, blockType, metadata));
