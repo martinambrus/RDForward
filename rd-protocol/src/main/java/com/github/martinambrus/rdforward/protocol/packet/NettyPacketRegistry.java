@@ -828,7 +828,7 @@ public class NettyPacketRegistry {
         registerV477C2S(0x17, noOpFactory); // PickItem
         registerV477C2S(0x18, noOpFactory); // PlaceRecipe
         registerV477C2S(0x19, new PacketFactory() { public Packet create() { return new PlayerAbilitiesPacketV73(); } });
-        registerV477C2S(0x1A, new PacketFactory() { public Packet create() { return new PlayerDiggingPacketV47(); } });
+        registerV477C2S(0x1A, new PacketFactory() { public Packet create() { return new PlayerDiggingPacketV477(); } });
         registerV477C2S(0x1B, new PacketFactory() { public Packet create() { return new NettyEntityActionPacketV47(); } });
         registerV477C2S(0x1C, new PacketFactory() { public Packet create() { return new NettySteerVehiclePacketV47(); } });
         registerV477C2S(0x1D, noOpFactory); // RecipeBookUpdate
@@ -869,11 +869,11 @@ public class NettyPacketRegistry {
         registerV477S2CReverse(NettyDestroyEntitiesPacketV47.class, 0x37);
         registerV477S2CReverse(SetChunkCacheCenterPacketV477.class, 0x40);
         registerV477S2CReverse(SetChunkCacheRadiusPacketV477.class, 0x41);
-        registerV477S2CReverse(SpawnPositionPacketV47.class, 0x4D);
+        registerV477S2CReverse(SpawnPositionPacketV477.class, 0x4D);
         registerV477S2CReverse(EntityTeleportPacketV109.class, 0x56);
         registerV477S2CReverse(NettyEntityPropertiesPacketV47.class, 0x58);
-        registerV477S2CReverse(NettySpawnPlayerPacketV109.class, 0x05);
-        registerV477S2CReverse(NettyBlockChangePacketV393.class, 0x0B);
+        registerV477S2CReverse(NettySpawnPlayerPacketV477.class, 0x05);
+        registerV477S2CReverse(NettyBlockChangePacketV477.class, 0x0B);
         registerV477S2CReverse(NettyChatS2CPacketV47.class, 0x0E);
         registerV477S2CReverse(DeclareCommandsPacketV393.class, 0x11);
         registerV477S2CReverse(ConfirmTransactionPacket.class, 0x12);
@@ -918,7 +918,7 @@ public class NettyPacketRegistry {
         // === V477 (1.14) C2S reverse map entries (for bot encoder) ===
         registerV477C2SReverse(NettyChatC2SPacket.class, 0x03);
         registerV477C2SReverse(KeepAlivePacketV340.class, 0x0F);
-        registerV477C2SReverse(PlayerDiggingPacketV47.class, 0x1A);
+        registerV477C2SReverse(PlayerDiggingPacketV477.class, 0x1A);
         registerV477C2SReverse(NettyBlockPlacementPacketV477.class, 0x2C);
     }
 

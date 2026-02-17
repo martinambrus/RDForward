@@ -42,7 +42,7 @@ public class NettyBlockPlacementPacketV477 implements Packet, BlockPlacementData
     @Override
     public void write(ByteBuf buf) {
         McDataTypes.writeVarInt(buf, 0); // main hand
-        McDataTypes.writePosition(buf, x, y, z);
+        McDataTypes.writePositionV477(buf, x, y, z);
         McDataTypes.writeVarInt(buf, face);
         buf.writeFloat(0); // cursorX
         buf.writeFloat(0); // cursorY
@@ -53,7 +53,7 @@ public class NettyBlockPlacementPacketV477 implements Packet, BlockPlacementData
     @Override
     public void read(ByteBuf buf) {
         McDataTypes.readVarInt(buf); // hand
-        int[] pos = McDataTypes.readPosition(buf);
+        int[] pos = McDataTypes.readPositionV477(buf);
         x = pos[0];
         y = pos[1];
         z = pos[2];

@@ -186,6 +186,10 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
             }
         }
 
+        // Tab list ADD must precede SpawnPlayer for 1.8+ clients (they resolve player
+        // name from tab list by UUID and silently drop SpawnPlayer otherwise).
+        playerManager.broadcastPlayerListAdd(player);
+
         // Broadcast new player's spawn to everyone else
         playerManager.broadcastPlayerSpawn(player);
 

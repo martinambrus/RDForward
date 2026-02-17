@@ -395,7 +395,7 @@ public final class McDataTypes {
     }
 
     /**
-     * Read a packed Position long (1.8+ format).
+     * Read a packed Position long (1.8-1.13 format).
      * Returns int[3] = {x, y, z} with sign extension for x and z.
      */
     public static int[] readPosition(ByteBuf buf) {
@@ -403,6 +403,29 @@ public final class McDataTypes {
         int x = (int)(val >> 38);
         int y = (int)((val >> 26) & 0xFFF);
         int z = (int)(val << 38 >> 38); // sign-extend 26-bit z
+        return new int[]{x, y, z};
+    }
+
+    /**
+     * Write a packed Position long (1.14+ format).
+     * Bit layout: x (26 bits, signed) | z (26 bits, signed) | y (12 bits, signed)
+     * Encoded as: ((x & 0x3FFFFFF) << 38) | ((z & 0x3FFFFFF) << 12) | (y & 0xFFF)
+     */
+    public static void writePositionV477(ByteBuf buf, int x, int y, int z) {
+        long val = ((long)(x & 0x3FFFFFF) << 38) | ((long)(z & 0x3FFFFFF) << 12) | (y & 0xFFF);
+        buf.writeLong(val);
+    }
+
+    /**
+     * Read a packed Position long (1.14+ format).
+     * Bit layout changed from 1.8: y moved to bottom 12 bits, z moved to bits 12-37.
+     * Returns int[3] = {x, y, z} with sign extension for x and z.
+     */
+    public static int[] readPositionV477(ByteBuf buf) {
+        long val = buf.readLong();
+        int x = (int)(val >> 38);
+        int z = (int)(val << 26 >> 38); // sign-extend 26-bit z from bits 12-37
+        int y = (int)(val & 0xFFF);
         return new int[]{x, y, z};
     }
 

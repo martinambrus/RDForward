@@ -455,7 +455,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         int spawnBlockX = (int) Math.floor(spawnX);
         int spawnBlockY = (int) Math.floor(spawnY);
         int spawnBlockZ = (int) Math.floor(spawnZ);
-        if (isV47) {
+        if (isV477) {
+            ctx.writeAndFlush(new SpawnPositionPacketV477(spawnBlockX, spawnBlockY, spawnBlockZ));
+        } else if (isV47) {
             ctx.writeAndFlush(new SpawnPositionPacketV47(spawnBlockX, spawnBlockY, spawnBlockZ));
         } else {
             ctx.writeAndFlush(new SpawnPositionPacket(spawnBlockX, spawnBlockY, spawnBlockZ));
@@ -518,9 +520,16 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                     double ez = existing.getZ() / 32.0;
                     ctx.writeAndFlush(NettyPlayerListItemPacketV47.addPlayer(
                             existingUuid, existing.getUsername(), 1, 0));
-                    ctx.writeAndFlush(new NettySpawnPlayerPacketV109(
-                            existingEntityId, existingUuid, ex, ey, ez,
-                            alphaYaw, pitch));
+                    // 1.14 removed entity metadata from SpawnPlayer
+                    if (isV477) {
+                        ctx.writeAndFlush(new NettySpawnPlayerPacketV477(
+                                existingEntityId, existingUuid, ex, ey, ez,
+                                alphaYaw, pitch));
+                    } else {
+                        ctx.writeAndFlush(new NettySpawnPlayerPacketV109(
+                                existingEntityId, existingUuid, ex, ey, ez,
+                                alphaYaw, pitch));
+                    }
                 } else if (isV47) {
                     // 1.8: PlayerListItem ADD before SpawnPlayer (fixed-point coords)
                     int existingFeetY = (int) existing.getY() - PLAYER_EYE_HEIGHT_FIXED;
@@ -636,6 +645,8 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             handleLook(ctx, (PlayerLookPacket) packet);
         } else if (packet instanceof PlayerOnGroundPacket) {
             // No-op
+        } else if (packet instanceof PlayerDiggingPacketV477) {
+            handleDiggingV477(ctx, (PlayerDiggingPacketV477) packet);
         } else if (packet instanceof PlayerDiggingPacketV47) {
             handleDiggingV47(ctx, (PlayerDiggingPacketV47) packet);
         } else if (packet instanceof PlayerDiggingPacket) {
@@ -739,6 +750,26 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 new PlayerTeleportPacket(player.getPlayerId(),
                         fixedX, fixedY, fixedZ, byteYaw & 0xFF, bytePitch & 0xFF),
                 player);
+    }
+
+    private void handleDiggingV477(ChannelHandlerContext ctx, PlayerDiggingPacketV477 packet) {
+        if (player == null) return;
+
+        if (packet.getStatus() == PlayerDiggingPacketV477.STATUS_STARTED
+                || packet.getStatus() == PlayerDiggingPacketV477.STATUS_FINISHED) {
+            int x = packet.getX();
+            int y = packet.getY();
+            int z = packet.getZ();
+            if (!world.inBounds(x, y, z)) return;
+            byte existingBlock = world.getBlock(x, y, z);
+            if (existingBlock == 0) return;
+
+            EventResult result = ServerEvents.BLOCK_BREAK.invoker()
+                    .onBlockBreak(player.getUsername(), x, y, z, existingBlock & 0xFF);
+            if (result == EventResult.CANCEL) return;
+
+            world.queueBlockChange(x, y, z, (byte) 0);
+        }
     }
 
     private void handleDiggingV47(ChannelHandlerContext ctx, PlayerDiggingPacketV47 packet) {
@@ -942,7 +973,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void sendBlockChange(ChannelHandlerContext ctx, int x, int y, int z,
                                   int blockType, int metadata) {
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_14)) {
+            ctx.writeAndFlush(new NettyBlockChangePacketV477(x, y, z,
+                    BlockStateMapper.toV393BlockState(blockType)));
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13)) {
             ctx.writeAndFlush(new NettyBlockChangePacketV393(x, y, z,
                     BlockStateMapper.toV393BlockState(blockType)));
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {

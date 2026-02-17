@@ -605,6 +605,10 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             }
         }
 
+        // Tab list ADD must precede SpawnPlayer for 1.8+ clients (they resolve player
+        // name from tab list by UUID and silently drop SpawnPlayer otherwise).
+        playerManager.broadcastPlayerListAdd(player);
+
         // Broadcast new player's spawn to everyone else (as Classic packet, translator converts)
         playerManager.broadcastPlayerSpawn(player);
 
@@ -672,7 +676,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 + ", ID " + player.getPlayerId()
                 + ", " + playerManager.getPlayerCount() + " online)");
 
-        // Send existing tab list entries to the new player, and broadcast new entry to all v17+
+        // Send existing tab list entries to the new player (broadcast already sent above)
         if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
             for (ConnectedPlayer existing : playerManager.getAllPlayers()) {
                 if (existing != player) {
@@ -680,7 +684,6 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 }
             }
         }
-        playerManager.broadcastPlayerListAdd(player);
 
         playerManager.broadcastChat((byte) 0, player.getUsername() + " joined the game");
         ServerEvents.PLAYER_JOIN.invoker().onPlayerJoin(player.getUsername(), clientVersion);

@@ -252,6 +252,10 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         // after the client has loaded chunks. Sending AddPlayerPacket before chunks
         // are loaded causes the client to silently discard the entities.
 
+        // Tab list ADD must precede SpawnPlayer for 1.8+ clients (they resolve player
+        // name from tab list by UUID and silently drop SpawnPlayer otherwise).
+        playerManager.broadcastPlayerListAdd(player);
+
         // Broadcast new player spawn to everyone else (Classic packet, translators convert).
         // This is fine early — other clients already have their chunks loaded.
         playerManager.broadcastPlayerSpawn(player);
