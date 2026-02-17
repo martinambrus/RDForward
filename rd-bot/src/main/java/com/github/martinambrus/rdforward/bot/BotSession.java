@@ -8,6 +8,8 @@ import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlaceme
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlacementPacketV109;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlacementPacketV315;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyChatC2SPacket;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettyWindowClickPacket;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettyWindowClickPacketV47;
 import com.github.martinambrus.rdforward.protocol.packet.netty.PlayerDiggingPacketV47;
 import io.netty.channel.Channel;
 import org.cloudburstmc.math.vector.Vector3f;
@@ -509,6 +511,107 @@ public class BotSession {
         } else {
             sendPacket(new PlayerDiggingPacket(status, x, y, z, face));
         }
+    }
+
+    // ---- Inventory action counter ----
+    private final AtomicInteger actionNumberCounter = new AtomicInteger(0);
+
+    /**
+     * Send a WindowClick packet for the player's inventory (window 0).
+     * Auto-increments the action number.
+     *
+     * @param slot   slot index (-999 for outside window)
+     * @param button mouse button (0=left, 1=right)
+     * @param mode   click mode (0=normal, 4=drop)
+     * @return the action number used
+     */
+    public int sendWindowClick(int slot, int button, int mode) {
+        int actionNum = actionNumberCounter.incrementAndGet();
+        if (version == ProtocolVersion.BEDROCK) {
+            return actionNum; // No-op for Bedrock
+        }
+        if (version.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+            sendPacket(new NettyWindowClickPacketV47(0, slot, button, actionNum, mode));
+        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_7_2)) {
+            sendPacket(new NettyWindowClickPacket(0, slot, button, actionNum, mode));
+        } else if (version.isAtLeast(ProtocolVersion.BETA_1_5)) {
+            // Beta 1.5+ with shift byte
+            WindowClickPacketBeta15 pkt = new WindowClickPacketBeta15();
+            // Use write-only constructor pattern via the packet's write method
+            sendPacket(createBeta15WindowClick(0, slot, button, actionNum, mode == 1 ? 1 : 0));
+        } else if (version.isAtLeast(ProtocolVersion.BETA_1_0)) {
+            sendPacket(createBasicWindowClick(0, slot, button, actionNum));
+        }
+        // Alpha v1-v6: no WindowClick packet
+        return actionNum;
+    }
+
+    /**
+     * Send a CloseWindow packet (window 0 = player inventory).
+     */
+    public void sendCloseWindow(int windowId) {
+        if (version == ProtocolVersion.BEDROCK) return;
+        sendPacket(new CloseWindowPacket());
+    }
+
+    /**
+     * Wait for a ConfirmTransaction S2C packet matching the given action number.
+     * Returns the accepted boolean, or null on timeout.
+     */
+    public Boolean waitForConfirmTransaction(int actionNum, long timeoutMs)
+            throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            for (Packet p : receivedPackets) {
+                if (p instanceof ConfirmTransactionPacket ct) {
+                    if (ct.getActionNum() == actionNum) {
+                        return ct.isAccepted();
+                    }
+                }
+            }
+            Thread.sleep(50);
+        }
+        return null;
+    }
+
+    /**
+     * Bulk-update slot tracking from a WindowItems packet.
+     */
+    void recordWindowItems(short[] itemIds, byte[] counts) {
+        if (itemIds == null) return;
+        for (int i = 0; i < itemIds.length && i < slotItemIds.length; i++) {
+            slotItemIds[i] = itemIds[i];
+            slotCounts[i] = counts != null && i < counts.length ? counts[i] & 0xFF : 0;
+        }
+    }
+
+    private WindowClickPacket createBasicWindowClick(int windowId, int slot, int button, int actionNum) {
+        // Create a WindowClickPacket by making use of its write/read format
+        io.netty.buffer.ByteBuf buf = io.netty.buffer.Unpooled.buffer();
+        buf.writeByte(windowId);
+        buf.writeShort(slot);
+        buf.writeByte(button);
+        buf.writeShort(actionNum);
+        buf.writeShort(-1); // empty item
+        WindowClickPacket pkt = new WindowClickPacket();
+        pkt.read(buf);
+        buf.release();
+        return pkt;
+    }
+
+    private WindowClickPacketBeta15 createBeta15WindowClick(int windowId, int slot, int button,
+                                                             int actionNum, int shift) {
+        io.netty.buffer.ByteBuf buf = io.netty.buffer.Unpooled.buffer();
+        buf.writeByte(windowId);
+        buf.writeShort(slot);
+        buf.writeByte(button);
+        buf.writeShort(actionNum);
+        buf.writeByte(shift);
+        buf.writeShort(-1); // empty item
+        WindowClickPacketBeta15 pkt = new WindowClickPacketBeta15();
+        pkt.read(buf);
+        buf.release();
+        return pkt;
     }
 
     // ---- Getters ----

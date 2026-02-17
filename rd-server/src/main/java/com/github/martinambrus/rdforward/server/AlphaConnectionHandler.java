@@ -162,12 +162,9 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 handleRespawn(ctx);
             }
         } else if (packet instanceof WindowClickPacket) {
-            // Silently accept — cobblestone replenishment happens on CloseWindow
+            handleWindowClick(ctx, (WindowClickPacket) packet);
         } else if (packet instanceof CloseWindowPacket) {
-            // Player closed inventory. Reset entire inventory to just 64
-            // cobblestone in hotbar slot 0. Using WindowItems clears any
-            // cobblestone the player moved to other slots during the session
-            // (SetSlot alone would leave those copies intact).
+            handleCloseWindow(ctx);
             // v17+ creative mode manages inventory natively, no reset needed.
             if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)
                     && !clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
@@ -597,16 +594,22 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         loginComplete = true;
 
+        // Initialize inventory adapter tracking
+        InventoryAdapter adapter = playerManager.getInventoryAdapter();
+        adapter.initPlayer(player.getUsername());
+
         // Beta 1.8+ has native creative mode — no cobblestone replenishment needed.
         // Give 1 cobblestone so right-click works immediately without opening
         // the creative inventory first.
         // Earlier versions need survival-mode hacks for block placement.
         if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
             giveItem(ctx, BlockRegistry.COBBLESTONE, 1);
+            adapter.setSlot(player.getUsername(), 36, BlockRegistry.COBBLESTONE, 1, 0);
         } else {
             // Give the player cobblestone so they can place blocks.
             giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
             trackedCobblestone = 64;
+            adapter.setSlot(player.getUsername(), 36, BlockRegistry.COBBLESTONE, 64, 0);
 
             // Pre-rewrite clients (v13/v14) can't receive UpdateHealthPacket, so
             // fall damage is handled client-side with no server override. Give them
@@ -1119,6 +1122,26 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }, REPLENISH_DELAY_MS, TimeUnit.MILLISECONDS);
     }
 
+    private void handleWindowClick(ChannelHandlerContext ctx, WindowClickPacket packet) {
+        if (player == null) return;
+        InventoryAdapter adapter = playerManager.getInventoryAdapter();
+        int button = packet.getRightClick() & 0xFF;
+        int mode = 0;
+        if (packet instanceof WindowClickPacketBeta15) {
+            byte shift = ((WindowClickPacketBeta15) packet).getShift();
+            if (shift == 1) mode = 1;
+        }
+        adapter.processWindowClick(player.getUsername(), packet.getSlot(), button, mode);
+        ctx.writeAndFlush(new ConfirmTransactionPacket(
+                packet.getWindowId(), packet.getActionNum(), true));
+    }
+
+    private void handleCloseWindow(ChannelHandlerContext ctx) {
+        if (player == null) return;
+        InventoryAdapter adapter = playerManager.getInventoryAdapter();
+        adapter.processCloseWindow(player.getUsername());
+    }
+
     private void handleChat(ChannelHandlerContext ctx, ChatPacket packet) {
         if (player == null) return;
 
@@ -1152,6 +1175,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             System.out.println(player.getUsername() + " disconnected"
                     + " (" + (playerManager.getPlayerCount() - 1) + " online)");
             ServerEvents.PLAYER_LEAVE.invoker().onPlayerLeave(player.getUsername());
+            playerManager.getInventoryAdapter().removePlayer(player.getUsername());
             world.rememberPlayerPosition(player);
             chunkManager.removePlayer(player);
             playerManager.broadcastPlayerListRemove(player);

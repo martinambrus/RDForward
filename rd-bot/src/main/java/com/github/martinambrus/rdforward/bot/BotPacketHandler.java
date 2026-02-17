@@ -100,6 +100,10 @@ public class BotPacketHandler extends SimpleChannelInboundHandler<Packet> {
             session.recordSetSlot(ssV22.getSlot(), ssV22.getItemId(), ssV22.getCount() & 0xFF);
         } else if (packet instanceof SetSlotPacket ss) {
             session.recordSetSlot(ss.getSlot(), ss.getItemId(), ss.getCount() & 0xFF);
+        } else if (packet instanceof WindowItemsPacketV22 wiV22) {
+            session.recordWindowItems(wiV22.getItemIds(), wiV22.getCounts());
+        } else if (packet instanceof WindowItemsPacket wi) {
+            session.recordWindowItems(wi.getItemIds(), wi.getCounts());
         }
         // --- Game state packets ---
         else if (packet instanceof PlayerPositionAndLookS2CPacket posLook) {

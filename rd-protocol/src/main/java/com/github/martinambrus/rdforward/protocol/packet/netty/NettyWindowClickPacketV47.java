@@ -19,21 +19,49 @@ import io.netty.buffer.ByteBuf;
  */
 public class NettyWindowClickPacketV47 implements Packet {
 
+    private int windowId;
+    private short slotIndex;
+    private byte button;
+    private short actionNumber;
+    private byte mode;
+
     public NettyWindowClickPacketV47() {}
+
+    public NettyWindowClickPacketV47(int windowId, int slotIndex, int button, int actionNumber, int mode) {
+        this.windowId = windowId;
+        this.slotIndex = (short) slotIndex;
+        this.button = (byte) button;
+        this.actionNumber = (short) actionNumber;
+        this.mode = (byte) mode;
+    }
 
     @Override
     public int getPacketId() { return 0x0E; }
 
     @Override
-    public void write(ByteBuf buf) {}
+    public void write(ByteBuf buf) {
+        buf.writeByte(windowId);
+        buf.writeShort(slotIndex);
+        buf.writeByte(button);
+        buf.writeShort(actionNumber);
+        buf.writeByte(mode);
+        // V47 empty slot: short -1
+        buf.writeShort(-1);
+    }
 
     @Override
     public void read(ByteBuf buf) {
-        buf.skipBytes(1); // windowId
-        buf.skipBytes(2); // slotIndex
-        buf.skipBytes(1); // button
-        buf.skipBytes(2); // actionNumber
-        buf.skipBytes(1); // mode
+        windowId = buf.readByte();
+        slotIndex = buf.readShort();
+        button = buf.readByte();
+        actionNumber = buf.readShort();
+        mode = buf.readByte();
         McDataTypes.skipV47SlotData(buf);
     }
+
+    public int getWindowId() { return windowId; }
+    public short getSlotIndex() { return slotIndex; }
+    public byte getButton() { return button; }
+    public short getActionNumber() { return actionNumber; }
+    public byte getMode() { return mode; }
 }

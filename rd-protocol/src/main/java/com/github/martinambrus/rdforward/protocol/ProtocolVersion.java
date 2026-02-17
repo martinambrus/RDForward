@@ -454,12 +454,19 @@ public enum ProtocolVersion {
     RELEASE_1_13(393, 46, Family.RELEASE, "Release 1.13 (v393)", 92),
 
     /**
+     * Minecraft Release 1.13.1.
+     * No packet format changes from 1.13. Same S2C/C2S packet IDs and wire formats.
+     * Netty protocol version 401.
+     */
+    RELEASE_1_13_1(401, 47, Family.RELEASE, "Release 1.13.1 (v401)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 47, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 48, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -596,7 +603,8 @@ public enum ProtocolVersion {
             case 335: return "Release 1.12";
             case 338: return "Release 1.12.1";
             case 340: return "Release 1.12.2";
-            case 393: return "Release 1.13-1.13.1";
+            case 393: return "Release 1.13";
+            case 401: return "Release 1.13.1";
             case 51: return "Release 1.4.6-1.4.7";
             case 60: return "Release 1.5-1.5.1";
             case 61: return "Release 1.5.2";

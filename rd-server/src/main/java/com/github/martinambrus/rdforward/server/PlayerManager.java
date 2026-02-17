@@ -35,6 +35,9 @@ public class PlayerManager {
     /** Tracks which IDs are in use. */
     private final boolean[] usedIds = new boolean[MAX_PLAYERS];
 
+    /** Shared inventory adapter for cross-version inventory tracking. */
+    private final InventoryAdapter inventoryAdapter = new InventoryAdapter();
+
     /**
      * Register a new player. Assigns the next available player ID.
      * If the username is empty/blank, generates "Player&lt;ID&gt;".
@@ -115,6 +118,13 @@ public class PlayerManager {
      */
     public Collection<ConnectedPlayer> getAllPlayers() {
         return playersById.values();
+    }
+
+    /**
+     * Get the shared inventory adapter.
+     */
+    public InventoryAdapter getInventoryAdapter() {
+        return inventoryAdapter;
     }
 
     /**

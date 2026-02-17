@@ -513,6 +513,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         playerManager.broadcastPlayerListAdd(player);
         playerManager.broadcastPlayerSpawn(player);
 
+        // Initialize inventory adapter tracking
+        InventoryAdapter adapter = playerManager.getInventoryAdapter();
+        adapter.initPlayer(player.getUsername());
+
         // Give 1 cobblestone for right-click
         if (isV393) {
             ctx.writeAndFlush(new NettySetSlotPacketV393(0, 36,
@@ -522,6 +526,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         } else {
             ctx.writeAndFlush(new NettySetSlotPacket(0, 36, BlockRegistry.COBBLESTONE, 1, 0));
         }
+        adapter.setSlot(player.getUsername(), 36, BlockRegistry.COBBLESTONE, 1, 0);
 
         // Start KeepAlive heartbeat
         boolean isV340 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_12_2);
@@ -585,6 +590,14 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             handleDigging(ctx, (PlayerDiggingPacket) packet);
         } else if (packet instanceof BlockPlacementData) {
             handleBlockPlacement(ctx, (BlockPlacementData) packet);
+        } else if (packet instanceof NettyWindowClickPacketV47 wc47) {
+            handleNettyWindowClick(ctx, wc47.getWindowId(), wc47.getSlotIndex(),
+                    wc47.getButton(), wc47.getActionNumber(), wc47.getMode());
+        } else if (packet instanceof NettyWindowClickPacket wc) {
+            handleNettyWindowClick(ctx, wc.getWindowId(), wc.getSlotIndex(),
+                    wc.getButton(), wc.getActionNumber(), wc.getMode());
+        } else if (packet instanceof CloseWindowPacket) {
+            handleNettyCloseWindow();
         } else if (packet instanceof NettyChatC2SPacket) {
             handleChat(ctx, (NettyChatC2SPacket) packet);
         } else if (packet instanceof ClientCommandPacket) {
@@ -601,9 +614,6 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 || packet instanceof NettyEntityActionPacketV47
                 || packet instanceof NettySteerVehiclePacket
                 || packet instanceof NettySteerVehiclePacketV47
-                || packet instanceof CloseWindowPacket
-                || packet instanceof NettyWindowClickPacket
-                || packet instanceof NettyWindowClickPacketV47
                 || packet instanceof ConfirmTransactionPacket
                 || packet instanceof NettyCreativeSlotPacket
                 || packet instanceof NettyCreativeSlotPacketV47
@@ -797,6 +807,21 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
     }
 
+    private void handleNettyWindowClick(ChannelHandlerContext ctx,
+                                          int windowId, int slotIndex, int button,
+                                          int actionNumber, int mode) {
+        if (player == null) return;
+        InventoryAdapter adapter = playerManager.getInventoryAdapter();
+        adapter.processWindowClick(player.getUsername(), slotIndex, button, mode);
+        ctx.writeAndFlush(new ConfirmTransactionPacket(windowId, actionNumber, true));
+    }
+
+    private void handleNettyCloseWindow() {
+        if (player == null) return;
+        InventoryAdapter adapter = playerManager.getInventoryAdapter();
+        adapter.processCloseWindow(player.getUsername());
+    }
+
     private void handleChat(ChannelHandlerContext ctx, NettyChatC2SPacket packet) {
         if (player == null) return;
         String message = packet.getMessage();
@@ -894,6 +919,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             System.out.println(player.getUsername() + " disconnected"
                     + " (" + (playerManager.getPlayerCount() - 1) + " online)");
             ServerEvents.PLAYER_LEAVE.invoker().onPlayerLeave(player.getUsername());
+            playerManager.getInventoryAdapter().removePlayer(player.getUsername());
             world.rememberPlayerPosition(player);
             chunkManager.removePlayer(player);
             playerManager.broadcastPlayerListRemove(player);

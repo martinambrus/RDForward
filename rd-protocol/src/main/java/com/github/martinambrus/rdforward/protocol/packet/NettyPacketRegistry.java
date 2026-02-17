@@ -154,6 +154,9 @@ public class NettyPacketRegistry {
         registerS2C(ConnectionState.PLAY, 0x2F, new PacketFactory() {
             public Packet create() { return new NettySetSlotPacket(); }
         }, NettySetSlotPacket.class);
+        registerS2C(ConnectionState.PLAY, 0x32, new PacketFactory() {
+            public Packet create() { return new ConfirmTransactionPacket(); }
+        }, ConfirmTransactionPacket.class);
         registerS2C(ConnectionState.PLAY, 0x30, new PacketFactory() {
             public Packet create() { return new NettyWindowItemsPacket(); }
         }, NettyWindowItemsPacket.class);
@@ -378,6 +381,7 @@ public class NettyPacketRegistry {
                 NettyEncryptionResponsePacketV47.class), 0x01);
         registerC2SReverse(KeepAlivePacketV47.class, 0x00);
         registerC2SReverse(NettyBlockPlacementPacketV47.class, 0x08);
+        registerC2SReverse(NettyWindowClickPacketV47.class, 0x0E);
         registerC2SReverse(PlayerDiggingPacketV47.class, 0x07);
 
         // === V109 (1.9) PLAY state C2S overrides (ALL IDs remapped) ===
@@ -603,11 +607,17 @@ public class NettyPacketRegistry {
         registerV393C2S(0x29, new PacketFactory() { public Packet create() { return new NettyBlockPlacementPacketV315(); } });
         registerV393C2S(0x2A, new PacketFactory() { public Packet create() { return new UseItemPacketV109(); } });
 
+        // === ConfirmTransaction S2C reverse map entries ===
+        // Base/V47: 0x32 (already registered above via registerS2C)
+        registerV109S2CReverse(ConfirmTransactionPacket.class, 0x11);
+        registerV393S2CReverse(ConfirmTransactionPacket.class, 0x12);
+
         // === V109 (1.9) PLAY state S2C forward entries (for bot decoder, v107+) ===
         // Active packet decoders at correct V109 IDs:
         registerV109S2C(0x05, new PacketFactory() { public Packet create() { return new NettySpawnPlayerPacketV109(); } });
         registerV109S2C(0x0B, new PacketFactory() { public Packet create() { return new NettyBlockChangePacketV47(); } });
         registerV109S2C(0x0F, new PacketFactory() { public Packet create() { return new NettyChatS2CPacketV47(); } });
+        registerV109S2C(0x11, new PacketFactory() { public Packet create() { return new ConfirmTransactionPacket(); } });
         registerV109S2C(0x16, new PacketFactory() { public Packet create() { return new NettySetSlotPacketV47(); } });
         registerV109S2C(0x1A, new PacketFactory() { public Packet create() { return new NettyDisconnectPacket(); } });
         registerV109S2C(0x1D, new PacketFactory() { public Packet create() { return new UnloadChunkPacketV109(); } });
@@ -632,6 +642,7 @@ public class NettyPacketRegistry {
         registerV109S2C(0x18, noOpFactory);  // V47: EntityTeleport; V109: PluginMessage
         registerV109S2C(0x21, noOpFactory);  // V47: MapChunk; V109: Effect
         registerV109S2C(0x2F, noOpFactory);  // V47: SetSlot; V109: UseBed
+        registerV109S2C(0x32, noOpFactory);  // base: ConfirmTransaction; V109: Team
         registerV109S2C(0x38, noOpFactory);  // V47: PlayerListItem; V109: WorldBorder
         registerV109S2C(0x39, noOpFactory);  // base: PlayerAbilities; V109: EntityMetadata
         registerV109S2C(0x40, noOpFactory);  // base: Disconnect; V109: SetPassengers
@@ -674,6 +685,7 @@ public class NettyPacketRegistry {
         registerV393S2C(0x20, noOpFactory);  // V109: MapChunk; V393: Effect
         registerV393S2C(0x23, noOpFactory);  // V108: JoinGame; V393: Map
         // Register active V393 S2C forward entries for bot decoder
+        registerV393S2C(0x12, new PacketFactory() { public Packet create() { return new ConfirmTransactionPacket(); } });
         registerV393S2C(0x0B, new PacketFactory() { public Packet create() { return new NettyBlockChangePacketV393(); } });
         registerV393S2C(0x0E, new PacketFactory() { public Packet create() { return new NettyChatS2CPacketV47(); } });
         registerV393S2C(0x17, new PacketFactory() { public Packet create() { return new NettySetSlotPacketV393(); } });
