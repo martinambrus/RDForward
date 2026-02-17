@@ -791,8 +791,9 @@ public class AlphaChunk {
             // Write bitsPerBlock
             baos.write(bitsPerBlock);
 
-            // Write empty palette (global palette mode: VarInt(0))
-            writeVarIntToStream(baos, 0);
+            // 1.13 global palette: NO palette length prefix.
+            // Unlike 1.9-1.12 where VarInt(0) is written for global mode,
+            // the 1.13 client's global palette read is a no-op.
 
             // Convert legacy block IDs to 1.13 global block state IDs
             // and pack into longs. 1.13 uses spanning packing (same as 1.9-1.12):
