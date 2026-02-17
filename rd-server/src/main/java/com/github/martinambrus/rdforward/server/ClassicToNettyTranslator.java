@@ -1,5 +1,6 @@
 package com.github.martinambrus.rdforward.server;
 
+import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.*;
 import com.github.martinambrus.rdforward.protocol.packet.classic.*;
@@ -24,6 +25,12 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
 
     /** Eye-height offset in fixed-point units. Internal Y is eye-level; spawn expects feet. */
     private static final int EYE_HEIGHT_FIXED = AlphaConnectionHandler.PLAYER_EYE_HEIGHT_FIXED;
+
+    private volatile ProtocolVersion clientVersion = ProtocolVersion.RELEASE_1_7_2;
+
+    public void setClientVersion(ProtocolVersion version) {
+        this.clientVersion = version;
+    }
 
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
@@ -82,6 +89,12 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
             int alphaYaw = (sp.getYaw() + 128) & 0xFF;
             // Generate offline UUID from username
             String uuid = generateOfflineUuid(sp.getPlayerName());
+            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_7_6)) {
+                return new NettySpawnPlayerPacketV5(
+                        entityId, uuid, sp.getPlayerName(),
+                        (int) sp.getX(), feetY, (int) sp.getZ(),
+                        alphaYaw, sp.getPitch(), (short) 0);
+            }
             return new NettySpawnPlayerPacket(
                     entityId, uuid, sp.getPlayerName(),
                     (int) sp.getX(), feetY, (int) sp.getZ(),

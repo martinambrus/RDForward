@@ -340,12 +340,22 @@ public enum ProtocolVersion {
     RELEASE_1_7_2(4, 33, Family.RELEASE, "Release 1.7.2 (v4)", 92),
 
     /**
+     * Minecraft Release 1.7.6-1.7.10 (April 2014).
+     * SpawnPlayer (0x0C) gained a property list (VarInt count + entries) between
+     * playerName and coordinates. All other packets identical to v4.
+     * Protocol v5 clashes with Alpha 1.2.3 — safe because 1.7.6 is detected by
+     * VarInt framing, and fromNumber(5, Family.RELEASE) disambiguates.
+     * Real MC protocol version 5.
+     */
+    RELEASE_1_7_6(5, 34, Family.RELEASE, "Release 1.7.6 (v5)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 34, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 35, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -453,7 +463,7 @@ public enum ProtocolVersion {
             case 2:  return "Alpha 1.1.0-1.1.2_01";
             case 3:  return "Alpha 1.2.0-1.2.1_01";
             case 4:  return "Alpha 1.2.2 (or Release 1.7.2-1.7.5)";
-            case 5:  return "Alpha 1.2.3_01-1.2.3_04";
+            case 5:  return "Alpha 1.2.3_01-1.2.3_04 (or Release 1.7.6-1.7.10)";
             case 6:  return "Alpha 1.2.3_05-1.2.6";
             case 7:  return "Beta 1.0-1.1 (or Classic c0.0.20a-c0.30)";
             case 8:  return "Beta 1.1_02-1.2_02 (or Alpha 1.0.0-1.0.1_01)";

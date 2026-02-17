@@ -84,6 +84,10 @@ public class NettyPacketRegistry {
         registerS2C(ConnectionState.PLAY, 0x0C, new PacketFactory() {
             public Packet create() { return new NettySpawnPlayerPacket(); }
         }, NettySpawnPlayerPacket.class);
+        // V5 variant — only register reverse map so encoder can look up packet ID.
+        // Forward map stays on v4's NettySpawnPlayerPacket (irrelevant: S2C only).
+        REVERSE.put(reverseKey(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT,
+                NettySpawnPlayerPacketV5.class), 0x0C);
         registerS2C(ConnectionState.PLAY, 0x13, new PacketFactory() {
             public Packet create() { return new NettyDestroyEntitiesPacket(); }
         }, NettyDestroyEntitiesPacket.class);

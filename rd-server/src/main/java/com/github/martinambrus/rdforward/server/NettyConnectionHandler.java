@@ -46,6 +46,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     private final ChunkManager chunkManager;
 
     private ConnectionState state = ConnectionState.HANDSHAKING;
+    private ProtocolVersion clientVersion = ProtocolVersion.RELEASE_1_7_2;
     private String pendingUsername;
     private ConnectedPlayer player;
     private boolean loginComplete = false;
@@ -103,6 +104,12 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     // ========================================================================
 
     private void handleHandshake(ChannelHandlerContext ctx, NettyHandshakePacket packet) {
+        int pv = packet.getProtocolVersion();
+        ProtocolVersion resolved = ProtocolVersion.fromNumber(pv, ProtocolVersion.Family.RELEASE);
+        if (resolved != null) {
+            clientVersion = resolved;
+        }
+
         if (packet.getNextState() == 1) {
             // Status
             state = ConnectionState.STATUS;
@@ -121,8 +128,11 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     // ========================================================================
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
+        String versionName = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_7_6)
+                ? "1.7.10" : "1.7.5";
+        int protocol = clientVersion.getVersionNumber();
         String json = "{"
-                + "\"version\":{\"name\":\"1.7.5\",\"protocol\":4},"
+                + "\"version\":{\"name\":\"" + versionName + "\",\"protocol\":" + protocol + "},"
                 + "\"players\":{\"max\":" + PlayerManager.MAX_PLAYERS
                 + ",\"online\":" + playerManager.getPlayerCount() + "},"
                 + "\"description\":{\"text\":\"RDForward Server\"}"
@@ -226,7 +236,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
 
         // Register player
-        player = playerManager.addPlayer(pendingUsername, ctx.channel(), ProtocolVersion.RELEASE_1_7_2);
+        player = playerManager.addPlayer(pendingUsername, ctx.channel(), clientVersion);
         if (player == null) {
             sendPlayDisconnect(ctx, "Server is full!");
             return;
@@ -313,6 +323,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 spawnX, spawnY, spawnZ, alphaSpawnYaw, spawnPitch, false));
 
         // Send existing players
+        boolean useV5Spawn = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_7_6);
         for (ConnectedPlayer existing : playerManager.getAllPlayers()) {
             if (existing != player) {
                 int existingEntityId = existing.getPlayerId() + 1;
@@ -320,10 +331,16 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 int alphaYaw = (existing.getYaw() + 128) & 0xFF;
                 int pitch = existing.getPitch() & 0xFF;
                 String existingUuid = ClassicToNettyTranslator.generateOfflineUuid(existing.getUsername());
-                ctx.writeAndFlush(new NettySpawnPlayerPacket(
-                        existingEntityId, existingUuid, existing.getUsername(),
-                        (int) existing.getX(), existingFeetY, (int) existing.getZ(),
-                        alphaYaw, pitch, (short) 0));
+                Packet spawnPacket = useV5Spawn
+                        ? new NettySpawnPlayerPacketV5(
+                                existingEntityId, existingUuid, existing.getUsername(),
+                                (int) existing.getX(), existingFeetY, (int) existing.getZ(),
+                                alphaYaw, pitch, (short) 0)
+                        : new NettySpawnPlayerPacket(
+                                existingEntityId, existingUuid, existing.getUsername(),
+                                (int) existing.getX(), existingFeetY, (int) existing.getZ(),
+                                alphaYaw, pitch, (short) 0);
+                ctx.writeAndFlush(spawnPacket);
             }
         }
 
@@ -331,6 +348,12 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         playerManager.broadcastPlayerSpawn(player);
 
         loginComplete = true;
+
+        // Configure translator with client version for version-aware packet translation
+        ClassicToNettyTranslator translator = ctx.pipeline().get(ClassicToNettyTranslator.class);
+        if (translator != null) {
+            translator.setClientVersion(clientVersion);
+        }
 
         // Give 1 cobblestone for right-click
         ctx.writeAndFlush(new NettySetSlotPacket(0, 36, BlockRegistry.COBBLESTONE, 1, 0));
@@ -351,10 +374,11 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         playerManager.broadcastPlayerListAdd(player);
 
         playerManager.broadcastChat((byte) 0, player.getUsername() + " joined the game");
-        ServerEvents.PLAYER_JOIN.invoker().onPlayerJoin(player.getUsername(), ProtocolVersion.RELEASE_1_7_2);
+        ServerEvents.PLAYER_JOIN.invoker().onPlayerJoin(player.getUsername(), clientVersion);
 
         System.out.println("Netty login complete: " + player.getUsername()
-                + " (1.7.2, ID " + player.getPlayerId()
+                + " (" + clientVersion.getDisplayName()
+                + ", ID " + player.getPlayerId()
                 + ", " + playerManager.getPlayerCount() + " online)");
     }
 

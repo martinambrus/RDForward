@@ -201,6 +201,7 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
             case 47: return "1.4.2";
             case 39: return "1.3.2";
             case 4: return "1.7.5";
+            case 5: return "1.7.10";
             default: return "RDForward";
         }
     }
