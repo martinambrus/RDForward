@@ -31,6 +31,9 @@ public class NettyPacketRegistry {
     /** V109 overlay: C2S packets with remapped IDs for 1.9+. Checked first for v107+ clients. */
     private static final Map<String, PacketFactory> REGISTRY_V109 = new HashMap<String, PacketFactory>();
 
+    /** V315 overlay: C2S packets with changed wire formats for 1.11+. */
+    private static final Map<String, PacketFactory> REGISTRY_V315 = new HashMap<String, PacketFactory>();
+
     /** V109 S2C reverse map: packet class -> v109 packet ID. Checked first for v107+ encoder. */
     private static final Map<String, Integer> REVERSE_V109 = new HashMap<String, Integer>();
 
@@ -463,6 +466,12 @@ public class NettyPacketRegistry {
         // Only 2 of our S2C packets are >= 0x46:
         registerV110S2CReverse(EntityTeleportPacketV109.class, 0x49);  // was 0x4A
         registerV110S2CReverse(NettyEntityPropertiesPacketV47.class, 0x4A);  // was 0x4B
+
+        // === V315 (1.11) C2S overlay ===
+        // Block Placement cursor fields changed from unsigned bytes to floats.
+        registerV315C2S(0x1C, new PacketFactory() {
+            public Packet create() { return new NettyBlockPlacementPacketV315(); }
+        });
     }
 
     private static void registerC2S(ConnectionState state, int packetId,
@@ -487,6 +496,10 @@ public class NettyPacketRegistry {
 
     private static void registerV109C2S(int packetId, PacketFactory factory) {
         REGISTRY_V109.put(key(ConnectionState.PLAY, PacketDirection.CLIENT_TO_SERVER, packetId), factory);
+    }
+
+    private static void registerV315C2S(int packetId, PacketFactory factory) {
+        REGISTRY_V315.put(key(ConnectionState.PLAY, PacketDirection.CLIENT_TO_SERVER, packetId), factory);
     }
 
     private static void registerV109S2CReverse(Class<? extends Packet> clazz, int packetId) {
@@ -520,6 +533,13 @@ public class NettyPacketRegistry {
      */
     public static Packet createPacket(ConnectionState state, PacketDirection direction,
                                        int packetId, int protocolVersion) {
+        if (protocolVersion >= 315) {
+            String k = key(state, direction, packetId);
+            PacketFactory factory = REGISTRY_V315.get(k);
+            if (factory != null) {
+                return factory.create();
+            }
+        }
         if (protocolVersion >= 107) {
             String k = key(state, direction, packetId);
             PacketFactory factory = REGISTRY_V109.get(k);
