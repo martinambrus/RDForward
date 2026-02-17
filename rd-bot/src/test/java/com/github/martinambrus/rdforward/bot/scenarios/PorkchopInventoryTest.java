@@ -115,4 +115,18 @@ class PorkchopInventoryTest {
             bot.disconnect();
         }
     }
+
+    @Test
+    void nettyV340ReceivesCobblestoneOnLogin() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_12_2, "CobV340");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            assertTrue(session.waitForSlotItem(36, COBBLESTONE, 5000),
+                    "V340 should receive cobblestone in slot 36");
+        } finally {
+            bot.disconnect();
+        }
+    }
 }

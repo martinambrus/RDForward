@@ -101,4 +101,29 @@ class CrossVersionChatTest {
             alphaBot.disconnect();
         }
     }
+
+    @Test
+    void v340AndBetaCanChat() throws Exception {
+        BotClient v340Bot = testServer.createBot(ProtocolVersion.RELEASE_1_12_2, "V340Chatter");
+        BotClient betaBot = testServer.createBot(ProtocolVersion.BETA_1_8, "BetaChat2");
+        try {
+            BotSession v340Session = v340Bot.getSession();
+            BotSession betaSession = betaBot.getSession();
+            assertTrue(v340Session.isLoginComplete(), "V340 login should complete");
+            assertTrue(betaSession.isLoginComplete(), "Beta login should complete");
+
+            // V340 sends chat, Beta should receive it
+            v340Session.sendChat("Hello from V340");
+            String received = betaSession.waitForChat("Hello from V340", 3000);
+            assertNotNull(received, "Beta bot should receive V340's chat message");
+
+            // Beta sends chat, V340 should receive it
+            betaSession.sendChat("Hello from Beta2");
+            received = v340Session.waitForChat("Hello from Beta2", 3000);
+            assertNotNull(received, "V340 bot should receive Beta's chat message");
+        } finally {
+            v340Bot.disconnect();
+            betaBot.disconnect();
+        }
+    }
 }

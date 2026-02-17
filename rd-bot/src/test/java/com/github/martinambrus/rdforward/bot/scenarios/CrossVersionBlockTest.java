@@ -130,4 +130,29 @@ class CrossVersionBlockTest {
             v109Bot.disconnect();
         }
     }
+
+    @Test
+    void v340PlacementVisibleToV109() throws Exception {
+        BotClient v340Bot = testServer.createBot(ProtocolVersion.RELEASE_1_12_2, "V340Placer");
+        BotClient v109Bot = testServer.createBot(ProtocolVersion.RELEASE_1_9_4, "V109Watch2");
+        try {
+            BotSession v340Session = v340Bot.getSession();
+            BotSession v109Session = v109Bot.getSession();
+            assertTrue(v340Session.isLoginComplete(), "V340 login should complete");
+            assertTrue(v109Session.isLoginComplete(), "V109 login should complete");
+
+            Thread.sleep(500);
+
+            int placeX = 60;
+            int placeY = 42;
+            int placeZ = 60;
+            v340Session.sendBlockPlace(placeX, placeY, placeZ, 1, 4);
+
+            int blockType = v109Session.waitForBlockChange(placeX, placeY + 1, placeZ, 3000);
+            assertTrue(blockType > 0, "V109 bot should see V340's block placement");
+        } finally {
+            v340Bot.disconnect();
+            v109Bot.disconnect();
+        }
+    }
 }
