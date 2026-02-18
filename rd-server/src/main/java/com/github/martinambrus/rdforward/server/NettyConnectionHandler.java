@@ -151,7 +151,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
         String versionName;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_14_4)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_15)) {
+            versionName = "1.15";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_14_4)) {
             versionName = "1.14.4";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_14_3)) {
             versionName = "1.14.3";
@@ -355,6 +357,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
+        boolean isV573 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_15);
         boolean isV477 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_14);
         boolean isV393 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13);
         boolean isV109 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_9);
@@ -364,9 +367,13 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Send JoinGame
         // maxPlayers=20 limits the tab list to a single compact column.
         // Using the actual MAX_PLAYERS (128) creates a huge multi-column grid.
+        // v573 (1.15) added hashedSeed + enableRespawnScreen.
         // v477 (1.14) removed difficulty from JoinGame and added viewDistance.
         // v108 (1.9.1) changed dimension from byte to int.
-        if (isV477) {
+        if (isV573) {
+            ctx.writeAndFlush(new JoinGamePacketV573(entityId, 1, 0,
+                    20, "default", ChunkManager.DEFAULT_VIEW_DISTANCE));
+        } else if (isV477) {
             ctx.writeAndFlush(new JoinGamePacketV477(entityId, 1, 0,
                     20, "default", ChunkManager.DEFAULT_VIEW_DISTANCE));
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_9_1)) {
@@ -528,8 +535,13 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                     double ez = existing.getZ() / 32.0;
                     ctx.writeAndFlush(NettyPlayerListItemPacketV47.addPlayer(
                             existingUuid, existing.getUsername(), 1, 0));
-                    // 1.14 removed entity metadata from SpawnPlayer
-                    if (isV477) {
+                    // 1.15 removed entity metadata entirely from SpawnPlayer
+                    // 1.14 used 0xFF metadata terminator (empty metadata)
+                    if (isV573) {
+                        ctx.writeAndFlush(new NettySpawnPlayerPacketV573(
+                                existingEntityId, existingUuid, ex, ey, ez,
+                                alphaYaw, pitch));
+                    } else if (isV477) {
                         ctx.writeAndFlush(new NettySpawnPlayerPacketV477(
                                 existingEntityId, existingUuid, ex, ey, ez,
                                 alphaYaw, pitch));
@@ -777,6 +789,12 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             if (result == EventResult.CANCEL) return;
 
             world.queueBlockChange(x, y, z, (byte) 0);
+
+            // 1.15+: Send AcknowledgePlayerDigging to prevent client revert
+            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_15)) {
+                ctx.writeAndFlush(new AcknowledgePlayerDiggingPacketV573(
+                        x, y, z, 0, packet.getStatus(), true));
+            }
         }
     }
 

@@ -8,6 +8,7 @@ import com.github.martinambrus.rdforward.protocol.packet.alpha.PreChunkPacket;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV109;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV47;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV477;
+import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV573;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UnloadChunkPacketV109;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacketV477;
 import com.github.martinambrus.rdforward.world.WorldGenerator;
@@ -400,7 +401,46 @@ public class ChunkManager {
      * v47 (1.8) uses ushort blockStates and no compression.
      */
     private void sendChunkToPlayer(ConnectedPlayer player, AlphaChunk chunk) {
-        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_14)) {
+        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_15)) {
+            // v573: biomes are a separate field (not inside data array), int[1024] 3D biomes
+            AlphaChunk.V573ChunkData v573Data = chunk.serializeForV573Protocol();
+            long[] heightmap = buildHeightmapLongArray(chunk);
+
+            player.sendPacket(new MapChunkPacketV573(
+                chunk.getXPos(), chunk.getZPos(), true,
+                v573Data.getPrimaryBitMask(),
+                heightmap, heightmap,
+                v573Data.getBiomes(),
+                v573Data.getRawData()));
+
+            // Build UpdateLight from per-section light arrays
+            int skyLightMask = 0;
+            int blockLightMask = 0;
+            java.util.List<byte[]> skyArrays = new java.util.ArrayList<>();
+            java.util.List<byte[]> blockArrays = new java.util.ArrayList<>();
+
+            for (int section = 0; section < 8; section++) {
+                if (v573Data.getSkyLightSections()[section] != null) {
+                    skyLightMask |= (1 << (section + 1));
+                    skyArrays.add(v573Data.getSkyLightSections()[section]);
+                }
+                if (v573Data.getBlockLightSections()[section] != null) {
+                    blockLightMask |= (1 << (section + 1));
+                    blockArrays.add(v573Data.getBlockLightSections()[section]);
+                }
+            }
+
+            int emptySkyLightMask = ~skyLightMask & 0x3FFFF;
+            int emptyBlockLightMask = ~blockLightMask & 0x3FFFF;
+
+            player.sendPacket(new UpdateLightPacketV477(
+                chunk.getXPos(), chunk.getZPos(),
+                skyLightMask, blockLightMask,
+                emptySkyLightMask, emptyBlockLightMask,
+                skyArrays.toArray(new byte[0][]),
+                blockArrays.toArray(new byte[0][])));
+
+        } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_14)) {
             // v477: heightmaps NBT, no light in sections, blockCount per section
             AlphaChunk.V477ChunkData v477Data = chunk.serializeForV477Protocol();
             long[] heightmap = buildHeightmapLongArray(chunk);

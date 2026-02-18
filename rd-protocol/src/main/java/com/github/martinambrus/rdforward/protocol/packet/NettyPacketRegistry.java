@@ -70,6 +70,12 @@ public class NettyPacketRegistry {
     /** V477 S2C reverse map overlay: all S2C packet IDs reshuffled in 1.14. */
     private static final Map<String, Integer> REVERSE_V477 = new HashMap<String, Integer>();
 
+    /** V573 overlay: S2C packets for 1.15 (new AcknowledgePlayerDigging at 0x08 shifts all S2C >= 0x08 by +1). */
+    private static final Map<String, PacketFactory> REGISTRY_V573 = new HashMap<String, PacketFactory>();
+
+    /** V573 S2C reverse map overlay: shifted S2C packet IDs for 1.15. */
+    private static final Map<String, Integer> REVERSE_V573 = new HashMap<String, Integer>();
+
     /** Reverse map: (state, direction, className) -> packetId */
     private static final Map<String, Integer> REVERSE = new HashMap<String, Integer>();
 
@@ -920,6 +926,95 @@ public class NettyPacketRegistry {
         registerV477C2SReverse(KeepAlivePacketV340.class, 0x0F);
         registerV477C2SReverse(PlayerDiggingPacketV477.class, 0x1A);
         registerV477C2SReverse(NettyBlockPlacementPacketV477.class, 0x2C);
+
+        // === V573 (1.15) S2C reverse map overlay (delta from V477) ===
+        // New AcknowledgePlayerDigging at 0x08 shifts all S2C IDs >= 0x08 by +1.
+        // SpawnPlayer uses new V573 class (no metadata).
+        registerV573S2CReverse(NettySpawnPlayerPacketV573.class, 0x05);
+        registerV573S2CReverse(AcknowledgePlayerDiggingPacketV573.class, 0x08);
+        registerV573S2CReverse(NettyBlockChangePacketV477.class, 0x0C);
+        registerV573S2CReverse(NettyChatS2CPacketV47.class, 0x0F);
+        registerV573S2CReverse(DeclareCommandsPacketV393.class, 0x12);
+        registerV573S2CReverse(ConfirmTransactionPacket.class, 0x13);
+        registerV573S2CReverse(NettyWindowItemsPacketV47.class, 0x15);
+        registerV573S2CReverse(NettySetSlotPacketV393.class, 0x17);
+        registerV573S2CReverse(NettySetSlotPacketV404.class, 0x17);
+        registerV573S2CReverse(NettyPluginMessageS2CPacketV393.class, 0x19);
+        registerV573S2CReverse(NettyDisconnectPacket.class, 0x1B);
+        registerV573S2CReverse(UnloadChunkPacketV109.class, 0x1E);
+        registerV573S2CReverse(NettyChangeGameStatePacket.class, 0x1F);
+        registerV573S2CReverse(KeepAlivePacketV340.class, 0x21);
+        registerV573S2CReverse(MapChunkPacketV573.class, 0x22);
+        registerV573S2CReverse(UpdateLightPacketV477.class, 0x25);
+        registerV573S2CReverse(JoinGamePacketV573.class, 0x26);
+        registerV573S2CReverse(EntityRelativeMovePacketV109.class, 0x29);
+        registerV573S2CReverse(EntityLookAndMovePacketV109.class, 0x2A);
+        registerV573S2CReverse(EntityLookPacketV47.class, 0x2B);
+        registerV573S2CReverse(PlayerAbilitiesPacketV73.class, 0x32);
+        registerV573S2CReverse(NettyPlayerListItemPacketV47.class, 0x34);
+        registerV573S2CReverse(NettyPlayerPositionS2CPacketV109.class, 0x36);
+        registerV573S2CReverse(NettyDestroyEntitiesPacketV47.class, 0x38);
+        registerV573S2CReverse(SetChunkCacheCenterPacketV477.class, 0x41);
+        registerV573S2CReverse(SetChunkCacheRadiusPacketV477.class, 0x42);
+        registerV573S2CReverse(SpawnPositionPacketV477.class, 0x4E);
+        registerV573S2CReverse(NettyTimeUpdatePacket.class, 0x4F);
+        registerV573S2CReverse(EntityTeleportPacketV109.class, 0x57);
+        registerV573S2CReverse(NettyEntityPropertiesPacketV47.class, 0x59);
+        registerV573S2CReverse(UpdateRecipesPacketV393.class, 0x5B);
+        registerV573S2CReverse(UpdateTagsPacketV477.class, 0x5C);
+
+        // === V573 (1.15) S2C forward entries (for bot decoder) ===
+        // Shadow stale V477 IDs that shifted in V573 due to new 0x08 packet.
+        registerV573S2C(0x0B, noOpFactory);  // V477: BlockChange; V573: Difficulty
+        registerV573S2C(0x0E, noOpFactory);  // V477: Chat; V573: TabComplete
+        registerV573S2C(0x12, noOpFactory);  // V477: ConfirmTransaction; V573: DeclareCommands
+        registerV573S2C(0x14, noOpFactory);  // V477: WindowItems; V573: ContainerSetContent
+        registerV573S2C(0x16, noOpFactory);  // V477: SetSlot; V573: ContainerSetData
+        registerV573S2C(0x18, noOpFactory);  // V477: PluginMessage; V573: Cooldown
+        registerV573S2C(0x1A, noOpFactory);  // V477: Disconnect; V573: CustomSound
+        registerV573S2C(0x1D, noOpFactory);  // V477: UnloadChunk; V573: EntityEvent
+        registerV573S2C(0x1E, noOpFactory);  // V477: ChangeGameState; V573: Explosion
+        registerV573S2C(0x20, noOpFactory);  // V477: KeepAlive; V573: HorseScreenOpen
+        registerV573S2C(0x21, noOpFactory);  // V477: ChunkData; V573: KeepAlive(new pos)
+        registerV573S2C(0x25, noOpFactory);  // V477: JoinGame; V573: UpdateLight(new pos)
+        registerV573S2C(0x28, noOpFactory);  // V477: EntityRelMove; V573: MapData
+        registerV573S2C(0x29, noOpFactory);  // V477: EntityLookMove; V573: Merchant Offers
+        registerV573S2C(0x31, noOpFactory);  // V477: Abilities; V573: PlayerCombat
+        registerV573S2C(0x33, noOpFactory);  // V477: PlayerInfo; V573: FacePlayer
+        registerV573S2C(0x35, noOpFactory);  // V477: PlayerPos; V573: UseBed
+        registerV573S2C(0x37, noOpFactory);  // V477: DestroyEntities; V573: RecipeBook
+        registerV573S2C(0x40, noOpFactory);  // V477: ChunkCacheCenter; V573: ResourcePack
+        registerV573S2C(0x41, noOpFactory);  // V477: ChunkCacheRadius; V573: Respawn
+        registerV573S2C(0x4D, noOpFactory);  // V477: SpawnPosition; V573: SetScore
+        registerV573S2C(0x4E, noOpFactory);  // V477: TimeUpdate; V573: SpawnPosition(new pos)
+        registerV573S2C(0x56, noOpFactory);  // V477: EntityTeleport; V573: StopSound
+        registerV573S2C(0x58, noOpFactory);  // V477: EntityProperties; V573: EntityTeleport(new pos)
+        // Register active V573 S2C forward entries for bot decoder
+        registerV573S2C(0x0C, new PacketFactory() { public Packet create() { return new NettyBlockChangePacketV477(); } });
+        registerV573S2C(0x0F, new PacketFactory() { public Packet create() { return new NettyChatS2CPacketV47(); } });
+        registerV573S2C(0x13, new PacketFactory() { public Packet create() { return new ConfirmTransactionPacket(); } });
+        registerV573S2C(0x15, new PacketFactory() { public Packet create() { return new NettyWindowItemsPacketV47(); } });
+        registerV573S2C(0x17, new PacketFactory() { public Packet create() { return new NettySetSlotPacketV393(); } });
+        registerV573S2C(0x19, noOpFactory); // PluginMessage (bot doesn't need to decode)
+        registerV573S2C(0x1B, new PacketFactory() { public Packet create() { return new NettyDisconnectPacket(); } });
+        registerV573S2C(0x1F, new PacketFactory() { public Packet create() { return new NettyChangeGameStatePacket(); } });
+        registerV573S2C(0x22, new PacketFactory() { public Packet create() { return new MapChunkPacketV573(); } });
+        registerV573S2C(0x26, new PacketFactory() { public Packet create() { return new JoinGamePacketV573(); } });
+        registerV573S2C(0x2A, new PacketFactory() { public Packet create() { return new EntityLookAndMovePacketV109(); } });
+        registerV573S2C(0x2B, new PacketFactory() { public Packet create() { return new EntityLookPacketV47(); } });
+        registerV573S2C(0x32, new PacketFactory() { public Packet create() { return new PlayerAbilitiesPacketV73(); } });
+        registerV573S2C(0x34, new PacketFactory() { public Packet create() { return new NettyPlayerListItemPacketV47(); } });
+        registerV573S2C(0x36, new PacketFactory() { public Packet create() { return new NettyPlayerPositionS2CPacketV109(); } });
+        registerV573S2C(0x38, new PacketFactory() { public Packet create() { return new NettyDestroyEntitiesPacketV47(); } });
+        registerV573S2C(0x4F, new PacketFactory() { public Packet create() { return new NettyTimeUpdatePacket(); } });
+        registerV573S2C(0x57, new PacketFactory() { public Packet create() { return new EntityTeleportPacketV109(); } });
+
+        // === V573 (1.15) C2S reverse map entries (for bot encoder) ===
+        // C2S is unchanged from V477, but register for completeness
+        registerV573C2SReverse(NettyChatC2SPacket.class, 0x03);
+        registerV573C2SReverse(KeepAlivePacketV340.class, 0x0F);
+        registerV573C2SReverse(PlayerDiggingPacketV477.class, 0x1A);
+        registerV573C2SReverse(NettyBlockPlacementPacketV477.class, 0x2C);
     }
 
     private static void registerC2S(ConnectionState state, int packetId,
@@ -1006,6 +1101,18 @@ public class NettyPacketRegistry {
         REVERSE_V477.put(reverseKey(ConnectionState.PLAY, PacketDirection.CLIENT_TO_SERVER, clazz), packetId);
     }
 
+    private static void registerV573S2C(int packetId, PacketFactory factory) {
+        REGISTRY_V573.put(key(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, packetId), factory);
+    }
+
+    private static void registerV573S2CReverse(Class<? extends Packet> clazz, int packetId) {
+        REVERSE_V573.put(reverseKey(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, clazz), packetId);
+    }
+
+    private static void registerV573C2SReverse(Class<? extends Packet> clazz, int packetId) {
+        REVERSE_V573.put(reverseKey(ConnectionState.PLAY, PacketDirection.CLIENT_TO_SERVER, clazz), packetId);
+    }
+
     private static void registerV109S2C(int packetId, PacketFactory factory) {
         REGISTRY_V109.put(key(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, packetId), factory);
     }
@@ -1065,6 +1172,13 @@ public class NettyPacketRegistry {
      */
     public static Packet createPacket(ConnectionState state, PacketDirection direction,
                                        int packetId, int protocolVersion) {
+        if (protocolVersion >= 573) {
+            String k = key(state, direction, packetId);
+            PacketFactory factory = REGISTRY_V573.get(k);
+            if (factory != null) {
+                return factory.create();
+            }
+        }
         if (protocolVersion >= 477) {
             String k = key(state, direction, packetId);
             PacketFactory factory = REGISTRY_V477.get(k);
@@ -1149,6 +1263,13 @@ public class NettyPacketRegistry {
      */
     public static int getPacketId(ConnectionState state, PacketDirection direction,
                                    Class<? extends Packet> clazz, int protocolVersion) {
+        if (protocolVersion >= 573) {
+            String rk = reverseKey(state, direction, clazz);
+            Integer id = REVERSE_V573.get(rk);
+            if (id != null) {
+                return id;
+            }
+        }
         if (protocolVersion >= 477) {
             String rk = reverseKey(state, direction, clazz);
             Integer id = REVERSE_V477.get(rk);
