@@ -539,12 +539,23 @@ public enum ProtocolVersion {
     RELEASE_1_15_2(578, 56, Family.RELEASE, "Release 1.15.2 (v578)", 92),
 
     /**
+     * Minecraft Release 1.16 (June 2020) - "The Nether Update".
+     * JoinGame completely rewritten with NBT dimension codec + dimension type.
+     * Chunk bit-packing changed from spanning to non-spanning.
+     * Chat S2C gained UUID sender field. UpdateLight gained trustEdges boolean.
+     * ADD_GLOBAL_ENTITY removed; SpawnPosition relocated.
+     * C2S: GENERATE_JIGSAW inserted at 0x0F, shifting all C2S >= 0x0F by +1.
+     * Netty protocol version 735.
+     */
+    RELEASE_1_16(735, 57, Family.RELEASE, "Release 1.16 (v735)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 57, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 58, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -692,6 +703,7 @@ public enum ProtocolVersion {
             case 573: return "Release 1.15";
             case 575: return "Release 1.15.1";
             case 578: return "Release 1.15.2";
+            case 735: return "Release 1.16";
             case 51: return "Release 1.4.6-1.4.7";
             case 60: return "Release 1.5-1.5.1";
             case 61: return "Release 1.5.2";

@@ -76,6 +76,12 @@ public class NettyPacketRegistry {
     /** V573 S2C reverse map overlay: shifted S2C packet IDs for 1.15. */
     private static final Map<String, Integer> REVERSE_V573 = new HashMap<String, Integer>();
 
+    /** V735 overlay: C2S/S2C packets for 1.16 (ADD_GLOBAL_ENTITY removed, SpawnPosition relocated, GENERATE_JIGSAW inserted). */
+    private static final Map<String, PacketFactory> REGISTRY_V735 = new HashMap<String, PacketFactory>();
+
+    /** V735 S2C reverse map overlay: shifted S2C/C2S packet IDs for 1.16. */
+    private static final Map<String, Integer> REVERSE_V735 = new HashMap<String, Integer>();
+
     /** Reverse map: (state, direction, className) -> packetId */
     private static final Map<String, Integer> REVERSE = new HashMap<String, Integer>();
 
@@ -1015,6 +1021,153 @@ public class NettyPacketRegistry {
         registerV573C2SReverse(KeepAlivePacketV340.class, 0x0F);
         registerV573C2SReverse(PlayerDiggingPacketV477.class, 0x1A);
         registerV573C2SReverse(NettyBlockPlacementPacketV477.class, 0x2C);
+
+        // === V735 (1.16) S2C reverse map overlay (delta from V573) ===
+        // ADD_GLOBAL_ENTITY removed (was 0x02 in V573) -> all S2C shift -1 from V573.
+        // SpawnPosition relocated from after UpdateScore to after SetChunkCacheRadius.
+        registerV735S2CReverse(NettySpawnPlayerPacketV573.class, 0x04);
+        registerV735S2CReverse(AcknowledgePlayerDiggingPacketV573.class, 0x07);
+        registerV735S2CReverse(NettyBlockChangePacketV477.class, 0x0B);
+        registerV735S2CReverse(NettyChatS2CPacketV735.class, 0x0E);
+        registerV735S2CReverse(DeclareCommandsPacketV393.class, 0x11);
+        registerV735S2CReverse(ConfirmTransactionPacket.class, 0x12);
+        registerV735S2CReverse(NettyWindowItemsPacketV47.class, 0x14);
+        registerV735S2CReverse(NettySetSlotPacketV393.class, 0x16);
+        registerV735S2CReverse(NettySetSlotPacketV404.class, 0x16);
+        registerV735S2CReverse(NettyPluginMessageS2CPacketV393.class, 0x18);
+        registerV735S2CReverse(NettyDisconnectPacket.class, 0x1A);
+        registerV735S2CReverse(UnloadChunkPacketV109.class, 0x1D);
+        registerV735S2CReverse(NettyChangeGameStatePacket.class, 0x1E);
+        registerV735S2CReverse(KeepAlivePacketV340.class, 0x20);
+        registerV735S2CReverse(MapChunkPacketV735.class, 0x21);
+        registerV735S2CReverse(UpdateLightPacketV735.class, 0x24);
+        registerV735S2CReverse(JoinGamePacketV735.class, 0x25);
+        registerV735S2CReverse(EntityRelativeMovePacketV109.class, 0x28);
+        registerV735S2CReverse(EntityLookAndMovePacketV109.class, 0x29);
+        registerV735S2CReverse(EntityLookPacketV47.class, 0x2A);
+        registerV735S2CReverse(PlayerAbilitiesPacketV73.class, 0x31);
+        registerV735S2CReverse(NettyPlayerListItemPacketV47.class, 0x33);
+        registerV735S2CReverse(NettyPlayerPositionS2CPacketV109.class, 0x35);
+        registerV735S2CReverse(NettyDestroyEntitiesPacketV47.class, 0x37);
+        registerV735S2CReverse(SetChunkCacheCenterPacketV477.class, 0x40);
+        registerV735S2CReverse(SetChunkCacheRadiusPacketV477.class, 0x41);
+        registerV735S2CReverse(SpawnPositionPacketV477.class, 0x42);
+        registerV735S2CReverse(NettyTimeUpdatePacket.class, 0x4E);
+        registerV735S2CReverse(EntityTeleportPacketV109.class, 0x56);
+        registerV735S2CReverse(NettyEntityPropertiesPacketV47.class, 0x58);
+        registerV735S2CReverse(UpdateRecipesPacketV393.class, 0x5A);
+        registerV735S2CReverse(UpdateTagsPacketV735.class, 0x5B);
+
+        // V735 LOGIN state: UUID changed from String to binary (2 longs)
+        REVERSE_V735.put(reverseKey(ConnectionState.LOGIN, PacketDirection.SERVER_TO_CLIENT,
+                LoginSuccessPacketV735.class), 0x02);
+
+        // === V735 (1.16) S2C forward entries (for bot decoder) ===
+        // Shadow stale V573 IDs that shifted in V735 due to ADD_GLOBAL_ENTITY removal.
+        registerV735S2C(0x05, noOpFactory);  // V573: SpawnPlayer; V735: SpawnExperienceOrb
+        registerV735S2C(0x08, noOpFactory);  // V573: AcknowledgeDigging; V735: BlockBreakAnimation
+        registerV735S2C(0x0C, noOpFactory);  // V573: BlockChange; V735: BossBar
+        registerV735S2C(0x0F, noOpFactory);  // V573: Chat; V735: TabComplete
+        registerV735S2C(0x12, noOpFactory);  // V573: DeclareCommands; V735: WindowConfirmation
+        registerV735S2C(0x13, noOpFactory);  // V573: ConfirmTransaction; V735: CloseWindow
+        registerV735S2C(0x15, noOpFactory);  // V573: WindowItems; V735: ContainerSetData
+        registerV735S2C(0x17, noOpFactory);  // V573: SetSlot; V735: Cooldown
+        registerV735S2C(0x19, noOpFactory);  // V573: PluginMessage; V735: CustomSound
+        registerV735S2C(0x1B, noOpFactory);  // V573: Disconnect; V735: EntityEvent
+        registerV735S2C(0x1E, noOpFactory);  // V573: UnloadChunk; V735: Explosion
+        registerV735S2C(0x1F, noOpFactory);  // V573: ChangeGameState; V735: HorseScreenOpen
+        registerV735S2C(0x21, noOpFactory);  // V573: KeepAlive; V735: KeepAlive(new ID)
+        registerV735S2C(0x22, noOpFactory);  // V573: ChunkData; V735: LevelEvent
+        registerV735S2C(0x25, noOpFactory);  // V573: UpdateLight; V735: UpdateLight(new pos)
+        registerV735S2C(0x26, noOpFactory);  // V573: JoinGame; V735: TradeMerchant
+        registerV735S2C(0x29, noOpFactory);  // V573: EntityRelMove; V735: EntityRelMove(same but check)
+        registerV735S2C(0x2A, noOpFactory);  // V573: EntityLookMove; V735: EntityLookMove(same)
+        registerV735S2C(0x2B, noOpFactory);  // V573: EntityLook; V735: EntityLook(same)
+        registerV735S2C(0x32, noOpFactory);  // V573: Abilities; V735: PlayerCombat
+        registerV735S2C(0x34, noOpFactory);  // V573: PlayerInfo; V735: FacePlayer
+        registerV735S2C(0x36, noOpFactory);  // V573: PlayerPos; V735: UnlockRecipes
+        registerV735S2C(0x38, noOpFactory);  // V573: DestroyEntities; V735: RecipeBook
+        registerV735S2C(0x41, noOpFactory);  // V573: ChunkCacheCenter; V735: Respawn
+        registerV735S2C(0x42, noOpFactory);  // V573: ChunkCacheRadius; V735: EntityHeadRotation
+        registerV735S2C(0x4E, noOpFactory);  // V573: SpawnPosition; V735: SetActionBarText
+        registerV735S2C(0x4F, noOpFactory);  // V573: TimeUpdate; V735: SpawnPosition(new)
+        registerV735S2C(0x57, noOpFactory);  // V573: EntityTeleport; V735: StopSound
+        registerV735S2C(0x59, noOpFactory);  // V573: EntityProperties; V735: EntityProperties(new)
+        // Register active V735 S2C forward entries for bot decoder
+        registerV735S2C(0x04, new PacketFactory() { public Packet create() { return new NettySpawnPlayerPacketV573(); } });
+        registerV735S2C(0x0B, new PacketFactory() { public Packet create() { return new NettyBlockChangePacketV477(); } });
+        registerV735S2C(0x0E, new PacketFactory() { public Packet create() { return new NettyChatS2CPacketV735(); } });
+        registerV735S2C(0x11, new PacketFactory() { public Packet create() { return new DeclareCommandsPacketV393(); } });
+        registerV735S2C(0x14, new PacketFactory() { public Packet create() { return new NettyWindowItemsPacketV47(); } });
+        registerV735S2C(0x16, new PacketFactory() { public Packet create() { return new NettySetSlotPacketV393(); } });
+        registerV735S2C(0x18, noOpFactory); // PluginMessage (bot doesn't need to decode)
+        registerV735S2C(0x1A, new PacketFactory() { public Packet create() { return new NettyDisconnectPacket(); } });
+        registerV735S2C(0x1D, new PacketFactory() { public Packet create() { return new UnloadChunkPacketV109(); } });
+        registerV735S2C(0x20, new PacketFactory() { public Packet create() { return new KeepAlivePacketV340(); } });
+        registerV735S2C(0x24, new PacketFactory() { public Packet create() { return new UpdateLightPacketV735(); } });
+        registerV735S2C(0x28, new PacketFactory() { public Packet create() { return new EntityRelativeMovePacketV109(); } });
+        registerV735S2C(0x31, new PacketFactory() { public Packet create() { return new PlayerAbilitiesPacketV73(); } });
+        registerV735S2C(0x33, new PacketFactory() { public Packet create() { return new NettyPlayerListItemPacketV47(); } });
+        registerV735S2C(0x35, new PacketFactory() { public Packet create() { return new NettyPlayerPositionS2CPacketV109(); } });
+        registerV735S2C(0x37, new PacketFactory() { public Packet create() { return new NettyDestroyEntitiesPacketV47(); } });
+        registerV735S2C(0x40, new PacketFactory() { public Packet create() { return new SetChunkCacheCenterPacketV477(); } });
+        registerV735S2C(0x56, new PacketFactory() { public Packet create() { return new EntityTeleportPacketV109(); } });
+        registerV735S2C(0x4E, new PacketFactory() { public Packet create() { return new NettyTimeUpdatePacket(); } });
+
+        // === V735 (1.16) C2S entries (GENERATE_JIGSAW inserted at 0x0F, shifting >= 0x0F by +1) ===
+        registerV735C2S(0x00, new PacketFactory() { public Packet create() { return new TeleportConfirmPacketV109(); } });
+        registerV735C2S(0x01, noOpFactory); // BlockEntityTagQuery
+        registerV735C2S(0x02, noOpFactory); // SetDifficulty
+        registerV735C2S(0x03, new PacketFactory() { public Packet create() { return new NettyChatC2SPacket(); } });
+        registerV735C2S(0x04, new PacketFactory() { public Packet create() { return new ClientCommandPacket(); } });
+        registerV735C2S(0x05, new PacketFactory() { public Packet create() { return new NettyClientSettingsPacketV109(); } });
+        registerV735C2S(0x06, noOpFactory); // CommandSuggestion
+        registerV735C2S(0x07, new PacketFactory() { public Packet create() { return new ConfirmTransactionPacket(); } });
+        registerV735C2S(0x08, noOpFactory); // ClickWindowButton
+        registerV735C2S(0x09, noOpFactory); // WindowClick (slot format changed)
+        registerV735C2S(0x0A, new PacketFactory() { public Packet create() { return new CloseWindowPacket(); } });
+        registerV735C2S(0x0B, new PacketFactory() { public Packet create() { return new NettyPluginMessagePacketV47(); } });
+        registerV735C2S(0x0C, noOpFactory); // EditBook
+        registerV735C2S(0x0D, noOpFactory); // EntityTagQuery
+        registerV735C2S(0x0E, new PacketFactory() { public Packet create() { return new NettyUseEntityPacketV47(); } });
+        registerV735C2S(0x0F, noOpFactory); // GenerateJigsaw (NEW in 1.16)
+        registerV735C2S(0x10, new PacketFactory() { public Packet create() { return new KeepAlivePacketV340(); } });
+        registerV735C2S(0x11, noOpFactory); // LockDifficulty
+        registerV735C2S(0x12, new PacketFactory() { public Packet create() { return new PlayerPositionPacketV47(); } });
+        registerV735C2S(0x13, new PacketFactory() { public Packet create() { return new PlayerPositionAndLookC2SPacketV47(); } });
+        registerV735C2S(0x14, new PacketFactory() { public Packet create() { return new PlayerLookPacket(); } });
+        registerV735C2S(0x15, new PacketFactory() { public Packet create() { return new PlayerOnGroundPacket(); } });
+        registerV735C2S(0x16, noOpFactory); // VehicleMove
+        registerV735C2S(0x17, noOpFactory); // PaddleBoat
+        registerV735C2S(0x18, noOpFactory); // PickItem
+        registerV735C2S(0x19, noOpFactory); // PlaceRecipe
+        registerV735C2S(0x1A, new PacketFactory() { public Packet create() { return new PlayerAbilitiesPacketV735(); } });
+        registerV735C2S(0x1B, new PacketFactory() { public Packet create() { return new PlayerDiggingPacketV477(); } });
+        registerV735C2S(0x1C, new PacketFactory() { public Packet create() { return new NettyEntityActionPacketV47(); } });
+        registerV735C2S(0x1D, new PacketFactory() { public Packet create() { return new NettySteerVehiclePacketV47(); } });
+        registerV735C2S(0x1E, noOpFactory); // RecipeBookUpdate
+        registerV735C2S(0x1F, noOpFactory); // RenameItem
+        registerV735C2S(0x20, noOpFactory); // ResourcePack
+        registerV735C2S(0x21, noOpFactory); // SeenAdvancements
+        registerV735C2S(0x22, noOpFactory); // SelectTrade
+        registerV735C2S(0x23, noOpFactory); // SetBeacon
+        registerV735C2S(0x24, new PacketFactory() { public Packet create() { return new HoldingChangePacketBeta(); } });
+        registerV735C2S(0x25, noOpFactory); // SetCommandBlock
+        registerV735C2S(0x26, noOpFactory); // SetCommandMinecart
+        registerV735C2S(0x27, noOpFactory); // CreativeSlot (slot format changed)
+        registerV735C2S(0x28, noOpFactory); // SetJigsawBlock
+        registerV735C2S(0x29, noOpFactory); // SetStructureBlock
+        registerV735C2S(0x2A, new PacketFactory() { public Packet create() { return new NettyUpdateSignPacketV47(); } });
+        registerV735C2S(0x2B, new PacketFactory() { public Packet create() { return new AnimationPacketV109(); } });
+        registerV735C2S(0x2C, noOpFactory); // Spectate
+        registerV735C2S(0x2D, new PacketFactory() { public Packet create() { return new NettyBlockPlacementPacketV477(); } });
+        registerV735C2S(0x2E, new PacketFactory() { public Packet create() { return new UseItemPacketV109(); } });
+
+        // === V735 (1.16) C2S reverse map entries (for bot encoder) ===
+        registerV735C2SReverse(NettyChatC2SPacket.class, 0x03);
+        registerV735C2SReverse(KeepAlivePacketV340.class, 0x10);
+        registerV735C2SReverse(PlayerDiggingPacketV477.class, 0x1B);
+        registerV735C2SReverse(NettyBlockPlacementPacketV477.class, 0x2D);
     }
 
     private static void registerC2S(ConnectionState state, int packetId,
@@ -1113,6 +1266,22 @@ public class NettyPacketRegistry {
         REVERSE_V573.put(reverseKey(ConnectionState.PLAY, PacketDirection.CLIENT_TO_SERVER, clazz), packetId);
     }
 
+    private static void registerV735S2C(int packetId, PacketFactory factory) {
+        REGISTRY_V735.put(key(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, packetId), factory);
+    }
+
+    private static void registerV735S2CReverse(Class<? extends Packet> clazz, int packetId) {
+        REVERSE_V735.put(reverseKey(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, clazz), packetId);
+    }
+
+    private static void registerV735C2S(int packetId, PacketFactory factory) {
+        REGISTRY_V735.put(key(ConnectionState.PLAY, PacketDirection.CLIENT_TO_SERVER, packetId), factory);
+    }
+
+    private static void registerV735C2SReverse(Class<? extends Packet> clazz, int packetId) {
+        REVERSE_V735.put(reverseKey(ConnectionState.PLAY, PacketDirection.CLIENT_TO_SERVER, clazz), packetId);
+    }
+
     private static void registerV109S2C(int packetId, PacketFactory factory) {
         REGISTRY_V109.put(key(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, packetId), factory);
     }
@@ -1172,6 +1341,13 @@ public class NettyPacketRegistry {
      */
     public static Packet createPacket(ConnectionState state, PacketDirection direction,
                                        int packetId, int protocolVersion) {
+        if (protocolVersion >= 735) {
+            String k = key(state, direction, packetId);
+            PacketFactory factory = REGISTRY_V735.get(k);
+            if (factory != null) {
+                return factory.create();
+            }
+        }
         if (protocolVersion >= 573) {
             String k = key(state, direction, packetId);
             PacketFactory factory = REGISTRY_V573.get(k);
@@ -1263,6 +1439,13 @@ public class NettyPacketRegistry {
      */
     public static int getPacketId(ConnectionState state, PacketDirection direction,
                                    Class<? extends Packet> clazz, int protocolVersion) {
+        if (protocolVersion >= 735) {
+            String rk = reverseKey(state, direction, clazz);
+            Integer id = REVERSE_V735.get(rk);
+            if (id != null) {
+                return id;
+            }
+        }
         if (protocolVersion >= 573) {
             String rk = reverseKey(state, direction, clazz);
             Integer id = REVERSE_V573.get(rk);

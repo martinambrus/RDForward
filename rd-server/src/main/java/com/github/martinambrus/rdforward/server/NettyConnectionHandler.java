@@ -151,7 +151,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
         String versionName;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_15_2)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16)) {
+            versionName = "1.16";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_15_2)) {
             versionName = "1.15.2";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_15_1)) {
             versionName = "1.15.1";
@@ -256,8 +258,13 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.pipeline().addBefore("encoder", "encrypt", new CipherEncoder(encryptCipher));
 
             // Send LoginSuccess — this transitions to PLAY state
+            // 1.16 changed UUID from VarIntString to binary (2 longs)
             String uuid = ClassicToNettyTranslator.generateOfflineUuid(pendingUsername);
-            ctx.writeAndFlush(new LoginSuccessPacket(uuid, pendingUsername));
+            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16)) {
+                ctx.writeAndFlush(new LoginSuccessPacketV735(uuid, pendingUsername));
+            } else {
+                ctx.writeAndFlush(new LoginSuccessPacket(uuid, pendingUsername));
+            }
 
             // Transition to PLAY state
             state = ConnectionState.PLAY;
@@ -302,8 +309,13 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.pipeline().addBefore("encoder", "encrypt", new CipherEncoder(encryptCipher));
 
             // Send LoginSuccess — this transitions to PLAY state
+            // 1.16 changed UUID from VarIntString to binary (2 longs)
             String uuid = ClassicToNettyTranslator.generateOfflineUuid(pendingUsername);
-            ctx.writeAndFlush(new LoginSuccessPacket(uuid, pendingUsername));
+            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16)) {
+                ctx.writeAndFlush(new LoginSuccessPacketV735(uuid, pendingUsername));
+            } else {
+                ctx.writeAndFlush(new LoginSuccessPacket(uuid, pendingUsername));
+            }
 
             // Transition to PLAY state
             state = ConnectionState.PLAY;
@@ -361,6 +373,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
+        boolean isV735 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16);
         boolean isV573 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_15);
         boolean isV477 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_14);
         boolean isV393 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13);
@@ -371,10 +384,14 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Send JoinGame
         // maxPlayers=20 limits the tab list to a single compact column.
         // Using the actual MAX_PLAYERS (128) creates a huge multi-column grid.
+        // v735 (1.16) rewrote JoinGame with NBT dimension codec.
         // v573 (1.15) added hashedSeed + enableRespawnScreen.
         // v477 (1.14) removed difficulty from JoinGame and added viewDistance.
         // v108 (1.9.1) changed dimension from byte to int.
-        if (isV573) {
+        if (isV735) {
+            ctx.writeAndFlush(new JoinGamePacketV735(entityId, 1,
+                    20, ChunkManager.DEFAULT_VIEW_DISTANCE));
+        } else if (isV573) {
             ctx.writeAndFlush(new JoinGamePacketV573(entityId, 1, 0,
                     20, "default", ChunkManager.DEFAULT_VIEW_DISTANCE));
         } else if (isV477) {
@@ -401,7 +418,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.writeAndFlush(new DeclareCommandsPacketV393());
             ctx.writeAndFlush(new UpdateRecipesPacketV393());
             // 1.14 added entity_types as a 4th tag category
-            ctx.writeAndFlush(isV477 ? new UpdateTagsPacketV477() : new UpdateTagsPacketV393());
+            // 1.16 requires essential fluid tags (water/lava) or client crashes during rendering
+            ctx.writeAndFlush(isV735 ? new UpdateTagsPacketV735()
+                    : isV477 ? new UpdateTagsPacketV477() : new UpdateTagsPacketV393());
             // Brand plugin message — 1.13 client NPEs without it
             byte[] brand = "RDForward".getBytes(java.nio.charset.StandardCharsets.UTF_8);
             byte[] brandData = new byte[brand.length + 1];
@@ -415,12 +434,16 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         ctx.writeAndFlush(new PlayerAbilitiesPacketV73(0x0D, 0.05f, 0.1f));
 
         // Send Entity Properties for movement speed
+        // 1.16+ uses namespaced snake_case attribute names
+        String movementSpeedKey = isV735
+                ? "minecraft:generic.movement_speed"
+                : "generic.movementSpeed";
         if (isV47) {
             ctx.writeAndFlush(new NettyEntityPropertiesPacketV47(entityId,
-                    "generic.movementSpeed", 0.10000000149011612));
+                    movementSpeedKey, 0.10000000149011612));
         } else {
             ctx.writeAndFlush(new NettyEntityPropertiesPacket(entityId,
-                    "generic.movementSpeed", 0.10000000149011612));
+                    movementSpeedKey, 0.10000000149011612));
         }
 
         // Determine spawn position
@@ -600,7 +623,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Give 1 cobblestone for right-click
         // v404 (1.13.2)+ uses boolean+VarInt slot format (also used by v477/1.14)
         boolean isV404 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13_2);
-        if (isV404) {
+        if (isV735) {
+            ctx.writeAndFlush(new NettySetSlotPacketV404(0, 36,
+                    BlockStateMapper.toV735ItemId(BlockRegistry.COBBLESTONE), 1));
+        } else if (isV404) {
             ctx.writeAndFlush(new NettySetSlotPacketV404(0, 36,
                     BlockStateMapper.toV393ItemId(BlockRegistry.COBBLESTONE), 1));
         } else if (isV393) {
@@ -708,6 +734,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 || packet instanceof NettyUpdateSignPacket
                 || packet instanceof NettyUpdateSignPacketV47
                 || packet instanceof PlayerAbilitiesPacketV73
+                || packet instanceof PlayerAbilitiesPacketV735
                 || packet instanceof NettyTabCompletePacket
                 || packet instanceof NettyTabCompletePacketV47
                 || packet instanceof NettyClientSettingsPacket
@@ -941,14 +968,23 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         if (message.startsWith("/")) {
             String command = message.substring(1);
+            boolean isV735 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16);
             boolean handled = CommandRegistry.dispatch(command, player.getUsername(), false,
                     reply -> {
                         String json = "{\"text\":\"" + reply.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
-                        player.sendPacket(new NettyChatS2CPacket(json));
+                        if (isV735) {
+                            player.sendPacket(new NettyChatS2CPacketV735(json, (byte) 0, 0L, 0L));
+                        } else {
+                            player.sendPacket(new NettyChatS2CPacket(json));
+                        }
                     });
             if (!handled) {
                 String json = "{\"text\":\"Unknown command: " + command.split("\\s+")[0] + "\"}";
-                player.sendPacket(new NettyChatS2CPacket(json));
+                if (isV735) {
+                    player.sendPacket(new NettyChatS2CPacketV735(json, (byte) 0, 0L, 0L));
+                } else {
+                    player.sendPacket(new NettyChatS2CPacket(json));
+                }
             }
             return;
         }
@@ -1003,7 +1039,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void sendBlockChange(ChannelHandlerContext ctx, int x, int y, int z,
                                   int blockType, int metadata) {
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_14)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16)) {
+            ctx.writeAndFlush(new NettyBlockChangePacketV477(x, y, z,
+                    BlockStateMapper.toV735BlockState(blockType)));
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_14)) {
             ctx.writeAndFlush(new NettyBlockChangePacketV477(x, y, z,
                     BlockStateMapper.toV393BlockState(blockType)));
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13)) {

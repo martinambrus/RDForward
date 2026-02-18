@@ -9,8 +9,10 @@ import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV10
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV47;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV477;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV573;
+import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV735;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UnloadChunkPacketV109;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacketV477;
+import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacketV735;
 import com.github.martinambrus.rdforward.world.WorldGenerator;
 import com.github.martinambrus.rdforward.world.alpha.AlphaChunk;
 import com.github.martinambrus.rdforward.world.alpha.AlphaLevelFormat;
@@ -401,7 +403,46 @@ public class ChunkManager {
      * v47 (1.8) uses ushort blockStates and no compression.
      */
     private void sendChunkToPlayer(ConnectedPlayer player, AlphaChunk chunk) {
-        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_15)) {
+        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_16)) {
+            // v735: 15-bit global palette with non-spanning packing, 1.16 block state IDs
+            AlphaChunk.V573ChunkData v735Data = chunk.serializeForV735Protocol();
+            long[] heightmap = buildHeightmapLongArrayNonSpanning(chunk);
+
+            player.sendPacket(new MapChunkPacketV735(
+                chunk.getXPos(), chunk.getZPos(), true,
+                v735Data.getPrimaryBitMask(),
+                heightmap, heightmap,
+                v735Data.getBiomes(),
+                v735Data.getRawData()));
+
+            // Build UpdateLight from per-section light arrays
+            int skyLightMask = 0;
+            int blockLightMask = 0;
+            java.util.List<byte[]> skyArrays = new java.util.ArrayList<>();
+            java.util.List<byte[]> blockArrays = new java.util.ArrayList<>();
+
+            for (int section = 0; section < 8; section++) {
+                if (v735Data.getSkyLightSections()[section] != null) {
+                    skyLightMask |= (1 << (section + 1));
+                    skyArrays.add(v735Data.getSkyLightSections()[section]);
+                }
+                if (v735Data.getBlockLightSections()[section] != null) {
+                    blockLightMask |= (1 << (section + 1));
+                    blockArrays.add(v735Data.getBlockLightSections()[section]);
+                }
+            }
+
+            int emptySkyLightMask = ~skyLightMask & 0x3FFFF;
+            int emptyBlockLightMask = ~blockLightMask & 0x3FFFF;
+
+            player.sendPacket(new UpdateLightPacketV735(
+                chunk.getXPos(), chunk.getZPos(),
+                skyLightMask, blockLightMask,
+                emptySkyLightMask, emptyBlockLightMask,
+                skyArrays.toArray(new byte[0][]),
+                blockArrays.toArray(new byte[0][])));
+
+        } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_15)) {
             // v573: biomes are a separate field (not inside data array), int[1024] 3D biomes
             AlphaChunk.V573ChunkData v573Data = chunk.serializeForV573Protocol();
             long[] heightmap = buildHeightmapLongArray(chunk);
@@ -671,6 +712,28 @@ public class ChunkManager {
                 int bitsInFirst = 64 - bitOffset;
                 result[longIndex + 1] |= (value & mask) >> bitsInFirst;
             }
+        }
+
+        return result;
+    }
+
+    /**
+     * Build heightmap long array using non-spanning bit packing (1.16+).
+     * 9 bits per entry, 7 entries per long (63 bits used, 1 bit padding), 37 longs.
+     */
+    static long[] buildHeightmapLongArrayNonSpanning(AlphaChunk chunk) {
+        byte[] heightMap = chunk.getHeightMap();
+        int bitsPerEntry = 9;
+        int entriesPerLong = 64 / bitsPerEntry; // 7
+        int longsNeeded = (256 + entriesPerLong - 1) / entriesPerLong; // 37
+        long[] result = new long[longsNeeded];
+        long mask = (1L << bitsPerEntry) - 1;
+
+        for (int i = 0; i < 256; i++) {
+            long value = heightMap[i] & 0xFF;
+            int longIndex = i / entriesPerLong;
+            int bitOffset = (i % entriesPerLong) * bitsPerEntry;
+            result[longIndex] |= (value & mask) << bitOffset;
         }
 
         return result;

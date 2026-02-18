@@ -52,6 +52,7 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
     }
 
     private Packet translate(Packet packet) {
+        boolean isV735 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16);
         boolean isV573 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_15);
         boolean isV477 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_14);
         boolean isV393 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13);
@@ -84,6 +85,10 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
 
         if (packet instanceof SetBlockServerPacket) {
             SetBlockServerPacket sb = (SetBlockServerPacket) packet;
+            if (isV735) {
+                return new NettyBlockChangePacketV477(sb.getX(), sb.getY(), sb.getZ(),
+                        BlockStateMapper.toV735BlockState(sb.getBlockType()));
+            }
             if (isV477) {
                 return new NettyBlockChangePacketV477(sb.getX(), sb.getY(), sb.getZ(),
                         BlockStateMapper.toV393BlockState(sb.getBlockType()));
@@ -241,6 +246,9 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
             String message = mp.getMessage();
             // Chat messages are JSON text components
             message = "{\"text\":\"" + message.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
+            if (isV735) {
+                return new NettyChatS2CPacketV735(message, (byte) 0, 0L, 0L);
+            }
             if (isV47) {
                 return new NettyChatS2CPacketV47(message, (byte) 0);
             }

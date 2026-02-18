@@ -1086,6 +1086,119 @@ public class AlphaChunk {
     }
 
     /**
+     * Serialize this chunk's data for the 1.16 (v735) MapChunkPacket.
+     *
+     * Key differences from v573:
+     * 1. NON-SPANNING bit packing: entries do not cross long boundaries.
+     * 2. 15-bit global palette (1.16 has ~17,104 block states, exceeding 2^14).
+     *    entriesPerLong = 64/15 = 4, longsNeeded = ceil(4096/4) = 1024.
+     *    Each long has 4 entries using 60 bits with 4 bits of padding.
+     * 3. Uses 1.16 block state IDs (shifted from 1.13 due to new blocks).
+     *
+     * Biomes still int[1024], separate field (same as 1.15).
+     * Chunk packet wire format field order: unchanged from V573.
+     *
+     * @return V573ChunkData (same return type — wire format unchanged, only packing differs)
+     */
+    public V573ChunkData serializeForV735Protocol() {
+        int primaryBitMask = 0;
+        int[] sectionBlockCounts = new int[8];
+        for (int section = 0; section < 8; section++) {
+            int baseY = section * 16;
+            int nonAirCount = 0;
+            for (int x = 0; x < WIDTH; x++) {
+                for (int z = 0; z < DEPTH; z++) {
+                    for (int ly = 0; ly < 16; ly++) {
+                        if (getBlock(x, baseY + ly, z) != 0) {
+                            nonAirCount++;
+                        }
+                    }
+                }
+            }
+            if (nonAirCount > 0) {
+                primaryBitMask |= (1 << section);
+                sectionBlockCounts[section] = nonAirCount;
+            }
+        }
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(16384);
+
+        byte[][] skyLightSections = new byte[8][];
+        byte[][] blockLightSections = new byte[8][];
+
+        for (int section = 0; section < 8; section++) {
+            if ((primaryBitMask & (1 << section)) == 0) continue;
+            int baseY = section * 16;
+
+            // Write blockCount (short, big-endian)
+            writeShortToStream(baos, sectionBlockCounts[section]);
+
+            int bitsPerBlock = 15; // 1.16 global palette: ceil(log2(17104)) = 15
+            baos.write(bitsPerBlock);
+
+            // 1.16 global palette: NO palette length prefix (same as 1.13-1.15)
+
+            // Non-spanning packing: entries do NOT cross long boundaries.
+            int entriesPerLong = 64 / bitsPerBlock; // 4 for 15-bit
+            int longsNeeded = (4096 + entriesPerLong - 1) / entriesPerLong; // 1024
+            long[] dataArray = new long[longsNeeded];
+
+            long mask = (1L << bitsPerBlock) - 1;
+            for (int ly = 0; ly < 16; ly++) {
+                for (int z = 0; z < DEPTH; z++) {
+                    for (int x = 0; x < WIDTH; x++) {
+                        int blockId = getBlock(x, baseY + ly, z);
+                        long stateId = com.github.martinambrus.rdforward.protocol
+                                .BlockStateMapper.toV735BlockState(blockId);
+                        int i = (ly * 16 + z) * 16 + x;
+                        int longIndex = i / entriesPerLong;
+                        int bitOffset = (i % entriesPerLong) * bitsPerBlock;
+                        dataArray[longIndex] |= (stateId & mask) << bitOffset;
+                    }
+                }
+            }
+
+            writeVarIntToStream(baos, longsNeeded);
+            for (int i = 0; i < longsNeeded; i++) {
+                writeLongToStream(baos, dataArray[i]);
+            }
+
+            // NO light data in sections for 1.16+
+
+            // Collect light data for UpdateLight packet
+            byte[] sectionSkyLight = new byte[2048];
+            byte[] sectionBlockLight = new byte[2048];
+            int lightIdx = 0;
+            for (int ly = 0; ly < 16; ly++) {
+                for (int z = 0; z < DEPTH; z++) {
+                    for (int x = 0; x < WIDTH; x += 2) {
+                        int skyLow = getSkyLight(x, baseY + ly, z) & 0x0F;
+                        int skyHigh = getSkyLight(x + 1, baseY + ly, z) & 0x0F;
+                        sectionSkyLight[lightIdx] = (byte) (skyLow | (skyHigh << 4));
+
+                        int blkLow = getBlockLight(x, baseY + ly, z) & 0x0F;
+                        int blkHigh = getBlockLight(x + 1, baseY + ly, z) & 0x0F;
+                        sectionBlockLight[lightIdx] = (byte) (blkLow | (blkHigh << 4));
+
+                        lightIdx++;
+                    }
+                }
+            }
+            skyLightSections[section] = sectionSkyLight;
+            blockLightSections[section] = sectionBlockLight;
+        }
+
+        // Biomes: int[1024] for 3D biomes (same as 1.15)
+        int[] biomes = new int[1024];
+        for (int i = 0; i < 1024; i++) {
+            biomes[i] = 1; // plains
+        }
+
+        return new V573ChunkData(baos.toByteArray(), primaryBitMask,
+                skyLightSections, blockLightSections, biomes);
+    }
+
+    /**
      * Result container for v573 chunk serialization.
      * Unlike V477ChunkData, biomes are a separate int[] because in 1.15
      * the chunk packet writes them as a separate field (not inside the data array).
