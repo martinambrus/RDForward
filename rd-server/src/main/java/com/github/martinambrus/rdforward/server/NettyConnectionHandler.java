@@ -151,7 +151,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
         String versionName;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_15_1)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_15_2)) {
+            versionName = "1.15.2";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_15_1)) {
             versionName = "1.15.1";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_15)) {
             versionName = "1.15";
