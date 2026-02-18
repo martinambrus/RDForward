@@ -52,6 +52,7 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
     }
 
     private Packet translate(Packet packet) {
+        boolean isV755 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17);
         boolean isV751 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16_2);
         boolean isV735 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16);
         boolean isV573 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_15);
@@ -86,6 +87,10 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
 
         if (packet instanceof SetBlockServerPacket) {
             SetBlockServerPacket sb = (SetBlockServerPacket) packet;
+            if (isV755) {
+                return new NettyBlockChangePacketV477(sb.getX(), sb.getY(), sb.getZ(),
+                        BlockStateMapper.toV755BlockState(sb.getBlockType()));
+            }
             if (isV735) {
                 return new NettyBlockChangePacketV477(sb.getX(), sb.getY(), sb.getZ(),
                         BlockStateMapper.toV735BlockState(sb.getBlockType()));
@@ -236,6 +241,9 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
         if (packet instanceof DespawnPlayerPacket) {
             DespawnPlayerPacket dp = (DespawnPlayerPacket) packet;
             int entityId = dp.getPlayerId() + 1;
+            if (isV755) {
+                return new RemoveEntityPacketV755(entityId);
+            }
             if (isV47) {
                 return new NettyDestroyEntitiesPacketV47(entityId);
             }

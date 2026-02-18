@@ -154,7 +154,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
         String versionName;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16_4)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17)) {
+            versionName = "1.17";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16_4)) {
             versionName = "1.16.4";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16_3)) {
             versionName = "1.16.3";
@@ -382,6 +384,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
+        boolean isV755 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17);
         boolean isV751 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16_2);
         boolean isV735 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16);
         boolean isV573 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_15);
@@ -400,7 +403,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // v573 (1.15) added hashedSeed + enableRespawnScreen.
         // v477 (1.14) removed difficulty from JoinGame and added viewDistance.
         // v108 (1.9.1) changed dimension from byte to int.
-        if (isV751) {
+        if (isV755) {
+            ctx.writeAndFlush(new JoinGamePacketV755(entityId, 1,
+                    20, ChunkManager.DEFAULT_VIEW_DISTANCE));
+        } else if (isV751) {
             ctx.writeAndFlush(new JoinGamePacketV751(entityId, 1,
                     20, ChunkManager.DEFAULT_VIEW_DISTANCE));
         } else if (isV735) {
@@ -435,7 +441,8 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             // 1.14 added entity_types as a 4th tag category
             // 1.16 requires essential fluid tags (water/lava) or client crashes during rendering
             // 1.16.2 removed minecraft:furnace_materials from item tags
-            ctx.writeAndFlush(isV751 ? new UpdateTagsPacketV751()
+            ctx.writeAndFlush(isV755 ? new UpdateTagsPacketV755()
+                    : isV751 ? new UpdateTagsPacketV751()
                     : isV735 ? new UpdateTagsPacketV735()
                     : isV477 ? new UpdateTagsPacketV477() : new UpdateTagsPacketV393());
             // Brand plugin message — 1.13 client NPEs without it
@@ -455,7 +462,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         String movementSpeedKey = isV735
                 ? "minecraft:generic.movement_speed"
                 : "generic.movementSpeed";
-        if (isV47) {
+        if (isV755) {
+            ctx.writeAndFlush(new NettyEntityPropertiesPacketV755(entityId,
+                    movementSpeedKey, 0.10000000149011612));
+        } else if (isV47) {
             ctx.writeAndFlush(new NettyEntityPropertiesPacketV47(entityId,
                     movementSpeedKey, 0.10000000149011612));
         } else {
@@ -514,7 +524,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         int spawnBlockX = (int) Math.floor(spawnX);
         int spawnBlockY = (int) Math.floor(spawnY);
         int spawnBlockZ = (int) Math.floor(spawnZ);
-        if (isV477) {
+        if (isV755) {
+            ctx.writeAndFlush(new SpawnPositionPacketV755(spawnBlockX, spawnBlockY, spawnBlockZ));
+        } else if (isV477) {
             ctx.writeAndFlush(new SpawnPositionPacketV477(spawnBlockX, spawnBlockY, spawnBlockZ));
         } else if (isV47) {
             ctx.writeAndFlush(new SpawnPositionPacketV47(spawnBlockX, spawnBlockY, spawnBlockZ));
@@ -552,7 +564,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // S2C Y: 1.7.2 = eye-level (client subtracts yOffset=1.62); 1.8+ = feet-level.
         float alphaSpawnYaw = (spawnYaw + 180.0f) % 360.0f;
         double clientY = isV47 ? spawnY - PLAYER_EYE_HEIGHT : spawnY;
-        if (isV109) {
+        if (isV755) {
+            ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV755(
+                    spawnX, clientY, spawnZ, alphaSpawnYaw, spawnPitch, ++nextTeleportId));
+        } else if (isV109) {
             ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV109(
                     spawnX, clientY, spawnZ, alphaSpawnYaw, spawnPitch, ++nextTeleportId));
         } else if (isV47) {
@@ -640,7 +655,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Give 1 cobblestone for right-click
         // v404 (1.13.2)+ uses boolean+VarInt slot format (also used by v477/1.14)
         boolean isV404 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13_2);
-        if (isV735) {
+        if (isV755) {
+            ctx.writeAndFlush(new NettySetSlotPacketV404(0, 36,
+                    BlockStateMapper.toV755ItemId(BlockRegistry.COBBLESTONE), 1));
+        } else if (isV735) {
             ctx.writeAndFlush(new NettySetSlotPacketV404(0, 36,
                     BlockStateMapper.toV735ItemId(BlockRegistry.COBBLESTONE), 1));
         } else if (isV404) {
@@ -1031,7 +1049,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         // S2C Y: 1.7.2 = eye-level; 1.8+ = feet-level.
         float alphaYaw = (yaw + 180.0f) % 360.0f;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_9)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17)) {
+            ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV755(
+                    spawnX, spawnFeetY, spawnZ, alphaYaw, 0, ++nextTeleportId));
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_9)) {
             ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV109(
                     spawnX, spawnFeetY, spawnZ, alphaYaw, 0, ++nextTeleportId));
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
@@ -1056,7 +1077,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void sendBlockChange(ChannelHandlerContext ctx, int x, int y, int z,
                                   int blockType, int metadata) {
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17)) {
+            ctx.writeAndFlush(new NettyBlockChangePacketV477(x, y, z,
+                    BlockStateMapper.toV755BlockState(blockType)));
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16)) {
             ctx.writeAndFlush(new NettyBlockChangePacketV477(x, y, z,
                     BlockStateMapper.toV735BlockState(blockType)));
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_14)) {

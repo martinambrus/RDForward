@@ -583,12 +583,26 @@ public enum ProtocolVersion {
     RELEASE_1_16_4(754, 61, Family.RELEASE, "Release 1.16.4 (v754)", 92),
 
     /**
+     * Minecraft Release 1.17 (June 2021) - "Caves & Cliffs: Part I".
+     * JoinGame dimension types gain min_y/height fields. Chunk bitmasks changed from
+     * VarInt to BitSet (VarInt longCount + long[]). UpdateLight masks also BitSet with
+     * array count prefixes. UpdateTags switched to registry-based format. DestroyEntities
+     * changed to single-entity format. ConfirmTransaction (0x11) removed from C2S.
+     * Many new S2C packets (ADD_VIBRATION_SIGNAL, CLEAR_TITLES, INITIALIZE_BORDER,
+     * PING, PLAYER_COMBAT split, SET_BORDER split, SET_TITLE/SUBTITLE/ANIMATION split)
+     * shift S2C IDs by +1 to +11. Block state IDs shifted due to deepslate ores, copper,
+     * amethyst, candles, dripstone, etc.
+     * Netty protocol version 755.
+     */
+    RELEASE_1_17(755, 62, Family.RELEASE, "Release 1.17 (v755)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 62, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 63, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -741,6 +755,7 @@ public enum ProtocolVersion {
             case 751: return "Release 1.16.2";
             case 753: return "Release 1.16.3";
             case 754: return "Release 1.16.4";
+            case 755: return "Release 1.17";
             case 51: return "Release 1.4.6-1.4.7";
             case 60: return "Release 1.5-1.5.1";
             case 61: return "Release 1.5.2";

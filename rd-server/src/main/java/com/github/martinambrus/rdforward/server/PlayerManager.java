@@ -13,6 +13,7 @@ import com.github.martinambrus.rdforward.protocol.packet.netty.NettyChangeGameSt
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyPlayerPositionS2CPacket;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyPlayerPositionS2CPacketV47;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyPlayerPositionS2CPacketV109;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettyPlayerPositionS2CPacketV755;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyTimeUpdatePacket;
 import io.netty.channel.Channel;
 import org.cloudburstmc.math.vector.Vector3f;
@@ -427,6 +428,9 @@ public class PlayerManager {
             move.setMode(MovePlayerPacket.Mode.TELEPORT);
             move.setOnGround(true);
             target.getBedrockSession().getSession().sendPacket(move);
+        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_17)) {
+            target.sendPacket(new NettyPlayerPositionS2CPacketV755(
+                    x, feetY, z, alphaYaw, pitch, teleportIdCounter.incrementAndGet()));
         } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_9)) {
             target.sendPacket(new NettyPlayerPositionS2CPacketV109(
                     x, feetY, z, alphaYaw, pitch, teleportIdCounter.incrementAndGet()));
