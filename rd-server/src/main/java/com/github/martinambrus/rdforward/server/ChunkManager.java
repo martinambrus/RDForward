@@ -10,6 +10,7 @@ import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV47
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV477;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV573;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV735;
+import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV751;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UnloadChunkPacketV109;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacketV477;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacketV735;
@@ -404,16 +405,26 @@ public class ChunkManager {
      */
     private void sendChunkToPlayer(ConnectedPlayer player, AlphaChunk chunk) {
         if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_16)) {
-            // v735: 15-bit global palette with non-spanning packing, 1.16 block state IDs
+            // v735+: 15-bit global palette with non-spanning packing, 1.16 block state IDs
             AlphaChunk.V573ChunkData v735Data = chunk.serializeForV735Protocol();
             long[] heightmap = buildHeightmapLongArrayNonSpanning(chunk);
 
-            player.sendPacket(new MapChunkPacketV735(
-                chunk.getXPos(), chunk.getZPos(), true,
-                v735Data.getPrimaryBitMask(),
-                heightmap, heightmap,
-                v735Data.getBiomes(),
-                v735Data.getRawData()));
+            // v751 (1.16.2): removed ignoreOldLightData, biomes use VarInt array
+            if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_16_2)) {
+                player.sendPacket(new MapChunkPacketV751(
+                    chunk.getXPos(), chunk.getZPos(), true,
+                    v735Data.getPrimaryBitMask(),
+                    heightmap, heightmap,
+                    v735Data.getBiomes(),
+                    v735Data.getRawData()));
+            } else {
+                player.sendPacket(new MapChunkPacketV735(
+                    chunk.getXPos(), chunk.getZPos(), true,
+                    v735Data.getPrimaryBitMask(),
+                    heightmap, heightmap,
+                    v735Data.getBiomes(),
+                    v735Data.getRawData()));
+            }
 
             // Build UpdateLight from per-section light arrays
             int skyLightMask = 0;

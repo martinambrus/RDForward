@@ -151,7 +151,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
         String versionName;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16_2)) {
+            versionName = "1.16.2";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16)) {
             versionName = "1.16";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_15_2)) {
             versionName = "1.15.2";
@@ -373,6 +375,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
+        boolean isV751 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16_2);
         boolean isV735 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16);
         boolean isV573 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_15);
         boolean isV477 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_14);
@@ -384,11 +387,16 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Send JoinGame
         // maxPlayers=20 limits the tab list to a single compact column.
         // Using the actual MAX_PLAYERS (128) creates a huge multi-column grid.
+        // v751 (1.16.2) rewrote JoinGame: isHardcore separated, NBT dimension type,
+        //   registry-format codec with biome registry, VarInt maxPlayers.
         // v735 (1.16) rewrote JoinGame with NBT dimension codec.
         // v573 (1.15) added hashedSeed + enableRespawnScreen.
         // v477 (1.14) removed difficulty from JoinGame and added viewDistance.
         // v108 (1.9.1) changed dimension from byte to int.
-        if (isV735) {
+        if (isV751) {
+            ctx.writeAndFlush(new JoinGamePacketV751(entityId, 1,
+                    20, ChunkManager.DEFAULT_VIEW_DISTANCE));
+        } else if (isV735) {
             ctx.writeAndFlush(new JoinGamePacketV735(entityId, 1,
                     20, ChunkManager.DEFAULT_VIEW_DISTANCE));
         } else if (isV573) {
@@ -419,7 +427,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.writeAndFlush(new UpdateRecipesPacketV393());
             // 1.14 added entity_types as a 4th tag category
             // 1.16 requires essential fluid tags (water/lava) or client crashes during rendering
-            ctx.writeAndFlush(isV735 ? new UpdateTagsPacketV735()
+            // 1.16.2 removed minecraft:furnace_materials from item tags
+            ctx.writeAndFlush(isV751 ? new UpdateTagsPacketV751()
+                    : isV735 ? new UpdateTagsPacketV735()
                     : isV477 ? new UpdateTagsPacketV477() : new UpdateTagsPacketV393());
             // Brand plugin message — 1.13 client NPEs without it
             byte[] brand = "RDForward".getBytes(java.nio.charset.StandardCharsets.UTF_8);

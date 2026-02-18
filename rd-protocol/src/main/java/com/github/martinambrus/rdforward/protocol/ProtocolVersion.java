@@ -558,12 +558,24 @@ public enum ProtocolVersion {
     RELEASE_1_16_1(736, 58, Family.RELEASE, "Release 1.16.1 (v736)", 92),
 
     /**
+     * Minecraft Release 1.16.2 (August 2020).
+     * JoinGame rewritten: isHardcore separated from gameMode, dimension changed from
+     * String to NBT compound, dimension codec uses registry format with biome registry,
+     * maxPlayers changed from unsigned byte to VarInt. MapChunk removed ignoreOldLightData,
+     * biomes changed from raw int[] to VarInt-length-prefixed VarInt array.
+     * S2C: CHUNK_BLOCKS_UPDATE removed at 0x0F, SECTION_BLOCKS_UPDATE inserted at 0x3B.
+     * C2S: RECIPE_BOOK_UPDATE split into two packets, shifting >= 0x1F by +1.
+     * Netty protocol version 751.
+     */
+    RELEASE_1_16_2(751, 59, Family.RELEASE, "Release 1.16.2 (v751)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 59, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 60, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -713,6 +725,7 @@ public enum ProtocolVersion {
             case 578: return "Release 1.15.2";
             case 735: return "Release 1.16";
             case 736: return "Release 1.16.1";
+            case 751: return "Release 1.16.2";
             case 51: return "Release 1.4.6-1.4.7";
             case 60: return "Release 1.5-1.5.1";
             case 61: return "Release 1.5.2";
