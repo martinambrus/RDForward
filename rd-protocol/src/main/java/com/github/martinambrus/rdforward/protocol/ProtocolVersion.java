@@ -550,12 +550,20 @@ public enum ProtocolVersion {
     RELEASE_1_16(735, 57, Family.RELEASE, "Release 1.16 (v735)", 92),
 
     /**
+     * Minecraft Release 1.16.1 (June 2020).
+     * Wire format identical to v735 — same packet IDs, same wire formats.
+     * Pure protocol version bump (client-side Realms hotfix).
+     * Netty protocol version 736.
+     */
+    RELEASE_1_16_1(736, 58, Family.RELEASE, "Release 1.16.1 (v736)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 58, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 59, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -704,6 +712,7 @@ public enum ProtocolVersion {
             case 575: return "Release 1.15.1";
             case 578: return "Release 1.15.2";
             case 735: return "Release 1.16";
+            case 736: return "Release 1.16.1";
             case 51: return "Release 1.4.6-1.4.7";
             case 60: return "Release 1.5-1.5.1";
             case 61: return "Release 1.5.2";
