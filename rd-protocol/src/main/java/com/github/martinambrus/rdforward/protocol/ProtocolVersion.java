@@ -619,12 +619,21 @@ public enum ProtocolVersion {
     RELEASE_1_18(757, 64, Family.RELEASE, "Release 1.18 (v757)", 92),
 
     /**
+     * Minecraft Release 1.18.2 (February 2022).
+     * Minimal changes from 1.18: infiniburn fields in dimension type NBT gain a '#'
+     * prefix (tag reference format). One new block tag: fall_damage_resetting.
+     * No packet ID shifts, no block state/item ID changes, no chunk format changes.
+     * Netty protocol version 758.
+     */
+    RELEASE_1_18_2(758, 65, Family.RELEASE, "Release 1.18.2 (v758)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 65, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 66, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -780,6 +789,7 @@ public enum ProtocolVersion {
             case 755: return "Release 1.17";
             case 756: return "Release 1.17.1";
             case 757: return "Release 1.18";
+            case 758: return "Release 1.18.2";
             case 51: return "Release 1.4.6-1.4.7";
             case 60: return "Release 1.5-1.5.1";
             case 61: return "Release 1.5.2";

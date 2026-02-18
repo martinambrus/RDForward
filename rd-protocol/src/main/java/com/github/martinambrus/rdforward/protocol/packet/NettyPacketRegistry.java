@@ -106,6 +106,12 @@ public class NettyPacketRegistry {
     /** V757 S2C reverse map overlay: MapChunkPacketV757 at 0x22, JoinGamePacketV757 at 0x26. */
     private static final Map<String, Integer> REVERSE_V757 = new HashMap<String, Integer>();
 
+    /** V758 overlay: JoinGame infiniburn gains '#' prefix, UpdateTags gains fall_damage_resetting. */
+    private static final Map<String, PacketFactory> REGISTRY_V758 = new HashMap<String, PacketFactory>();
+
+    /** V758 S2C reverse map overlay: JoinGamePacketV758 at 0x26, UpdateTagsPacketV758 at 0x67. */
+    private static final Map<String, Integer> REVERSE_V758 = new HashMap<String, Integer>();
+
     /** Reverse map: (state, direction, className) -> packetId */
     private static final Map<String, Integer> REVERSE = new HashMap<String, Integer>();
 
@@ -1482,6 +1488,13 @@ public class NettyPacketRegistry {
         registerV757S2CReverse(NettyEntityPropertiesPacketV755.class, 0x64);
         registerV757S2CReverse(UpdateRecipesPacketV393.class, 0x66);
         registerV757S2CReverse(UpdateTagsPacketV757.class, 0x67);
+
+        // === V758 (1.18.2) S2C overlay ===
+        // JoinGame: infiniburn fields gain '#' prefix.
+        registerV758S2C(0x26, new PacketFactory() { public Packet create() { return new JoinGamePacketV758(); } });
+        registerV758S2CReverse(JoinGamePacketV758.class, 0x26);
+        // UpdateTags: new fall_damage_resetting block tag.
+        registerV758S2CReverse(UpdateTagsPacketV758.class, 0x67);
     }
 
     private static void registerC2S(ConnectionState state, int packetId,
@@ -1644,6 +1657,14 @@ public class NettyPacketRegistry {
         REVERSE_V757.put(reverseKey(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, clazz), packetId);
     }
 
+    private static void registerV758S2C(int packetId, PacketFactory factory) {
+        REGISTRY_V758.put(key(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, packetId), factory);
+    }
+
+    private static void registerV758S2CReverse(Class<? extends Packet> clazz, int packetId) {
+        REVERSE_V758.put(reverseKey(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, clazz), packetId);
+    }
+
     private static void registerV109S2C(int packetId, PacketFactory factory) {
         REGISTRY_V109.put(key(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, packetId), factory);
     }
@@ -1703,6 +1724,13 @@ public class NettyPacketRegistry {
      */
     public static Packet createPacket(ConnectionState state, PacketDirection direction,
                                        int packetId, int protocolVersion) {
+        if (protocolVersion >= 758) {
+            String k = key(state, direction, packetId);
+            PacketFactory factory = REGISTRY_V758.get(k);
+            if (factory != null) {
+                return factory.create();
+            }
+        }
         if (protocolVersion >= 757) {
             String k = key(state, direction, packetId);
             PacketFactory factory = REGISTRY_V757.get(k);
@@ -1829,6 +1857,13 @@ public class NettyPacketRegistry {
      */
     public static int getPacketId(ConnectionState state, PacketDirection direction,
                                    Class<? extends Packet> clazz, int protocolVersion) {
+        if (protocolVersion >= 758) {
+            String rk = reverseKey(state, direction, clazz);
+            Integer id = REVERSE_V758.get(rk);
+            if (id != null) {
+                return id;
+            }
+        }
         if (protocolVersion >= 757) {
             String rk = reverseKey(state, direction, clazz);
             Integer id = REVERSE_V757.get(rk);

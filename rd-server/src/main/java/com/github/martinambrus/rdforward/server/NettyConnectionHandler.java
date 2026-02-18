@@ -154,7 +154,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
         String versionName;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_18)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_18_2)) {
+            versionName = "1.18.2";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_18)) {
             versionName = "1.18";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17_1)) {
             versionName = "1.17.1";
@@ -388,6 +390,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
+        boolean isV758 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_18_2);
         boolean isV757 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_18);
         boolean isV756 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17_1);
         boolean isV755 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17);
@@ -409,7 +412,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // v573 (1.15) added hashedSeed + enableRespawnScreen.
         // v477 (1.14) removed difficulty from JoinGame and added viewDistance.
         // v108 (1.9.1) changed dimension from byte to int.
-        if (isV757) {
+        if (isV758) {
+            ctx.writeAndFlush(new JoinGamePacketV758(entityId, 1,
+                    20, ChunkManager.DEFAULT_VIEW_DISTANCE, ChunkManager.DEFAULT_VIEW_DISTANCE));
+        } else if (isV757) {
             ctx.writeAndFlush(new JoinGamePacketV757(entityId, 1,
                     20, ChunkManager.DEFAULT_VIEW_DISTANCE, ChunkManager.DEFAULT_VIEW_DISTANCE));
         } else if (isV755) {
@@ -450,7 +456,8 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             // 1.14 added entity_types as a 4th tag category
             // 1.16 requires essential fluid tags (water/lava) or client crashes during rendering
             // 1.16.2 removed minecraft:furnace_materials from item tags
-            ctx.writeAndFlush(isV757 ? new UpdateTagsPacketV757()
+            ctx.writeAndFlush(isV758 ? new UpdateTagsPacketV758()
+                    : isV757 ? new UpdateTagsPacketV757()
                     : isV755 ? new UpdateTagsPacketV755()
                     : isV751 ? new UpdateTagsPacketV751()
                     : isV735 ? new UpdateTagsPacketV735()
