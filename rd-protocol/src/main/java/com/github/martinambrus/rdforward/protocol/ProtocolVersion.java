@@ -597,12 +597,23 @@ public enum ProtocolVersion {
     RELEASE_1_17(755, 62, Family.RELEASE, "Release 1.17 (v755)", 92),
 
     /**
+     * Minecraft Release 1.17.1 (July 2021) - hotfix release.
+     * Wire format changes from 1.17:
+     * - DestroyEntities (0x3A) reverted from single-entity format (VarInt entityId) back
+     *   to multi-entity format (VarInt count + VarInt[] entityIds), matching pre-1.17.
+     * - SetSlot (0x16) gained VarInt stateId before windowId for inventory synchronization.
+     * No packet ID shifts, no block state/item ID changes.
+     * Netty protocol version 756.
+     */
+    RELEASE_1_17_1(756, 63, Family.RELEASE, "Release 1.17.1 (v756)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 63, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 64, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -756,6 +767,7 @@ public enum ProtocolVersion {
             case 753: return "Release 1.16.3";
             case 754: return "Release 1.16.4";
             case 755: return "Release 1.17";
+            case 756: return "Release 1.17.1";
             case 51: return "Release 1.4.6-1.4.7";
             case 60: return "Release 1.5-1.5.1";
             case 61: return "Release 1.5.2";

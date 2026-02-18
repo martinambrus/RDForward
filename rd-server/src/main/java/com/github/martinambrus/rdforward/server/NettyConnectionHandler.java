@@ -154,7 +154,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
         String versionName;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17_1)) {
+            versionName = "1.17.1";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17)) {
             versionName = "1.17";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16_4)) {
             versionName = "1.16.4";
@@ -384,6 +386,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
+        boolean isV756 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17_1);
         boolean isV755 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17);
         boolean isV751 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16_2);
         boolean isV735 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16);
@@ -655,7 +658,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Give 1 cobblestone for right-click
         // v404 (1.13.2)+ uses boolean+VarInt slot format (also used by v477/1.14)
         boolean isV404 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13_2);
-        if (isV755) {
+        if (isV756) {
+            ctx.writeAndFlush(new NettySetSlotPacketV756(0, 0, 36,
+                    BlockStateMapper.toV755ItemId(BlockRegistry.COBBLESTONE), 1));
+        } else if (isV755) {
             ctx.writeAndFlush(new NettySetSlotPacketV404(0, 36,
                     BlockStateMapper.toV755ItemId(BlockRegistry.COBBLESTONE), 1));
         } else if (isV735) {

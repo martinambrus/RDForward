@@ -241,6 +241,9 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
         if (packet instanceof DespawnPlayerPacket) {
             DespawnPlayerPacket dp = (DespawnPlayerPacket) packet;
             int entityId = dp.getPlayerId() + 1;
+            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17_1)) {
+                return new NettyDestroyEntitiesPacketV47(entityId);
+            }
             if (isV755) {
                 return new RemoveEntityPacketV755(entityId);
             }
