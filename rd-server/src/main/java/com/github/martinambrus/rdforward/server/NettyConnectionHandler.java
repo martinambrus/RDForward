@@ -134,6 +134,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         if (packet.getNextState() == 1) {
             // Status
+            String pingVersion = ProtocolVersion.describeNettyProtocol(pv);
+            System.out.println("Netty server list ping ("
+                    + (pingVersion != null ? pingVersion : "v" + pv) + ")");
             state = ConnectionState.STATUS;
             setCodecState(ctx, ConnectionState.STATUS);
         } else if (packet.getNextState() == 2) {

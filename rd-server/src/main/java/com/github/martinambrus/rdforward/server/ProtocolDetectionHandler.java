@@ -174,8 +174,6 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
 
             pipeline.remove(this);
 
-            System.out.println("Detected 1.7.2+ Netty client, pipeline reconfigured");
-
             pipeline.fireChannelRead(buf);
         } else {
             // Nati client — remove self and forward from HEAD
