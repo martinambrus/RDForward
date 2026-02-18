@@ -12,6 +12,7 @@ import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV57
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV735;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV751;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV755;
+import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV757;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UnloadChunkPacketV109;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacketV477;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacketV735;
@@ -406,7 +407,43 @@ public class ChunkManager {
      * v47 (1.8) uses ushort blockStates and no compression.
      */
     private void sendChunkToPlayer(ConnectedPlayer player, AlphaChunk chunk) {
-        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_17)) {
+        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_18)) {
+            // v757: Combined chunk data + update light. All 16 sections present,
+            // biomes as per-section paletted containers, no primaryBitMask.
+            AlphaChunk.V757ChunkData v757Data = chunk.serializeForV757Protocol();
+            long[] heightmap = buildHeightmapLongArrayNonSpanning(chunk);
+
+            // Build light masks from per-section light arrays (same logic as V755)
+            int skyLightMask = 0;
+            int blockLightMask = 0;
+            java.util.List<byte[]> skyArrays = new java.util.ArrayList<>();
+            java.util.List<byte[]> blockArrays = new java.util.ArrayList<>();
+
+            for (int section = 0; section < 8; section++) {
+                if (v757Data.getSkyLightSections()[section] != null) {
+                    skyLightMask |= (1 << (section + 1));
+                    skyArrays.add(v757Data.getSkyLightSections()[section]);
+                }
+                if (v757Data.getBlockLightSections()[section] != null) {
+                    blockLightMask |= (1 << (section + 1));
+                    blockArrays.add(v757Data.getBlockLightSections()[section]);
+                }
+            }
+
+            int emptySkyLightMask = ~skyLightMask & 0x3FFFF;
+            int emptyBlockLightMask = ~blockLightMask & 0x3FFFF;
+
+            // Single combined packet — no separate UpdateLight
+            player.sendPacket(new MapChunkPacketV757(
+                chunk.getXPos(), chunk.getZPos(),
+                heightmap, heightmap,
+                v757Data.getRawData(),
+                skyLightMask, blockLightMask,
+                emptySkyLightMask, emptyBlockLightMask,
+                skyArrays.toArray(new byte[0][]),
+                blockArrays.toArray(new byte[0][])));
+
+        } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_17)) {
             // v755: 15-bit global palette with non-spanning packing, 1.17 block state IDs.
             // Chunk bitmask is BitSet, no fullChunk boolean, UpdateLight masks are BitSet.
             AlphaChunk.V573ChunkData v755Data = chunk.serializeForV755Protocol();

@@ -1334,6 +1334,140 @@ public class AlphaChunk {
         public int[] getBiomes() { return biomes; }
     }
 
+    /**
+     * Serialize this chunk for the 1.18 (v757) protocol.
+     *
+     * Key differences from 1.17:
+     * - No primaryBitMask (all 16 sections must be present)
+     * - Biomes are per-section paletted containers (not a top-level field)
+     * - Empty sections use single-valued block container (air) + single-valued biome container (plains)
+     * - Light data is returned separately for the combined chunk+light packet
+     *
+     * @return V757ChunkData containing raw section data and light arrays
+     */
+    public V757ChunkData serializeForV757Protocol() {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(16384);
+
+        byte[][] skyLightSections = new byte[8][];
+        byte[][] blockLightSections = new byte[8][];
+
+        for (int section = 0; section < 16; section++) {
+            int baseY = section * 16;
+
+            if (section < 8) {
+                // Populated section (Y 0-127)
+                int nonAirCount = 0;
+                for (int x = 0; x < WIDTH; x++) {
+                    for (int z = 0; z < DEPTH; z++) {
+                        for (int ly = 0; ly < 16; ly++) {
+                            if (getBlock(x, baseY + ly, z) != 0) {
+                                nonAirCount++;
+                            }
+                        }
+                    }
+                }
+
+                // blockCount (short)
+                writeShortToStream(baos, nonAirCount);
+
+                // Block PalettedContainer: 15-bit global palette, non-spanning
+                int bitsPerBlock = 15;
+                baos.write(bitsPerBlock);
+                // Global palette: no palette VarInt
+
+                int entriesPerLong = 64 / bitsPerBlock; // 4
+                int longsNeeded = (4096 + entriesPerLong - 1) / entriesPerLong; // 1024
+                long[] dataArray = new long[longsNeeded];
+
+                long mask = (1L << bitsPerBlock) - 1;
+                for (int ly = 0; ly < 16; ly++) {
+                    for (int z = 0; z < DEPTH; z++) {
+                        for (int x = 0; x < WIDTH; x++) {
+                            int blockId = getBlock(x, baseY + ly, z);
+                            long stateId = com.github.martinambrus.rdforward.protocol
+                                    .BlockStateMapper.toV755BlockState(blockId);
+                            int i = (ly * 16 + z) * 16 + x;
+                            int longIndex = i / entriesPerLong;
+                            int bitOffset = (i % entriesPerLong) * bitsPerBlock;
+                            dataArray[longIndex] |= (stateId & mask) << bitOffset;
+                        }
+                    }
+                }
+
+                writeVarIntToStream(baos, longsNeeded);
+                for (int i = 0; i < longsNeeded; i++) {
+                    writeLongToStream(baos, dataArray[i]);
+                }
+
+                // Biome PalettedContainer: single-valued (plains=1)
+                baos.write(0); // bitsPerEntry = 0 (single-valued)
+                writeVarIntToStream(baos, 1); // biome palette value: plains
+                writeVarIntToStream(baos, 0); // data array length: 0
+
+                // Collect light data for this section
+                byte[] sectionSkyLight = new byte[2048];
+                byte[] sectionBlockLight = new byte[2048];
+                int lightIdx = 0;
+                for (int ly = 0; ly < 16; ly++) {
+                    for (int z = 0; z < DEPTH; z++) {
+                        for (int x = 0; x < WIDTH; x += 2) {
+                            int skyLow = getSkyLight(x, baseY + ly, z) & 0x0F;
+                            int skyHigh = getSkyLight(x + 1, baseY + ly, z) & 0x0F;
+                            sectionSkyLight[lightIdx] = (byte) (skyLow | (skyHigh << 4));
+
+                            int blkLow = getBlockLight(x, baseY + ly, z) & 0x0F;
+                            int blkHigh = getBlockLight(x + 1, baseY + ly, z) & 0x0F;
+                            sectionBlockLight[lightIdx] = (byte) (blkLow | (blkHigh << 4));
+
+                            lightIdx++;
+                        }
+                    }
+                }
+                skyLightSections[section] = sectionSkyLight;
+                blockLightSections[section] = sectionBlockLight;
+            } else {
+                // Empty section (Y 128-255)
+                // blockCount = 0
+                writeShortToStream(baos, 0);
+
+                // Block PalettedContainer: single-valued (air=0)
+                baos.write(0); // bitsPerEntry = 0 (single-valued)
+                writeVarIntToStream(baos, 0); // block palette value: air
+                writeVarIntToStream(baos, 0); // data array length: 0
+
+                // Biome PalettedContainer: single-valued (plains=1)
+                baos.write(0); // bitsPerEntry = 0 (single-valued)
+                writeVarIntToStream(baos, 1); // biome palette value: plains
+                writeVarIntToStream(baos, 0); // data array length: 0
+            }
+        }
+
+        byte[] finalData = baos.toByteArray();
+        return new V757ChunkData(finalData, skyLightSections, blockLightSections);
+    }
+
+    /**
+     * Result container for v757 chunk serialization.
+     * No biomes field (biomes are inside section data as paletted containers).
+     * No primaryBitMask (all sections must be present).
+     */
+    public static class V757ChunkData {
+        private final byte[] rawData;
+        private final byte[][] skyLightSections;
+        private final byte[][] blockLightSections;
+
+        public V757ChunkData(byte[] rawData,
+                              byte[][] skyLightSections, byte[][] blockLightSections) {
+            this.rawData = rawData;
+            this.skyLightSections = skyLightSections;
+            this.blockLightSections = blockLightSections;
+        }
+
+        public byte[] getRawData() { return rawData; }
+        public byte[][] getSkyLightSections() { return skyLightSections; }
+        public byte[][] getBlockLightSections() { return blockLightSections; }
+    }
+
     /** Write a big-endian short to a ByteArrayOutputStream. */
     private static void writeShortToStream(ByteArrayOutputStream out, int value) {
         out.write((value >> 8) & 0xFF);

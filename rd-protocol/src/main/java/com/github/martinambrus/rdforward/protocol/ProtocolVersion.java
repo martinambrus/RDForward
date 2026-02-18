@@ -608,12 +608,23 @@ public enum ProtocolVersion {
     RELEASE_1_17_1(756, 63, Family.RELEASE, "Release 1.17.1 (v756)", 92),
 
     /**
+     * Minecraft Release 1.18-1.18.1 (November 2021) - "Caves & Cliffs: Part II".
+     * Chunk Data and Update Light merged into a single combined packet. Biomes moved
+     * from a top-level chunk field into per-section biome paletted containers.
+     * primaryBitMask removed (all sections must be present). JoinGame gained
+     * VarInt simulationDistance after viewDistance. No packet ID shifts.
+     * Block state/item IDs unchanged from 1.17.
+     * Netty protocol version 757.
+     */
+    RELEASE_1_18(757, 64, Family.RELEASE, "Release 1.18 (v757)", 92),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 64, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 65, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -768,6 +779,7 @@ public enum ProtocolVersion {
             case 754: return "Release 1.16.4";
             case 755: return "Release 1.17";
             case 756: return "Release 1.17.1";
+            case 757: return "Release 1.18";
             case 51: return "Release 1.4.6-1.4.7";
             case 60: return "Release 1.5-1.5.1";
             case 61: return "Release 1.5.2";

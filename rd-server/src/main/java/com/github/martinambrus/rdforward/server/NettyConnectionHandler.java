@@ -154,7 +154,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
         String versionName;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17_1)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_18)) {
+            versionName = "1.18";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17_1)) {
             versionName = "1.17.1";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17)) {
             versionName = "1.17";
@@ -386,6 +388,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
+        boolean isV757 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_18);
         boolean isV756 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17_1);
         boolean isV755 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17);
         boolean isV751 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16_2);
@@ -406,7 +409,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // v573 (1.15) added hashedSeed + enableRespawnScreen.
         // v477 (1.14) removed difficulty from JoinGame and added viewDistance.
         // v108 (1.9.1) changed dimension from byte to int.
-        if (isV755) {
+        if (isV757) {
+            ctx.writeAndFlush(new JoinGamePacketV757(entityId, 1,
+                    20, ChunkManager.DEFAULT_VIEW_DISTANCE, ChunkManager.DEFAULT_VIEW_DISTANCE));
+        } else if (isV755) {
             ctx.writeAndFlush(new JoinGamePacketV755(entityId, 1,
                     20, ChunkManager.DEFAULT_VIEW_DISTANCE));
         } else if (isV751) {
@@ -444,7 +450,8 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             // 1.14 added entity_types as a 4th tag category
             // 1.16 requires essential fluid tags (water/lava) or client crashes during rendering
             // 1.16.2 removed minecraft:furnace_materials from item tags
-            ctx.writeAndFlush(isV755 ? new UpdateTagsPacketV755()
+            ctx.writeAndFlush(isV757 ? new UpdateTagsPacketV757()
+                    : isV755 ? new UpdateTagsPacketV755()
                     : isV751 ? new UpdateTagsPacketV751()
                     : isV735 ? new UpdateTagsPacketV735()
                     : isV477 ? new UpdateTagsPacketV477() : new UpdateTagsPacketV393());
@@ -553,32 +560,46 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             }
         }
 
-        // Send chunks BEFORE player position — the client applies gravity
-        // immediately on receiving position, so chunks must be loaded first.
+        // S2C Y: 1.7.2 = eye-level (client subtracts yOffset=1.62); 1.8+ = feet-level.
+        float alphaSpawnYaw = (spawnYaw + 180.0f) % 360.0f;
+        double clientY = isV47 ? spawnY - PLAYER_EYE_HEIGHT : spawnY;
+
+        // 1.18+: Send position BEFORE chunks. The 1.18 client loads chunks
+        // asynchronously and shows "Loading terrain..." until the chunk at the
+        // player's position is ready. Sending position first lets the client
+        // know which chunk to prioritize. Pre-1.18 clients load chunks
+        // synchronously, so chunks must arrive before position to avoid falling.
+        if (isV757) {
+            ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV755(
+                    spawnX, clientY, spawnZ, alphaSpawnYaw, spawnPitch, ++nextTeleportId));
+        }
+
         // 1.14+: Send chunk cache center before chunks.
         if (isV477) {
             ctx.writeAndFlush(new SetChunkCacheCenterPacketV477(
                     spawnBlockX >> 4, spawnBlockZ >> 4));
         }
-        chunkManager.addPlayer(player);
+
+        // Send initial chunks. addPlayer is deferred until after the login
+        // sequence completes to prevent the tick loop from racing with us.
         chunkManager.sendInitialChunks(player, spawnBlockX, spawnBlockZ);
 
-        // Send player position
-        // S2C Y: 1.7.2 = eye-level (client subtracts yOffset=1.62); 1.8+ = feet-level.
-        float alphaSpawnYaw = (spawnYaw + 180.0f) % 360.0f;
-        double clientY = isV47 ? spawnY - PLAYER_EYE_HEIGHT : spawnY;
-        if (isV755) {
-            ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV755(
-                    spawnX, clientY, spawnZ, alphaSpawnYaw, spawnPitch, ++nextTeleportId));
-        } else if (isV109) {
-            ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV109(
-                    spawnX, clientY, spawnZ, alphaSpawnYaw, spawnPitch, ++nextTeleportId));
-        } else if (isV47) {
-            ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV47(
-                    spawnX, clientY, spawnZ, alphaSpawnYaw, spawnPitch));
-        } else {
-            ctx.writeAndFlush(new NettyPlayerPositionS2CPacket(
-                    spawnX, spawnY, spawnZ, alphaSpawnYaw, spawnPitch, false));
+        // Pre-1.18: Send player position AFTER chunks (synchronous chunk loading
+        // means chunks must be loaded before physics starts).
+        if (!isV757) {
+            if (isV755) {
+                ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV755(
+                        spawnX, clientY, spawnZ, alphaSpawnYaw, spawnPitch, ++nextTeleportId));
+            } else if (isV109) {
+                ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV109(
+                        spawnX, clientY, spawnZ, alphaSpawnYaw, spawnPitch, ++nextTeleportId));
+            } else if (isV47) {
+                ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV47(
+                        spawnX, clientY, spawnZ, alphaSpawnYaw, spawnPitch));
+            } else {
+                ctx.writeAndFlush(new NettyPlayerPositionS2CPacket(
+                        spawnX, spawnY, spawnZ, alphaSpawnYaw, spawnPitch, false));
+            }
         }
 
         // Send existing players — for 1.8+, PlayerListItem ADD must precede SpawnPlayer

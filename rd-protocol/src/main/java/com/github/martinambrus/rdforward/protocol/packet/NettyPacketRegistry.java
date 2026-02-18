@@ -100,6 +100,12 @@ public class NettyPacketRegistry {
     /** V756 S2C reverse map overlay: NettyDestroyEntitiesPacketV47 at 0x3A instead of RemoveEntityPacketV755. */
     private static final Map<String, Integer> REVERSE_V756 = new HashMap<String, Integer>();
 
+    /** V757 overlay: S2C MapChunk+UpdateLight combined, JoinGame gained simulationDistance. */
+    private static final Map<String, PacketFactory> REGISTRY_V757 = new HashMap<String, PacketFactory>();
+
+    /** V757 S2C reverse map overlay: MapChunkPacketV757 at 0x22, JoinGamePacketV757 at 0x26. */
+    private static final Map<String, Integer> REVERSE_V757 = new HashMap<String, Integer>();
+
     /** Reverse map: (state, direction, className) -> packetId */
     private static final Map<String, Integer> REVERSE = new HashMap<String, Integer>();
 
@@ -1457,6 +1463,25 @@ public class NettyPacketRegistry {
         // DestroyEntities reverted from single-entity to multi-entity format.
         registerV756S2C(0x3A, new PacketFactory() { public Packet create() { return new NettyDestroyEntitiesPacketV47(); } });
         registerV756S2CReverse(NettyDestroyEntitiesPacketV47.class, 0x3A);
+
+        // === V757 (1.18) S2C overlay ===
+        // MapChunk + UpdateLight combined into one packet.
+        registerV757S2C(0x22, new PacketFactory() { public Packet create() { return new MapChunkPacketV757(); } });
+        registerV757S2CReverse(MapChunkPacketV757.class, 0x22);
+        // JoinGame gained simulationDistance.
+        registerV757S2C(0x26, new PacketFactory() { public Packet create() { return new JoinGamePacketV757(); } });
+        registerV757S2CReverse(JoinGamePacketV757.class, 0x26);
+
+        // SET_SIMULATION_DISTANCE inserted at 0x57 shifts all S2C >= 0x57 by +1.
+        // Forward registrations (bot decoder):
+        registerV757S2C(0x59, new PacketFactory() { public Packet create() { return new NettyTimeUpdatePacket(); } });
+        registerV757S2C(0x62, new PacketFactory() { public Packet create() { return new EntityTeleportPacketV109(); } });
+        // Reverse registrations (encoder for sending to 1.18 clients):
+        registerV757S2CReverse(NettyTimeUpdatePacket.class, 0x59);
+        registerV757S2CReverse(EntityTeleportPacketV109.class, 0x62);
+        registerV757S2CReverse(NettyEntityPropertiesPacketV755.class, 0x64);
+        registerV757S2CReverse(UpdateRecipesPacketV393.class, 0x66);
+        registerV757S2CReverse(UpdateTagsPacketV757.class, 0x67);
     }
 
     private static void registerC2S(ConnectionState state, int packetId,
@@ -1611,6 +1636,14 @@ public class NettyPacketRegistry {
         REVERSE_V756.put(reverseKey(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, clazz), packetId);
     }
 
+    private static void registerV757S2C(int packetId, PacketFactory factory) {
+        REGISTRY_V757.put(key(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, packetId), factory);
+    }
+
+    private static void registerV757S2CReverse(Class<? extends Packet> clazz, int packetId) {
+        REVERSE_V757.put(reverseKey(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, clazz), packetId);
+    }
+
     private static void registerV109S2C(int packetId, PacketFactory factory) {
         REGISTRY_V109.put(key(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, packetId), factory);
     }
@@ -1670,6 +1703,13 @@ public class NettyPacketRegistry {
      */
     public static Packet createPacket(ConnectionState state, PacketDirection direction,
                                        int packetId, int protocolVersion) {
+        if (protocolVersion >= 757) {
+            String k = key(state, direction, packetId);
+            PacketFactory factory = REGISTRY_V757.get(k);
+            if (factory != null) {
+                return factory.create();
+            }
+        }
         if (protocolVersion >= 756) {
             String k = key(state, direction, packetId);
             PacketFactory factory = REGISTRY_V756.get(k);
@@ -1789,6 +1829,13 @@ public class NettyPacketRegistry {
      */
     public static int getPacketId(ConnectionState state, PacketDirection direction,
                                    Class<? extends Packet> clazz, int protocolVersion) {
+        if (protocolVersion >= 757) {
+            String rk = reverseKey(state, direction, clazz);
+            Integer id = REVERSE_V757.get(rk);
+            if (id != null) {
+                return id;
+            }
+        }
         if (protocolVersion >= 756) {
             String rk = reverseKey(state, direction, clazz);
             Integer id = REVERSE_V756.get(rk);
