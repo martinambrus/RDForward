@@ -407,7 +407,40 @@ public class ChunkManager {
      * v47 (1.8) uses ushort blockStates and no compression.
      */
     private void sendChunkToPlayer(ConnectedPlayer player, AlphaChunk chunk) {
-        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_18)) {
+        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_19)) {
+            // v759: Same chunk format as v757 but with 1.19 block state IDs.
+            AlphaChunk.V757ChunkData v759Data = chunk.serializeForV759Protocol();
+            long[] heightmap = buildHeightmapLongArrayNonSpanning(chunk);
+
+            int skyLightMask = 0;
+            int blockLightMask = 0;
+            java.util.List<byte[]> skyArrays = new java.util.ArrayList<>();
+            java.util.List<byte[]> blockArrays = new java.util.ArrayList<>();
+
+            for (int section = 0; section < 8; section++) {
+                if (v759Data.getSkyLightSections()[section] != null) {
+                    skyLightMask |= (1 << (section + 1));
+                    skyArrays.add(v759Data.getSkyLightSections()[section]);
+                }
+                if (v759Data.getBlockLightSections()[section] != null) {
+                    blockLightMask |= (1 << (section + 1));
+                    blockArrays.add(v759Data.getBlockLightSections()[section]);
+                }
+            }
+
+            int emptySkyLightMask = ~skyLightMask & 0x3FFFF;
+            int emptyBlockLightMask = ~blockLightMask & 0x3FFFF;
+
+            player.sendPacket(new MapChunkPacketV757(
+                chunk.getXPos(), chunk.getZPos(),
+                heightmap, heightmap,
+                v759Data.getRawData(),
+                skyLightMask, blockLightMask,
+                emptySkyLightMask, emptyBlockLightMask,
+                skyArrays.toArray(new byte[0][]),
+                blockArrays.toArray(new byte[0][])));
+
+        } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_18)) {
             // v757: Combined chunk data + update light. All 16 sections present,
             // biomes as per-section paletted containers, no primaryBitMask.
             AlphaChunk.V757ChunkData v757Data = chunk.serializeForV757Protocol();

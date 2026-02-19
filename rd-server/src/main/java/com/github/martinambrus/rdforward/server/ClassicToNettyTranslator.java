@@ -52,6 +52,7 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
     }
 
     private Packet translate(Packet packet) {
+        boolean isV759 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19);
         boolean isV755 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17);
         boolean isV751 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16_2);
         boolean isV735 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16);
@@ -66,6 +67,12 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
         // passes .alpha packets through unchanged.
         if (packet instanceof PlayerListItemPacket) {
             PlayerListItemPacket pli = (PlayerListItemPacket) packet;
+            if (isV759) {
+                String uuid = generateOfflineUuid(pli.getUsername());
+                return pli.isOnline()
+                        ? NettyPlayerListItemPacketV759.addPlayer(uuid, pli.getUsername(), 1, pli.getPing())
+                        : NettyPlayerListItemPacketV759.removePlayer(uuid);
+            }
             if (isV47) {
                 String uuid = generateOfflineUuid(pli.getUsername());
                 return pli.isOnline()
@@ -87,6 +94,10 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
 
         if (packet instanceof SetBlockServerPacket) {
             SetBlockServerPacket sb = (SetBlockServerPacket) packet;
+            if (isV759) {
+                return new NettyBlockChangePacketV477(sb.getX(), sb.getY(), sb.getZ(),
+                        BlockStateMapper.toV759BlockState(sb.getBlockType()));
+            }
             if (isV755) {
                 return new NettyBlockChangePacketV477(sb.getX(), sb.getY(), sb.getZ(),
                         BlockStateMapper.toV755BlockState(sb.getBlockType()));
@@ -258,6 +269,9 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
             String message = mp.getMessage();
             // Chat messages are JSON text components
             message = "{\"text\":\"" + message.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
+            if (isV759) {
+                return new SystemChatPacketV759(message, 1);
+            }
             if (isV735) {
                 return new NettyChatS2CPacketV735(message, (byte) 0, 0L, 0L);
             }
