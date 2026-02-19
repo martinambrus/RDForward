@@ -639,12 +639,22 @@ public enum ProtocolVersion {
     RELEASE_1_19(759, 66, Family.RELEASE, "Release 1.19 (v759)", 93),
 
     /**
+     * Minecraft Release 1.19.1-1.19.2 (August 2022).
+     * Chat signing/reporting system overhaul. 3 new S2C packets (CUSTOM_CHAT_COMPLETIONS,
+     * DELETE_CHAT, PLAYER_CHAT_HEADER) and 1 new C2S packet (CHAT_ACK) shift packet IDs.
+     * SystemChat changed from VarInt type to Boolean overlay. JoinGame chat_type registry
+     * expanded from 1 to 7 entries. No block state, chunk format, or tag changes.
+     * Netty protocol version 760.
+     */
+    RELEASE_1_19_1(760, 67, Family.RELEASE, "Release 1.19.1 (v760)", 93),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 67, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 68, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -802,6 +812,7 @@ public enum ProtocolVersion {
             case 757: return "Release 1.18";
             case 758: return "Release 1.18.2";
             case 759: return "Release 1.19";
+            case 760: return "Release 1.19.1-1.19.2";
             case 51: return "Release 1.4.6-1.4.7";
             case 60: return "Release 1.5-1.5.1";
             case 61: return "Release 1.5.2";

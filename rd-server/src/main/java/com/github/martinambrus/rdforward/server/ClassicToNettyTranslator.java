@@ -52,6 +52,7 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
     }
 
     private Packet translate(Packet packet) {
+        boolean isV760 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_1);
         boolean isV759 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19);
         boolean isV755 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17);
         boolean isV751 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16_2);
@@ -68,6 +69,7 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
         if (packet instanceof PlayerListItemPacket) {
             PlayerListItemPacket pli = (PlayerListItemPacket) packet;
             if (isV759) {
+                // V759 and V760 share the same PlayerListItem format
                 String uuid = generateOfflineUuid(pli.getUsername());
                 return pli.isOnline()
                         ? NettyPlayerListItemPacketV759.addPlayer(uuid, pli.getUsername(), 1, pli.getPing())
@@ -95,6 +97,7 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
         if (packet instanceof SetBlockServerPacket) {
             SetBlockServerPacket sb = (SetBlockServerPacket) packet;
             if (isV759) {
+                // V759 and V760 share the same block state IDs
                 return new NettyBlockChangePacketV477(sb.getX(), sb.getY(), sb.getZ(),
                         BlockStateMapper.toV759BlockState(sb.getBlockType()));
             }
@@ -269,6 +272,9 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
             String message = mp.getMessage();
             // Chat messages are JSON text components
             message = "{\"text\":\"" + message.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
+            if (isV760) {
+                return new SystemChatPacketV760(message, false);
+            }
             if (isV759) {
                 return new SystemChatPacketV759(message, 1);
             }
