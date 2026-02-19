@@ -136,6 +136,12 @@ public class NettyPacketRegistry {
     /** V762 S2C/C2S reverse map overlay: shifted packet IDs for 1.19.4. */
     private static final Map<String, Integer> REVERSE_V762 = new HashMap<String, Integer>();
 
+    /** V763 overlay: S2C packets for 1.20 (no packet ID changes; JoinGame + UpdateTags use new classes). */
+    private static final Map<String, PacketFactory> REGISTRY_V763 = new HashMap<String, PacketFactory>();
+
+    /** V763 S2C reverse map overlay: JoinGamePacketV763 + UpdateTagsPacketV763. */
+    private static final Map<String, Integer> REVERSE_V763 = new HashMap<String, Integer>();
+
     /** Reverse map: (state, direction, className) -> packetId */
     private static final Map<String, Integer> REVERSE = new HashMap<String, Integer>();
 
@@ -2128,6 +2134,21 @@ public class NettyPacketRegistry {
         registerV762C2SReverse(KeepAlivePacketV340.class, 0x12);
         registerV762C2SReverse(PlayerDiggingPacketV759.class, 0x1D);
         registerV762C2SReverse(NettyBlockPlacementPacketV759.class, 0x31);
+
+        // =====================================================================
+        // === V763 (1.20) overlay ===
+        // No S2C or C2S packet ID changes from V762. Only JoinGame and UpdateTags
+        // use new classes (portalCooldown field in JoinGame, tag additions).
+        // =====================================================================
+
+        // === V763 S2C reverse map entries (for server encoder) ===
+        registerV763S2CReverse(JoinGamePacketV763.class, 0x28);
+        registerV763S2CReverse(MapChunkPacketV763.class, 0x24);
+        registerV763S2CReverse(UpdateTagsPacketV763.class, 0x6E);
+
+        // === V763 S2C forward map entries (for bot decoder) ===
+        registerV763S2C(0x24, new PacketFactory() { public Packet create() { return new MapChunkPacketV763(); } });
+        registerV763S2C(0x28, new PacketFactory() { public Packet create() { return new JoinGamePacketV763(); } });
     }
 
     private static void registerC2S(ConnectionState state, int packetId,
@@ -2362,6 +2383,14 @@ public class NettyPacketRegistry {
         REVERSE_V762.put(reverseKey(ConnectionState.PLAY, PacketDirection.CLIENT_TO_SERVER, clazz), packetId);
     }
 
+    private static void registerV763S2C(int packetId, PacketFactory factory) {
+        REGISTRY_V763.put(key(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, packetId), factory);
+    }
+
+    private static void registerV763S2CReverse(Class<? extends Packet> clazz, int packetId) {
+        REVERSE_V763.put(reverseKey(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, clazz), packetId);
+    }
+
     private static void registerV109S2C(int packetId, PacketFactory factory) {
         REGISTRY_V109.put(key(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, packetId), factory);
     }
@@ -2421,6 +2450,13 @@ public class NettyPacketRegistry {
      */
     public static Packet createPacket(ConnectionState state, PacketDirection direction,
                                        int packetId, int protocolVersion) {
+        if (protocolVersion >= 763) {
+            String k = key(state, direction, packetId);
+            PacketFactory factory = REGISTRY_V763.get(k);
+            if (factory != null) {
+                return factory.create();
+            }
+        }
         if (protocolVersion >= 762) {
             String k = key(state, direction, packetId);
             PacketFactory factory = REGISTRY_V762.get(k);
@@ -2582,6 +2618,13 @@ public class NettyPacketRegistry {
      */
     public static int getPacketId(ConnectionState state, PacketDirection direction,
                                    Class<? extends Packet> clazz, int protocolVersion) {
+        if (protocolVersion >= 763) {
+            String rk = reverseKey(state, direction, clazz);
+            Integer id = REVERSE_V763.get(rk);
+            if (id != null) {
+                return id;
+            }
+        }
         if (protocolVersion >= 762) {
             String rk = reverseKey(state, direction, clazz);
             Integer id = REVERSE_V762.get(rk);

@@ -671,12 +671,22 @@ public enum ProtocolVersion {
     RELEASE_1_19_4(762, 69, Family.RELEASE, "Release 1.19.4 (v762)", 93),
 
     /**
+     * Minecraft Release 1.20-1.20.1 (June 2023) - "Trails & Tales".
+     * Very lightweight protocol upgrade from 1.19.4. No S2C or C2S packet ID changes.
+     * JoinGame gains VarInt portalCooldown at the end. UpdateTags has block/item tag
+     * additions (bamboo_blocks, cherry_logs, hanging signs, etc.) and one block tag
+     * removal (replaceable_plants). Block state IDs, chunk format, item IDs unchanged.
+     * Netty protocol version 763.
+     */
+    RELEASE_1_20(763, 70, Family.RELEASE, "Release 1.20 (v763)", 93),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 70, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 71, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions

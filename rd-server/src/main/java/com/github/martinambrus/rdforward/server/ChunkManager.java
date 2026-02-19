@@ -13,6 +13,7 @@ import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV73
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV751;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV755;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV757;
+import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV763;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UnloadChunkPacketV109;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacketV477;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacketV735;
@@ -410,7 +411,7 @@ public class ChunkManager {
      */
     private void sendChunkToPlayer(ConnectedPlayer player, AlphaChunk chunk) {
         if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_19)) {
-            // v759/v760/v761/v762: Same chunk format as v757 but with 1.19 block state IDs.
+            // v759/v760/v761/v762/v763: Same chunk format as v757 but with 1.19 block state IDs.
             AlphaChunk.V757ChunkData v759Data = chunk.serializeForV759Protocol();
             long[] heightmap = buildHeightmapLongArrayNonSpanning(chunk);
 
@@ -433,14 +434,27 @@ public class ChunkManager {
             int emptySkyLightMask = ~skyLightMask & 0x3FFFF;
             int emptyBlockLightMask = ~blockLightMask & 0x3FFFF;
 
-            player.sendPacket(new MapChunkPacketV757(
-                chunk.getXPos(), chunk.getZPos(),
-                heightmap, heightmap,
-                v759Data.getRawData(),
-                skyLightMask, blockLightMask,
-                emptySkyLightMask, emptyBlockLightMask,
-                skyArrays.toArray(new byte[0][]),
-                blockArrays.toArray(new byte[0][])));
+            byte[][] skyArr = skyArrays.toArray(new byte[0][]);
+            byte[][] blockArr = blockArrays.toArray(new byte[0][]);
+
+            if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_20)) {
+                // v763+: trustEdges boolean removed from combined chunk+light packet.
+                player.sendPacket(new MapChunkPacketV763(
+                    chunk.getXPos(), chunk.getZPos(),
+                    heightmap, heightmap,
+                    v759Data.getRawData(),
+                    skyLightMask, blockLightMask,
+                    emptySkyLightMask, emptyBlockLightMask,
+                    skyArr, blockArr));
+            } else {
+                player.sendPacket(new MapChunkPacketV757(
+                    chunk.getXPos(), chunk.getZPos(),
+                    heightmap, heightmap,
+                    v759Data.getRawData(),
+                    skyLightMask, blockLightMask,
+                    emptySkyLightMask, emptyBlockLightMask,
+                    skyArr, blockArr));
+            }
 
         } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_18)) {
             // v757: Combined chunk data + update light. All 16 sections present,

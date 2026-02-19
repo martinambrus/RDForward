@@ -52,6 +52,7 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
     }
 
     private Packet translate(Packet packet) {
+        boolean isV763 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20);
         boolean isV762 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_4);
         boolean isV761 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_3);
         boolean isV760 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_1);
