@@ -14,6 +14,7 @@ import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV75
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV755;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV757;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV763;
+import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV764;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UnloadChunkPacketV109;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacketV477;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacketV735;
@@ -437,8 +438,17 @@ public class ChunkManager {
             byte[][] skyArr = skyArrays.toArray(new byte[0][]);
             byte[][] blockArr = blockArrays.toArray(new byte[0][]);
 
-            if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_20)) {
-                // v763+: trustEdges boolean removed from combined chunk+light packet.
+            if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_20_2)) {
+                // v764+: network NBT for heightmaps (no root name).
+                player.sendPacket(new MapChunkPacketV764(
+                    chunk.getXPos(), chunk.getZPos(),
+                    heightmap, heightmap,
+                    v759Data.getRawData(),
+                    skyLightMask, blockLightMask,
+                    emptySkyLightMask, emptyBlockLightMask,
+                    skyArr, blockArr));
+            } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_20)) {
+                // v763: trustEdges boolean removed from combined chunk+light packet.
                 player.sendPacket(new MapChunkPacketV763(
                     chunk.getXPos(), chunk.getZPos(),
                     heightmap, heightmap,

@@ -52,6 +52,7 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
     }
 
     private Packet translate(Packet packet) {
+        boolean isV764 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_2);
         boolean isV763 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20);
         boolean isV762 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_4);
         boolean isV761 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_3);
@@ -107,7 +108,7 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
         if (packet instanceof SetBlockServerPacket) {
             SetBlockServerPacket sb = (SetBlockServerPacket) packet;
             if (isV759) {
-                // V759, V760, and V761 share the same block state IDs
+                // V759+ share the same block state IDs (through v764)
                 return new NettyBlockChangePacketV477(sb.getX(), sb.getY(), sb.getZ(),
                         BlockStateMapper.toV759BlockState(sb.getBlockType()));
             }
@@ -149,6 +150,13 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
             int alphaYaw = (sp.getYaw() + 128) & 0xFF;
             // Generate offline UUID from username
             String uuid = generateOfflineUuid(sp.getPlayerName());
+            if (isV764) {
+                // 1.20.2: SpawnPlayer removed, use generic SpawnEntity
+                return new NettySpawnEntityPacketV764(
+                        entityId, uuid,
+                        sp.getX() / 32.0, feetY / 32.0, sp.getZ() / 32.0,
+                        alphaYaw, sp.getPitch());
+            }
             if (isV573) {
                 // 1.15: double coordinates, entity metadata fully removed
                 return new NettySpawnPlayerPacketV573(

@@ -12,5 +12,6 @@ public enum ConnectionState {
     HANDSHAKING,
     STATUS,
     LOGIN,
+    CONFIGURATION,
     PLAY
 }
