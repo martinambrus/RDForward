@@ -71,6 +71,12 @@ public final class BlockStateMapper {
      */
     private static final int[] LEGACY_TO_ITEM_V759 = new int[256];
 
+    /**
+     * Maps legacy item/block ID (index) to 1.20.3 (v765) item ID.
+     * Tuff variants (13 new items) inserted early in the registry shifted most IDs.
+     */
+    private static final int[] LEGACY_TO_ITEM_V765 = new int[256];
+
     static {
         // Default all to stone (safe fallback — renders as a visible block)
         for (int i = 0; i < 256; i++) {
@@ -494,6 +500,17 @@ public final class BlockStateMapper {
         LEGACY_TO_ITEM_V759[3]  = 15;   // dirt
         LEGACY_TO_ITEM_V759[4]  = 22;   // cobblestone
         LEGACY_TO_ITEM_V759[5]  = 23;   // oak_planks
+
+        // 1.20.3 item IDs (tuff variants inserted, shifting most IDs)
+        for (int i = 0; i < 256; i++) {
+            LEGACY_TO_ITEM_V765[i] = -1;
+        }
+        LEGACY_TO_ITEM_V765[0]  = 0;    // air
+        LEGACY_TO_ITEM_V765[1]  = 1;    // stone
+        LEGACY_TO_ITEM_V765[2]  = 27;   // grass_block
+        LEGACY_TO_ITEM_V765[3]  = 28;   // dirt
+        LEGACY_TO_ITEM_V765[4]  = 35;   // cobblestone
+        LEGACY_TO_ITEM_V765[5]  = 36;   // oak_planks
     }
 
     private BlockStateMapper() {}
@@ -584,5 +601,16 @@ public final class BlockStateMapper {
             return -1;
         }
         return LEGACY_TO_ITEM_V759[legacyItemId];
+    }
+
+    /**
+     * Convert a legacy item/block ID to its 1.20.3 (v765) item ID.
+     * Used for SetSlot packets for v765+ clients. Returns -1 if unmapped.
+     */
+    public static int toV765ItemId(int legacyItemId) {
+        if (legacyItemId < 0 || legacyItemId >= 256) {
+            return -1;
+        }
+        return LEGACY_TO_ITEM_V765[legacyItemId];
     }
 }

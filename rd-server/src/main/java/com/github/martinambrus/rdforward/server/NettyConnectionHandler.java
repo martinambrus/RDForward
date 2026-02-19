@@ -172,7 +172,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
         String versionName;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_2)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_3)) {
+            versionName = "1.20.3";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_2)) {
             versionName = "1.20.2";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20)) {
             versionName = "1.20";
@@ -456,14 +458,19 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         state = ConnectionState.CONFIGURATION;
         setCodecState(ctx, ConnectionState.CONFIGURATION);
 
-        // Send registry data (single compound in network NBT containing all registries)
+        // Send registry data — single CompoundTag in network NBT containing all registries.
+        // Same format for both v764 and v765 (per-registry format was introduced in v766+).
         ctx.writeAndFlush(RegistryDataPacketV764.create(ctx.alloc().buffer()));
 
         // Send feature flags
         ctx.writeAndFlush(new UpdateEnabledFeaturesPacketV761());
 
         // Send UpdateTags
-        ctx.writeAndFlush(new UpdateTagsPacketV764());
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_3)) {
+            ctx.writeAndFlush(new UpdateTagsPacketV765());
+        } else {
+            ctx.writeAndFlush(new UpdateTagsPacketV764());
+        }
 
         // Signal end of Configuration phase
         ctx.writeAndFlush(new ConfigFinishS2CPacket());
@@ -516,6 +523,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
+        boolean isV765 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_3);
         boolean isV764 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_2);
         boolean isV763 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20);
         boolean isV762 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_4);
@@ -600,6 +608,13 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // (v764+ sends this during Configuration phase instead)
         if (!isV764 && (isV763 || isV762 || isV761)) {
             ctx.writeAndFlush(new UpdateEnabledFeaturesPacketV761());
+        }
+
+        // 1.20.3+: Send GameEvent(13) "Start waiting for level chunks" so client
+        // exits the loading screen promptly once chunks arrive.
+        if (isV765) {
+            ctx.writeAndFlush(new NettyChangeGameStatePacket(
+                    NettyChangeGameStatePacket.START_WAITING_CHUNKS, 0.0f));
         }
 
         // 1.14+: Send chunk cache radius (view distance) right after JoinGame
@@ -873,7 +888,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Give 1 cobblestone for right-click
         // v404 (1.13.2)+ uses boolean+VarInt slot format (also used by v477/1.14)
         boolean isV404 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13_2);
-        if (isV764) {
+        if (isV765) {
+            ctx.writeAndFlush(new NettySetSlotPacketV756(0, 0, 36,
+                    BlockStateMapper.toV765ItemId(BlockRegistry.COBBLESTONE), 1));
+        } else if (isV764) {
             ctx.writeAndFlush(new NettySetSlotPacketV756(0, 0, 36,
                     BlockStateMapper.toV759ItemId(BlockRegistry.COBBLESTONE), 1));
         } else if (isV763) {
@@ -1282,6 +1300,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     }
 
     private void dispatchCommand(String command) {
+        boolean isV765 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_3);
         boolean isV764 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_2);
         boolean isV763 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20);
         boolean isV762 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_4);
@@ -1291,43 +1310,52 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         boolean isV735 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16);
         boolean handled = CommandRegistry.dispatch(command, player.getUsername(), false,
                 reply -> {
-                    String json = "{\"text\":\"" + reply.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
-                    if (isV764) {
-                        player.sendPacket(new SystemChatPacketV760(json, false));
-                    } else if (isV763) {
-                        player.sendPacket(new SystemChatPacketV760(json, false));
-                    } else if (isV762) {
-                        player.sendPacket(new SystemChatPacketV760(json, false));
-                    } else if (isV761) {
-                        player.sendPacket(new SystemChatPacketV760(json, false));
-                    } else if (isV760) {
-                        player.sendPacket(new SystemChatPacketV760(json, false));
-                    } else if (isV759) {
-                        player.sendPacket(new SystemChatPacketV759(json, 1));
-                    } else if (isV735) {
-                        player.sendPacket(new NettyChatS2CPacketV735(json, (byte) 0, 0L, 0L));
+                    if (isV765) {
+                        player.sendPacket(new SystemChatPacketV765(reply, false));
                     } else {
-                        player.sendPacket(new NettyChatS2CPacket(json));
+                        String json = "{\"text\":\"" + reply.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
+                        if (isV764) {
+                            player.sendPacket(new SystemChatPacketV760(json, false));
+                        } else if (isV763) {
+                            player.sendPacket(new SystemChatPacketV760(json, false));
+                        } else if (isV762) {
+                            player.sendPacket(new SystemChatPacketV760(json, false));
+                        } else if (isV761) {
+                            player.sendPacket(new SystemChatPacketV760(json, false));
+                        } else if (isV760) {
+                            player.sendPacket(new SystemChatPacketV760(json, false));
+                        } else if (isV759) {
+                            player.sendPacket(new SystemChatPacketV759(json, 1));
+                        } else if (isV735) {
+                            player.sendPacket(new NettyChatS2CPacketV735(json, (byte) 0, 0L, 0L));
+                        } else {
+                            player.sendPacket(new NettyChatS2CPacket(json));
+                        }
                     }
                 });
         if (!handled) {
-            String json = "{\"text\":\"Unknown command: " + command.split("\\s+")[0] + "\"}";
-            if (isV764) {
-                player.sendPacket(new SystemChatPacketV760(json, false));
-            } else if (isV763) {
-                player.sendPacket(new SystemChatPacketV760(json, false));
-            } else if (isV762) {
-                player.sendPacket(new SystemChatPacketV760(json, false));
-            } else if (isV761) {
-                player.sendPacket(new SystemChatPacketV760(json, false));
-            } else if (isV760) {
-                player.sendPacket(new SystemChatPacketV760(json, false));
-            } else if (isV759) {
-                player.sendPacket(new SystemChatPacketV759(json, 1));
-            } else if (isV735) {
-                player.sendPacket(new NettyChatS2CPacketV735(json, (byte) 0, 0L, 0L));
+            String unknownMsg = "Unknown command: " + command.split("\\s+")[0];
+            if (isV765) {
+                player.sendPacket(new SystemChatPacketV765(unknownMsg, false));
             } else {
-                player.sendPacket(new NettyChatS2CPacket(json));
+                String json = "{\"text\":\"" + unknownMsg + "\"}";
+                if (isV764) {
+                    player.sendPacket(new SystemChatPacketV760(json, false));
+                } else if (isV763) {
+                    player.sendPacket(new SystemChatPacketV760(json, false));
+                } else if (isV762) {
+                    player.sendPacket(new SystemChatPacketV760(json, false));
+                } else if (isV761) {
+                    player.sendPacket(new SystemChatPacketV760(json, false));
+                } else if (isV760) {
+                    player.sendPacket(new SystemChatPacketV760(json, false));
+                } else if (isV759) {
+                    player.sendPacket(new SystemChatPacketV759(json, 1));
+                } else if (isV735) {
+                    player.sendPacket(new NettyChatS2CPacketV735(json, (byte) 0, 0L, 0L));
+                } else {
+                    player.sendPacket(new NettyChatS2CPacket(json));
+                }
             }
         }
     }
@@ -1408,9 +1436,14 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     }
 
     private void sendPlayDisconnect(ChannelHandlerContext ctx, String reason) {
-        String json = "{\"text\":\"" + reason.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
-        ctx.writeAndFlush(new NettyDisconnectPacket(json))
-                .addListener(io.netty.channel.ChannelFutureListener.CLOSE);
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_3)) {
+            ctx.writeAndFlush(new NettyDisconnectPacketV765(reason))
+                    .addListener(io.netty.channel.ChannelFutureListener.CLOSE);
+        } else {
+            String json = "{\"text\":\"" + reason.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
+            ctx.writeAndFlush(new NettyDisconnectPacket(json))
+                    .addListener(io.netty.channel.ChannelFutureListener.CLOSE);
+        }
     }
 
     // ========================================================================

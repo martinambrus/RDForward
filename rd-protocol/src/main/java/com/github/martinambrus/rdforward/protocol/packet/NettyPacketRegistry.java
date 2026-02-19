@@ -148,6 +148,12 @@ public class NettyPacketRegistry {
     /** V764 S2C/C2S reverse map overlay: shifted packet IDs for 1.20.2. */
     private static final Map<String, Integer> REVERSE_V764 = new HashMap<String, Integer>();
 
+    /** V765 overlay: C2S/S2C packets for 1.20.3 (text components as NBT, per-registry RegistryData, CONTAINER_SLOT_STATE_CHANGED). */
+    private static final Map<String, PacketFactory> REGISTRY_V765 = new HashMap<String, PacketFactory>();
+
+    /** V765 S2C/C2S reverse map overlay: shifted packet IDs for 1.20.3. */
+    private static final Map<String, Integer> REVERSE_V765 = new HashMap<String, Integer>();
+
     /** Reverse map: (state, direction, className) -> packetId */
     private static final Map<String, Integer> REVERSE = new HashMap<String, Integer>();
 
@@ -2302,6 +2308,94 @@ public class NettyPacketRegistry {
         registerV764C2SReverse(KeepAlivePacketV340.class, 0x14);
         registerV764C2SReverse(PlayerDiggingPacketV759.class, 0x20);
         registerV764C2SReverse(NettyBlockPlacementPacketV759.class, 0x34);
+
+        // === V765 (1.20.3) overlay ===
+        // Text components switched from JSON strings to NBT tags.
+        // RegistryData switched from single CompoundTag to per-registry packets.
+        // S2C: 3 new packets at 0x42-0x44 (+2), 2 new at 0x6E-0x6F (+4 for tail).
+        // C2S: CONTAINER_SLOT_STATE_CHANGED at 0x0F (+1 for >= 0x0F).
+
+        // === V765 CONFIGURATION state ===
+        registerV765Forward(ConnectionState.CONFIGURATION, PacketDirection.SERVER_TO_CLIENT, 0x05,
+                new PacketFactory() { public Packet create() { return new RegistryDataPacketV765(); } });
+        registerV765Forward(ConnectionState.CONFIGURATION, PacketDirection.SERVER_TO_CLIENT, 0x08,
+                new PacketFactory() { public Packet create() { return new UpdateEnabledFeaturesPacketV761(); } });
+        registerV765Forward(ConnectionState.CONFIGURATION, PacketDirection.SERVER_TO_CLIENT, 0x09,
+                new PacketFactory() { public Packet create() { return new UpdateTagsPacketV765(); } });
+
+        registerV765Reverse(ConnectionState.CONFIGURATION, PacketDirection.SERVER_TO_CLIENT,
+                RegistryDataPacketV765.class, 0x05);
+        registerV765Reverse(ConnectionState.CONFIGURATION, PacketDirection.SERVER_TO_CLIENT,
+                UpdateEnabledFeaturesPacketV761.class, 0x08);
+        registerV765Reverse(ConnectionState.CONFIGURATION, PacketDirection.SERVER_TO_CLIENT,
+                UpdateTagsPacketV765.class, 0x09);
+
+        // === V765 S2C PLAY reverse map entries (for server encoder) ===
+        // Packets with new class (changed wire format):
+        registerV765S2CReverse(SystemChatPacketV765.class, 0x69);
+        registerV765S2CReverse(NettyDisconnectPacketV765.class, 0x1B);
+        // Packets shifted +2 (0x42 <= id < 0x6C):
+        registerV765S2CReverse(SetChunkCacheCenterPacketV477.class, 0x52);
+        registerV765S2CReverse(SetChunkCacheRadiusPacketV477.class, 0x53);
+        registerV765S2CReverse(SpawnPositionPacketV755.class, 0x54);
+        registerV765S2CReverse(NettyTimeUpdatePacket.class, 0x62);
+        registerV765S2CReverse(EntityTeleportPacketV109.class, 0x6D);
+        // Packets shifted +4 (>= 0x6C in v764):
+        registerV765S2CReverse(NettyEntityPropertiesPacketV755.class, 0x71);
+        registerV765S2CReverse(UpdateRecipesPacketV393.class, 0x73);
+        registerV765S2CReverse(UpdateTagsPacketV765.class, 0x74);
+
+        // === V765 C2S PLAY forward map entries (for server decoder) ===
+        // 0x00-0x0E: same as v764 (cascade)
+        registerV765C2S(0x0F, noOpFactory); // CONTAINER_SLOT_STATE_CHANGED (new)
+        registerV765C2S(0x10, new PacketFactory() { public Packet create() { return new NettyPluginMessagePacketV47(); } }); // v764:0x0F
+        registerV765C2S(0x11, noOpFactory); // EditBook (v764:0x10)
+        registerV765C2S(0x12, noOpFactory); // EntityTagQuery (v764:0x11)
+        registerV765C2S(0x13, new PacketFactory() { public Packet create() { return new NettyUseEntityPacketV47(); } }); // v764:0x12
+        registerV765C2S(0x14, noOpFactory); // JigsawGenerate (v764:0x13)
+        registerV765C2S(0x15, new PacketFactory() { public Packet create() { return new KeepAlivePacketV340(); } }); // v764:0x14
+        registerV765C2S(0x16, noOpFactory); // LockDifficulty (v764:0x15)
+        registerV765C2S(0x17, new PacketFactory() { public Packet create() { return new PlayerPositionPacketV47(); } }); // v764:0x16
+        registerV765C2S(0x18, new PacketFactory() { public Packet create() { return new PlayerPositionAndLookC2SPacketV47(); } }); // v764:0x17
+        registerV765C2S(0x19, new PacketFactory() { public Packet create() { return new PlayerLookPacket(); } }); // v764:0x18
+        registerV765C2S(0x1A, new PacketFactory() { public Packet create() { return new PlayerOnGroundPacket(); } }); // v764:0x19
+        registerV765C2S(0x1B, noOpFactory); // VehicleMove (v764:0x1A)
+        registerV765C2S(0x1C, noOpFactory); // PaddleBoat (v764:0x1B)
+        registerV765C2S(0x1D, noOpFactory); // PickItem (v764:0x1C)
+        registerV765C2S(0x1E, noOpFactory); // PingRequest (v764:0x1D)
+        registerV765C2S(0x1F, noOpFactory); // PlaceRecipe (v764:0x1E)
+        registerV765C2S(0x20, new PacketFactory() { public Packet create() { return new PlayerAbilitiesPacketV735(); } }); // v764:0x1F
+        registerV765C2S(0x21, new PacketFactory() { public Packet create() { return new PlayerDiggingPacketV759(); } }); // v764:0x20
+        registerV765C2S(0x22, new PacketFactory() { public Packet create() { return new NettyEntityActionPacketV47(); } }); // v764:0x21
+        registerV765C2S(0x23, new PacketFactory() { public Packet create() { return new NettySteerVehiclePacketV47(); } }); // v764:0x22
+        registerV765C2S(0x24, noOpFactory); // Pong (v764:0x23)
+        registerV765C2S(0x25, noOpFactory); // RecipeBookChangeSettings (v764:0x24)
+        registerV765C2S(0x26, noOpFactory); // RecipeBookSeenRecipe (v764:0x25)
+        registerV765C2S(0x27, noOpFactory); // RenameItem (v764:0x26)
+        registerV765C2S(0x28, noOpFactory); // ResourcePack (v764:0x27)
+        registerV765C2S(0x29, noOpFactory); // SeenAdvancements (v764:0x28)
+        registerV765C2S(0x2A, noOpFactory); // SelectTrade (v764:0x29)
+        registerV765C2S(0x2B, noOpFactory); // SetBeacon (v764:0x2A)
+        registerV765C2S(0x2C, new PacketFactory() { public Packet create() { return new HoldingChangePacketBeta(); } }); // v764:0x2B
+        registerV765C2S(0x2D, noOpFactory); // SetCommandBlock (v764:0x2C)
+        registerV765C2S(0x2E, noOpFactory); // SetCommandMinecart (v764:0x2D)
+        registerV765C2S(0x2F, noOpFactory); // SetCreativeModeSlot (v764:0x2E)
+        registerV765C2S(0x30, noOpFactory); // SetJigsawBlock (v764:0x2F)
+        registerV765C2S(0x31, noOpFactory); // SetStructureBlock (v764:0x30)
+        registerV765C2S(0x32, new PacketFactory() { public Packet create() { return new NettyUpdateSignPacketV47(); } }); // v764:0x31
+        registerV765C2S(0x33, new PacketFactory() { public Packet create() { return new AnimationPacketV109(); } }); // v764:0x32
+        registerV765C2S(0x34, noOpFactory); // Spectate (v764:0x33)
+        registerV765C2S(0x35, new PacketFactory() { public Packet create() { return new NettyBlockPlacementPacketV759(); } }); // v764:0x34
+        registerV765C2S(0x36, new PacketFactory() { public Packet create() { return new UseItemPacketV109(); } }); // v764:0x35
+
+        // === V765 C2S PLAY reverse map entries (for bot decoder) ===
+        registerV765C2SReverse(TeleportConfirmPacketV109.class, 0x00);
+        registerV765C2SReverse(ChatCommandC2SPacketV759.class, 0x04);
+        registerV765C2SReverse(NettyChatC2SPacket.class, 0x05);
+        registerV765C2SReverse(ChunkBatchReceivedPacket.class, 0x07);
+        registerV765C2SReverse(KeepAlivePacketV340.class, 0x15);
+        registerV765C2SReverse(PlayerDiggingPacketV759.class, 0x21);
+        registerV765C2SReverse(NettyBlockPlacementPacketV759.class, 0x35);
     }
 
     private static void registerC2S(ConnectionState state, int packetId,
@@ -2568,6 +2662,26 @@ public class NettyPacketRegistry {
         REVERSE_V764.put(reverseKey(ConnectionState.PLAY, PacketDirection.CLIENT_TO_SERVER, clazz), packetId);
     }
 
+    private static void registerV765Forward(ConnectionState state, PacketDirection direction, int packetId, PacketFactory factory) {
+        REGISTRY_V765.put(key(state, direction, packetId), factory);
+    }
+
+    private static void registerV765Reverse(ConnectionState state, PacketDirection direction, Class<? extends Packet> clazz, int packetId) {
+        REVERSE_V765.put(reverseKey(state, direction, clazz), packetId);
+    }
+
+    private static void registerV765S2CReverse(Class<? extends Packet> clazz, int packetId) {
+        REVERSE_V765.put(reverseKey(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, clazz), packetId);
+    }
+
+    private static void registerV765C2S(int packetId, PacketFactory factory) {
+        REGISTRY_V765.put(key(ConnectionState.PLAY, PacketDirection.CLIENT_TO_SERVER, packetId), factory);
+    }
+
+    private static void registerV765C2SReverse(Class<? extends Packet> clazz, int packetId) {
+        REVERSE_V765.put(reverseKey(ConnectionState.PLAY, PacketDirection.CLIENT_TO_SERVER, clazz), packetId);
+    }
+
     private static void registerV109S2C(int packetId, PacketFactory factory) {
         REGISTRY_V109.put(key(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, packetId), factory);
     }
@@ -2627,6 +2741,13 @@ public class NettyPacketRegistry {
      */
     public static Packet createPacket(ConnectionState state, PacketDirection direction,
                                        int packetId, int protocolVersion) {
+        if (protocolVersion >= 765) {
+            String k = key(state, direction, packetId);
+            PacketFactory factory = REGISTRY_V765.get(k);
+            if (factory != null) {
+                return factory.create();
+            }
+        }
         if (protocolVersion >= 764) {
             String k = key(state, direction, packetId);
             PacketFactory factory = REGISTRY_V764.get(k);
@@ -2802,6 +2923,13 @@ public class NettyPacketRegistry {
      */
     public static int getPacketId(ConnectionState state, PacketDirection direction,
                                    Class<? extends Packet> clazz, int protocolVersion) {
+        if (protocolVersion >= 765) {
+            String rk = reverseKey(state, direction, clazz);
+            Integer id = REVERSE_V765.get(rk);
+            if (id != null) {
+                return id;
+            }
+        }
         if (protocolVersion >= 764) {
             String rk = reverseKey(state, direction, clazz);
             Integer id = REVERSE_V764.get(rk);

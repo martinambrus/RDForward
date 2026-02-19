@@ -52,6 +52,7 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
     }
 
     private Packet translate(Packet packet) {
+        boolean isV765 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_3);
         boolean isV764 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_2);
         boolean isV763 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20);
         boolean isV762 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_4);
@@ -287,9 +288,13 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
 
         if (packet instanceof MessagePacket) {
             MessagePacket mp = (MessagePacket) packet;
-            String message = mp.getMessage();
-            // Chat messages are JSON text components
-            message = "{\"text\":\"" + message.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
+            String plainText = mp.getMessage();
+            if (isV765) {
+                // V765+: NBT text component — pass plain text, NOT JSON
+                return new SystemChatPacketV765(plainText, false);
+            }
+            // Pre-V765: JSON text component
+            String message = "{\"text\":\"" + plainText.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
             if (isV761) {
                 return new SystemChatPacketV760(message, false);
             }
@@ -312,6 +317,9 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
             com.github.martinambrus.rdforward.protocol.packet.classic.DisconnectPacket dp =
                     (com.github.martinambrus.rdforward.protocol.packet.classic.DisconnectPacket) packet;
             String reason = dp.getReason();
+            if (isV765) {
+                return new NettyDisconnectPacketV765(reason);
+            }
             reason = "{\"text\":\"" + reason.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
             return new NettyDisconnectPacket(reason);
         }

@@ -692,12 +692,23 @@ public enum ProtocolVersion {
     RELEASE_1_20_2(764, 71, Family.RELEASE, "Release 1.20.2 (v764)", 93),
 
     /**
+     * Minecraft Release 1.20.3-1.20.4 (December 2023).
+     * Text components switched from JSON strings to NBT tags across all packets.
+     * RegistryData switched from single CompoundTag to per-registry packets.
+     * S2C shifts: 3 new packets at 0x42-0x44 (+2), 2 new at 0x6E-0x6F (+4 for tail).
+     * C2S: CONTAINER_SLOT_STATE_CHANGED inserted at 0x0F (+1 for >= 0x0F).
+     * Block state IDs unchanged for our basic block set. Chunk format unchanged.
+     * Netty protocol version 765.
+     */
+    RELEASE_1_20_3(765, 72, Family.RELEASE, "Release 1.20.3 (v765)", 93),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 72, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 73, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions

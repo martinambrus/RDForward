@@ -27,6 +27,8 @@ public class NettyChangeGameStatePacket implements Packet {
     public static final int CHANGE_GAME_MODE = 3;
     public static final int RAIN_LEVEL = 7;
     public static final int THUNDER_LEVEL = 8;
+    /** Event 13: client should start processing incoming chunk data. Required by 1.20.3+. */
+    public static final int START_WAITING_CHUNKS = 13;
 
     private int reason;
     private float value;
