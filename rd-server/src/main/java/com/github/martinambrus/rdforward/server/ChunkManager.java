@@ -167,6 +167,8 @@ public class ChunkManager {
             }
         }
 
+
+
         // Sort chunks to load by distance from player (closest first)
         toLoad.sort((a, b) -> {
             int distA = (a.getX() - centerChunkX) * (a.getX() - centerChunkX)
@@ -408,7 +410,7 @@ public class ChunkManager {
      */
     private void sendChunkToPlayer(ConnectedPlayer player, AlphaChunk chunk) {
         if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_19)) {
-            // v759/v760: Same chunk format as v757 but with 1.19 block state IDs.
+            // v759/v760/v761: Same chunk format as v757 but with 1.19 block state IDs.
             AlphaChunk.V757ChunkData v759Data = chunk.serializeForV759Protocol();
             long[] heightmap = buildHeightmapLongArrayNonSpanning(chunk);
 

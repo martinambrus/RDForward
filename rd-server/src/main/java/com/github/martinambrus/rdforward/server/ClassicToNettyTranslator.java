@@ -52,6 +52,7 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
     }
 
     private Packet translate(Packet packet) {
+        boolean isV761 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_3);
         boolean isV760 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_1);
         boolean isV759 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19);
         boolean isV755 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17);
@@ -68,6 +69,13 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
         // passes .alpha packets through unchanged.
         if (packet instanceof PlayerListItemPacket) {
             PlayerListItemPacket pli = (PlayerListItemPacket) packet;
+            if (isV761) {
+                // V761: PlayerInfoUpdate/PlayerInfoRemove replace PlayerListItem
+                String uuid = generateOfflineUuid(pli.getUsername());
+                return pli.isOnline()
+                        ? NettyPlayerInfoUpdatePacketV761.addPlayer(uuid, pli.getUsername(), 1, pli.getPing())
+                        : NettyPlayerInfoRemovePacketV761.removePlayer(uuid);
+            }
             if (isV759) {
                 // V759 and V760 share the same PlayerListItem format
                 String uuid = generateOfflineUuid(pli.getUsername());
@@ -97,7 +105,7 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
         if (packet instanceof SetBlockServerPacket) {
             SetBlockServerPacket sb = (SetBlockServerPacket) packet;
             if (isV759) {
-                // V759 and V760 share the same block state IDs
+                // V759, V760, and V761 share the same block state IDs
                 return new NettyBlockChangePacketV477(sb.getX(), sb.getY(), sb.getZ(),
                         BlockStateMapper.toV759BlockState(sb.getBlockType()));
             }
@@ -272,6 +280,9 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
             String message = mp.getMessage();
             // Chat messages are JSON text components
             message = "{\"text\":\"" + message.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
+            if (isV761) {
+                return new SystemChatPacketV760(message, false);
+            }
             if (isV760) {
                 return new SystemChatPacketV760(message, false);
             }
