@@ -660,12 +660,23 @@ public enum ProtocolVersion {
     RELEASE_1_19_3(761, 68, Family.RELEASE, "Release 1.19.3 (v761)", 93),
 
     /**
+     * Minecraft Release 1.19.4 (March 2023).
+     * 4 new S2C packets (BUNDLE_DELIMITER, CHUNKS_BIOMES, DAMAGE_EVENT, HURT_ANIMATION)
+     * shift S2C IDs by +1 to +4. C2S: CHAT_SESSION_UPDATE relocated from 0x20 to 0x06,
+     * shifting 0x06-0x1F by +1. PlayerPosition loses dismountVehicle boolean.
+     * JoinGame gains minecraft:damage_type registry. Biome precipitation String replaced
+     * by has_precipitation Byte. Block state IDs and chunk format unchanged from V761.
+     * Netty protocol version 762.
+     */
+    RELEASE_1_19_4(762, 69, Family.RELEASE, "Release 1.19.4 (v762)", 93),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 69, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 70, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions

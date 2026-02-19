@@ -164,7 +164,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
         String versionName;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_3)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_4)) {
+            versionName = "1.19.4";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_3)) {
             versionName = "1.19.3";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_1)) {
             versionName = "1.19.1";
@@ -462,6 +464,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
+        boolean isV762 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_4);
         boolean isV761 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_3);
         boolean isV760 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_1);
         boolean isV759 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19);
@@ -481,13 +484,17 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Send JoinGame
         // maxPlayers=20 limits the tab list to a single compact column.
         // Using the actual MAX_PLAYERS (128) creates a huge multi-column grid.
+        // v762 (1.19.4) added minecraft:damage_type registry and has_precipitation biome field.
         // v751 (1.16.2) rewrote JoinGame: isHardcore separated, NBT dimension type,
         //   registry-format codec with biome registry, VarInt maxPlayers.
         // v735 (1.16) rewrote JoinGame with NBT dimension codec.
         // v573 (1.15) added hashedSeed + enableRespawnScreen.
         // v477 (1.14) removed difficulty from JoinGame and added viewDistance.
         // v108 (1.9.1) changed dimension from byte to int.
-        if (isV761) {
+        if (isV762) {
+            ctx.writeAndFlush(new JoinGamePacketV762(entityId, 1,
+                    20, ChunkManager.DEFAULT_VIEW_DISTANCE, ChunkManager.DEFAULT_VIEW_DISTANCE));
+        } else if (isV761) {
             // V761 reuses V760 JoinGame format; registry handles the ID shift (0x25 -> 0x24)
             ctx.writeAndFlush(new JoinGamePacketV760(entityId, 1,
                     20, ChunkManager.DEFAULT_VIEW_DISTANCE, ChunkManager.DEFAULT_VIEW_DISTANCE));
@@ -530,7 +537,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
 
         // 1.19.3+: Send UpdateEnabledFeatures right after JoinGame
-        if (isV761) {
+        if (isV762 || isV761) {
             ctx.writeAndFlush(new UpdateEnabledFeaturesPacketV761());
         }
 
@@ -546,7 +553,8 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             // 1.14 added entity_types as a 4th tag category
             // 1.16 requires essential fluid tags (water/lava) or client crashes during rendering
             // 1.16.2 removed minecraft:furnace_materials from item tags
-            ctx.writeAndFlush(isV761 ? new UpdateTagsPacketV761()
+            ctx.writeAndFlush(isV762 ? new UpdateTagsPacketV762()
+                    : isV761 ? new UpdateTagsPacketV761()
                     : isV760 ? new UpdateTagsPacketV759()
                     : isV759 ? new UpdateTagsPacketV759()
                     : isV758 ? new UpdateTagsPacketV758()
@@ -679,7 +687,11 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // after chunks ensures terrain collision data is available, preventing
         // the player from briefly falling into the ground before chunks load.
         // SetChunkCacheCenter (above) tells the client which chunk to prioritize.
-        if (isV755) {
+        if (isV762) {
+            awaitingTeleportConfirm = true;
+            ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV762(
+                    spawnX, clientY, spawnZ, alphaSpawnYaw, spawnPitch, ++nextTeleportId));
+        } else if (isV755) {
             awaitingTeleportConfirm = true;
             ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV755(
                     spawnX, clientY, spawnZ, alphaSpawnYaw, spawnPitch, ++nextTeleportId));
@@ -782,7 +794,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Give 1 cobblestone for right-click
         // v404 (1.13.2)+ uses boolean+VarInt slot format (also used by v477/1.14)
         boolean isV404 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13_2);
-        if (isV761) {
+        if (isV762) {
+            ctx.writeAndFlush(new NettySetSlotPacketV756(0, 0, 36,
+                    BlockStateMapper.toV759ItemId(BlockRegistry.COBBLESTONE), 1));
+        } else if (isV761) {
             ctx.writeAndFlush(new NettySetSlotPacketV756(0, 0, 36,
                     BlockStateMapper.toV759ItemId(BlockRegistry.COBBLESTONE), 1));
         } else if (isV760) {
@@ -1181,6 +1196,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     }
 
     private void dispatchCommand(String command) {
+        boolean isV762 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_4);
         boolean isV761 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_3);
         boolean isV760 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_1);
         boolean isV759 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19);
@@ -1188,7 +1204,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         boolean handled = CommandRegistry.dispatch(command, player.getUsername(), false,
                 reply -> {
                     String json = "{\"text\":\"" + reply.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
-                    if (isV761) {
+                    if (isV762) {
+                        player.sendPacket(new SystemChatPacketV760(json, false));
+                    } else if (isV761) {
                         player.sendPacket(new SystemChatPacketV760(json, false));
                     } else if (isV760) {
                         player.sendPacket(new SystemChatPacketV760(json, false));
@@ -1202,7 +1220,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 });
         if (!handled) {
             String json = "{\"text\":\"Unknown command: " + command.split("\\s+")[0] + "\"}";
-            if (isV761) {
+            if (isV762) {
+                player.sendPacket(new SystemChatPacketV760(json, false));
+            } else if (isV761) {
                 player.sendPacket(new SystemChatPacketV760(json, false));
             } else if (isV760) {
                 player.sendPacket(new SystemChatPacketV760(json, false));
@@ -1234,7 +1254,11 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         // S2C Y: 1.7.2 = eye-level; 1.8+ = feet-level.
         float alphaYaw = (yaw + 180.0f) % 360.0f;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_4)) {
+            awaitingTeleportConfirm = true;
+            ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV762(
+                    spawnX, spawnFeetY, spawnZ, alphaYaw, 0, ++nextTeleportId));
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17)) {
             awaitingTeleportConfirm = true;
             ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV755(
                     spawnX, spawnFeetY, spawnZ, alphaYaw, 0, ++nextTeleportId));
