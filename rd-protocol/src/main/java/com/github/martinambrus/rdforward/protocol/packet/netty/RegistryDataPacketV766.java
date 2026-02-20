@@ -163,6 +163,17 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:wild");
     }
 
+    public static RegistryDataPacketV766 createTrimPatternV767(ByteBuf alloc) {
+        return createBuiltIn(alloc, "minecraft:trim_pattern",
+                "minecraft:coast", "minecraft:dune", "minecraft:eye",
+                "minecraft:host", "minecraft:raiser", "minecraft:rib",
+                "minecraft:sentry", "minecraft:shaper", "minecraft:silence",
+                "minecraft:snout", "minecraft:spire", "minecraft:tide",
+                "minecraft:vex", "minecraft:ward", "minecraft:wayfinder",
+                "minecraft:wild",
+                "minecraft:bolt", "minecraft:flow");
+    }
+
     public static RegistryDataPacketV766 createTrimMaterial(ByteBuf alloc) {
         return createBuiltIn(alloc, "minecraft:trim_material",
                 "minecraft:amethyst", "minecraft:copper", "minecraft:diamond",
@@ -228,6 +239,36 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:piglin");
     }
 
+    public static RegistryDataPacketV766 createDamageTypeV767(ByteBuf alloc) {
+        return createBuiltIn(alloc, "minecraft:damage_type",
+                "minecraft:arrow", "minecraft:bad_respawn_point", "minecraft:cactus",
+                "minecraft:campfire",
+                "minecraft:cramming", "minecraft:dragon_breath", "minecraft:drown",
+                "minecraft:dry_out", "minecraft:explosion", "minecraft:fall",
+                "minecraft:falling_anvil", "minecraft:falling_block",
+                "minecraft:falling_stalactite", "minecraft:fireball",
+                "minecraft:fireworks", "minecraft:fly_into_wall", "minecraft:freeze",
+                "minecraft:generic", "minecraft:generic_kill", "minecraft:hot_floor",
+                "minecraft:in_fire", "minecraft:in_wall", "minecraft:indirect_magic",
+                "minecraft:lava", "minecraft:lightning_bolt", "minecraft:magic",
+                "minecraft:mob_attack", "minecraft:mob_attack_no_aggro",
+                "minecraft:mob_projectile", "minecraft:on_fire",
+                "minecraft:out_of_world", "minecraft:outside_border",
+                "minecraft:player_attack", "minecraft:player_explosion",
+                "minecraft:sonic_boom", "minecraft:spit", "minecraft:stalagmite",
+                "minecraft:starve", "minecraft:sting", "minecraft:sweet_berry_bush",
+                "minecraft:thorns", "minecraft:thrown", "minecraft:trident",
+                "minecraft:unattributed_fireball", "minecraft:wither",
+                "minecraft:wither_skull");
+    }
+
+    public static RegistryDataPacketV766 createWolfVariantV767(ByteBuf alloc) {
+        return createBuiltIn(alloc, "minecraft:wolf_variant",
+                "minecraft:pale", "minecraft:ashen", "minecraft:black",
+                "minecraft:chestnut", "minecraft:rusty", "minecraft:snowy",
+                "minecraft:spotted", "minecraft:striped", "minecraft:woods");
+    }
+
     public static RegistryDataPacketV766 createEnchantment(ByteBuf alloc) {
         return createBuiltIn(alloc, "minecraft:enchantment",
                 "minecraft:protection", "minecraft:fire_protection",
@@ -267,6 +308,18 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:donkey_kong",
                 "minecraft:earth", "minecraft:wind",
                 "minecraft:water", "minecraft:fire");
+    }
+
+    public static RegistryDataPacketV766 createJukeboxSong(ByteBuf alloc) {
+        return createBuiltIn(alloc, "minecraft:jukebox_song",
+                "minecraft:11", "minecraft:13", "minecraft:5",
+                "minecraft:blocks", "minecraft:cat", "minecraft:chirp",
+                "minecraft:creator", "minecraft:creator_music_box",
+                "minecraft:far", "minecraft:mall", "minecraft:mellohi",
+                "minecraft:otherside", "minecraft:pigstep",
+                "minecraft:precipice", "minecraft:relic",
+                "minecraft:stal", "minecraft:strad",
+                "minecraft:wait", "minecraft:ward");
     }
 
     // ========================================================================

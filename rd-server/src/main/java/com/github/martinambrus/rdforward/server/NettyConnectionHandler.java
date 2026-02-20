@@ -174,7 +174,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
         String versionName;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21)) {
+            versionName = "1.21";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
             versionName = "1.20.5";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_3)) {
             versionName = "1.20.3";
@@ -486,7 +488,6 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     // ========================================================================
 
     private void handleLoginAcknowledged(ChannelHandlerContext ctx) {
-
         // Transition from LOGIN to CONFIGURATION
         state = ConnectionState.CONFIGURATION;
         setCodecState(ctx, ConnectionState.CONFIGURATION);
@@ -526,6 +527,8 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     }
 
     private void handleSelectKnownPacks(ChannelHandlerContext ctx) {
+        boolean isV767 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21);
+
         // Use createBuiltIn() for dimension_type — client uses its built-in overworld
         // (minY=-64, height=384 = 24 sections). Chunk serialization is adjusted to match.
         ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
@@ -533,19 +536,47 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 "minecraft:overworld", "minecraft:overworld_caves",
                 "minecraft:the_nether", "minecraft:the_end"));
         // Biome: need the_void at index 0, plains at index 1 to match chunk biome palette value 1.
-        ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
-                "minecraft:worldgen/biome",
-                "minecraft:the_void", "minecraft:plains"));
+        // 1.21 wolf variants (built-in) reference biomes by registry ID. Without them,
+        // the client errors: "Unbound values in registry minecraft:worldgen/biome".
+        if (isV767) {
+            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
+                    "minecraft:worldgen/biome",
+                    "minecraft:the_void", "minecraft:plains",
+                    "minecraft:forest", "minecraft:grove",
+                    "minecraft:old_growth_pine_taiga", "minecraft:old_growth_spruce_taiga",
+                    "minecraft:snowy_taiga", "minecraft:taiga"));
+        } else {
+            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
+                    "minecraft:worldgen/biome",
+                    "minecraft:the_void", "minecraft:plains"));
+        }
         ctx.writeAndFlush(RegistryDataPacketV766.createChatType(ctx.alloc().buffer()));
-        ctx.writeAndFlush(RegistryDataPacketV766.createDamageType(ctx.alloc().buffer()));
-        ctx.writeAndFlush(RegistryDataPacketV766.createTrimPattern(ctx.alloc().buffer()));
+        // 1.21 added minecraft:campfire damage type (45 entries vs 44)
+        ctx.writeAndFlush(isV767
+                ? RegistryDataPacketV766.createDamageTypeV767(ctx.alloc().buffer())
+                : RegistryDataPacketV766.createDamageType(ctx.alloc().buffer()));
+        // 1.21 added bolt + flow trim patterns (18 entries vs 16)
+        ctx.writeAndFlush(isV767
+                ? RegistryDataPacketV766.createTrimPatternV767(ctx.alloc().buffer())
+                : RegistryDataPacketV766.createTrimPattern(ctx.alloc().buffer()));
         ctx.writeAndFlush(RegistryDataPacketV766.createTrimMaterial(ctx.alloc().buffer()));
         ctx.writeAndFlush(RegistryDataPacketV766.createBannerPattern(ctx.alloc().buffer()));
-        ctx.writeAndFlush(RegistryDataPacketV766.createWolfVariant(ctx.alloc().buffer()));
+        // 1.21 has 9 wolf variants (all built-in); 1.20.5 had 1 (pale with data)
+        ctx.writeAndFlush(isV767
+                ? RegistryDataPacketV766.createWolfVariantV767(ctx.alloc().buffer())
+                : RegistryDataPacketV766.createWolfVariant(ctx.alloc().buffer()));
+        // 1.21 added painting_variant, enchantment, and jukebox_song as synchronized registries.
+        // Without these RegistryData packets, 1.21 clients hang during CONFIG phase.
+        if (isV767) {
+            ctx.writeAndFlush(RegistryDataPacketV766.createPaintingVariant(ctx.alloc().buffer()));
+            ctx.writeAndFlush(RegistryDataPacketV766.createEnchantment(ctx.alloc().buffer()));
+            ctx.writeAndFlush(RegistryDataPacketV766.createJukeboxSong(ctx.alloc().buffer()));
+        }
 
         // Send feature flags and tags (required for block rendering)
         ctx.writeAndFlush(new UpdateEnabledFeaturesPacketV761());
-        ctx.writeAndFlush(new UpdateTagsPacketV766());
+        // 1.21 added minecraft:enchantment tag registry (7 registries vs 6)
+        ctx.writeAndFlush(isV767 ? new UpdateTagsPacketV767() : new UpdateTagsPacketV766());
 
         ctx.writeAndFlush(new ConfigFinishS2CPacket());
     }

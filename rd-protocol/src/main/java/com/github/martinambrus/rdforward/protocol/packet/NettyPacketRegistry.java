@@ -160,6 +160,12 @@ public class NettyPacketRegistry {
     /** V766 S2C/C2S reverse map overlay: shifted packet IDs for 1.20.5. */
     private static final Map<String, Integer> REVERSE_V766 = new HashMap<String, Integer>();
 
+    /** V767 overlay: UpdateTags packet for 1.21 (new enchantment tag registry). */
+    private static final Map<String, PacketFactory> REGISTRY_V767 = new HashMap<String, PacketFactory>();
+
+    /** V767 reverse map overlay: UpdateTags for 1.21. */
+    private static final Map<String, Integer> REVERSE_V767 = new HashMap<String, Integer>();
+
     /** Reverse map: (state, direction, className) -> packetId */
     private static final Map<String, Integer> REVERSE = new HashMap<String, Integer>();
 
@@ -2558,6 +2564,14 @@ public class NettyPacketRegistry {
         registerV766C2SReverse(KeepAlivePacketV340.class, 0x18);
         registerV766C2SReverse(PlayerDiggingPacketV759.class, 0x24);
         registerV766C2SReverse(NettyBlockPlacementPacketV759.class, 0x38);
+
+        // === V767 CONFIGURATION + PLAY state ===
+        // Only UpdateTags changed (new enchantment tag registry). All other packet IDs are identical to v766.
+        registerV767Forward(ConnectionState.CONFIGURATION, PacketDirection.SERVER_TO_CLIENT, 0x0D,
+                new PacketFactory() { public Packet create() { return new UpdateTagsPacketV767(); } });
+        registerV767Reverse(ConnectionState.CONFIGURATION, PacketDirection.SERVER_TO_CLIENT,
+                UpdateTagsPacketV767.class, 0x0D);
+        registerV767S2CReverse(UpdateTagsPacketV767.class, 0x78);
     }
 
     private static void registerC2S(ConnectionState state, int packetId,
@@ -2864,6 +2878,18 @@ public class NettyPacketRegistry {
         REVERSE_V766.put(reverseKey(ConnectionState.PLAY, PacketDirection.CLIENT_TO_SERVER, clazz), packetId);
     }
 
+    private static void registerV767Forward(ConnectionState state, PacketDirection direction, int packetId, PacketFactory factory) {
+        REGISTRY_V767.put(key(state, direction, packetId), factory);
+    }
+
+    private static void registerV767Reverse(ConnectionState state, PacketDirection direction, Class<? extends Packet> clazz, int packetId) {
+        REVERSE_V767.put(reverseKey(state, direction, clazz), packetId);
+    }
+
+    private static void registerV767S2CReverse(Class<? extends Packet> clazz, int packetId) {
+        REVERSE_V767.put(reverseKey(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, clazz), packetId);
+    }
+
     private static void registerV109S2C(int packetId, PacketFactory factory) {
         REGISTRY_V109.put(key(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, packetId), factory);
     }
@@ -2923,6 +2949,13 @@ public class NettyPacketRegistry {
      */
     public static Packet createPacket(ConnectionState state, PacketDirection direction,
                                        int packetId, int protocolVersion) {
+        if (protocolVersion >= 767) {
+            String k = key(state, direction, packetId);
+            PacketFactory factory = REGISTRY_V767.get(k);
+            if (factory != null) {
+                return factory.create();
+            }
+        }
         if (protocolVersion >= 766) {
             String k = key(state, direction, packetId);
             PacketFactory factory = REGISTRY_V766.get(k);
@@ -3112,6 +3145,13 @@ public class NettyPacketRegistry {
      */
     public static int getPacketId(ConnectionState state, PacketDirection direction,
                                    Class<? extends Packet> clazz, int protocolVersion) {
+        if (protocolVersion >= 767) {
+            String rk = reverseKey(state, direction, clazz);
+            Integer id = REVERSE_V767.get(rk);
+            if (id != null) {
+                return id;
+            }
+        }
         if (protocolVersion >= 766) {
             String rk = reverseKey(state, direction, clazz);
             Integer id = REVERSE_V766.get(rk);

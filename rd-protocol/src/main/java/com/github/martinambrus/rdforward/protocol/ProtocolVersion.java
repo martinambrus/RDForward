@@ -715,12 +715,22 @@ public enum ProtocolVersion {
     RELEASE_1_20_5(766, 73, Family.RELEASE, "Release 1.20.5 (v766)", 93),
 
     /**
+     * Minecraft Release 1.21-1.21.1 (June 2024) - "Tricky Trials".
+     * ALL Play S2C and C2S packet IDs identical to v766. Only CONFIG-phase
+     * differences: new enchantment tag registry, updated tags, new damage type
+     * (campfire), 9 wolf variants. Wire format changes only affect packets we
+     * don't send (attribute modifiers UUID->String, particle system).
+     * Netty protocol version 767.
+     */
+    RELEASE_1_21(767, 74, Family.RELEASE, "Release 1.21 (v767)", 93),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 74, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 75, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -891,6 +901,7 @@ public enum ProtocolVersion {
             case 764: return "Release 1.20.2";
             case 765: return "Release 1.20.3-1.20.4";
             case 766: return "Release 1.20.5-1.20.6";
+            case 767: return "Release 1.21-1.21.1";
             default: return null;
         }
     }
