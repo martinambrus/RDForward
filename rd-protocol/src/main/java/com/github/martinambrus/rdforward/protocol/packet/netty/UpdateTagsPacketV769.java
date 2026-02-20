@@ -5,23 +5,20 @@ import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import io.netty.buffer.ByteBuf;
 
 /**
- * 1.21.2 Configuration/Play state, S2C packet.
+ * 1.21.4 Configuration/Play state, S2C packet.
  * Configuration: 0x0D, Play: 0x7F.
  *
- * Changes from V767:
- * - NEW registry: minecraft:worldgen/biome (36 tags, all empty)
- *   Required because enchantment built-in data references biome tags
- *   (is_badlands, is_jungle, is_savanna, etc.).
- * - Item tags: +18 enchantable/* sub-tags (96 total). In 1.21.2, the client
- *   validates item tag references eagerly during enchantment built-in data
- *   parsing, before merging its own core pack tags. Without these, all
- *   enchantments except mace enchantments fail to parse.
- * - Block, fluid, entity_type, game_event, damage_type, enchantment:
- *   unchanged from V767.
+ * Changes from V768:
+ * - Block tags: +bee_attractive, -tall_flowers (149 total, unchanged count)
+ * - Item tags: +skeleton_preferred_weapons, +piglin_preferred_weapons,
+ *   +pillager_preferred_weapons, +drowned_preferred_weapons,
+ *   +wither_skeleton_disliked_weapons, -flowers, -tall_flowers,
+ *   -trim_templates (98 total, was 96)
+ * - Entity type, fluid, game_event, damage_type, enchantment, biome:
+ *   unchanged from V768.
  */
-public class UpdateTagsPacketV768 implements Packet {
+public class UpdateTagsPacketV769 implements Packet {
 
-    // Reuse V767's tag arrays for the 7 unchanged registries
     private static final String[] BLOCK_TAGS = {
         "minecraft:acacia_logs", "minecraft:all_hanging_signs", "minecraft:all_signs",
         "minecraft:ancient_city_replaceable",
@@ -33,6 +30,7 @@ public class UpdateTagsPacketV768 implements Packet {
         "minecraft:bamboo_plantable_on",
         "minecraft:banners", "minecraft:base_stone_nether", "minecraft:base_stone_overworld",
         "minecraft:beacon_base_blocks", "minecraft:beds",
+        "minecraft:bee_attractive",
         "minecraft:bee_growables", "minecraft:beehives",
         "minecraft:big_dripleaf_placeable", "minecraft:birch_logs",
         "minecraft:blocks_wind_charge_explosions",
@@ -124,7 +122,7 @@ public class UpdateTagsPacketV768 implements Packet {
         "minecraft:stone_ore_replaceables", "minecraft:stone_pressure_plates",
         "minecraft:strider_warm_blocks",
         "minecraft:sword_efficient",
-        "minecraft:tall_flowers", "minecraft:terracotta",
+        "minecraft:terracotta",
         "minecraft:trail_ruins_replaceable",
         "minecraft:trapdoors", "minecraft:underwater_bonemeals",
         "minecraft:unstable_bottom_center", "minecraft:valid_spawn",
@@ -164,6 +162,7 @@ public class UpdateTagsPacketV768 implements Packet {
         "minecraft:diamond_ores",
         "minecraft:dirt",
         "minecraft:doors",
+        "minecraft:drowned_preferred_weapons",
         "minecraft:emerald_ores",
         "minecraft:enchantable/armor",
         "minecraft:enchantable/bow",
@@ -185,7 +184,7 @@ public class UpdateTagsPacketV768 implements Packet {
         "minecraft:enchantable/vanishing",
         "minecraft:enchantable/weapon",
         "minecraft:fence_gates",
-        "minecraft:fences", "minecraft:fishes", "minecraft:flowers",
+        "minecraft:fences", "minecraft:fishes",
         "minecraft:fox_food",
         "minecraft:freeze_immune_wearables",
         "minecraft:gold_ores",
@@ -203,9 +202,12 @@ public class UpdateTagsPacketV768 implements Packet {
         "minecraft:oak_logs",
         "minecraft:pickaxes",
         "minecraft:piglin_food", "minecraft:piglin_loved",
+        "minecraft:piglin_preferred_weapons",
         "minecraft:piglin_repellents", "minecraft:planks", "minecraft:rails",
+        "minecraft:pillager_preferred_weapons",
         "minecraft:redstone_ores",
         "minecraft:sand", "minecraft:saplings",
+        "minecraft:skeleton_preferred_weapons",
         "minecraft:shovels",
         "minecraft:signs", "minecraft:slabs",
         "minecraft:small_flowers",
@@ -216,150 +218,24 @@ public class UpdateTagsPacketV768 implements Packet {
         "minecraft:stone_buttons",
         "minecraft:stone_crafting_materials", "minecraft:stone_tool_materials",
         "minecraft:swords",
-        "minecraft:tall_flowers",
         "minecraft:terracotta",
         "minecraft:trapdoors",
         "minecraft:trim_materials",
-        "minecraft:trim_templates",
         "minecraft:trimmable_armor",
         "minecraft:villager_plantable_seeds",
         "minecraft:walls", "minecraft:warped_stems",
+        "minecraft:wither_skeleton_disliked_weapons",
         "minecraft:wooden_buttons", "minecraft:wooden_doors", "minecraft:wooden_fences",
         "minecraft:wooden_pressure_plates", "minecraft:wooden_slabs",
         "minecraft:wooden_stairs", "minecraft:wooden_trapdoors",
         "minecraft:wool", "minecraft:wool_carpets"
     };
 
-    private static final String[] ENTITY_TYPE_TAGS = {
-        "minecraft:aquatic",
-        "minecraft:arrows", "minecraft:arthropod",
-        "minecraft:axolotl_always_hostiles",
-        "minecraft:axolotl_hunt_targets",
-        "minecraft:beehive_inhabitors",
-        "minecraft:boat",
-        "minecraft:can_breathe_under_water",
-        "minecraft:can_turn_in_boats",
-        "minecraft:deflects_projectiles",
-        "minecraft:dismounts_underwater",
-        "minecraft:fall_damage_immune",
-        "minecraft:freeze_hurts_extra_types",
-        "minecraft:freeze_immune_entity_types",
-        "minecraft:frog_food",
-        "minecraft:ignores_poison_and_regen",
-        "minecraft:illager",
-        "minecraft:illager_friends",
-        "minecraft:immune_to_infested",
-        "minecraft:immune_to_oozing",
-        "minecraft:impact_projectiles",
-        "minecraft:inverted_healing_and_harm",
-        "minecraft:no_anger_from_wind_charge",
-        "minecraft:non_controlling_rider",
-        "minecraft:not_scary_for_pufferfish",
-        "minecraft:powder_snow_walkable_mobs",
-        "minecraft:raiders",
-        "minecraft:redirectable_projectile",
-        "minecraft:sensitive_to_bane_of_arthropods",
-        "minecraft:sensitive_to_impaling",
-        "minecraft:sensitive_to_smite",
-        "minecraft:skeletons",
-        "minecraft:undead",
-        "minecraft:wither_friends",
-        "minecraft:zombies"
-    };
-
-    private static final String[] DAMAGE_TYPE_TAGS = {
-        "minecraft:always_hurts_ender_dragons",
-        "minecraft:always_most_significant_fall",
-        "minecraft:always_triggers_silverfish",
-        "minecraft:avoids_guardian_thorns",
-        "minecraft:burns_armor_stands",
-        "minecraft:bypasses_armor",
-        "minecraft:bypasses_effects",
-        "minecraft:bypasses_enchantments",
-        "minecraft:bypasses_invulnerability",
-        "minecraft:bypasses_resistance",
-        "minecraft:bypasses_shield",
-        "minecraft:can_break_armor_stand",
-        "minecraft:damages_helmet",
-        "minecraft:ignites_armor_stands",
-        "minecraft:is_drowning",
-        "minecraft:is_explosion",
-        "minecraft:is_fall",
-        "minecraft:is_fire",
-        "minecraft:is_freezing",
-        "minecraft:is_lightning",
-        "minecraft:is_projectile",
-        "minecraft:no_anger",
-        "minecraft:no_impact",
-        "minecraft:witch_resistant_to",
-        "minecraft:wind_charge",
-        "minecraft:wither_immune_to"
-    };
-
-    private static final String[] ENCHANTMENT_TAGS = {
-        "minecraft:curse",
-        "minecraft:double_trade_price",
-        "minecraft:exclusive_set/armor",
-        "minecraft:exclusive_set/boots",
-        "minecraft:exclusive_set/bow",
-        "minecraft:exclusive_set/crossbow",
-        "minecraft:exclusive_set/damage",
-        "minecraft:exclusive_set/mining",
-        "minecraft:exclusive_set/riptide",
-        "minecraft:in_enchanting_table",
-        "minecraft:non_treasure",
-        "minecraft:on_mob_spawn_equipment",
-        "minecraft:on_random_loot",
-        "minecraft:on_traded_equipment",
-        "minecraft:prevents_bee_spawns_when_mining",
-        "minecraft:prevents_decorated_pot_shattering",
-        "minecraft:prevents_ice_melting",
-        "minecraft:prevents_infested_spawns",
-        "minecraft:smelts_loot",
-        "minecraft:tooltip_order",
-        "minecraft:tradeable",
-        "minecraft:treasure"
-    };
-
-    /** All worldgen/biome tags from 1.21.2 mcmeta data. All sent as empty (0 entries). */
-    private static final String[] BIOME_TAGS = {
-        "minecraft:allows_surface_slime_spawns",
-        "minecraft:allows_tropical_fish_spawns_at_any_height",
-        "minecraft:has_closer_water_fog",
-        "minecraft:increased_fire_burnout",
-        "minecraft:is_badlands",
-        "minecraft:is_beach",
-        "minecraft:is_deep_ocean",
-        "minecraft:is_end",
-        "minecraft:is_forest",
-        "minecraft:is_hill",
-        "minecraft:is_jungle",
-        "minecraft:is_mountain",
-        "minecraft:is_nether",
-        "minecraft:is_ocean",
-        "minecraft:is_overworld",
-        "minecraft:is_river",
-        "minecraft:is_savanna",
-        "minecraft:is_taiga",
-        "minecraft:mineshaft_blocking",
-        "minecraft:more_frequent_drowned_spawns",
-        "minecraft:plays_underwater_music",
-        "minecraft:polar_bears_spawn_on_alternate_blocks",
-        "minecraft:produces_corals_from_bonemeal",
-        "minecraft:reduce_water_ambient_spawns",
-        "minecraft:required_ocean_monument_surrounding",
-        "minecraft:snow_golem_melts",
-        "minecraft:spawns_cold_variant_frogs",
-        "minecraft:spawns_gold_rabbits",
-        "minecraft:spawns_snow_foxes",
-        "minecraft:spawns_warm_variant_frogs",
-        "minecraft:spawns_white_rabbits",
-        "minecraft:stronghold_biased_to",
-        "minecraft:water_on_map_outlines",
-        "minecraft:without_patrol_spawns",
-        "minecraft:without_wandering_trader_spawns",
-        "minecraft:without_zombie_sieges"
-    };
+    // Reuse V768's entity type, damage type, enchantment, and biome tag arrays
+    private static final String[] ENTITY_TYPE_TAGS = UpdateTagsPacketV768.getEntityTypeTags();
+    private static final String[] DAMAGE_TYPE_TAGS = UpdateTagsPacketV768.getDamageTypeTags();
+    private static final String[] ENCHANTMENT_TAGS = UpdateTagsPacketV768.getEnchantmentTags();
+    private static final String[] BIOME_TAGS = UpdateTagsPacketV768.getBiomeTags();
 
     @Override
     public int getPacketId() { return 0x7F; }
@@ -369,11 +245,11 @@ public class UpdateTagsPacketV768 implements Packet {
         // 8 registries: block, item, fluid, entity_type, game_event, damage_type, enchantment, worldgen/biome
         McDataTypes.writeVarInt(buf, 8);
 
-        // 1. Block tags (149, unchanged from V767)
+        // 1. Block tags (149: +bee_attractive, -tall_flowers vs V768)
         McDataTypes.writeVarIntString(buf, "minecraft:block");
         writeEmptyTags(buf, BLOCK_TAGS);
 
-        // 2. Item tags (96 = V767's 78 + 18 enchantable/* tags required for enchantment parsing)
+        // 2. Item tags (98: +5 weapon preference, -flowers, -tall_flowers, -trim_templates vs V768)
         McDataTypes.writeVarIntString(buf, "minecraft:item");
         writeEmptyTags(buf, ITEM_TAGS);
 
@@ -389,11 +265,11 @@ public class UpdateTagsPacketV768 implements Packet {
         McDataTypes.writeVarInt(buf, 3);
         McDataTypes.writeVarInt(buf, 4);
 
-        // 4. Entity type tags (35 = V767's 24 - 2 removed + 13 new for 1.21.2)
+        // 4. Entity type tags (35, unchanged from V768)
         McDataTypes.writeVarIntString(buf, "minecraft:entity_type");
         writeEmptyTags(buf, ENTITY_TYPE_TAGS);
 
-        // 5. Game event tags (unchanged from V767)
+        // 5. Game event tags (unchanged from V768)
         McDataTypes.writeVarIntString(buf, "minecraft:game_event");
         McDataTypes.writeVarInt(buf, 5);
         McDataTypes.writeVarIntString(buf, "minecraft:allay_can_listen");
@@ -407,15 +283,15 @@ public class UpdateTagsPacketV768 implements Packet {
         McDataTypes.writeVarIntString(buf, "minecraft:warden_can_listen");
         McDataTypes.writeVarInt(buf, 0);
 
-        // 6. Damage type tags (26, unchanged from V767)
+        // 6. Damage type tags (26, unchanged from V768)
         McDataTypes.writeVarIntString(buf, "minecraft:damage_type");
         writeEmptyTags(buf, DAMAGE_TYPE_TAGS);
 
-        // 7. Enchantment tags (22, unchanged from V767)
+        // 7. Enchantment tags (22, unchanged from V768)
         McDataTypes.writeVarIntString(buf, "minecraft:enchantment");
         writeEmptyTags(buf, ENCHANTMENT_TAGS);
 
-        // 8. Biome tags (36, NEW in V768 — required for enchantment built-in data parsing)
+        // 8. Biome tags (36, unchanged from V768)
         McDataTypes.writeVarIntString(buf, "minecraft:worldgen/biome");
         writeEmptyTags(buf, BIOME_TAGS);
     }
@@ -432,10 +308,4 @@ public class UpdateTagsPacketV768 implements Packet {
     public void read(ByteBuf buf) {
         // S2C only — no server-side decoding needed
     }
-
-    // Accessors for V769 reuse of unchanged tag arrays
-    static String[] getEntityTypeTags() { return ENTITY_TYPE_TAGS; }
-    static String[] getDamageTypeTags() { return DAMAGE_TYPE_TAGS; }
-    static String[] getEnchantmentTags() { return ENCHANTMENT_TAGS; }
-    static String[] getBiomeTags() { return BIOME_TAGS; }
 }
