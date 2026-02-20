@@ -15,6 +15,7 @@ import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV75
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV757;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV763;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV764;
+import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV770;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UnloadChunkPacketV109;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacketV477;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacketV735;
@@ -438,7 +439,39 @@ public class ChunkManager {
             byte[][] skyArr = skyArrays.toArray(new byte[0][]);
             byte[][] blockArr = blockArrays.toArray(new byte[0][]);
 
-            if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
+            if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_21_5)) {
+                // v770: same 24-section padding as v766+, but with v770 serialization
+                // (no VarInt data array length prefixes) and binary heightmaps.
+                AlphaChunk.V757ChunkData v770Data = chunk.serializeForV770Protocol();
+                byte[] rawData = v770Data.getRawData();
+                byte[] emptySection = buildEmptySection770();
+                byte[] adjusted = new byte[4 * emptySection.length + rawData.length + 4 * emptySection.length];
+                int pos = 0;
+                for (int i = 0; i < 4; i++) {
+                    System.arraycopy(emptySection, 0, adjusted, pos, emptySection.length);
+                    pos += emptySection.length;
+                }
+                System.arraycopy(rawData, 0, adjusted, pos, rawData.length);
+                pos += rawData.length;
+                for (int i = 0; i < 4; i++) {
+                    System.arraycopy(emptySection, 0, adjusted, pos, emptySection.length);
+                    pos += emptySection.length;
+                }
+
+                long[] adjustedHeightmap = buildHeightmapForMinY(chunk, 64);
+                int adjustedSkyLightMask = skyLightMask << 4;
+                int adjustedBlockLightMask = blockLightMask << 4;
+                int adjustedEmptySkyLightMask = ~adjustedSkyLightMask & 0x3FFFFFF;
+                int adjustedEmptyBlockLightMask = ~adjustedBlockLightMask & 0x3FFFFFF;
+
+                player.sendPacket(new MapChunkPacketV770(
+                    chunk.getXPos(), chunk.getZPos(),
+                    adjustedHeightmap, adjustedHeightmap,
+                    adjusted,
+                    adjustedSkyLightMask, adjustedBlockLightMask,
+                    adjustedEmptySkyLightMask, adjustedEmptyBlockLightMask,
+                    skyArr, blockArr));
+            } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
                 // v766+: built-in overworld has minY=-64, height=384 (24 sections).
                 // Our chunk data has 16 sections for Y 0-255.
                 // Prepend 4 empty sections (Y -64 to -1) and append 4 (Y 256-319).
@@ -963,6 +996,23 @@ public class ChunkManager {
             0x00,        // biome bitsPerEntry = 0 (single-valued)
             0x01,        // biome palette value = 1 (plains, VarInt)
             0x00         // biome data array length = 0 (VarInt)
+        };
+    }
+
+    /**
+     * Build an empty chunk section for v770 (1.21.5).
+     * Same as v766 but without the two VarInt(0) data array length prefixes.
+     */
+    private static byte[] buildEmptySection770() {
+        // short(0) + byte(0) + VarInt(0) + byte(0) + VarInt(1)
+        return new byte[] {
+            0x00, 0x00,  // blockCount = 0 (short)
+            0x00,        // bitsPerBlock = 0 (single-valued)
+            0x00,        // palette value = 0 (air, VarInt)
+            // no data array length VarInt in v770
+            0x00,        // biome bitsPerEntry = 0 (single-valued)
+            0x01         // biome palette value = 1 (plains, VarInt)
+            // no biome data array length VarInt in v770
         };
     }
 }

@@ -343,6 +343,45 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:yearn_goat_horn", "minecraft:dream_goat_horn");
     }
 
+    // ========================================================================
+    // 1.21.5 registries
+    // ========================================================================
+
+    public static RegistryDataPacketV766 createPigVariant(ByteBuf alloc) {
+        return createBuiltIn(alloc, "minecraft:pig_variant",
+                "minecraft:cold", "minecraft:temperate", "minecraft:warm");
+    }
+
+    public static RegistryDataPacketV766 createCowVariant(ByteBuf alloc) {
+        return createBuiltIn(alloc, "minecraft:cow_variant",
+                "minecraft:cold", "minecraft:temperate", "minecraft:warm");
+    }
+
+    public static RegistryDataPacketV766 createChickenVariant(ByteBuf alloc) {
+        return createBuiltIn(alloc, "minecraft:chicken_variant",
+                "minecraft:cold", "minecraft:temperate", "minecraft:warm");
+    }
+
+    public static RegistryDataPacketV766 createFrogVariant(ByteBuf alloc) {
+        return createBuiltIn(alloc, "minecraft:frog_variant",
+                "minecraft:cold", "minecraft:temperate", "minecraft:warm");
+    }
+
+    public static RegistryDataPacketV766 createCatVariant(ByteBuf alloc) {
+        return createBuiltIn(alloc, "minecraft:cat_variant",
+                "minecraft:tabby", "minecraft:black", "minecraft:red",
+                "minecraft:siamese", "minecraft:british_shorthair",
+                "minecraft:calico", "minecraft:persian", "minecraft:ragdoll",
+                "minecraft:white", "minecraft:jellie", "minecraft:all_black");
+    }
+
+    public static RegistryDataPacketV766 createWolfSoundVariant(ByteBuf alloc) {
+        return createBuiltIn(alloc, "minecraft:wolf_sound_variant",
+                "minecraft:classic", "minecraft:angry", "minecraft:big",
+                "minecraft:cute", "minecraft:grumpy", "minecraft:puglin",
+                "minecraft:sad");
+    }
+
     public static RegistryDataPacketV766 createJukeboxSong(ByteBuf alloc) {
         return createBuiltIn(alloc, "minecraft:jukebox_song",
                 "minecraft:11", "minecraft:13", "minecraft:5",

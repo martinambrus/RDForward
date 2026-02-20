@@ -748,12 +748,24 @@ public enum ProtocolVersion {
     RELEASE_1_21_4(769, 76, Family.RELEASE, "Release 1.21.4 (v769)", 93),
 
     /**
+     * Minecraft Release 1.21.5 (2025).
+     * ADD_EXPERIENCE_ORB removed at S2C 0x02, shifting 0x03-0x78 by -1.
+     * C2S: SET_TEST_BLOCK at 0x39 (+1), TEST_INSTANCE_BLOCK_ACTION at 0x3D (+2).
+     * Chunk format: heightmaps changed from NBT to binary, section palette data
+     * arrays no longer have VarInt length prefix. lingering_potion inserted at
+     * entity type 100 (player: 147 -> 148). 4 new registries: pig_variant,
+     * cow_variant, chicken_variant, wolf_sound_variant.
+     * Netty protocol version 770.
+     */
+    RELEASE_1_21_5(770, 77, Family.RELEASE, "Release 1.21.5 (v770)", 93),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 77, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 78, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -927,6 +939,7 @@ public enum ProtocolVersion {
             case 767: return "Release 1.21-1.21.1";
             case 768: return "Release 1.21.2-1.21.3";
             case 769: return "Release 1.21.4";
+            case 770: return "Release 1.21.5";
             default: return null;
         }
     }

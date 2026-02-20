@@ -174,7 +174,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
         String versionName;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_4)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_5)) {
+            versionName = "1.21.5";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_4)) {
             versionName = "1.21.4";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
             versionName = "1.21.2";
@@ -539,6 +541,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     }
 
     private void handleSelectKnownPacks(ChannelHandlerContext ctx) {
+        boolean isV770 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_5);
         boolean isV769 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_4);
         boolean isV768 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_2);
         boolean isV767 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21);
@@ -593,13 +596,23 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         if (isV768) {
             ctx.writeAndFlush(RegistryDataPacketV766.createInstrument(ctx.alloc().buffer()));
         }
+        // 1.21.5 added 6 new variant registries (all built-in)
+        if (isV770) {
+            ctx.writeAndFlush(RegistryDataPacketV766.createPigVariant(ctx.alloc().buffer()));
+            ctx.writeAndFlush(RegistryDataPacketV766.createCowVariant(ctx.alloc().buffer()));
+            ctx.writeAndFlush(RegistryDataPacketV766.createChickenVariant(ctx.alloc().buffer()));
+            ctx.writeAndFlush(RegistryDataPacketV766.createFrogVariant(ctx.alloc().buffer()));
+            ctx.writeAndFlush(RegistryDataPacketV766.createCatVariant(ctx.alloc().buffer()));
+            ctx.writeAndFlush(RegistryDataPacketV766.createWolfSoundVariant(ctx.alloc().buffer()));
+        }
 
         // Send feature flags and tags (required for block rendering)
         ctx.writeAndFlush(new UpdateEnabledFeaturesPacketV761());
         // 1.21 added minecraft:enchantment tag registry (7 registries vs 6)
         // 1.21.2 added minecraft:worldgen/biome tag registry (8 registries vs 7) —
         // required for enchantment built-in data parsing (references biome tags)
-        ctx.writeAndFlush(isV769 ? new UpdateTagsPacketV769()
+        ctx.writeAndFlush(isV770 ? new UpdateTagsPacketV770()
+                        : isV769 ? new UpdateTagsPacketV769()
                         : isV768 ? new UpdateTagsPacketV768()
                         : isV767 ? new UpdateTagsPacketV767()
                         : new UpdateTagsPacketV766());
@@ -643,6 +656,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
+        boolean isV770 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_5);
         boolean isV769 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_4);
         boolean isV768 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_2);
         boolean isV766 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5);
@@ -966,13 +980,18 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                                 : NettyPlayerListItemPacketV47.addPlayer(
                                         existingUuid, existing.getUsername(), 1, 0));
                     }
+                    // 1.21.5: lingering_potion inserted (player: 147 -> 148)
                     // 1.21.4: creaking_transient removed (player: 148 -> 147)
                     // 1.21.2: entity type IDs shifted (player: 128 -> 148)
                     // 1.20.2: SpawnPlayer removed, use generic SpawnEntity
                     // 1.20.5: entity type IDs shifted (player: 122 -> 128)
                     // 1.15 removed entity metadata entirely from SpawnPlayer
                     // 1.14 used 0xFF metadata terminator (empty metadata)
-                    if (isV769) {
+                    if (isV770) {
+                        ctx.writeAndFlush(new NettySpawnEntityPacketV770(
+                                existingEntityId, existingUuid, ex, ey, ez,
+                                alphaYaw, pitch));
+                    } else if (isV769) {
                         ctx.writeAndFlush(new NettySpawnEntityPacketV769(
                                 existingEntityId, existingUuid, ex, ey, ez,
                                 alphaYaw, pitch));
