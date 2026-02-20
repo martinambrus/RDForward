@@ -769,12 +769,21 @@ public enum ProtocolVersion {
     RELEASE_1_21_6(771, 78, Family.RELEASE, "Release 1.21.6 (v771)", 94),
 
     /**
+     * Minecraft Release 1.21.7-1.21.8 (2025).
+     * Hotfix release with no packet ID changes, no entity type changes, no tag changes,
+     * no chunk format changes. Only content additions: 1 new painting (dennis, 3x3)
+     * and 1 new music disc (lava_chicken). Protocol version 772 shared with 1.21.8.
+     * Netty protocol version 772.
+     */
+    RELEASE_1_21_7(772, 79, Family.RELEASE, "Release 1.21.7 (v772)", 94),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 79, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 80, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -950,6 +959,7 @@ public enum ProtocolVersion {
             case 769: return "Release 1.21.4";
             case 770: return "Release 1.21.5";
             case 771: return "Release 1.21.6";
+            case 772: return "Release 1.21.7-1.21.8";
             default: return null;
         }
     }
@@ -1011,6 +1021,7 @@ public enum ProtocolVersion {
             case 769: return "1.21.4";
             case 770: return "1.21.5";
             case 771: return "1.21.6";
+            case 772: return "1.21.7-1.21.8";
             default:  return null;
         }
     }

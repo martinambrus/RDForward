@@ -395,6 +395,36 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:wait", "minecraft:ward");
     }
 
+    public static RegistryDataPacketV766 createPaintingVariantV772(ByteBuf alloc) {
+        return createBuiltIn(alloc, "minecraft:painting_variant",
+                "minecraft:kebab", "minecraft:aztec", "minecraft:alban",
+                "minecraft:aztec2", "minecraft:bomb", "minecraft:plant",
+                "minecraft:wasteland", "minecraft:pool", "minecraft:courbet",
+                "minecraft:sea", "minecraft:sunset", "minecraft:creebet",
+                "minecraft:wanderer", "minecraft:graham", "minecraft:match",
+                "minecraft:bust", "minecraft:stage", "minecraft:void",
+                "minecraft:skull_and_roses", "minecraft:wither",
+                "minecraft:fighters", "minecraft:pointer", "minecraft:pigscene",
+                "minecraft:burning_skull", "minecraft:skeleton",
+                "minecraft:donkey_kong",
+                "minecraft:earth", "minecraft:wind",
+                "minecraft:water", "minecraft:fire",
+                "minecraft:dennis");
+    }
+
+    public static RegistryDataPacketV766 createJukeboxSongV772(ByteBuf alloc) {
+        return createBuiltIn(alloc, "minecraft:jukebox_song",
+                "minecraft:11", "minecraft:13", "minecraft:5",
+                "minecraft:blocks", "minecraft:cat", "minecraft:chirp",
+                "minecraft:creator", "minecraft:creator_music_box",
+                "minecraft:far", "minecraft:mall", "minecraft:mellohi",
+                "minecraft:otherside", "minecraft:pigstep",
+                "minecraft:precipice", "minecraft:relic",
+                "minecraft:stal", "minecraft:strad",
+                "minecraft:wait", "minecraft:ward",
+                "minecraft:lava_chicken");
+    }
+
     public static RegistryDataPacketV766 createDialog(ByteBuf alloc) {
         return createBuiltIn(alloc, "minecraft:dialog",
                 "minecraft:custom_options", "minecraft:quick_actions",

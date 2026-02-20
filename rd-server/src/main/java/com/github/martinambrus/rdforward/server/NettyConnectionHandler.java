@@ -174,7 +174,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
         String versionName;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_6)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_7)) {
+            versionName = "1.21.7";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_6)) {
             versionName = "1.21.6";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_5)) {
             versionName = "1.21.5";
@@ -543,6 +545,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     }
 
     private void handleSelectKnownPacks(ChannelHandlerContext ctx) {
+        boolean isV772 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_7);
         boolean isV771 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_6);
         boolean isV770 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_5);
         boolean isV769 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_4);
@@ -591,9 +594,15 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // 1.21 added painting_variant, enchantment, and jukebox_song as synchronized registries.
         // Without these RegistryData packets, 1.21 clients hang during CONFIG phase.
         if (isV767) {
-            ctx.writeAndFlush(RegistryDataPacketV766.createPaintingVariant(ctx.alloc().buffer()));
+            // 1.21.7 added minecraft:dennis painting (31 entries vs 30)
+            ctx.writeAndFlush(isV772
+                    ? RegistryDataPacketV766.createPaintingVariantV772(ctx.alloc().buffer())
+                    : RegistryDataPacketV766.createPaintingVariant(ctx.alloc().buffer()));
             ctx.writeAndFlush(RegistryDataPacketV766.createEnchantment(ctx.alloc().buffer()));
-            ctx.writeAndFlush(RegistryDataPacketV766.createJukeboxSong(ctx.alloc().buffer()));
+            // 1.21.7 added minecraft:lava_chicken jukebox song (20 entries vs 19)
+            ctx.writeAndFlush(isV772
+                    ? RegistryDataPacketV766.createJukeboxSongV772(ctx.alloc().buffer())
+                    : RegistryDataPacketV766.createJukeboxSong(ctx.alloc().buffer()));
         }
         // 1.21.2 added instrument registry (8 goat horns, all built-in)
         if (isV768) {
