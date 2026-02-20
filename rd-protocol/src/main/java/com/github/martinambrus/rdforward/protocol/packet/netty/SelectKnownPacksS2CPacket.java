@@ -25,12 +25,17 @@ public class SelectKnownPacksS2CPacket implements Packet {
 
     @Override
     public void write(ByteBuf buf) {
-        McDataTypes.writeVarInt(buf, 1); // 1 pack
+        McDataTypes.writeVarInt(buf, 2); // 2 packs
 
         // Pack 1: minecraft core 1.20.5
         McDataTypes.writeVarIntString(buf, "minecraft");
         McDataTypes.writeVarIntString(buf, "core");
         McDataTypes.writeVarIntString(buf, "1.20.5");
+
+        // Pack 2: minecraft core 1.20.6
+        McDataTypes.writeVarIntString(buf, "minecraft");
+        McDataTypes.writeVarIntString(buf, "core");
+        McDataTypes.writeVarIntString(buf, "1.20.6");
     }
 
     @Override
