@@ -703,12 +703,24 @@ public enum ProtocolVersion {
     RELEASE_1_20_3(765, 72, Family.RELEASE, "Release 1.20.3 (v765)", 93),
 
     /**
+     * Minecraft Release 1.20.5-1.20.6 (April 2024).
+     * RegistryData switched to per-registry per-entry format with Boolean hasData.
+     * JoinGame dimensionType changed from String to VarInt. Item slot format switched
+     * to data components (count-first, no boolean present). LoginSuccess gained
+     * strictErrorHandling boolean. New SelectKnownPacks round-trip in CONFIG state.
+     * 5 new S2C PLAY packets shift IDs by +1 to +4. 3 new C2S packets shift +1 to +3.
+     * Block state IDs unchanged for our basic block set. Chunk format unchanged.
+     * Netty protocol version 766.
+     */
+    RELEASE_1_20_5(766, 73, Family.RELEASE, "Release 1.20.5 (v766)", 93),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 73, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 74, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -874,6 +886,11 @@ public enum ProtocolVersion {
             case 73: return "Release 1.6.1";
             case 74: return "Release 1.6.2";
             case 78: return "Release 1.6.4";
+            case 762: return "Release 1.19.4";
+            case 763: return "Release 1.20-1.20.1";
+            case 764: return "Release 1.20.2";
+            case 765: return "Release 1.20.3-1.20.4";
+            case 766: return "Release 1.20.5-1.20.6";
             default: return null;
         }
     }

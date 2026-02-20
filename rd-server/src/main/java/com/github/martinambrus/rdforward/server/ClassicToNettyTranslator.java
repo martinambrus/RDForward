@@ -52,6 +52,7 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
     }
 
     private Packet translate(Packet packet) {
+        boolean isV766 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5);
         boolean isV765 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_3);
         boolean isV764 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_2);
         boolean isV763 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20);
@@ -151,6 +152,13 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
             int alphaYaw = (sp.getYaw() + 128) & 0xFF;
             // Generate offline UUID from username
             String uuid = generateOfflineUuid(sp.getPlayerName());
+            if (isV766) {
+                // 1.20.5: entity type IDs shifted (player: 122 -> 128)
+                return new NettySpawnEntityPacketV766(
+                        entityId, uuid,
+                        sp.getX() / 32.0, feetY / 32.0, sp.getZ() / 32.0,
+                        alphaYaw, sp.getPitch());
+            }
             if (isV764) {
                 // 1.20.2: SpawnPlayer removed, use generic SpawnEntity
                 return new NettySpawnEntityPacketV764(

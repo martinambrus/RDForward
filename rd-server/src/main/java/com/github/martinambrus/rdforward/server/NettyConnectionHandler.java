@@ -114,6 +114,8 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             case CONFIGURATION:
                 if (packet instanceof ConfigFinishC2SPacket) {
                     handleConfigFinish(ctx);
+                } else if (packet instanceof SelectKnownPacksC2SPacket) {
+                    handleSelectKnownPacks(ctx);
                 }
                 break;
 
@@ -172,7 +174,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
         String versionName;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_3)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
+            versionName = "1.20.5";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_3)) {
             versionName = "1.20.3";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_2)) {
             versionName = "1.20.2";
@@ -264,7 +268,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             verifyToken = new byte[4];
             new java.security.SecureRandom().nextBytes(verifyToken);
 
-            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
+                ctx.writeAndFlush(new NettyEncryptionRequestPacketV766(
+                        "", rsaKeyPair.getPublic().getEncoded(), verifyToken, false));
+            } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
                 ctx.writeAndFlush(new NettyEncryptionRequestPacketV47(
                         "", rsaKeyPair.getPublic().getEncoded(), verifyToken));
             } else {
@@ -306,10 +313,18 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.pipeline().addBefore("decoder", "decrypt", new CipherDecoder(decryptCipher));
             ctx.pipeline().addBefore("encoder", "encrypt", new CipherEncoder(encryptCipher));
 
+            // Remove login timeout — encryption succeeded, CONFIG phase may take longer
+            if (ctx.pipeline().get("loginTimeout") != null) {
+                ctx.pipeline().remove("loginTimeout");
+            }
+
             // Send LoginSuccess — this transitions to PLAY state (or CONFIGURATION for v764+)
+            // 1.20.5 added strictErrorHandling boolean
             // 1.16 changed UUID from VarIntString to binary (2 longs)
             String uuid = ClassicToNettyTranslator.generateOfflineUuid(pendingUsername);
-            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19)) {
+            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
+                ctx.writeAndFlush(new LoginSuccessPacketV766(uuid, pendingUsername));
+            } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19)) {
                 ctx.writeAndFlush(new LoginSuccessPacketV759(uuid, pendingUsername));
             } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16)) {
                 ctx.writeAndFlush(new LoginSuccessPacketV735(uuid, pendingUsername));
@@ -362,10 +377,18 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.pipeline().addBefore("decoder", "decrypt", new CipherDecoder(decryptCipher));
             ctx.pipeline().addBefore("encoder", "encrypt", new CipherEncoder(encryptCipher));
 
+            // Remove login timeout — encryption succeeded, CONFIG phase may take longer
+            if (ctx.pipeline().get("loginTimeout") != null) {
+                ctx.pipeline().remove("loginTimeout");
+            }
+
             // Send LoginSuccess — this transitions to PLAY state (or CONFIGURATION for v764+)
+            // 1.20.5 added strictErrorHandling boolean
             // 1.16 changed UUID from VarIntString to binary (2 longs)
             String uuid = ClassicToNettyTranslator.generateOfflineUuid(pendingUsername);
-            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19)) {
+            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
+                ctx.writeAndFlush(new LoginSuccessPacketV766(uuid, pendingUsername));
+            } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19)) {
                 ctx.writeAndFlush(new LoginSuccessPacketV759(uuid, pendingUsername));
             } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16)) {
                 ctx.writeAndFlush(new LoginSuccessPacketV735(uuid, pendingUsername));
@@ -423,9 +446,18 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.pipeline().addBefore("decoder", "decrypt", new CipherDecoder(decryptCipher));
             ctx.pipeline().addBefore("encoder", "encrypt", new CipherEncoder(encryptCipher));
 
-            // Send LoginSuccess — 1.19 adds empty property array
+            // Remove login timeout — encryption succeeded, CONFIG phase may take longer
+            if (ctx.pipeline().get("loginTimeout") != null) {
+                ctx.pipeline().remove("loginTimeout");
+            }
+
+            // Send LoginSuccess — 1.19 adds property array, 1.20.5 adds strictErrorHandling
             String uuid = ClassicToNettyTranslator.generateOfflineUuid(pendingUsername);
-            ctx.writeAndFlush(new LoginSuccessPacketV759(uuid, pendingUsername));
+            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
+                ctx.writeAndFlush(new LoginSuccessPacketV766(uuid, pendingUsername));
+            } else {
+                ctx.writeAndFlush(new LoginSuccessPacketV759(uuid, pendingUsername));
+            }
 
             if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_2)) {
                 // V764+: stay in LOGIN state, wait for LoginAcknowledged
@@ -454,28 +486,34 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     // ========================================================================
 
     private void handleLoginAcknowledged(ChannelHandlerContext ctx) {
+
         // Transition from LOGIN to CONFIGURATION
         state = ConnectionState.CONFIGURATION;
         setCodecState(ctx, ConnectionState.CONFIGURATION);
 
-        // Send registry data — single CompoundTag in network NBT containing all registries.
-        // Same format for both v764 and v765 (per-registry format was introduced in v766+).
-        ctx.writeAndFlush(RegistryDataPacketV764.create(ctx.alloc().buffer()));
-
-        // Send feature flags
-        ctx.writeAndFlush(new UpdateEnabledFeaturesPacketV761());
-
-        // Send UpdateTags
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_3)) {
-            ctx.writeAndFlush(new UpdateTagsPacketV765());
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
+            // V766+: SelectKnownPacks round-trip before sending registry data.
+            // Send SelectKnownPacks S2C, then wait for client response.
+            ctx.writeAndFlush(new SelectKnownPacksS2CPacket());
         } else {
-            ctx.writeAndFlush(new UpdateTagsPacketV764());
+            // V764/V765: Send registry data directly — single CompoundTag in network NBT.
+            ctx.writeAndFlush(RegistryDataPacketV764.create(ctx.alloc().buffer()));
+
+            // Send feature flags
+            ctx.writeAndFlush(new UpdateEnabledFeaturesPacketV761());
+
+            // Send UpdateTags
+            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_3)) {
+                ctx.writeAndFlush(new UpdateTagsPacketV765());
+            } else {
+                ctx.writeAndFlush(new UpdateTagsPacketV764());
+            }
+
+            // Signal end of Configuration phase
+            ctx.writeAndFlush(new ConfigFinishS2CPacket());
         }
 
-        // Signal end of Configuration phase
-        ctx.writeAndFlush(new ConfigFinishS2CPacket());
-
-        // Wait for ConfigFinishC2SPacket from client
+        // Wait for ConfigFinishC2SPacket (v764/v765) or SelectKnownPacksC2SPacket (v766+)
     }
 
     private void handleConfigFinish(ChannelHandlerContext ctx) {
@@ -485,6 +523,31 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         // Proceed with join game
         handleJoinGame(ctx);
+    }
+
+    private void handleSelectKnownPacks(ChannelHandlerContext ctx) {
+        // Use createBuiltIn() for dimension_type — client uses its built-in overworld
+        // (minY=-64, height=384 = 24 sections). Chunk serialization is adjusted to match.
+        ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
+                "minecraft:dimension_type",
+                "minecraft:overworld", "minecraft:overworld_caves",
+                "minecraft:the_nether", "minecraft:the_end"));
+        // Biome: need the_void at index 0, plains at index 1 to match chunk biome palette value 1.
+        ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
+                "minecraft:worldgen/biome",
+                "minecraft:the_void", "minecraft:plains"));
+        ctx.writeAndFlush(RegistryDataPacketV766.createChatType(ctx.alloc().buffer()));
+        ctx.writeAndFlush(RegistryDataPacketV766.createDamageType(ctx.alloc().buffer()));
+        ctx.writeAndFlush(RegistryDataPacketV766.createTrimPattern(ctx.alloc().buffer()));
+        ctx.writeAndFlush(RegistryDataPacketV766.createTrimMaterial(ctx.alloc().buffer()));
+        ctx.writeAndFlush(RegistryDataPacketV766.createBannerPattern(ctx.alloc().buffer()));
+        ctx.writeAndFlush(RegistryDataPacketV766.createWolfVariant(ctx.alloc().buffer()));
+
+        // Send feature flags and tags (required for block rendering)
+        ctx.writeAndFlush(new UpdateEnabledFeaturesPacketV761());
+        ctx.writeAndFlush(new UpdateTagsPacketV766());
+
+        ctx.writeAndFlush(new ConfigFinishS2CPacket());
     }
 
     // ========================================================================
@@ -523,6 +586,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
+        boolean isV766 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5);
         boolean isV765 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_3);
         boolean isV764 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_2);
         boolean isV763 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20);
@@ -553,7 +617,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // v573 (1.15) added hashedSeed + enableRespawnScreen.
         // v477 (1.14) removed difficulty from JoinGame and added viewDistance.
         // v108 (1.9.1) changed dimension from byte to int.
-        if (isV764) {
+        if (isV766) {
+            ctx.writeAndFlush(new JoinGamePacketV766(entityId, 1,
+                    20, ChunkManager.DEFAULT_VIEW_DISTANCE, ChunkManager.DEFAULT_VIEW_DISTANCE));
+        } else if (isV764) {
             ctx.writeAndFlush(new JoinGamePacketV764(entityId, 1,
                     20, ChunkManager.DEFAULT_VIEW_DISTANCE, ChunkManager.DEFAULT_VIEW_DISTANCE));
         } else if (isV763) {
@@ -656,19 +723,25 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         ctx.writeAndFlush(new PlayerAbilitiesPacketV73(0x0D, 0.05f, 0.1f));
 
         // Send Entity Properties for movement speed
+        // 1.20.5+ uses VarInt registry ID (17 = movement_speed)
         // 1.16+ uses namespaced snake_case attribute names
-        String movementSpeedKey = isV735
-                ? "minecraft:generic.movement_speed"
-                : "generic.movementSpeed";
-        if (isV755) {
-            ctx.writeAndFlush(new NettyEntityPropertiesPacketV755(entityId,
-                    movementSpeedKey, 0.10000000149011612));
-        } else if (isV47) {
-            ctx.writeAndFlush(new NettyEntityPropertiesPacketV47(entityId,
-                    movementSpeedKey, 0.10000000149011612));
+        if (isV766) {
+            ctx.writeAndFlush(new NettyEntityPropertiesPacketV766(entityId,
+                    NettyEntityPropertiesPacketV766.MOVEMENT_SPEED, 0.10000000149011612));
         } else {
-            ctx.writeAndFlush(new NettyEntityPropertiesPacket(entityId,
-                    movementSpeedKey, 0.10000000149011612));
+            String movementSpeedKey = isV735
+                    ? "minecraft:generic.movement_speed"
+                    : "generic.movementSpeed";
+            if (isV755) {
+                ctx.writeAndFlush(new NettyEntityPropertiesPacketV755(entityId,
+                        movementSpeedKey, 0.10000000149011612));
+            } else if (isV47) {
+                ctx.writeAndFlush(new NettyEntityPropertiesPacketV47(entityId,
+                        movementSpeedKey, 0.10000000149011612));
+            } else {
+                ctx.writeAndFlush(new NettyEntityPropertiesPacket(entityId,
+                        movementSpeedKey, 0.10000000149011612));
+            }
         }
 
         // Determine spawn position
@@ -823,9 +896,14 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                                         existingUuid, existing.getUsername(), 1, 0));
                     }
                     // 1.20.2: SpawnPlayer removed, use generic SpawnEntity
+                    // 1.20.5: entity type IDs shifted (player: 122 -> 128)
                     // 1.15 removed entity metadata entirely from SpawnPlayer
                     // 1.14 used 0xFF metadata terminator (empty metadata)
-                    if (isV764) {
+                    if (isV766) {
+                        ctx.writeAndFlush(new NettySpawnEntityPacketV766(
+                                existingEntityId, existingUuid, ex, ey, ez,
+                                alphaYaw, pitch));
+                    } else if (isV764) {
                         ctx.writeAndFlush(new NettySpawnEntityPacketV764(
                                 existingEntityId, existingUuid, ex, ey, ez,
                                 alphaYaw, pitch));
@@ -888,7 +966,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Give 1 cobblestone for right-click
         // v404 (1.13.2)+ uses boolean+VarInt slot format (also used by v477/1.14)
         boolean isV404 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13_2);
-        if (isV765) {
+        if (isV766) {
+            ctx.writeAndFlush(new NettySetSlotPacketV766(0, 0, 36,
+                    BlockStateMapper.toV765ItemId(BlockRegistry.COBBLESTONE), 1));
+        } else if (isV765) {
             ctx.writeAndFlush(new NettySetSlotPacketV756(0, 0, 36,
                     BlockStateMapper.toV765ItemId(BlockRegistry.COBBLESTONE), 1));
         } else if (isV764) {
@@ -1300,6 +1381,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     }
 
     private void dispatchCommand(String command) {
+        boolean isV766 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5);
         boolean isV765 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_3);
         boolean isV764 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_2);
         boolean isV763 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20);
@@ -1475,6 +1557,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         System.err.println("Netty connection error"
                 + (player != null ? " (" + player.getUsername() + ")" : "")
                 + ": " + cause.getMessage());
+        cause.printStackTrace(System.err);
         ctx.close();
     }
 

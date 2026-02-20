@@ -438,8 +438,43 @@ public class ChunkManager {
             byte[][] skyArr = skyArrays.toArray(new byte[0][]);
             byte[][] blockArr = blockArrays.toArray(new byte[0][]);
 
-            if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_20_2)) {
-                // v764+: network NBT for heightmaps (no root name).
+            if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
+                // v766+: built-in overworld has minY=-64, height=384 (24 sections).
+                // Our chunk data has 16 sections for Y 0-255.
+                // Prepend 4 empty sections (Y -64 to -1) and append 4 (Y 256-319).
+                byte[] rawData = v759Data.getRawData();
+                byte[] emptySection = buildEmptySection766();
+                byte[] adjusted = new byte[4 * emptySection.length + rawData.length + 4 * emptySection.length];
+                int pos = 0;
+                for (int i = 0; i < 4; i++) {
+                    System.arraycopy(emptySection, 0, adjusted, pos, emptySection.length);
+                    pos += emptySection.length;
+                }
+                System.arraycopy(rawData, 0, adjusted, pos, rawData.length);
+                pos += rawData.length;
+                for (int i = 0; i < 4; i++) {
+                    System.arraycopy(emptySection, 0, adjusted, pos, emptySection.length);
+                    pos += emptySection.length;
+                }
+
+                // Heightmap: add 64 to each value (minY=-64 offset)
+                long[] adjustedHeightmap = buildHeightmapForMinY(chunk, 64);
+
+                // Light masks: shift left by 4 (our sections 0-7 -> positions 5-12 in 26-bit range)
+                int adjustedSkyLightMask = skyLightMask << 4;
+                int adjustedBlockLightMask = blockLightMask << 4;
+                int adjustedEmptySkyLightMask = ~adjustedSkyLightMask & 0x3FFFFFF;
+                int adjustedEmptyBlockLightMask = ~adjustedBlockLightMask & 0x3FFFFFF;
+
+                player.sendPacket(new MapChunkPacketV764(
+                    chunk.getXPos(), chunk.getZPos(),
+                    adjustedHeightmap, adjustedHeightmap,
+                    adjusted,
+                    adjustedSkyLightMask, adjustedBlockLightMask,
+                    adjustedEmptySkyLightMask, adjustedEmptyBlockLightMask,
+                    skyArr, blockArr));
+            } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_20_2)) {
+                // v764/v765: network NBT for heightmaps (no root name).
                 player.sendPacket(new MapChunkPacketV764(
                     chunk.getXPos(), chunk.getZPos(),
                     heightmap, heightmap,
@@ -886,5 +921,48 @@ public class ChunkManager {
         }
 
         return result;
+    }
+
+    /**
+     * Build heightmap with an offset for minY != 0.
+     * For built-in overworld (minY=-64), offset=64 is added to each value.
+     */
+    private static long[] buildHeightmapForMinY(AlphaChunk chunk, int offset) {
+        byte[] heightMap = chunk.getHeightMap();
+        int bitsPerEntry = 9;
+        int entriesPerLong = 64 / bitsPerEntry; // 7
+        int longsNeeded = (256 + entriesPerLong - 1) / entriesPerLong; // 37
+        long[] result = new long[longsNeeded];
+        long mask = (1L << bitsPerEntry) - 1;
+
+        for (int i = 0; i < 256; i++) {
+            long value = (heightMap[i] & 0xFF) + offset;
+            int longIndex = i / entriesPerLong;
+            int bitOffset = (i % entriesPerLong) * bitsPerEntry;
+            result[longIndex] |= (value & mask) << bitOffset;
+        }
+
+        return result;
+    }
+
+    /**
+     * Build an empty chunk section for 1.20.5+ (24-section worlds).
+     * Contains air blocks and plains biome (registry ID 1 in vanilla).
+     *
+     * Format: short blockCount=0, byte bitsPerBlock=0 (single-valued),
+     *   VarInt paletteValue=0 (air), VarInt dataLength=0,
+     *   byte biomeBits=0, VarInt biomePaletteValue=1 (plains), VarInt biomeDataLength=0
+     */
+    private static byte[] buildEmptySection766() {
+        // short(0) + byte(0) + VarInt(0) + VarInt(0) + byte(0) + VarInt(1) + VarInt(0)
+        return new byte[] {
+            0x00, 0x00,  // blockCount = 0 (short)
+            0x00,        // bitsPerBlock = 0 (single-valued)
+            0x00,        // palette value = 0 (air, VarInt)
+            0x00,        // data array length = 0 (VarInt)
+            0x00,        // biome bitsPerEntry = 0 (single-valued)
+            0x01,        // biome palette value = 1 (plains, VarInt)
+            0x00         // biome data array length = 0 (VarInt)
+        };
     }
 }
