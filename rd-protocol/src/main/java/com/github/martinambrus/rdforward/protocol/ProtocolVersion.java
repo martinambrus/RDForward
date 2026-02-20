@@ -760,12 +760,21 @@ public enum ProtocolVersion {
     RELEASE_1_21_5(770, 77, Family.RELEASE, "Release 1.21.5 (v770)", 93),
 
     /**
+     * Minecraft Release 1.21.6 "Chase the Skies".
+     * C2S: CHANGE_GAME_MODE inserted at 0x04 (+1 shift). S2C: no existing ID shifts.
+     * happy_ghast inserted at entity type 56 (player: 148 -> 149).
+     * 1 new registry: dialog. Tag changes: block +3 net, item +3, entity_type +2.
+     * Netty protocol version 771.
+     */
+    RELEASE_1_21_6(771, 78, Family.RELEASE, "Release 1.21.6 (v771)", 94),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 78, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 79, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -940,6 +949,7 @@ public enum ProtocolVersion {
             case 768: return "Release 1.21.2-1.21.3";
             case 769: return "Release 1.21.4";
             case 770: return "Release 1.21.5";
+            case 771: return "Release 1.21.6";
             default: return null;
         }
     }
@@ -1000,6 +1010,7 @@ public enum ProtocolVersion {
             case 768: return "1.21.2-1.21.3";
             case 769: return "1.21.4";
             case 770: return "1.21.5";
+            case 771: return "1.21.6";
             default:  return null;
         }
     }

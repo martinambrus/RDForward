@@ -36,6 +36,7 @@ public class RegistryDataPacketV766 implements Packet {
     @Override
     public void write(ByteBuf buf) {
         buf.writeBytes(prebuiltData, prebuiltData.readerIndex(), prebuiltData.readableBytes());
+        prebuiltData.release();
     }
 
     @Override
@@ -392,6 +393,12 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:precipice", "minecraft:relic",
                 "minecraft:stal", "minecraft:strad",
                 "minecraft:wait", "minecraft:ward");
+    }
+
+    public static RegistryDataPacketV766 createDialog(ByteBuf alloc) {
+        return createBuiltIn(alloc, "minecraft:dialog",
+                "minecraft:custom_options", "minecraft:quick_actions",
+                "minecraft:server_links");
     }
 
     // ========================================================================
