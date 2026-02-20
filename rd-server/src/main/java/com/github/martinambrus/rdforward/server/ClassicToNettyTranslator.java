@@ -52,6 +52,7 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
     }
 
     private Packet translate(Packet packet) {
+        boolean isV768 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_2);
         boolean isV766 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5);
         boolean isV765 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_3);
         boolean isV764 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_2);
@@ -152,6 +153,13 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
             int alphaYaw = (sp.getYaw() + 128) & 0xFF;
             // Generate offline UUID from username
             String uuid = generateOfflineUuid(sp.getPlayerName());
+            if (isV768) {
+                // 1.21.2: entity type IDs shifted (player: 128 -> 148)
+                return new NettySpawnEntityPacketV768(
+                        entityId, uuid,
+                        sp.getX() / 32.0, feetY / 32.0, sp.getZ() / 32.0,
+                        alphaYaw, sp.getPitch());
+            }
             if (isV766) {
                 // 1.20.5: entity type IDs shifted (player: 122 -> 128)
                 return new NettySpawnEntityPacketV766(
@@ -215,6 +223,12 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
             int entityId = pt.getPlayerId() + 1;
             int feetY = (int) pt.getY() - EYE_HEIGHT_FIXED;
             int alphaYaw = (pt.getYaw() + 128) & 0xFF;
+            if (isV768) {
+                // 1.21.2: EntityTeleport replaced by EntityPositionSync (float degrees, delta velocities)
+                return new EntityPositionSyncPacketV768(entityId,
+                        pt.getX() / 32.0, feetY / 32.0, pt.getZ() / 32.0,
+                        alphaYaw, pt.getPitch());
+            }
             if (isV109) {
                 // 1.9: double coordinates
                 return new EntityTeleportPacketV109(entityId,

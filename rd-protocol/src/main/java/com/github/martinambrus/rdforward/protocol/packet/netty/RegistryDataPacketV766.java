@@ -310,6 +310,39 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:water", "minecraft:fire");
     }
 
+    public static RegistryDataPacketV766 createDamageTypeV768(ByteBuf alloc) {
+        return createBuiltIn(alloc, "minecraft:damage_type",
+                "minecraft:arrow", "minecraft:bad_respawn_point", "minecraft:cactus",
+                "minecraft:campfire",
+                "minecraft:cramming", "minecraft:dragon_breath", "minecraft:drown",
+                "minecraft:dry_out", "minecraft:ender_pearl",
+                "minecraft:explosion", "minecraft:fall",
+                "minecraft:falling_anvil", "minecraft:falling_block",
+                "minecraft:falling_stalactite", "minecraft:fireball",
+                "minecraft:fireworks", "minecraft:fly_into_wall", "minecraft:freeze",
+                "minecraft:generic", "minecraft:generic_kill", "minecraft:hot_floor",
+                "minecraft:in_fire", "minecraft:in_wall", "minecraft:indirect_magic",
+                "minecraft:lava", "minecraft:lightning_bolt", "minecraft:mace_smash",
+                "minecraft:magic",
+                "minecraft:mob_attack", "minecraft:mob_attack_no_aggro",
+                "minecraft:mob_projectile", "minecraft:on_fire",
+                "minecraft:out_of_world", "minecraft:outside_border",
+                "minecraft:player_attack", "minecraft:player_explosion",
+                "minecraft:sonic_boom", "minecraft:spit", "minecraft:stalagmite",
+                "minecraft:starve", "minecraft:sting", "minecraft:sweet_berry_bush",
+                "minecraft:thorns", "minecraft:thrown", "minecraft:trident",
+                "minecraft:unattributed_fireball", "minecraft:wither",
+                "minecraft:wither_skull");
+    }
+
+    public static RegistryDataPacketV766 createInstrument(ByteBuf alloc) {
+        return createBuiltIn(alloc, "minecraft:instrument",
+                "minecraft:ponder_goat_horn", "minecraft:sing_goat_horn",
+                "minecraft:seek_goat_horn", "minecraft:feel_goat_horn",
+                "minecraft:admire_goat_horn", "minecraft:call_goat_horn",
+                "minecraft:yearn_goat_horn", "minecraft:dream_goat_horn");
+    }
+
     public static RegistryDataPacketV766 createJukeboxSong(ByteBuf alloc) {
         return createBuiltIn(alloc, "minecraft:jukebox_song",
                 "minecraft:11", "minecraft:13", "minecraft:5",

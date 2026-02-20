@@ -174,7 +174,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
         String versionName;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
+            versionName = "1.21.2";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21)) {
             versionName = "1.21";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
             versionName = "1.20.5";
@@ -321,10 +323,13 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             }
 
             // Send LoginSuccess — this transitions to PLAY state (or CONFIGURATION for v764+)
+            // 1.21.2 removed strictErrorHandling boolean
             // 1.20.5 added strictErrorHandling boolean
             // 1.16 changed UUID from VarIntString to binary (2 longs)
             String uuid = ClassicToNettyTranslator.generateOfflineUuid(pendingUsername);
-            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
+            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
+                ctx.writeAndFlush(new LoginSuccessPacketV768(uuid, pendingUsername));
+            } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
                 ctx.writeAndFlush(new LoginSuccessPacketV766(uuid, pendingUsername));
             } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19)) {
                 ctx.writeAndFlush(new LoginSuccessPacketV759(uuid, pendingUsername));
@@ -385,10 +390,13 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             }
 
             // Send LoginSuccess — this transitions to PLAY state (or CONFIGURATION for v764+)
+            // 1.21.2 removed strictErrorHandling boolean
             // 1.20.5 added strictErrorHandling boolean
             // 1.16 changed UUID from VarIntString to binary (2 longs)
             String uuid = ClassicToNettyTranslator.generateOfflineUuid(pendingUsername);
-            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
+            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
+                ctx.writeAndFlush(new LoginSuccessPacketV768(uuid, pendingUsername));
+            } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
                 ctx.writeAndFlush(new LoginSuccessPacketV766(uuid, pendingUsername));
             } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19)) {
                 ctx.writeAndFlush(new LoginSuccessPacketV759(uuid, pendingUsername));
@@ -453,9 +461,11 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 ctx.pipeline().remove("loginTimeout");
             }
 
-            // Send LoginSuccess — 1.19 adds property array, 1.20.5 adds strictErrorHandling
+            // Send LoginSuccess — 1.21.2 removes strictErrorHandling, 1.20.5 adds it, 1.19 adds property array
             String uuid = ClassicToNettyTranslator.generateOfflineUuid(pendingUsername);
-            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
+            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
+                ctx.writeAndFlush(new LoginSuccessPacketV768(uuid, pendingUsername));
+            } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
                 ctx.writeAndFlush(new LoginSuccessPacketV766(uuid, pendingUsername));
             } else {
                 ctx.writeAndFlush(new LoginSuccessPacketV759(uuid, pendingUsername));
@@ -527,6 +537,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     }
 
     private void handleSelectKnownPacks(ChannelHandlerContext ctx) {
+        boolean isV768 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_2);
         boolean isV767 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21);
 
         // Use createBuiltIn() for dimension_type — client uses its built-in overworld
@@ -551,8 +562,11 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                     "minecraft:the_void", "minecraft:plains"));
         }
         ctx.writeAndFlush(RegistryDataPacketV766.createChatType(ctx.alloc().buffer()));
+        // 1.21.2 added ender_pearl + mace_smash damage types (47 entries)
         // 1.21 added minecraft:campfire damage type (45 entries vs 44)
-        ctx.writeAndFlush(isV767
+        ctx.writeAndFlush(isV768
+                ? RegistryDataPacketV766.createDamageTypeV768(ctx.alloc().buffer())
+                : isV767
                 ? RegistryDataPacketV766.createDamageTypeV767(ctx.alloc().buffer())
                 : RegistryDataPacketV766.createDamageType(ctx.alloc().buffer()));
         // 1.21 added bolt + flow trim patterns (18 entries vs 16)
@@ -572,11 +586,19 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.writeAndFlush(RegistryDataPacketV766.createEnchantment(ctx.alloc().buffer()));
             ctx.writeAndFlush(RegistryDataPacketV766.createJukeboxSong(ctx.alloc().buffer()));
         }
+        // 1.21.2 added instrument registry (8 goat horns, all built-in)
+        if (isV768) {
+            ctx.writeAndFlush(RegistryDataPacketV766.createInstrument(ctx.alloc().buffer()));
+        }
 
         // Send feature flags and tags (required for block rendering)
         ctx.writeAndFlush(new UpdateEnabledFeaturesPacketV761());
         // 1.21 added minecraft:enchantment tag registry (7 registries vs 6)
-        ctx.writeAndFlush(isV767 ? new UpdateTagsPacketV767() : new UpdateTagsPacketV766());
+        // 1.21.2 added minecraft:worldgen/biome tag registry (8 registries vs 7) —
+        // required for enchantment built-in data parsing (references biome tags)
+        ctx.writeAndFlush(isV768 ? new UpdateTagsPacketV768()
+                        : isV767 ? new UpdateTagsPacketV767()
+                        : new UpdateTagsPacketV766());
 
         ctx.writeAndFlush(new ConfigFinishS2CPacket());
     }
@@ -617,6 +639,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
+        boolean isV768 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_2);
         boolean isV766 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5);
         boolean isV765 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_3);
         boolean isV764 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_2);
@@ -648,7 +671,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // v573 (1.15) added hashedSeed + enableRespawnScreen.
         // v477 (1.14) removed difficulty from JoinGame and added viewDistance.
         // v108 (1.9.1) changed dimension from byte to int.
-        if (isV766) {
+        if (isV768) {
+            ctx.writeAndFlush(new JoinGamePacketV768(entityId, 1,
+                    20, ChunkManager.DEFAULT_VIEW_DISTANCE, ChunkManager.DEFAULT_VIEW_DISTANCE));
+        } else if (isV766) {
             ctx.writeAndFlush(new JoinGamePacketV766(entityId, 1,
                     20, ChunkManager.DEFAULT_VIEW_DISTANCE, ChunkManager.DEFAULT_VIEW_DISTANCE));
         } else if (isV764) {
@@ -723,7 +749,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // 1.13+: Send mandatory DeclareCommands, UpdateRecipes, UpdateTags, Brand
         if (isV393) {
             ctx.writeAndFlush(new DeclareCommandsPacketV393());
-            ctx.writeAndFlush(new UpdateRecipesPacketV393());
+            ctx.writeAndFlush(isV768 ? new UpdateRecipesPacketV768() : new UpdateRecipesPacketV393());
             // v764+ sends UpdateTags during Configuration phase
             if (!isV764) {
                 // 1.14 added entity_types as a 4th tag category
@@ -837,8 +863,13 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
 
         // Send initial time update
+        // v768: doDaylightCycle boolean replaces negative-timeOfDay trick
         long timeOfDay = world.isTimeFrozen() ? -world.getWorldTime() : world.getWorldTime();
-        ctx.writeAndFlush(new NettyTimeUpdatePacket(0, timeOfDay));
+        if (isV768) {
+            ctx.writeAndFlush(new NettyTimeUpdatePacketV768(0, timeOfDay));
+        } else {
+            ctx.writeAndFlush(new NettyTimeUpdatePacket(0, timeOfDay));
+        }
 
         // Send initial weather state
         if (world.getWeather() != ServerWorld.WeatherState.CLEAR) {
@@ -880,7 +911,11 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // after chunks ensures terrain collision data is available, preventing
         // the player from briefly falling into the ground before chunks load.
         // SetChunkCacheCenter (above) tells the client which chunk to prioritize.
-        if (isV762) { // V762 and V763 both use NettyPlayerPositionS2CPacketV762
+        if (isV768) {
+            awaitingTeleportConfirm = true;
+            ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV768(
+                    spawnX, clientY, spawnZ, alphaSpawnYaw, spawnPitch, ++nextTeleportId));
+        } else if (isV762) { // V762-V767 use NettyPlayerPositionS2CPacketV762
             awaitingTeleportConfirm = true;
             ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV762(
                     spawnX, clientY, spawnZ, alphaSpawnYaw, spawnPitch, ++nextTeleportId));
@@ -926,11 +961,16 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                                 : NettyPlayerListItemPacketV47.addPlayer(
                                         existingUuid, existing.getUsername(), 1, 0));
                     }
+                    // 1.21.2: entity type IDs shifted (player: 128 -> 148)
                     // 1.20.2: SpawnPlayer removed, use generic SpawnEntity
                     // 1.20.5: entity type IDs shifted (player: 122 -> 128)
                     // 1.15 removed entity metadata entirely from SpawnPlayer
                     // 1.14 used 0xFF metadata terminator (empty metadata)
-                    if (isV766) {
+                    if (isV768) {
+                        ctx.writeAndFlush(new NettySpawnEntityPacketV768(
+                                existingEntityId, existingUuid, ex, ey, ez,
+                                alphaYaw, pitch));
+                    } else if (isV766) {
                         ctx.writeAndFlush(new NettySpawnEntityPacketV766(
                                 existingEntityId, existingUuid, ex, ey, ez,
                                 alphaYaw, pitch));
@@ -1135,6 +1175,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 || packet instanceof NettyEntityActionPacketV47
                 || packet instanceof NettySteerVehiclePacket
                 || packet instanceof NettySteerVehiclePacketV47
+                || packet instanceof PlayerInputPacketV768
                 || packet instanceof ConfirmTransactionPacket
                 || packet instanceof NettyCreativeSlotPacket
                 || packet instanceof NettyCreativeSlotPacketV47
@@ -1354,7 +1395,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         sendBlockChange(ctx, targetX, targetY, targetZ, itemId & 0xFF, 0);
 
         // 1.19+: Send BlockChangedAck after placement
-        if (packet instanceof NettyBlockPlacementPacketV759) {
+        if (packet instanceof NettyBlockPlacementPacketV768) {
+            ctx.writeAndFlush(new BlockChangedAckPacketV759(
+                    ((NettyBlockPlacementPacketV768) packet).getSequence()));
+        } else if (packet instanceof NettyBlockPlacementPacketV759) {
             ctx.writeAndFlush(new BlockChangedAckPacketV759(
                     ((NettyBlockPlacementPacketV759) packet).getSequence()));
         }

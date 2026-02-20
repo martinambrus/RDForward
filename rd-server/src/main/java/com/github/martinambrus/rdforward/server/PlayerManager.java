@@ -15,6 +15,7 @@ import com.github.martinambrus.rdforward.protocol.packet.netty.NettyPlayerPositi
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyPlayerPositionS2CPacketV109;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyPlayerPositionS2CPacketV755;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyTimeUpdatePacket;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettyTimeUpdatePacketV768;
 import io.netty.channel.Channel;
 import org.cloudburstmc.math.vector.Vector3f;
 import org.cloudburstmc.protocol.bedrock.data.LevelEvent;
@@ -200,6 +201,7 @@ public class PlayerManager {
     public void broadcastTimeUpdate(long worldAge, long timeOfDay) {
         TimeUpdatePacket preNetty = new TimeUpdatePacket(timeOfDay);
         NettyTimeUpdatePacket netty = new NettyTimeUpdatePacket(worldAge, timeOfDay);
+        NettyTimeUpdatePacketV768 nettyV768 = new NettyTimeUpdatePacketV768(worldAge, timeOfDay);
 
         for (ConnectedPlayer player : playersById.values()) {
             ProtocolVersion v = player.getProtocolVersion();
@@ -209,6 +211,8 @@ public class PlayerManager {
                     stp.setTime((int) (timeOfDay % 24000));
                     player.getBedrockSession().getSession().sendPacket(stp);
                 }
+            } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
+                player.sendPacket(nettyV768);
             } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_7_2)) {
                 player.sendPacket(netty);
             } else if (v.isAtLeast(ProtocolVersion.ALPHA_1_2_0)) {
