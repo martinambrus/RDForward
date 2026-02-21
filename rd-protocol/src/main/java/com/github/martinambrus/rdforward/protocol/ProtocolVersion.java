@@ -778,12 +778,23 @@ public enum ProtocolVersion {
     RELEASE_1_21_7(772, 79, Family.RELEASE, "Release 1.21.7 (v772)", 94),
 
     /**
+     * Minecraft Release 1.21.9-1.21.10 (2025) - "The Copper Age".
+     * 5 new S2C PLAY packets (4 debug + 1 test) shift S2C IDs by +4/+5.
+     * SpawnEntity velocity changed from 3 shorts to MOVEMENT_VECTOR (zero = byte 0x00).
+     * SpawnPosition changed to GlobalBlockPosition (String dimension + Position + 2 floats).
+     * copper_golem and mannequin inserted (player: 149 -> 151).
+     * No C2S packet ID changes. No chunk format changes.
+     * Netty protocol version 773.
+     */
+    RELEASE_1_21_9(773, 80, Family.RELEASE, "Release 1.21.9 (v773)", 94),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 80, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 81, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -960,6 +971,7 @@ public enum ProtocolVersion {
             case 770: return "Release 1.21.5";
             case 771: return "Release 1.21.6";
             case 772: return "Release 1.21.7-1.21.8";
+            case 773: return "Release 1.21.9-1.21.10";
             default: return null;
         }
     }
@@ -1022,6 +1034,7 @@ public enum ProtocolVersion {
             case 770: return "1.21.5";
             case 771: return "1.21.6";
             case 772: return "1.21.7-1.21.8";
+            case 773: return "1.21.9-1.21.10";
             default:  return null;
         }
     }

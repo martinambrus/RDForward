@@ -254,4 +254,9 @@ public class UpdateTagsPacketV771 implements Packet {
     public void read(ByteBuf buf) {
         // S2C only — no server-side decoding needed
     }
+
+    // Accessors for V773 reuse of unchanged tag arrays
+    static String[] getBlockTags() { return BLOCK_TAGS; }
+    static String[] getItemTags() { return ITEM_TAGS; }
+    static String[] getEntityTypeTags() { return ENTITY_TYPE_TAGS; }
 }

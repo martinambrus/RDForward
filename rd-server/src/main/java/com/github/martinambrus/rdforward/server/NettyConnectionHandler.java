@@ -174,7 +174,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
         String versionName;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_7)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_9)) {
+            versionName = "1.21.9";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_7)) {
             versionName = "1.21.7";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_6)) {
             versionName = "1.21.6";
@@ -545,6 +547,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     }
 
     private void handleSelectKnownPacks(ChannelHandlerContext ctx) {
+        boolean isV773 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_9);
         boolean isV772 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_7);
         boolean isV771 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_6);
         boolean isV770 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_5);
@@ -627,7 +630,8 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // 1.21 added minecraft:enchantment tag registry (7 registries vs 6)
         // 1.21.2 added minecraft:worldgen/biome tag registry (8 registries vs 7) —
         // required for enchantment built-in data parsing (references biome tags)
-        ctx.writeAndFlush(isV771 ? new UpdateTagsPacketV771()
+        ctx.writeAndFlush(isV773 ? new UpdateTagsPacketV773()
+                        : isV771 ? new UpdateTagsPacketV771()
                         : isV770 ? new UpdateTagsPacketV770()
                         : isV769 ? new UpdateTagsPacketV769()
                         : isV768 ? new UpdateTagsPacketV768()
@@ -673,6 +677,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
+        boolean isV773 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_9);
         boolean isV771 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_6);
         boolean isV770 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_5);
         boolean isV769 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_4);
@@ -889,7 +894,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         int spawnBlockX = (int) Math.floor(spawnX);
         int spawnBlockY = (int) Math.floor(spawnY);
         int spawnBlockZ = (int) Math.floor(spawnZ);
-        if (isV755) {
+        if (isV773) {
+            ctx.writeAndFlush(new SpawnPositionPacketV773(spawnBlockX, spawnBlockY, spawnBlockZ));
+        } else if (isV755) {
             ctx.writeAndFlush(new SpawnPositionPacketV755(spawnBlockX, spawnBlockY, spawnBlockZ));
         } else if (isV477) {
             ctx.writeAndFlush(new SpawnPositionPacketV477(spawnBlockX, spawnBlockY, spawnBlockZ));
@@ -1005,7 +1012,11 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                     // 1.20.5: entity type IDs shifted (player: 122 -> 128)
                     // 1.15 removed entity metadata entirely from SpawnPlayer
                     // 1.14 used 0xFF metadata terminator (empty metadata)
-                    if (isV771) {
+                    if (isV773) {
+                        ctx.writeAndFlush(new NettySpawnEntityPacketV773(
+                                existingEntityId, existingUuid, ex, ey, ez,
+                                alphaYaw, pitch));
+                    } else if (isV771) {
                         ctx.writeAndFlush(new NettySpawnEntityPacketV771(
                                 existingEntityId, existingUuid, ex, ey, ez,
                                 alphaYaw, pitch));
