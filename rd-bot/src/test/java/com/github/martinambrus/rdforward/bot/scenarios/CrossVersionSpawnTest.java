@@ -27,6 +27,21 @@ class CrossVersionSpawnTest {
             ProtocolVersion.RELEASE_1_12_2, // Netty 1.12.2 (Long keepalive, same chunks)
     };
 
+    /** Versions for spawn Y tests (includes 1.13+ which don't need chunk parsing). */
+    private static final ProtocolVersion[] SPAWN_Y_VERSIONS = {
+            ProtocolVersion.ALPHA_1_2_5,
+            ProtocolVersion.BETA_1_8,
+            ProtocolVersion.RELEASE_1_5,
+            ProtocolVersion.RELEASE_1_7_6,
+            ProtocolVersion.RELEASE_1_8,
+            ProtocolVersion.RELEASE_1_9_4,
+            ProtocolVersion.RELEASE_1_12_2,
+            ProtocolVersion.RELEASE_1_13,     // 1.13 (The Flattening)
+            ProtocolVersion.RELEASE_1_16,     // 1.16 (binary UUID, dimension codec)
+            ProtocolVersion.RELEASE_1_20_2,   // 1.20.2 (CONFIGURATION state)
+            ProtocolVersion.RELEASE_1_21_11,  // 1.21.11 (latest)
+    };
+
     @BeforeAll
     static void startServer() throws InterruptedException {
         testServer = new TestServer();
@@ -54,7 +69,7 @@ class CrossVersionSpawnTest {
 
     @Test
     void allVersionsAgreeOnFeetY() throws Exception {
-        for (ProtocolVersion version : VERSIONS) {
+        for (ProtocolVersion version : SPAWN_Y_VERSIONS) {
             withBot(version, "CvFtY" + version.ordinal(), session -> {
                 double feetY;
                 if (version.isAtLeast(ProtocolVersion.RELEASE_1_8)) {

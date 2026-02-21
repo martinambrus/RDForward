@@ -188,4 +188,100 @@ class CreativeBlockPlacementTest {
             bot.disconnect();
         }
     }
+
+    // 1.13+ block state IDs: cobblestone = 14, grass block = 9
+    private static final int COBBLESTONE_STATE = 14;
+    private static final int GRASS_STATE = 9;
+
+    @Test
+    void v477PlacementBelowSurfaceBecomesCobblestone() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_14, "CrV477C");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            int x = 200, z = 200;
+            Thread.sleep(500);
+
+            session.sendDigging(0, x, 41, z, 1);
+            assertEquals(0, session.waitForBlockChangeValue(x, 41, z, 0, 3000),
+                    "Block at Y=41 should break to air");
+
+            session.sendBlockPlace(x, 40, z, 1, 4);
+            int blockType = session.waitForBlockChangeValue(x, 41, z, COBBLESTONE_STATE, 3000);
+            assertEquals(COBBLESTONE_STATE, blockType,
+                    "V477 placement below surface should become cobblestone (state 14)");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void v477PlacementAtSurfaceBecomesGrass() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_14, "CrV477G");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            int x = 201, z = 201;
+            Thread.sleep(500);
+
+            session.sendDigging(0, x, SURFACE_Y, z, 1);
+            assertEquals(0, session.waitForBlockChangeValue(x, SURFACE_Y, z, 0, 3000),
+                    "Block at surface should break to air");
+
+            session.sendBlockPlace(x, SURFACE_Y - 1, z, 1, 4);
+            int blockType = session.waitForBlockChangeValue(x, SURFACE_Y, z, GRASS_STATE, 3000);
+            assertEquals(GRASS_STATE, blockType,
+                    "V477 placement at surface should become grass (state 9)");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void v764PlacementBelowSurfaceBecomesCobblestone() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "CrV764C");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            int x = 202, z = 202;
+            Thread.sleep(500);
+
+            session.sendDigging(0, x, 41, z, 1);
+            assertEquals(0, session.waitForBlockChangeValue(x, 41, z, 0, 3000),
+                    "Block at Y=41 should break to air");
+
+            session.sendBlockPlace(x, 40, z, 1, 4);
+            int blockType = session.waitForBlockChangeValue(x, 41, z, COBBLESTONE_STATE, 3000);
+            assertEquals(COBBLESTONE_STATE, blockType,
+                    "V764 placement below surface should become cobblestone (state 14)");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void v764PlacementAtSurfaceBecomesGrass() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "CrV764G");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            int x = 203, z = 203;
+            Thread.sleep(500);
+
+            session.sendDigging(0, x, SURFACE_Y, z, 1);
+            assertEquals(0, session.waitForBlockChangeValue(x, SURFACE_Y, z, 0, 3000),
+                    "Block at surface should break to air");
+
+            session.sendBlockPlace(x, SURFACE_Y - 1, z, 1, 4);
+            int blockType = session.waitForBlockChangeValue(x, SURFACE_Y, z, GRASS_STATE, 3000);
+            assertEquals(GRASS_STATE, blockType,
+                    "V764 placement at surface should become grass (state 9)");
+        } finally {
+            bot.disconnect();
+        }
+    }
 }

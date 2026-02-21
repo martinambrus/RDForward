@@ -206,4 +206,125 @@ class SpawnPositionTest {
             bot.disconnect();
         }
     }
+
+    @Test
+    void nettyV477SpawnFeetYIsCorrect() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_14, "SpwnV477Y");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            assertEquals(43.0, session.getSpawnY(), 0.001,
+                    "V477 spawn Y should be feet-level 43.0");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void nettyV477BotStaysConnectedAfterSpawn() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_14, "SpwnV477G");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            Thread.sleep(500);
+            assertTrue(session.getChannel().isActive(),
+                    "V477 bot should stay connected after spawn");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void nettyV477SpawnYIsAtExpectedHeight() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_14, "SpwnV477B");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            // V477 Y is feet-level, surface at Y=42, spawn feet at Y=43
+            int feetBlockY = (int) Math.floor(session.getY());
+            assertEquals(43, feetBlockY, "V477 feet Y should be 43");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void nettyV764SpawnFeetYIsCorrect() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "SpwnV764Y");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            assertEquals(43.0, session.getSpawnY(), 0.001,
+                    "V764 spawn Y should be feet-level 43.0");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void nettyV764BotStaysConnectedAfterSpawn() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "SpwnV764G");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            Thread.sleep(500);
+            assertTrue(session.getChannel().isActive(),
+                    "V764 bot should stay connected after spawn");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void nettyV764SpawnYIsAtExpectedHeight() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "SpwnV764B");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            int feetBlockY = (int) Math.floor(session.getY());
+            assertEquals(43, feetBlockY, "V764 feet Y should be 43");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void nettyV774SpawnFeetYIsCorrect() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "SpwnV774Y");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            assertEquals(43.0, session.getSpawnY(), 0.001,
+                    "V774 spawn Y should be feet-level 43.0");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void nettyV774BotStaysConnectedAfterSpawn() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "SpwnV774G");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            Thread.sleep(500);
+            assertTrue(session.getChannel().isActive(),
+                    "V774 bot should stay connected after spawn");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void nettyV774SpawnYIsAtExpectedHeight() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "SpwnV774B");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            int feetBlockY = (int) Math.floor(session.getY());
+            assertEquals(43, feetBlockY, "V774 feet Y should be 43");
+        } finally {
+            bot.disconnect();
+        }
+    }
 }

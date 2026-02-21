@@ -53,4 +53,53 @@ class JoinLeaveBroadcastTest {
             observer.disconnect();
         }
     }
+
+    @Test
+    void modernNettyJoinAndLeaveBroadcasts() throws Exception {
+        BotClient observer = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "Observer2");
+        try {
+            BotSession observerSession = observer.getSession();
+            assertTrue(observerSession.isLoginComplete(), "Observer login should complete");
+
+            BotClient joiner = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "JoinBot2");
+            BotSession joinerSession = joiner.getSession();
+            assertTrue(joinerSession.isLoginComplete(), "JoinBot2 login should complete");
+
+            String joinMsg = observerSession.waitForChat("JoinBot2 joined the game", 3000);
+            assertNotNull(joinMsg, "Observer should receive join broadcast");
+
+            joiner.disconnect();
+            Thread.sleep(200);
+
+            String leaveMsg = observerSession.waitForChat("JoinBot2 left the game", 5000);
+            assertNotNull(leaveMsg, "Observer should receive leave broadcast");
+        } finally {
+            observer.disconnect();
+        }
+    }
+
+    @Test
+    void crossVersionJoinBroadcast() throws Exception {
+        // Alpha observer sees 1.21.11 player join/leave
+        BotClient observer = testServer.createBot(ProtocolVersion.ALPHA_1_2_5, "Observer3");
+        try {
+            BotSession observerSession = observer.getSession();
+            assertTrue(observerSession.isLoginComplete(), "Observer login should complete");
+
+            BotClient joiner = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "JoinBot3");
+            BotSession joinerSession = joiner.getSession();
+            assertTrue(joinerSession.isLoginComplete(), "JoinBot3 login should complete");
+
+            String joinMsg = observerSession.waitForChat("JoinBot3 joined the game", 3000);
+            assertNotNull(joinMsg, "Alpha observer should see 1.21.11 player join");
+
+            joiner.disconnect();
+            Thread.sleep(200);
+
+            String leaveMsg = observerSession.waitForChat("JoinBot3 left the game", 5000);
+            assertNotNull(leaveMsg, "Alpha observer should see 1.21.11 player leave");
+        } finally {
+            observer.disconnect();
+        }
+    }
 }

@@ -63,4 +63,52 @@ class MultiPlayerTest {
             if (bot2 != null) bot2.disconnect();
         }
     }
+
+    @Test
+    void twoModernNettyBotsCanSeeEachOther() throws Exception {
+        BotClient bot1 = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "Player3");
+        BotClient bot2 = null;
+        try {
+            BotSession session1 = bot1.getSession();
+            assertTrue(session1.isLoginComplete(), "Bot1 login should complete");
+
+            bot2 = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "Player4");
+            BotSession session2 = bot2.getSession();
+            assertTrue(session2.isLoginComplete(), "Bot2 login should complete");
+
+            // Bot2 should see Bot1 via SpawnEntity (v764+ uses SpawnEntity for players)
+            Thread.sleep(500);
+            assertTrue(session2.getSpawnedPlayers().size() >= 1,
+                    "Bot2 should see Bot1, saw: " + session2.getSpawnedPlayers());
+
+            assertTrue(session1.getSpawnedPlayers().size() >= 1,
+                    "Bot1 should see Bot2, saw: " + session1.getSpawnedPlayers());
+        } finally {
+            bot1.disconnect();
+            if (bot2 != null) bot2.disconnect();
+        }
+    }
+
+    @Test
+    void latestProtocolBotsCanSeeEachOther() throws Exception {
+        BotClient bot1 = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "Player5");
+        BotClient bot2 = null;
+        try {
+            BotSession session1 = bot1.getSession();
+            assertTrue(session1.isLoginComplete(), "Bot1 login should complete");
+
+            bot2 = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "Player6");
+            BotSession session2 = bot2.getSession();
+            assertTrue(session2.isLoginComplete(), "Bot2 login should complete");
+
+            Thread.sleep(500);
+            assertTrue(session2.getSpawnedPlayers().size() >= 1,
+                    "Bot2 should see Bot1, saw: " + session2.getSpawnedPlayers());
+            assertTrue(session1.getSpawnedPlayers().size() >= 1,
+                    "Bot1 should see Bot2, saw: " + session1.getSpawnedPlayers());
+        } finally {
+            bot1.disconnect();
+            if (bot2 != null) bot2.disconnect();
+        }
+    }
 }

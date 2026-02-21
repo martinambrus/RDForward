@@ -105,4 +105,56 @@ class CobblestoneReplenishmentTest {
             bot.disconnect();
         }
     }
+
+    @Test
+    void nettyV477CobblestoneReplenishedAfterPlace() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_14, "RepV477");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            assertTrue(session.waitForNonEmptySlot(36, 5000),
+                    "V477 should receive cobblestone in slot 36");
+
+            Thread.sleep(300);
+
+            // Place a block
+            session.sendBlockPlace(210, 42, 210, 1, 4);
+
+            // Wait for replenishment
+            Thread.sleep(2000);
+            assertTrue(session.getSlotItemId(36) > 0,
+                    "V477 slot 36 should still have cobblestone after placement");
+            assertTrue(session.getSlotCount(36) > 0,
+                    "V477 slot 36 count should be positive after replenishment");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void nettyV764CobblestoneReplenishedAfterPlace() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "RepV764");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            assertTrue(session.waitForNonEmptySlot(36, 5000),
+                    "V764 should receive cobblestone in slot 36");
+
+            Thread.sleep(300);
+
+            // Place a block
+            session.sendBlockPlace(211, 42, 211, 1, 4);
+
+            // Wait for replenishment
+            Thread.sleep(2000);
+            assertTrue(session.getSlotItemId(36) > 0,
+                    "V764 slot 36 should still have cobblestone after placement");
+            assertTrue(session.getSlotCount(36) > 0,
+                    "V764 slot 36 count should be positive after replenishment");
+        } finally {
+            bot.disconnect();
+        }
+    }
 }

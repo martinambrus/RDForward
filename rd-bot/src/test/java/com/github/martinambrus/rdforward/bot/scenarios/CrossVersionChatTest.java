@@ -126,4 +126,73 @@ class CrossVersionChatTest {
             betaBot.disconnect();
         }
     }
+
+    @Test
+    void v393AndAlphaCanChat() throws Exception {
+        BotClient v393Bot = testServer.createBot(ProtocolVersion.RELEASE_1_13, "V393Chat");
+        BotClient alphaBot = testServer.createBot(ProtocolVersion.ALPHA_1_2_5, "AlphaChat3");
+        try {
+            BotSession v393Session = v393Bot.getSession();
+            BotSession alphaSession = alphaBot.getSession();
+            assertTrue(v393Session.isLoginComplete(), "1.13 login should complete");
+            assertTrue(alphaSession.isLoginComplete(), "Alpha login should complete");
+
+            v393Session.sendChat("Hello from 1.13");
+            String received = alphaSession.waitForChat("Hello from 1.13", 3000);
+            assertNotNull(received, "Alpha bot should receive 1.13's chat message");
+
+            alphaSession.sendChat("Alpha reply to 1.13");
+            received = v393Session.waitForChat("Alpha reply to 1.13", 3000);
+            assertNotNull(received, "1.13 bot should receive Alpha's chat message");
+        } finally {
+            v393Bot.disconnect();
+            alphaBot.disconnect();
+        }
+    }
+
+    @Test
+    void v764AndV340CanChat() throws Exception {
+        BotClient v764Bot = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "V764Chat");
+        BotClient v340Bot = testServer.createBot(ProtocolVersion.RELEASE_1_12_2, "V340Chat2");
+        try {
+            BotSession v764Session = v764Bot.getSession();
+            BotSession v340Session = v340Bot.getSession();
+            assertTrue(v764Session.isLoginComplete(), "1.20.2 login should complete");
+            assertTrue(v340Session.isLoginComplete(), "1.12.2 login should complete");
+
+            v764Session.sendChat("Hello from 1.20.2");
+            String received = v340Session.waitForChat("Hello from 1.20.2", 3000);
+            assertNotNull(received, "1.12.2 bot should receive 1.20.2's chat message");
+
+            v340Session.sendChat("Hello from 1.12.2");
+            received = v764Session.waitForChat("Hello from 1.12.2", 3000);
+            assertNotNull(received, "1.20.2 bot should receive 1.12.2's chat message");
+        } finally {
+            v764Bot.disconnect();
+            v340Bot.disconnect();
+        }
+    }
+
+    @Test
+    void v774AndAlphaCanChat() throws Exception {
+        BotClient v774Bot = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "V774Chat");
+        BotClient alphaBot = testServer.createBot(ProtocolVersion.ALPHA_1_2_5, "AlphaChat4");
+        try {
+            BotSession v774Session = v774Bot.getSession();
+            BotSession alphaSession = alphaBot.getSession();
+            assertTrue(v774Session.isLoginComplete(), "1.21.11 login should complete");
+            assertTrue(alphaSession.isLoginComplete(), "Alpha login should complete");
+
+            v774Session.sendChat("Hello from 1.21.11");
+            String received = alphaSession.waitForChat("Hello from 1.21.11", 3000);
+            assertNotNull(received, "Alpha bot should receive 1.21.11's chat message");
+
+            alphaSession.sendChat("Alpha reply to 1.21.11");
+            received = v774Session.waitForChat("Alpha reply to 1.21.11", 3000);
+            assertNotNull(received, "1.21.11 bot should receive Alpha's chat message");
+        } finally {
+            v774Bot.disconnect();
+            alphaBot.disconnect();
+        }
+    }
 }

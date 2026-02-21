@@ -138,4 +138,112 @@ class BlockBreakTest {
             alphaBot.disconnect();
         }
     }
+
+    @Test
+    void crossVersionBlockBreakingWithV477() throws Exception {
+        BotClient v477Bot = testServer.createBot(ProtocolVersion.RELEASE_1_14, "V477Break");
+        BotClient alphaBot = testServer.createBot(ProtocolVersion.ALPHA_1_2_5, "AlphaBreak3");
+        try {
+            BotSession v477Session = v477Bot.getSession();
+            BotSession alphaSession = alphaBot.getSession();
+            assertTrue(v477Session.isLoginComplete(), "1.14 login should complete");
+            assertTrue(alphaSession.isLoginComplete(), "Alpha login should complete");
+
+            Thread.sleep(500);
+
+            // Alpha places block
+            int bx = 41, by = 42, bz = 41;
+            alphaSession.sendBlockPlace(bx, by, bz, 1, 4);
+
+            int alphaPlaced = alphaSession.waitForBlockChange(bx, by + 1, bz, 3000);
+            assertTrue(alphaPlaced > 0, "Alpha should see own placement");
+
+            int v477Placed = v477Session.waitForBlockChange(bx, by + 1, bz, 3000);
+            assertTrue(v477Placed > 0, "1.14 should see Alpha's placement");
+
+            // 1.14 breaks the block (uses V477 position encoding)
+            v477Session.sendDigging(0, bx, by + 1, bz, 1);
+
+            int alphaBroken = alphaSession.waitForBlockChangeValue(bx, by + 1, bz, 0, 3000);
+            assertEquals(0, alphaBroken, "Alpha should see block broken to air");
+
+            int v477Broken = v477Session.waitForBlockChangeValue(bx, by + 1, bz, 0, 3000);
+            assertEquals(0, v477Broken, "1.14 should see block broken to air");
+        } finally {
+            v477Bot.disconnect();
+            alphaBot.disconnect();
+        }
+    }
+
+    @Test
+    void crossVersionBlockBreakingWithV764() throws Exception {
+        BotClient v764Bot = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "V764Break");
+        BotClient v340Bot = testServer.createBot(ProtocolVersion.RELEASE_1_12_2, "V340Break2");
+        try {
+            BotSession v764Session = v764Bot.getSession();
+            BotSession v340Session = v340Bot.getSession();
+            assertTrue(v764Session.isLoginComplete(), "1.20.2 login should complete");
+            assertTrue(v340Session.isLoginComplete(), "1.12.2 login should complete");
+
+            Thread.sleep(500);
+
+            // 1.20.2 places block
+            int bx = 43, by = 42, bz = 43;
+            v764Session.sendBlockPlace(bx, by, bz, 1, 4);
+
+            int v764Placed = v764Session.waitForBlockChange(bx, by + 1, bz, 3000);
+            assertTrue(v764Placed > 0, "1.20.2 should see own placement");
+
+            int v340Placed = v340Session.waitForBlockChange(bx, by + 1, bz, 3000);
+            assertTrue(v340Placed > 0, "1.12.2 should see 1.20.2's placement");
+
+            // 1.12.2 breaks the block
+            v340Session.sendDigging(0, bx, by + 1, bz, 1);
+
+            int v764Broken = v764Session.waitForBlockChangeValue(bx, by + 1, bz, 0, 3000);
+            assertEquals(0, v764Broken, "1.20.2 should see block broken to air");
+
+            int v340Broken = v340Session.waitForBlockChangeValue(bx, by + 1, bz, 0, 3000);
+            assertEquals(0, v340Broken, "1.12.2 should see block broken to air");
+        } finally {
+            v764Bot.disconnect();
+            v340Bot.disconnect();
+        }
+    }
+
+    @Test
+    void crossVersionBlockBreakingWithV774() throws Exception {
+        BotClient v774Bot = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "V774Break");
+        BotClient v340Bot = testServer.createBot(ProtocolVersion.RELEASE_1_12_2, "V340Break3");
+        try {
+            BotSession v774Session = v774Bot.getSession();
+            BotSession v340Session = v340Bot.getSession();
+            assertTrue(v774Session.isLoginComplete(), "1.21.11 login should complete");
+            assertTrue(v340Session.isLoginComplete(), "1.12.2 login should complete");
+
+            Thread.sleep(500);
+
+            // 1.21.11 places block
+            int bx = 45, by = 42, bz = 45;
+            v774Session.sendBlockPlace(bx, by, bz, 1, 4);
+
+            int v774Placed = v774Session.waitForBlockChange(bx, by + 1, bz, 3000);
+            assertTrue(v774Placed > 0, "1.21.11 should see own placement");
+
+            int v340Placed = v340Session.waitForBlockChange(bx, by + 1, bz, 3000);
+            assertTrue(v340Placed > 0, "1.12.2 should see 1.21.11's placement");
+
+            // 1.12.2 breaks the block
+            v340Session.sendDigging(0, bx, by + 1, bz, 1);
+
+            int v774Broken = v774Session.waitForBlockChangeValue(bx, by + 1, bz, 0, 3000);
+            assertEquals(0, v774Broken, "1.21.11 should see block broken to air");
+
+            int v340Broken = v340Session.waitForBlockChangeValue(bx, by + 1, bz, 0, 3000);
+            assertEquals(0, v340Broken, "1.12.2 should see block broken to air");
+        } finally {
+            v774Bot.disconnect();
+            v340Bot.disconnect();
+        }
+    }
 }

@@ -1030,7 +1030,7 @@ public class NettyPacketRegistry {
         registerV477S2C(0x54, noOpFactory);  // V393: UpdateRecipes; V477: TagQuery
         registerV477S2C(0x55, noOpFactory);  // V393: UpdateTags; V477: TakeItemEntity
         registerV477S2C(0x14, new PacketFactory() { public Packet create() { return new NettyWindowItemsPacketV47(); } });
-        registerV477S2C(0x16, new PacketFactory() { public Packet create() { return new NettySetSlotPacketV393(); } });
+        registerV477S2C(0x16, new PacketFactory() { public Packet create() { return new NettySetSlotPacketV404(); } });
         registerV477S2C(0x18, noOpFactory); // PluginMessage (bot doesn't need to decode)
         registerV477S2C(0x1A, new PacketFactory() { public Packet create() { return new NettyDisconnectPacket(); } });
         registerV477S2C(0x1D, new PacketFactory() { public Packet create() { return new UnloadChunkPacketV109(); } });
@@ -1044,6 +1044,7 @@ public class NettyPacketRegistry {
         registerV477S2C(0x4D, new PacketFactory() { public Packet create() { return new SpawnPositionPacketV47(); } });
         registerV477S2C(0x56, new PacketFactory() { public Packet create() { return new EntityTeleportPacketV109(); } });
         registerV477S2C(0x1E, new PacketFactory() { public Packet create() { return new NettyChangeGameStatePacket(); } });
+        registerV477S2C(0x0B, new PacketFactory() { public Packet create() { return new NettyBlockChangePacketV477(); } });
         registerV477S2C(0x4A, noOpFactory);  // V393: TimeUpdate; V477: RemoveEntityEffect
         registerV477S2C(0x4E, new PacketFactory() { public Packet create() { return new NettyTimeUpdatePacket(); } });
 
@@ -1120,7 +1121,7 @@ public class NettyPacketRegistry {
         registerV573S2C(0x0F, new PacketFactory() { public Packet create() { return new NettyChatS2CPacketV47(); } });
         registerV573S2C(0x13, new PacketFactory() { public Packet create() { return new ConfirmTransactionPacket(); } });
         registerV573S2C(0x15, new PacketFactory() { public Packet create() { return new NettyWindowItemsPacketV47(); } });
-        registerV573S2C(0x17, new PacketFactory() { public Packet create() { return new NettySetSlotPacketV393(); } });
+        registerV573S2C(0x17, new PacketFactory() { public Packet create() { return new NettySetSlotPacketV404(); } });
         registerV573S2C(0x19, noOpFactory); // PluginMessage (bot doesn't need to decode)
         registerV573S2C(0x1B, new PacketFactory() { public Packet create() { return new NettyDisconnectPacket(); } });
         registerV573S2C(0x1F, new PacketFactory() { public Packet create() { return new NettyChangeGameStatePacket(); } });
@@ -1181,6 +1182,8 @@ public class NettyPacketRegistry {
         // V735 LOGIN state: UUID changed from String to binary (2 longs)
         REVERSE_V735.put(reverseKey(ConnectionState.LOGIN, PacketDirection.SERVER_TO_CLIENT,
                 LoginSuccessPacketV735.class), 0x02);
+        REGISTRY_V735.put(key(ConnectionState.LOGIN, PacketDirection.SERVER_TO_CLIENT, 0x02),
+                new PacketFactory() { public Packet create() { return new LoginSuccessPacketV735(); } });
 
         // === V735 (1.16) S2C forward entries (for bot decoder) ===
         // Shadow stale V573 IDs that shifted in V735 due to ADD_GLOBAL_ENTITY removal.
@@ -1198,7 +1201,7 @@ public class NettyPacketRegistry {
         registerV735S2C(0x1F, noOpFactory);  // V573: ChangeGameState; V735: HorseScreenOpen
         registerV735S2C(0x21, noOpFactory);  // V573: KeepAlive; V735: KeepAlive(new ID)
         registerV735S2C(0x22, noOpFactory);  // V573: ChunkData; V735: LevelEvent
-        registerV735S2C(0x25, noOpFactory);  // V573: UpdateLight; V735: UpdateLight(new pos)
+        registerV735S2C(0x25, new PacketFactory() { public Packet create() { return new JoinGamePacketV735(); } });
         registerV735S2C(0x26, noOpFactory);  // V573: JoinGame; V735: TradeMerchant
         registerV735S2C(0x29, noOpFactory);  // V573: EntityRelMove; V735: EntityRelMove(same but check)
         registerV735S2C(0x2A, noOpFactory);  // V573: EntityLookMove; V735: EntityLookMove(same)
@@ -1219,7 +1222,7 @@ public class NettyPacketRegistry {
         registerV735S2C(0x0E, new PacketFactory() { public Packet create() { return new NettyChatS2CPacketV735(); } });
         registerV735S2C(0x11, new PacketFactory() { public Packet create() { return new DeclareCommandsPacketV393(); } });
         registerV735S2C(0x14, new PacketFactory() { public Packet create() { return new NettyWindowItemsPacketV47(); } });
-        registerV735S2C(0x16, new PacketFactory() { public Packet create() { return new NettySetSlotPacketV393(); } });
+        registerV735S2C(0x16, new PacketFactory() { public Packet create() { return new NettySetSlotPacketV404(); } });
         registerV735S2C(0x18, noOpFactory); // PluginMessage (bot doesn't need to decode)
         registerV735S2C(0x1A, new PacketFactory() { public Packet create() { return new NettyDisconnectPacket(); } });
         registerV735S2C(0x1D, new PacketFactory() { public Packet create() { return new UnloadChunkPacketV109(); } });
@@ -1337,7 +1340,7 @@ public class NettyPacketRegistry {
         registerV751S2C(0x11, noOpFactory);  // V735: ConfirmTransaction -> V751: DeclareCommands
         registerV751S2C(0x13, noOpFactory);  // V735: WindowItems -> V751: WindowConfirmation
         registerV751S2C(0x14, noOpFactory);  // V735: (unused) -> V751: ContainerSetContent
-        registerV751S2C(0x15, noOpFactory);  // V735: SetSlot -> V751: ContainerSetData
+        registerV751S2C(0x15, new PacketFactory() { public Packet create() { return new NettySetSlotPacketV404(); } });
         registerV751S2C(0x16, noOpFactory);  // V735: (unused) -> V751: SetSlot
         registerV751S2C(0x18, noOpFactory);  // V735: PluginMessage -> V751: CustomSound
         registerV751S2C(0x19, noOpFactory);  // V735: (unused) -> V751: Disconnect
@@ -1348,7 +1351,7 @@ public class NettyPacketRegistry {
         registerV751S2C(0x1F, noOpFactory);  // V735: (unused) -> V751: KeepAlive
         registerV751S2C(0x20, noOpFactory);  // V735: KeepAlive -> V751: ChunkData
         registerV751S2C(0x23, noOpFactory);  // V735: UpdateLight -> V751: UpdateLight(new pos)
-        registerV751S2C(0x24, noOpFactory);  // V735: (unused) -> V751: JoinGame
+        registerV751S2C(0x24, new PacketFactory() { public Packet create() { return new JoinGamePacketV751(); } });
         registerV751S2C(0x25, noOpFactory);  // V735: JoinGame -> V751: MapData
         registerV751S2C(0x27, noOpFactory);  // V735: (unused) -> V751: EntityRelMove
         registerV751S2C(0x28, noOpFactory);  // V735: EntityRelMove -> V751: EntityLookMove
@@ -1461,7 +1464,7 @@ public class NettyPacketRegistry {
         registerV755S2C(0x13, noOpFactory);  // V751: WindowItems; V755: CloseWindow
         registerV755S2C(0x14, new PacketFactory() { public Packet create() { return new NettyWindowItemsPacketV47(); } });
         registerV755S2C(0x15, noOpFactory);  // V751: SetSlot; V755: SetSlot(new pos)
-        registerV755S2C(0x16, new PacketFactory() { public Packet create() { return new NettySetSlotPacketV393(); } });
+        registerV755S2C(0x16, new PacketFactory() { public Packet create() { return new NettySetSlotPacketV404(); } });
         registerV755S2C(0x17, noOpFactory);  // V751: PluginMessage; V755: Cooldown
         registerV755S2C(0x18, noOpFactory); // PluginMessage (bot doesn't need to decode)
         registerV755S2C(0x19, noOpFactory);  // V751: Disconnect; V755: CustomSound
@@ -1621,6 +1624,8 @@ public class NettyPacketRegistry {
         // V759 LOGIN state: gains empty property array
         REVERSE_V759.put(reverseKey(ConnectionState.LOGIN, PacketDirection.SERVER_TO_CLIENT,
                 LoginSuccessPacketV759.class), 0x02);
+        REGISTRY_V759.put(key(ConnectionState.LOGIN, PacketDirection.SERVER_TO_CLIENT, 0x02),
+                new PacketFactory() { public Packet create() { return new LoginSuccessPacketV759(); } });
 
         // V759 LOGIN state C2S: EncryptionResponse gains boolean hasVerifyToken
         REGISTRY_V759.put(key(ConnectionState.LOGIN, PacketDirection.CLIENT_TO_SERVER, 0x01),
@@ -2286,8 +2291,15 @@ public class NettyPacketRegistry {
 
         // === V764 S2C PLAY forward map entries (for bot decoder) ===
         registerV764S2C(0x01, new PacketFactory() { public Packet create() { return new NettySpawnEntityPacketV764(); } });
+        registerV764S2C(0x09, new PacketFactory() { public Packet create() { return new NettyBlockChangePacketV477(); } });
+        registerV764S2C(0x15, new PacketFactory() { public Packet create() { return new NettySetSlotPacketV756(); } });
+        registerV764S2C(0x0C, new PacketFactory() { public Packet create() { return new ChunkBatchFinishedPacket(); } });
+        registerV764S2C(0x24, new PacketFactory() { public Packet create() { return new KeepAlivePacketV340(); } });
         registerV764S2C(0x25, new PacketFactory() { public Packet create() { return new MapChunkPacketV764(); } });
         registerV764S2C(0x29, new PacketFactory() { public Packet create() { return new JoinGamePacketV764(); } });
+        registerV764S2C(0x3E, new PacketFactory() { public Packet create() { return new NettyPlayerPositionS2CPacketV762(); } });
+        registerV764S2C(0x40, new PacketFactory() { public Packet create() { return new NettyDestroyEntitiesPacketV47(); } });
+        registerV764S2C(0x67, new PacketFactory() { public Packet create() { return new SystemChatPacketV760(); } });
 
         // === V764 C2S PLAY forward map entries (for server decoder) ===
         // Full registration required: 3 C2S packets inserted (ChunkBatchReceived 0x07,
@@ -2459,6 +2471,10 @@ public class NettyPacketRegistry {
                 NettyEncryptionRequestPacketV766.class, 0x01);
         registerV766Reverse(ConnectionState.LOGIN, PacketDirection.SERVER_TO_CLIENT,
                 LoginSuccessPacketV766.class, 0x02);
+        registerV766Forward(ConnectionState.LOGIN, PacketDirection.SERVER_TO_CLIENT, 0x01,
+                new PacketFactory() { public Packet create() { return new NettyEncryptionRequestPacketV766(); } });
+        registerV766Forward(ConnectionState.LOGIN, PacketDirection.SERVER_TO_CLIENT, 0x02,
+                new PacketFactory() { public Packet create() { return new LoginSuccessPacketV766(); } });
 
         // === V766 CONFIGURATION state ===
         // CONFIG S2C forward map (for server decoder — not normally used, but registered for completeness)
@@ -2535,6 +2551,26 @@ public class NettyPacketRegistry {
         registerV766S2CReverse(NettyEntityPropertiesPacketV766.class, 0x75);
         registerV766S2CReverse(UpdateRecipesPacketV393.class, 0x77);
         registerV766S2CReverse(UpdateTagsPacketV766.class, 0x78);
+
+        // === V766 S2C PLAY forward map entries (for bot decoder) ===
+        registerV766Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x01,
+                new PacketFactory() { public Packet create() { return new NettySpawnEntityPacketV766(); } });
+        registerV766Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x09,
+                new PacketFactory() { public Packet create() { return new NettyBlockChangePacketV477(); } });
+        registerV766Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x0C,
+                new PacketFactory() { public Packet create() { return new ChunkBatchFinishedPacket(); } });
+        registerV766Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x15,
+                new PacketFactory() { public Packet create() { return new NettySetSlotPacketV766(); } });
+        registerV766Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x26,
+                new PacketFactory() { public Packet create() { return new KeepAlivePacketV340(); } });
+        registerV766Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x2B,
+                new PacketFactory() { public Packet create() { return new JoinGamePacketV766(); } });
+        registerV766Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x40,
+                new PacketFactory() { public Packet create() { return new NettyPlayerPositionS2CPacketV762(); } });
+        registerV766Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x42,
+                new PacketFactory() { public Packet create() { return new NettyDestroyEntitiesPacketV47(); } });
+        registerV766Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x6C,
+                new PacketFactory() { public Packet create() { return new SystemChatPacketV765(); } });
 
         // === V766 C2S PLAY forward map entries (for server decoder) ===
         // 0x00-0x04: same as v765 (TeleportConfirm, QueryBlockNBT, ChatCommand, ChatCommand unchanged)
@@ -2618,14 +2654,28 @@ public class NettyPacketRegistry {
         // === V768 LOGIN state ===
         registerV768Reverse(ConnectionState.LOGIN, PacketDirection.SERVER_TO_CLIENT,
                 LoginSuccessPacketV768.class, 0x02);
+        registerV768Forward(ConnectionState.LOGIN, PacketDirection.SERVER_TO_CLIENT, 0x02,
+                new PacketFactory() { public Packet create() { return new LoginSuccessPacketV768(); } });
 
         // === V768 S2C PLAY forward map entries (for bot decoder — new packet classes at their IDs) ===
+        registerV768Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x01,
+                new PacketFactory() { public Packet create() { return new NettySpawnEntityPacketV768(); } });
+        registerV768Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x09,
+                new PacketFactory() { public Packet create() { return new NettyBlockChangePacketV477(); } });
+        registerV768Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x15,
+                new PacketFactory() { public Packet create() { return new NettySetSlotPacketV766(); } });
         registerV768Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x20,
                 new PacketFactory() { public Packet create() { return new EntityPositionSyncPacketV768(); } });
+        registerV768Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x27,
+                new PacketFactory() { public Packet create() { return new KeepAlivePacketV340(); } });
         registerV768Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x2C,
                 new PacketFactory() { public Packet create() { return new JoinGamePacketV768(); } });
         registerV768Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x42,
                 new PacketFactory() { public Packet create() { return new NettyPlayerPositionS2CPacketV768(); } });
+        registerV768Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x47,
+                new PacketFactory() { public Packet create() { return new NettyDestroyEntitiesPacketV47(); } });
+        registerV768Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x73,
+                new PacketFactory() { public Packet create() { return new SystemChatPacketV765(); } });
 
         // === V768 S2C PLAY reverse map entries (for server encoder) ===
         // New packet classes:
@@ -2840,6 +2890,8 @@ public class NettyPacketRegistry {
         // Entity type: lingering_potion inserted at 100 (player: 147 -> 148).
 
         // === V770 S2C PLAY forward map entries (for bot decoder) ===
+        registerV770Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x0B,
+                new PacketFactory() { public Packet create() { return new ChunkBatchFinishedPacket(); } });
         registerV770Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x01,
                 new PacketFactory() { public Packet create() { return new NettySpawnEntityPacketV770(); } });
         registerV770Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x08,
@@ -2860,6 +2912,8 @@ public class NettyPacketRegistry {
                 new PacketFactory() { public Packet create() { return new NettyPlayerPositionS2CPacketV768(); } });
         registerV770Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x72,
                 new PacketFactory() { public Packet create() { return new SystemChatPacketV765(); } });
+        registerV770Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x46,
+                new PacketFactory() { public Packet create() { return new NettyDestroyEntitiesPacketV47(); } });
         registerV770Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x7F,
                 new PacketFactory() { public Packet create() { return new UpdateTagsPacketV770(); } });
 
@@ -3116,6 +3170,8 @@ public class NettyPacketRegistry {
                 new PacketFactory() { public Packet create() { return new NettyPlayerPositionS2CPacketV768(); } });
         registerV773Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x77,
                 new PacketFactory() { public Packet create() { return new SystemChatPacketV765(); } });
+        registerV773Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x4B,
+                new PacketFactory() { public Packet create() { return new NettyDestroyEntitiesPacketV47(); } });
         registerV773Forward(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x84,
                 new PacketFactory() { public Packet create() { return new UpdateTagsPacketV773(); } });
 

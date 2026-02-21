@@ -81,4 +81,51 @@ class BlockPlaceTest {
             bot2.disconnect();
         }
     }
+
+    @Test
+    void modernNettyBlockPlacementReceivesConfirmation() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "PlaceBot2");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            Thread.sleep(500);
+
+            int placeX = 12;
+            int placeY = 42;
+            int placeZ = 12;
+            session.sendBlockPlace(placeX, placeY, placeZ, 1, 4);
+
+            // Block state ID should be non-zero (block placed)
+            int blockType = session.waitForBlockChange(placeX, placeY + 1, placeZ, 3000);
+            assertTrue(blockType > 0, "Should receive BlockChange confirmation with non-air block state");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void latestProtocolBlockPlacementBroadcasts() throws Exception {
+        BotClient bot1 = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "Placer2");
+        BotClient bot2 = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "Observer2");
+        try {
+            BotSession session1 = bot1.getSession();
+            BotSession session2 = bot2.getSession();
+            assertTrue(session1.isLoginComplete(), "Bot1 login should complete");
+            assertTrue(session2.isLoginComplete(), "Bot2 login should complete");
+
+            Thread.sleep(500);
+
+            int placeX = 22;
+            int placeY = 42;
+            int placeZ = 22;
+            session1.sendBlockPlace(placeX, placeY, placeZ, 1, 4);
+
+            int blockType = session2.waitForBlockChange(placeX, placeY + 1, placeZ, 3000);
+            assertTrue(blockType > 0, "Observer should receive block change broadcast on latest protocol");
+        } finally {
+            bot1.disconnect();
+            bot2.disconnect();
+        }
+    }
 }

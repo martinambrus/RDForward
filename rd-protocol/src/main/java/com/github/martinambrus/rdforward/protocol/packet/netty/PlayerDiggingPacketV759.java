@@ -22,6 +22,10 @@ public class PlayerDiggingPacketV759 extends PlayerDiggingPacketV477 {
 
     public PlayerDiggingPacketV759() {}
 
+    public PlayerDiggingPacketV759(int status, int x, int y, int z, int face) {
+        super(status, x, y, z, face);
+    }
+
     @Override
     public int getPacketId() { return 0x1C; }
 

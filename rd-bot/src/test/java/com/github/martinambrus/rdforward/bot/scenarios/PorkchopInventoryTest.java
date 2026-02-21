@@ -155,4 +155,46 @@ class PorkchopInventoryTest {
             bot.disconnect();
         }
     }
+
+    @Test
+    void nettyV477ReceivesCobblestoneOnLogin() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_14, "CobV477");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            assertTrue(session.waitForNonEmptySlot(36, 5000),
+                    "V477 should receive cobblestone in slot 36");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void nettyV764ReceivesCobblestoneOnLogin() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "CobV764");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            assertTrue(session.waitForNonEmptySlot(36, 5000),
+                    "V764 should receive cobblestone in slot 36");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void nettyV774ReceivesCobblestoneOnLogin() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "CobV774");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            assertTrue(session.waitForNonEmptySlot(36, 5000),
+                    "V774 should receive cobblestone in slot 36");
+        } finally {
+            bot.disconnect();
+        }
+    }
 }

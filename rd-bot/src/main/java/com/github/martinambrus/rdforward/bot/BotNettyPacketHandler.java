@@ -28,12 +28,12 @@ import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
 
 /**
- * Netty protocol handler for bot clients (1.7.2+ / v4-v47).
+ * Netty protocol handler for bot clients (1.7.2+ / v4-v774).
  *
- * Manages the state machine: HANDSHAKING -> LOGIN -> PLAY.
+ * Manages the state machine: HANDSHAKING -> LOGIN -> [CONFIGURATION] -> PLAY.
  * Handles encryption handshake, state transitions, and routing
- * of S2C packets to BotSession. Supports both v4/v5 and v47 (1.8)
- * packet variants.
+ * of S2C packets to BotSession. Supports v4 through v774 (1.21.11)
+ * packet variants, including CONFIGURATION state for v764+.
  */
 public class BotNettyPacketHandler extends SimpleChannelInboundHandler<Packet> {
 
@@ -73,99 +73,194 @@ public class BotNettyPacketHandler extends SimpleChannelInboundHandler<Packet> {
     protected void channelRead0(ChannelHandlerContext ctx, Packet packet) {
         session.recordPacket(packet);
 
-        // --- Login state packets ---
-        // V47 EncryptionRequest must be checked BEFORE base (no inheritance)
-        if (packet instanceof NettyEncryptionRequestPacketV47 encReqV47) {
+        // === LOGIN state ===
+        // V766 EncryptionRequest (has shouldAuthenticate boolean)
+        if (packet instanceof NettyEncryptionRequestPacketV766 encReqV766) {
+            handleEncryptionRequest(ctx, encReqV766.getPublicKey(), encReqV766.getVerifyToken(), true);
+        }
+        // V47 EncryptionRequest (VarInt-length byte arrays)
+        else if (packet instanceof NettyEncryptionRequestPacketV47 encReqV47) {
             handleEncryptionRequest(ctx, encReqV47.getPublicKey(), encReqV47.getVerifyToken(), true);
-        } else if (packet instanceof NettyEncryptionRequestPacket encReq) {
+        }
+        // Base EncryptionRequest (short-length byte arrays)
+        else if (packet instanceof NettyEncryptionRequestPacket encReq) {
             handleEncryptionRequest(ctx, encReq.getPublicKey(), encReq.getVerifyToken(), false);
-        } else if (packet instanceof LoginSuccessPacket) {
-            // Transition to PLAY state
+        }
+        // LoginSuccess — all variants (no inheritance, order irrelevant)
+        else if (packet instanceof LoginSuccessPacketV768
+                || packet instanceof LoginSuccessPacketV766
+                || packet instanceof LoginSuccessPacketV759
+                || packet instanceof LoginSuccessPacketV735
+                || packet instanceof LoginSuccessPacket) {
+            handleLoginSuccess(ctx);
+        }
+
+        // === CONFIGURATION state (v764+) ===
+        else if (packet instanceof SelectKnownPacksS2CPacket) {
+            ctx.writeAndFlush(new SelectKnownPacksC2SPacket());
+        }
+        else if (packet instanceof ConfigFinishS2CPacket) {
+            ctx.writeAndFlush(new ConfigFinishC2SPacket());
             setCodecState(ctx, ConnectionState.PLAY);
         }
-        // --- Play state packets ---
-        // V108+ JoinGame (int dimension) — must be checked before V47
-        else if (packet instanceof JoinGamePacketV108 jgV108) {
-            session.recordLogin(jgV108.getEntityId());
+
+        // === PLAY state — JoinGame variants (newest first) ===
+        else if (packet instanceof JoinGamePacketV768 jg) { session.recordLogin(jg.getEntityId()); }
+        else if (packet instanceof JoinGamePacketV766 jg) { session.recordLogin(jg.getEntityId()); }
+        else if (packet instanceof JoinGamePacketV764 jg) { session.recordLogin(jg.getEntityId()); }
+        else if (packet instanceof JoinGamePacketV763 jg) { session.recordLogin(jg.getEntityId()); }
+        else if (packet instanceof JoinGamePacketV762 jg) { session.recordLogin(jg.getEntityId()); }
+        else if (packet instanceof JoinGamePacketV760 jg) { session.recordLogin(jg.getEntityId()); }
+        else if (packet instanceof JoinGamePacketV759 jg) { session.recordLogin(jg.getEntityId()); }
+        else if (packet instanceof JoinGamePacketV758 jg) { session.recordLogin(jg.getEntityId()); }
+        else if (packet instanceof JoinGamePacketV757 jg) { session.recordLogin(jg.getEntityId()); }
+        else if (packet instanceof JoinGamePacketV755 jg) { session.recordLogin(jg.getEntityId()); }
+        else if (packet instanceof JoinGamePacketV751 jg) { session.recordLogin(jg.getEntityId()); }
+        else if (packet instanceof JoinGamePacketV735 jg) { session.recordLogin(jg.getEntityId()); }
+        else if (packet instanceof JoinGamePacketV573 jg) { session.recordLogin(jg.getEntityId()); }
+        else if (packet instanceof JoinGamePacketV477 jg) { session.recordLogin(jg.getEntityId()); }
+        else if (packet instanceof JoinGamePacketV108 jg) { session.recordLogin(jg.getEntityId()); }
+        else if (packet instanceof JoinGamePacketV47 jg) { session.recordLogin(jg.getEntityId()); }
+        else if (packet instanceof JoinGamePacket jg) { session.recordLogin(jg.getEntityId()); }
+
+        // === PLAY state — PlayerPosition variants (newest first) ===
+        else if (packet instanceof NettyPlayerPositionS2CPacketV768 pos) {
+            session.recordPosition(pos.getX(), pos.getY(), pos.getZ(),
+                    pos.getYaw(), pos.getPitch());
+            ctx.writeAndFlush(new TeleportConfirmPacketV109(pos.getTeleportId()));
+            if (!session.isLoginComplete()) session.markLoginComplete();
         }
-        // V109 PlayerPosition (has teleportId) — must be checked before V47
-        else if (packet instanceof NettyPlayerPositionS2CPacketV109 posV109) {
-            session.recordPosition(posV109.getX(), posV109.getY(), posV109.getZ(),
-                    posV109.getYaw(), posV109.getPitch());
-            ctx.writeAndFlush(new TeleportConfirmPacketV109(posV109.getTeleportId()));
-            if (!session.isLoginComplete()) {
-                session.markLoginComplete();
-            }
+        else if (packet instanceof NettyPlayerPositionS2CPacketV762 pos) {
+            session.recordPosition(pos.getX(), pos.getY(), pos.getZ(),
+                    pos.getYaw(), pos.getPitch());
+            ctx.writeAndFlush(new TeleportConfirmPacketV109(pos.getTeleportId()));
+            if (!session.isLoginComplete()) session.markLoginComplete();
         }
-        // V109 MapChunk (paletted sections) — must be checked before V47
-        else if (packet instanceof MapChunkPacketV109 mcV109) {
-            processV109Chunk(mcV109);
+        else if (packet instanceof NettyPlayerPositionS2CPacketV755 pos) {
+            session.recordPosition(pos.getX(), pos.getY(), pos.getZ(),
+                    pos.getYaw(), pos.getPitch());
+            ctx.writeAndFlush(new TeleportConfirmPacketV109(pos.getTeleportId()));
+            if (!session.isLoginComplete()) session.markLoginComplete();
         }
-        // V109 SpawnPlayer (double coords, 1.9 metadata) — must be checked before V47
-        else if (packet instanceof NettySpawnPlayerPacketV109 spV109) {
-            session.recordSpawnPlayer(spV109.getEntityId(), "v109_player");
+        else if (packet instanceof NettyPlayerPositionS2CPacketV109 pos) {
+            session.recordPosition(pos.getX(), pos.getY(), pos.getZ(),
+                    pos.getYaw(), pos.getPitch());
+            ctx.writeAndFlush(new TeleportConfirmPacketV109(pos.getTeleportId()));
+            if (!session.isLoginComplete()) session.markLoginComplete();
         }
-        // V340 KeepAlive (Long format) — must be checked before V47
-        else if (packet instanceof KeepAlivePacketV340 kaV340) {
-            ctx.writeAndFlush(new KeepAlivePacketV340(kaV340.getKeepAliveId()));
+        else if (packet instanceof NettyPlayerPositionS2CPacketV47 pos) {
+            session.recordPosition(pos.getX(), pos.getY(), pos.getZ(),
+                    pos.getYaw(), pos.getPitch());
+            if (!session.isLoginComplete()) session.markLoginComplete();
         }
-        // V47 variants must be checked BEFORE base (no inheritance)
-        else if (packet instanceof JoinGamePacketV47 jgV47) {
-            session.recordLogin(jgV47.getEntityId());
-        } else if (packet instanceof JoinGamePacket joinGame) {
-            session.recordLogin(joinGame.getEntityId());
-        } else if (packet instanceof NettyPlayerPositionS2CPacketV47 posV47) {
-            session.recordPosition(posV47.getX(), posV47.getY(), posV47.getZ(),
-                    posV47.getYaw(), posV47.getPitch());
-            if (!session.isLoginComplete()) {
-                session.markLoginComplete();
-            }
-        } else if (packet instanceof NettyPlayerPositionS2CPacket posLook) {
-            session.recordPosition(posLook.getX(), posLook.getY(), posLook.getZ(),
-                    posLook.getYaw(), posLook.getPitch());
-            if (!session.isLoginComplete()) {
-                session.markLoginComplete();
-            }
-        } else if (packet instanceof NettyBlockChangePacketV47 bcV47) {
-            session.recordBlockChange(bcV47.getX(), bcV47.getY(), bcV47.getZ(), bcV47.getBlockId());
-        } else if (packet instanceof NettyBlockChangePacket bc) {
+        else if (packet instanceof NettyPlayerPositionS2CPacket pos) {
+            session.recordPosition(pos.getX(), pos.getY(), pos.getZ(),
+                    pos.getYaw(), pos.getPitch());
+            if (!session.isLoginComplete()) session.markLoginComplete();
+        }
+
+        // === PLAY state — SpawnEntity (v764+ replaces SpawnPlayer) ===
+        else if (packet instanceof NettySpawnEntityPacketV774 sp) { session.recordSpawnPlayer(sp.getEntityId(), "v764+_player"); }
+        else if (packet instanceof NettySpawnEntityPacketV773 sp) { session.recordSpawnPlayer(sp.getEntityId(), "v764+_player"); }
+        else if (packet instanceof NettySpawnEntityPacketV771 sp) { session.recordSpawnPlayer(sp.getEntityId(), "v764+_player"); }
+        else if (packet instanceof NettySpawnEntityPacketV770 sp) { session.recordSpawnPlayer(sp.getEntityId(), "v764+_player"); }
+        else if (packet instanceof NettySpawnEntityPacketV769 sp) { session.recordSpawnPlayer(sp.getEntityId(), "v764+_player"); }
+        else if (packet instanceof NettySpawnEntityPacketV768 sp) { session.recordSpawnPlayer(sp.getEntityId(), "v764+_player"); }
+        else if (packet instanceof NettySpawnEntityPacketV766 sp) { session.recordSpawnPlayer(sp.getEntityId(), "v764+_player"); }
+        else if (packet instanceof NettySpawnEntityPacketV764 sp) { session.recordSpawnPlayer(sp.getEntityId(), "v764+_player"); }
+
+        // === PLAY state — SpawnPlayer (pre-v764) ===
+        else if (packet instanceof NettySpawnPlayerPacketV109 sp) { session.recordSpawnPlayer(sp.getEntityId(), "v109_player"); }
+        else if (packet instanceof NettySpawnPlayerPacketV47 sp) { session.recordSpawnPlayer(sp.getEntityId(), "v47_player"); }
+        else if (packet instanceof NettySpawnPlayerPacketV5 sp) { session.recordSpawnPlayer(sp.getEntityId(), sp.getPlayerName()); }
+        else if (packet instanceof NettySpawnPlayerPacket sp) { session.recordSpawnPlayer(sp.getEntityId(), sp.getPlayerName()); }
+
+        // === PLAY state — Chat / SystemChat ===
+        else if (packet instanceof SystemChatPacketV765 sc) { session.recordChat(sc.getPlainText()); }
+        else if (packet instanceof SystemChatPacketV760 sc) { recordChatFromJson(sc.getJsonMessage()); }
+        else if (packet instanceof SystemChatPacketV759 sc) { recordChatFromJson(sc.getJsonMessage()); }
+        else if (packet instanceof NettyChatS2CPacketV735 chat) { recordChatFromJson(chat.getJsonMessage()); }
+        else if (packet instanceof NettyChatS2CPacketV47 chat) { recordChatFromJson(chat.getJsonMessage()); }
+        else if (packet instanceof NettyChatS2CPacket chat) { recordChatFromJson(chat.getJsonMessage()); }
+
+        // === PLAY state — KeepAlive ===
+        else if (packet instanceof KeepAlivePacketV340 ka) { ctx.writeAndFlush(new KeepAlivePacketV340(ka.getKeepAliveId())); }
+        else if (packet instanceof KeepAlivePacketV47 ka) { ctx.writeAndFlush(new KeepAlivePacketV47(ka.getKeepAliveId())); }
+        else if (packet instanceof KeepAlivePacketV17 ka) { ctx.writeAndFlush(new KeepAlivePacketV17(ka.getKeepAliveId())); }
+
+        // === PLAY state — Chunks ===
+        else if (packet instanceof MapChunkPacketV109 mc) { processV109Chunk(mc); }
+        else if (packet instanceof MapChunkPacketV47 mc) { processV47Chunk(mc); }
+        else if (packet instanceof MapChunkPacketV39 mc) {
+            processSectionedChunk(mc.getChunkX(), mc.getChunkZ(),
+                    mc.getPrimaryBitMask(), mc.getCompressedData());
+        }
+
+        // === PLAY state — Block changes ===
+        else if (packet instanceof NettyBlockChangePacketV477 bc) {
+            session.recordBlockChange(bc.getX(), bc.getY(), bc.getZ(), bc.getBlockStateId());
+        }
+        else if (packet instanceof NettyBlockChangePacketV393 bc) {
+            session.recordBlockChange(bc.getX(), bc.getY(), bc.getZ(), bc.getBlockStateId());
+        }
+        else if (packet instanceof NettyBlockChangePacketV47 bc) {
             session.recordBlockChange(bc.getX(), bc.getY(), bc.getZ(), bc.getBlockId());
-        } else if (packet instanceof NettyChatS2CPacketV47 chatV47) {
-            recordChatFromJson(chatV47.getJsonMessage());
-        } else if (packet instanceof NettyChatS2CPacket chat) {
-            recordChatFromJson(chat.getJsonMessage());
-        } else if (packet instanceof NettySpawnPlayerPacketV47 spV47) {
-            session.recordSpawnPlayer(spV47.getEntityId(), "v47_player");
-        } else if (packet instanceof NettySpawnPlayerPacketV5 spV5) {
-            session.recordSpawnPlayer(spV5.getEntityId(), spV5.getPlayerName());
-        } else if (packet instanceof NettySpawnPlayerPacket sp) {
-            session.recordSpawnPlayer(sp.getEntityId(), sp.getPlayerName());
-        } else if (packet instanceof NettyDestroyEntitiesPacketV47 deV47) {
-            for (int id : deV47.getEntityIds()) {
-                session.recordDespawn(id);
-            }
-        } else if (packet instanceof NettyDestroyEntitiesPacket de) {
-            for (int id : de.getEntityIds()) {
-                session.recordDespawn(id);
-            }
-        } else if (packet instanceof NettySetSlotPacketV47 ss) {
+        }
+        else if (packet instanceof NettyBlockChangePacket bc) {
+            session.recordBlockChange(bc.getX(), bc.getY(), bc.getZ(), bc.getBlockId());
+        }
+
+        // === PLAY state — Entities ===
+        else if (packet instanceof NettyDestroyEntitiesPacketV47 de) {
+            for (int id : de.getEntityIds()) session.recordDespawn(id);
+        }
+        else if (packet instanceof NettyDestroyEntitiesPacket de) {
+            for (int id : de.getEntityIds()) session.recordDespawn(id);
+        }
+        else if (packet instanceof NettySetSlotPacketV766 ss) {
             session.recordSetSlot(ss.getSlotIndex(), ss.getItemId(), ss.getCount());
-        } else if (packet instanceof KeepAlivePacketV47 kaV47) {
-            ctx.writeAndFlush(new KeepAlivePacketV47(kaV47.getKeepAliveId()));
-        } else if (packet instanceof KeepAlivePacketV17 ka) {
-            ctx.writeAndFlush(new KeepAlivePacketV17(ka.getKeepAliveId()));
-        } else if (packet instanceof MapChunkPacketV47 mcV47) {
-            processV47Chunk(mcV47);
-        } else if (packet instanceof MapChunkPacketV39 mcV39) {
-            processSectionedChunk(mcV39.getChunkX(), mcV39.getChunkZ(),
-                    mcV39.getPrimaryBitMask(), mcV39.getCompressedData());
-        } else if (packet instanceof NettyTimeUpdatePacket timeUpdate) {
-            session.recordTimeUpdate(timeUpdate.getTimeOfDay());
-        } else if (packet instanceof NettyChangeGameStatePacket gameState) {
-            session.recordWeatherChange(gameState.getReason());
-        } else if (packet instanceof NettyDisconnectPacket disconnect) {
-            System.err.println("BotNetty disconnected: " + disconnect.getJsonReason());
+        }
+        else if (packet instanceof NettySetSlotPacketV756 ss) {
+            session.recordSetSlot(ss.getSlotIndex(), ss.getItemId(), ss.getCount());
+        }
+        else if (packet instanceof NettySetSlotPacketV404 ss) {
+            session.recordSetSlot(ss.getSlotIndex(), ss.getItemId(), ss.getCount());
+        }
+        else if (packet instanceof NettySetSlotPacketV393 ss) {
+            session.recordSetSlot(ss.getSlotIndex(), ss.getItemId(), ss.getCount());
+        }
+        else if (packet instanceof NettySetSlotPacketV47 ss) {
+            session.recordSetSlot(ss.getSlotIndex(), ss.getItemId(), ss.getCount());
+        }
+
+        // === PLAY state — World ===
+        else if (packet instanceof NettyTimeUpdatePacket tu) { session.recordTimeUpdate(tu.getTimeOfDay()); }
+        else if (packet instanceof NettyChangeGameStatePacket gs) { session.recordWeatherChange(gs.getReason()); }
+
+        // === PLAY state — ChunkBatch (v764+) ===
+        else if (packet instanceof ChunkBatchFinishedPacket) {
+            ctx.writeAndFlush(new ChunkBatchReceivedPacket());
+        }
+
+        // === PLAY state — Disconnect ===
+        else if (packet instanceof NettyDisconnectPacketV765 disc) {
+            System.err.println("BotNetty disconnected: " + disc.getPlainText());
             ctx.close();
+        }
+        else if (packet instanceof NettyDisconnectPacket disc) {
+            System.err.println("BotNetty disconnected: " + disc.getJsonReason());
+            ctx.close();
+        }
+    }
+
+    private void handleLoginSuccess(ChannelHandlerContext ctx) {
+        if (version.isAtLeast(ProtocolVersion.RELEASE_1_20_2)) {
+            // v764+: Send LoginAcknowledged (still in LOGIN state), then transition to CONFIGURATION
+            ctx.writeAndFlush(new LoginAcknowledgedPacket());
+            setCodecState(ctx, ConnectionState.CONFIGURATION);
+        } else {
+            // Pre-v764: transition directly to PLAY
+            setCodecState(ctx, ConnectionState.PLAY);
         }
     }
 

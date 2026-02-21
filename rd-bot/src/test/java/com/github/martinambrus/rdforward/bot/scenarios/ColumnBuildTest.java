@@ -53,4 +53,67 @@ class ColumnBuildTest {
             bot.disconnect();
         }
     }
+
+    @Test
+    void fiveBlockColumnPlacementV477() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_14, "ColV477");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            Thread.sleep(500);
+
+            int x = 230, z = 230;
+            for (int i = 0; i < 5; i++) {
+                int targetY = 42 + i;
+                session.sendBlockPlace(x, targetY, z, 1, 4);
+                int blockType = session.waitForBlockChange(x, targetY + 1, z, 3000);
+                assertTrue(blockType > 0,
+                        "V477 block " + (i + 1) + " at Y=" + (targetY + 1) + " should be placed");
+            }
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void fiveBlockColumnPlacementV764() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "ColV764");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            Thread.sleep(500);
+
+            int x = 231, z = 231;
+            for (int i = 0; i < 5; i++) {
+                int targetY = 42 + i;
+                session.sendBlockPlace(x, targetY, z, 1, 4);
+                int blockType = session.waitForBlockChange(x, targetY + 1, z, 3000);
+                assertTrue(blockType > 0,
+                        "V764 block " + (i + 1) + " at Y=" + (targetY + 1) + " should be placed");
+            }
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void fiveBlockColumnPlacementV774() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "ColV774");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            Thread.sleep(500);
+
+            int x = 232, z = 232;
+            for (int i = 0; i < 5; i++) {
+                int targetY = 42 + i;
+                session.sendBlockPlace(x, targetY, z, 1, 4);
+                int blockType = session.waitForBlockChange(x, targetY + 1, z, 3000);
+                assertTrue(blockType > 0,
+                        "V774 block " + (i + 1) + " at Y=" + (targetY + 1) + " should be placed");
+            }
+        } finally {
+            bot.disconnect();
+        }
+    }
 }

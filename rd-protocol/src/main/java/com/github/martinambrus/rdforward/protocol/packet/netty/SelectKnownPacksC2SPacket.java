@@ -24,7 +24,7 @@ public class SelectKnownPacksC2SPacket implements Packet {
 
     @Override
     public void write(ByteBuf buf) {
-        // C2S only — no server-side encoding needed
+        McDataTypes.writeVarInt(buf, 0); // no known packs — server sends all registry data
     }
 
     @Override

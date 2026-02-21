@@ -36,7 +36,13 @@ public class NettyDisconnectPacketV765 implements Packet {
 
     @Override
     public void read(ByteBuf buf) {
-        // S2C only — no server-side decoding needed
+        int tagType = buf.readByte();
+        if (tagType == 0x08) { // TAG_String
+            int len = buf.readUnsignedShort();
+            byte[] bytes = new byte[len];
+            buf.readBytes(bytes);
+            plainText = new String(bytes, StandardCharsets.UTF_8);
+        }
     }
 
     public String getPlainText() { return plainText; }

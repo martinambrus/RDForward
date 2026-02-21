@@ -31,6 +31,13 @@ public class NettyBlockPlacementPacketV759 implements Packet, BlockPlacementData
 
     public NettyBlockPlacementPacketV759() {}
 
+    public NettyBlockPlacementPacketV759(int x, int y, int z, int face) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.face = face;
+    }
+
     @Override
     public int getPacketId() { return 0x30; }
 

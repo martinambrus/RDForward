@@ -55,4 +55,50 @@ class ChatTest {
             bot2.disconnect();
         }
     }
+
+    @Test
+    void nettyBotsCanExchangeChat() throws Exception {
+        BotClient bot1 = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "NettyChatA");
+        BotClient bot2 = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "NettyChatB");
+        try {
+            BotSession session1 = bot1.getSession();
+            BotSession session2 = bot2.getSession();
+            assertTrue(session1.isLoginComplete(), "Bot1 login should complete");
+            assertTrue(session2.isLoginComplete(), "Bot2 login should complete");
+
+            session1.sendChat("Hello from NettyChatA");
+            String received = session2.waitForChat("Hello from NettyChatA", 3000);
+            assertNotNull(received, "Bot2 should receive chat from Bot1");
+
+            session2.sendChat("Reply from NettyChatB");
+            String reply = session1.waitForChat("Reply from NettyChatB", 3000);
+            assertNotNull(reply, "Bot1 should receive reply from Bot2");
+        } finally {
+            bot1.disconnect();
+            bot2.disconnect();
+        }
+    }
+
+    @Test
+    void latestProtocolBotsCanExchangeChat() throws Exception {
+        BotClient bot1 = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "LateChatA");
+        BotClient bot2 = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "LateChatB");
+        try {
+            BotSession session1 = bot1.getSession();
+            BotSession session2 = bot2.getSession();
+            assertTrue(session1.isLoginComplete(), "Bot1 login should complete");
+            assertTrue(session2.isLoginComplete(), "Bot2 login should complete");
+
+            session1.sendChat("Latest protocol chat");
+            String received = session2.waitForChat("Latest protocol chat", 3000);
+            assertNotNull(received, "Bot2 should receive chat from Bot1 on latest protocol");
+
+            session2.sendChat("Latest reply");
+            String reply = session1.waitForChat("Latest reply", 3000);
+            assertNotNull(reply, "Bot1 should receive reply from Bot2 on latest protocol");
+        } finally {
+            bot1.disconnect();
+            bot2.disconnect();
+        }
+    }
 }

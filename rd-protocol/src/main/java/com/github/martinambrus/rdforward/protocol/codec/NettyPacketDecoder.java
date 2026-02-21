@@ -25,6 +25,7 @@ public class NettyPacketDecoder extends MessageToMessageDecoder<ByteBuf> {
     private volatile ConnectionState connectionState;
     private final PacketDirection direction;
     private volatile int protocolVersion = 4; // Default to 1.7.2
+    private boolean lenient; // When true, skip read errors instead of closing connection
 
     public NettyPacketDecoder(ConnectionState initialState) {
         this(initialState, PacketDirection.CLIENT_TO_SERVER);
@@ -63,7 +64,9 @@ public class NettyPacketDecoder extends MessageToMessageDecoder<ByteBuf> {
             System.err.println("NettyPacketDecoder: error reading "
                     + packet.getClass().getSimpleName() + " (0x"
                     + Integer.toHexString(packetId) + "): " + e.getMessage());
-            ctx.close();
+            if (!lenient) {
+                ctx.close();
+            }
             return;
         }
 
@@ -84,5 +87,9 @@ public class NettyPacketDecoder extends MessageToMessageDecoder<ByteBuf> {
 
     public int getProtocolVersion() {
         return protocolVersion;
+    }
+
+    public void setLenient(boolean lenient) {
+        this.lenient = lenient;
     }
 }

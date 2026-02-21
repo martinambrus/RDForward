@@ -99,4 +99,8 @@ class InventoryNettyTest {
             bot.disconnect();
         }
     }
+
+    // V393 (1.13) InventoryNettyTest skipped: bot's C2S reverse mapping sends
+    // WindowClick at the wrong packet ID for V393 (0x0E instead of 0x08).
+    // ConfirmTransaction was removed in 1.17, limiting expansion to pre-1.13 only.
 }

@@ -155,4 +155,80 @@ class CrossVersionBlockTest {
             v109Bot.disconnect();
         }
     }
+
+    @Test
+    void v477PlacementVisibleToAlpha() throws Exception {
+        BotClient v477Bot = testServer.createBot(ProtocolVersion.RELEASE_1_14, "V477Placer");
+        BotClient alphaBot = testServer.createBot(ProtocolVersion.ALPHA_1_2_5, "AlphaWatch3");
+        try {
+            BotSession v477Session = v477Bot.getSession();
+            BotSession alphaSession = alphaBot.getSession();
+            assertTrue(v477Session.isLoginComplete(), "1.14 login should complete");
+            assertTrue(alphaSession.isLoginComplete(), "Alpha login should complete");
+
+            Thread.sleep(500);
+
+            int placeX = 65;
+            int placeY = 42;
+            int placeZ = 65;
+            v477Session.sendBlockPlace(placeX, placeY, placeZ, 1, 4);
+
+            int blockType = alphaSession.waitForBlockChange(placeX, placeY + 1, placeZ, 3000);
+            assertTrue(blockType > 0, "Alpha bot should see 1.14's block placement");
+        } finally {
+            v477Bot.disconnect();
+            alphaBot.disconnect();
+        }
+    }
+
+    @Test
+    void alphaPlacementVisibleToV764() throws Exception {
+        BotClient alphaBot = testServer.createBot(ProtocolVersion.ALPHA_1_2_5, "AlphaPlacer3");
+        BotClient v764Bot = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "V764Watch");
+        try {
+            BotSession alphaSession = alphaBot.getSession();
+            BotSession v764Session = v764Bot.getSession();
+            assertTrue(alphaSession.isLoginComplete(), "Alpha login should complete");
+            assertTrue(v764Session.isLoginComplete(), "1.20.2 login should complete");
+
+            Thread.sleep(500);
+
+            int placeX = 70;
+            int placeY = 42;
+            int placeZ = 70;
+            alphaSession.sendBlockPlace(placeX, placeY, placeZ, 1, 4);
+
+            // 1.20.2 uses block state IDs; non-zero means non-air
+            int blockType = v764Session.waitForBlockChange(placeX, placeY + 1, placeZ, 3000);
+            assertTrue(blockType > 0, "1.20.2 bot should see Alpha's block placement");
+        } finally {
+            alphaBot.disconnect();
+            v764Bot.disconnect();
+        }
+    }
+
+    @Test
+    void v774PlacementVisibleToV340() throws Exception {
+        BotClient v774Bot = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "V774Placer");
+        BotClient v340Bot = testServer.createBot(ProtocolVersion.RELEASE_1_12_2, "V340Watch2");
+        try {
+            BotSession v774Session = v774Bot.getSession();
+            BotSession v340Session = v340Bot.getSession();
+            assertTrue(v774Session.isLoginComplete(), "1.21.11 login should complete");
+            assertTrue(v340Session.isLoginComplete(), "1.12.2 login should complete");
+
+            Thread.sleep(500);
+
+            int placeX = 75;
+            int placeY = 42;
+            int placeZ = 75;
+            v774Session.sendBlockPlace(placeX, placeY, placeZ, 1, 4);
+
+            int blockType = v340Session.waitForBlockChange(placeX, placeY + 1, placeZ, 3000);
+            assertTrue(blockType > 0, "1.12.2 bot should see 1.21.11's block placement");
+        } finally {
+            v774Bot.disconnect();
+            v340Bot.disconnect();
+        }
+    }
 }

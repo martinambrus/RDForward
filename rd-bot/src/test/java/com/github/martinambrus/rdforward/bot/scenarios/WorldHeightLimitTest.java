@@ -73,4 +73,118 @@ class WorldHeightLimitTest {
             bot.disconnect();
         }
     }
+
+    @Test
+    void v477PlacementAtMaxHeightSucceeds() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_14, "HtV477");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            Thread.sleep(500);
+
+            int x = 240, z = 240;
+            session.sendBlockPlace(x, 62, z, 1, 4);
+            int blockType = session.waitForBlockChange(x, 63, z, 3000);
+            assertTrue(blockType > 0, "V477 placement at Y=63 (max valid) should succeed");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void v477PlacementAboveMaxHeightFails() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_14, "HtV477F");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            Thread.sleep(500);
+
+            int x = 241, z = 241;
+            session.sendBlockPlace(x, 62, z, 1, 4);
+            assertTrue(session.waitForBlockChange(x, 63, z, 3000) > 0, "Setup block at Y=63");
+
+            session.sendBlockPlace(x, 63, z, 1, 4);
+            int result = session.waitForBlockChange(x, 64, z, 1500);
+            assertTrue(result <= 0,
+                    "V477 placement at Y=64 should fail, got blockType=" + result);
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void v764PlacementAtMaxHeightSucceeds() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "HtV764");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            Thread.sleep(500);
+
+            int x = 242, z = 242;
+            session.sendBlockPlace(x, 62, z, 1, 4);
+            int blockType = session.waitForBlockChange(x, 63, z, 3000);
+            assertTrue(blockType > 0, "V764 placement at Y=63 (max valid) should succeed");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void v764PlacementAboveMaxHeightFails() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "HtV764F");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            Thread.sleep(500);
+
+            int x = 243, z = 243;
+            session.sendBlockPlace(x, 62, z, 1, 4);
+            assertTrue(session.waitForBlockChange(x, 63, z, 3000) > 0, "Setup block at Y=63");
+
+            session.sendBlockPlace(x, 63, z, 1, 4);
+            int result = session.waitForBlockChange(x, 64, z, 1500);
+            assertTrue(result <= 0,
+                    "V764 placement at Y=64 should fail, got blockType=" + result);
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void v774PlacementAtMaxHeightSucceeds() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "HtV774");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            Thread.sleep(500);
+
+            int x = 244, z = 244;
+            session.sendBlockPlace(x, 62, z, 1, 4);
+            int blockType = session.waitForBlockChange(x, 63, z, 3000);
+            assertTrue(blockType > 0, "V774 placement at Y=63 (max valid) should succeed");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void v774PlacementAboveMaxHeightFails() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "HtV774F");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            Thread.sleep(500);
+
+            int x = 245, z = 245;
+            session.sendBlockPlace(x, 62, z, 1, 4);
+            assertTrue(session.waitForBlockChange(x, 63, z, 3000) > 0, "Setup block at Y=63");
+
+            session.sendBlockPlace(x, 63, z, 1, 4);
+            int result = session.waitForBlockChange(x, 64, z, 1500);
+            assertTrue(result <= 0,
+                    "V774 placement at Y=64 should fail, got blockType=" + result);
+        } finally {
+            bot.disconnect();
+        }
+    }
 }

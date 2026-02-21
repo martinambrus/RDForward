@@ -64,4 +64,41 @@ class BlockSyncTest {
             nettyBot.disconnect();
         }
     }
+
+    @Test
+    void bidirectionalPlaceAndBreakSyncModernNetty() throws Exception {
+        BotClient v764Bot = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "V764Sync");
+        BotClient v477Bot = testServer.createBot(ProtocolVersion.RELEASE_1_14, "V477Sync");
+        try {
+            BotSession v764Session = v764Bot.getSession();
+            BotSession v477Session = v477Bot.getSession();
+            assertTrue(v764Session.isLoginComplete(), "1.20.2 login should complete");
+            assertTrue(v477Session.isLoginComplete(), "1.14 login should complete");
+
+            Thread.sleep(500);
+
+            // --- 1.20.2 places at (52, 42, 52) top face -> target (52, 43, 52) ---
+            v764Session.sendBlockPlace(52, 42, 52, 1, 4);
+            int v477SeesPlace1 = v477Session.waitForBlockChange(52, 43, 52, 3000);
+            assertTrue(v477SeesPlace1 > 0, "1.14 should see 1.20.2's placement");
+
+            // --- 1.14 places at (57, 42, 57) top face -> target (57, 43, 57) ---
+            v477Session.sendBlockPlace(57, 42, 57, 1, 4);
+            int v764SeesPlace2 = v764Session.waitForBlockChange(57, 43, 57, 3000);
+            assertTrue(v764SeesPlace2 > 0, "1.20.2 should see 1.14's placement");
+
+            // --- 1.20.2 breaks block at (52, 43, 52) ---
+            v764Session.sendDigging(0, 52, 43, 52, 1);
+            int v477SeesBreak1 = v477Session.waitForBlockChangeValue(52, 43, 52, 0, 3000);
+            assertEquals(0, v477SeesBreak1, "1.14 should see 1.20.2's block broken to air");
+
+            // --- 1.14 breaks block at (57, 43, 57) ---
+            v477Session.sendDigging(0, 57, 43, 57, 1);
+            int v764SeesBreak2 = v764Session.waitForBlockChangeValue(57, 43, 57, 0, 3000);
+            assertEquals(0, v764SeesBreak2, "1.20.2 should see 1.14's block broken to air");
+        } finally {
+            v764Bot.disconnect();
+            v477Bot.disconnect();
+        }
+    }
 }

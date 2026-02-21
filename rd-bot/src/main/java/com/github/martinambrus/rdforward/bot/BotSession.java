@@ -7,10 +7,15 @@ import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlaceme
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlacementPacketV47;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlacementPacketV109;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlacementPacketV315;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlacementPacketV477;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlacementPacketV759;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlacementPacketV768;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyChatC2SPacket;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyWindowClickPacket;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyWindowClickPacketV47;
 import com.github.martinambrus.rdforward.protocol.packet.netty.PlayerDiggingPacketV47;
+import com.github.martinambrus.rdforward.protocol.packet.netty.PlayerDiggingPacketV477;
+import com.github.martinambrus.rdforward.protocol.packet.netty.PlayerDiggingPacketV759;
 import io.netty.channel.Channel;
 import org.cloudburstmc.math.vector.Vector3f;
 import org.cloudburstmc.math.vector.Vector3i;
@@ -422,6 +427,15 @@ public class BotSession {
         return slotCounts[slot];
     }
 
+    public boolean waitForNonEmptySlot(int slot, long timeoutMs) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            if (getSlotItemId(slot) > 0) return true;
+            Thread.sleep(50);
+        }
+        return getSlotItemId(slot) > 0;
+    }
+
     public boolean waitForSlotItem(int slot, int expectedItemId, long timeoutMs)
             throws InterruptedException {
         long deadline = System.currentTimeMillis() + timeoutMs;
@@ -488,6 +502,21 @@ public class BotSession {
             bedrockSession.sendPacketImmediately(pkt);
             return;
         }
+        if (version.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
+            // Netty 1.21.2+: V768 format (V759 + worldBorderHit boolean)
+            sendPacket(new NettyBlockPlacementPacketV768(x, y, z, direction));
+            return;
+        }
+        if (version.isAtLeast(ProtocolVersion.RELEASE_1_19_1)) {
+            // Netty 1.19+: V759 format (V477 + VarInt sequence)
+            sendPacket(new NettyBlockPlacementPacketV759(x, y, z, direction));
+            return;
+        }
+        if (version.isAtLeast(ProtocolVersion.RELEASE_1_14)) {
+            // Netty 1.14-1.18.2: V477 format
+            sendPacket(new NettyBlockPlacementPacketV477(x, y, z, direction));
+            return;
+        }
         if (version.isAtLeast(ProtocolVersion.RELEASE_1_11)) {
             // Netty 1.11+: packed Position, VarInt face, VarInt hand, float cursors
             sendPacket(new NettyBlockPlacementPacketV315(x, y, z, direction));
@@ -549,7 +578,11 @@ public class BotSession {
             bedrockSession.sendPacketImmediately(pkt);
             return;
         }
-        if (version.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+        if (version.isAtLeast(ProtocolVersion.RELEASE_1_19_1)) {
+            sendPacket(new PlayerDiggingPacketV759(status, x, y, z, face));
+        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_14)) {
+            sendPacket(new PlayerDiggingPacketV477(status, x, y, z, face));
+        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
             sendPacket(new PlayerDiggingPacketV47(status, x, y, z, face));
         } else {
             sendPacket(new PlayerDiggingPacket(status, x, y, z, face));
