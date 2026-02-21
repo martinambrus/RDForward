@@ -174,6 +174,29 @@ class CrossVersionChatTest {
     }
 
     @Test
+    void v735AndV47CanChat() throws Exception {
+        BotClient v735Bot = testServer.createBot(ProtocolVersion.RELEASE_1_16, "V735Chat");
+        BotClient v47Bot = testServer.createBot(ProtocolVersion.RELEASE_1_8, "V47Chat");
+        try {
+            BotSession v735Session = v735Bot.getSession();
+            BotSession v47Session = v47Bot.getSession();
+            assertTrue(v735Session.isLoginComplete(), "1.16 login should complete");
+            assertTrue(v47Session.isLoginComplete(), "1.8 login should complete");
+
+            v735Session.sendChat("Hello from 1.16");
+            String received = v47Session.waitForChat("Hello from 1.16", 3000);
+            assertNotNull(received, "V47 bot should receive 1.16's chat message");
+
+            v47Session.sendChat("Hello from 1.8");
+            received = v735Session.waitForChat("Hello from 1.8", 3000);
+            assertNotNull(received, "1.16 bot should receive V47's chat message");
+        } finally {
+            v735Bot.disconnect();
+            v47Bot.disconnect();
+        }
+    }
+
+    @Test
     void v774AndAlphaCanChat() throws Exception {
         BotClient v774Bot = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "V774Chat");
         BotClient alphaBot = testServer.createBot(ProtocolVersion.ALPHA_1_2_5, "AlphaChat4");

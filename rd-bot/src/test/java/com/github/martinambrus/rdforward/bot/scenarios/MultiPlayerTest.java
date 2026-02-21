@@ -65,6 +65,98 @@ class MultiPlayerTest {
     }
 
     @Test
+    void betaBotsCanSeeEachOther() throws Exception {
+        BotClient bot1 = testServer.createBot(ProtocolVersion.BETA_1_8, "BetaMP1");
+        BotClient bot2 = null;
+        try {
+            BotSession session1 = bot1.getSession();
+            assertTrue(session1.isLoginComplete(), "Bot1 login should complete");
+
+            bot2 = testServer.createBot(ProtocolVersion.BETA_1_8, "BetaMP2");
+            BotSession session2 = bot2.getSession();
+            assertTrue(session2.isLoginComplete(), "Bot2 login should complete");
+
+            Thread.sleep(500);
+            assertTrue(session2.getSpawnedPlayers().size() >= 1,
+                    "Bot2 should see Bot1, saw: " + session2.getSpawnedPlayers());
+            assertTrue(session1.getSpawnedPlayers().size() >= 1,
+                    "Bot1 should see Bot2, saw: " + session1.getSpawnedPlayers());
+        } finally {
+            bot1.disconnect();
+            if (bot2 != null) bot2.disconnect();
+        }
+    }
+
+    @Test
+    void nettyV47BotsCanSeeEachOther() throws Exception {
+        BotClient bot1 = testServer.createBot(ProtocolVersion.RELEASE_1_8, "V47MP1");
+        BotClient bot2 = null;
+        try {
+            BotSession session1 = bot1.getSession();
+            assertTrue(session1.isLoginComplete(), "Bot1 login should complete");
+
+            bot2 = testServer.createBot(ProtocolVersion.RELEASE_1_8, "V47MP2");
+            BotSession session2 = bot2.getSession();
+            assertTrue(session2.isLoginComplete(), "Bot2 login should complete");
+
+            Thread.sleep(500);
+            assertTrue(session2.getSpawnedPlayers().size() >= 1,
+                    "Bot2 should see Bot1, saw: " + session2.getSpawnedPlayers());
+            assertTrue(session1.getSpawnedPlayers().size() >= 1,
+                    "Bot1 should see Bot2, saw: " + session1.getSpawnedPlayers());
+        } finally {
+            bot1.disconnect();
+            if (bot2 != null) bot2.disconnect();
+        }
+    }
+
+    @Test
+    void v393BotsCanSeeEachOther() throws Exception {
+        BotClient bot1 = testServer.createBot(ProtocolVersion.RELEASE_1_13, "V393MP1");
+        BotClient bot2 = null;
+        try {
+            BotSession session1 = bot1.getSession();
+            assertTrue(session1.isLoginComplete(), "Bot1 login should complete");
+
+            bot2 = testServer.createBot(ProtocolVersion.RELEASE_1_13, "V393MP2");
+            BotSession session2 = bot2.getSession();
+            assertTrue(session2.isLoginComplete(), "Bot2 login should complete");
+
+            Thread.sleep(500);
+            assertTrue(session2.getSpawnedPlayers().size() >= 1,
+                    "Bot2 should see Bot1, saw: " + session2.getSpawnedPlayers());
+            assertTrue(session1.getSpawnedPlayers().size() >= 1,
+                    "Bot1 should see Bot2, saw: " + session1.getSpawnedPlayers());
+        } finally {
+            bot1.disconnect();
+            if (bot2 != null) bot2.disconnect();
+        }
+    }
+
+    @Test
+    void v735BotsCanSeeEachOther() throws Exception {
+        BotClient bot1 = testServer.createBot(ProtocolVersion.RELEASE_1_16, "V735MP1");
+        BotClient bot2 = null;
+        try {
+            BotSession session1 = bot1.getSession();
+            assertTrue(session1.isLoginComplete(), "Bot1 login should complete");
+
+            bot2 = testServer.createBot(ProtocolVersion.RELEASE_1_16, "V735MP2");
+            BotSession session2 = bot2.getSession();
+            assertTrue(session2.isLoginComplete(), "Bot2 login should complete");
+
+            Thread.sleep(500);
+            assertTrue(session2.getSpawnedPlayers().size() >= 1,
+                    "Bot2 should see Bot1, saw: " + session2.getSpawnedPlayers());
+            assertTrue(session1.getSpawnedPlayers().size() >= 1,
+                    "Bot1 should see Bot2, saw: " + session1.getSpawnedPlayers());
+        } finally {
+            bot1.disconnect();
+            if (bot2 != null) bot2.disconnect();
+        }
+    }
+
+    @Test
     void twoModernNettyBotsCanSeeEachOther() throws Exception {
         BotClient bot1 = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "Player3");
         BotClient bot2 = null;

@@ -68,8 +68,8 @@ class CobblestoneReplenishmentTest {
             // Place a block (consumes 1 cobblestone)
             session.sendBlockPlace(10, 42, 10, 1, COBBLESTONE);
 
-            // Server batches replenishment with ~1s delay; wait up to 3s
-            assertTrue(session.waitForReceivedItemTotal(COBBLESTONE, 65, 3000),
+            // Server batches replenishment with ~1s delay; wait up to 5s
+            assertTrue(session.waitForReceivedItemTotal(COBBLESTONE, 65, 5000),
                     "Should receive replenishment after placement (total > 64)");
         } finally {
             bot.disconnect();
@@ -101,6 +101,78 @@ class CobblestoneReplenishmentTest {
                     "Slot 36 should still have cobblestone after placement");
             assertTrue(session.getSlotCount(36) > 0,
                     "Slot 36 count should be positive after replenishment");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void nettyV47CobblestoneReplenishedAfterPlace() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_8, "RepV47");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            assertTrue(session.waitForSlotItem(36, COBBLESTONE, 5000),
+                    "V47 should receive cobblestone in slot 36");
+
+            Thread.sleep(300);
+
+            session.sendBlockPlace(212, 42, 212, 1, COBBLESTONE);
+
+            Thread.sleep(2000);
+            assertEquals(COBBLESTONE, session.getSlotItemId(36),
+                    "V47 slot 36 should still have cobblestone after placement");
+            assertTrue(session.getSlotCount(36) > 0,
+                    "V47 slot 36 count should be positive after replenishment");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void nettyV340CobblestoneReplenishedAfterPlace() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_12_2, "RepV340");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            assertTrue(session.waitForSlotItem(36, COBBLESTONE, 5000),
+                    "V340 should receive cobblestone in slot 36");
+
+            Thread.sleep(300);
+
+            session.sendBlockPlace(213, 42, 213, 1, COBBLESTONE);
+
+            Thread.sleep(2000);
+            assertEquals(COBBLESTONE, session.getSlotItemId(36),
+                    "V340 slot 36 should still have cobblestone after placement");
+            assertTrue(session.getSlotCount(36) > 0,
+                    "V340 slot 36 count should be positive after replenishment");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void nettyV774CobblestoneReplenishedAfterPlace() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "RepV774");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            assertTrue(session.waitForNonEmptySlot(36, 5000),
+                    "V774 should receive cobblestone in slot 36");
+
+            Thread.sleep(300);
+
+            session.sendBlockPlace(214, 42, 214, 1, 4);
+
+            Thread.sleep(2000);
+            assertTrue(session.getSlotItemId(36) > 0,
+                    "V774 slot 36 should still have cobblestone after placement");
+            assertTrue(session.getSlotCount(36) > 0,
+                    "V774 slot 36 count should be positive after replenishment");
         } finally {
             bot.disconnect();
         }

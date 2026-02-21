@@ -28,6 +28,82 @@ class WorldHeightLimitTest {
     }
 
     @Test
+    void alphaPlacementAtMaxHeightSucceeds() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.ALPHA_1_2_5, "AlphaHt");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            Thread.sleep(500);
+
+            int x = 90, z = 90;
+            session.sendBlockPlace(x, 62, z, 1, 4);
+            int blockType = session.waitForBlockChange(x, 63, z, 3000);
+            assertTrue(blockType > 0, "Alpha placement at Y=63 (max valid) should succeed");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void alphaPlacementAboveMaxHeightFails() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.ALPHA_1_2_5, "AlphaHtF");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            Thread.sleep(500);
+
+            int x = 91, z = 91;
+            session.sendBlockPlace(x, 62, z, 1, 4);
+            assertTrue(session.waitForBlockChange(x, 63, z, 3000) > 0, "Setup block at Y=63");
+
+            session.sendBlockPlace(x, 63, z, 1, 4);
+            int result = session.waitForBlockChange(x, 64, z, 1500);
+            assertTrue(result <= 0,
+                    "Alpha placement at Y=64 (out of bounds) should fail, got blockType=" + result);
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void v47PlacementAtMaxHeightSucceeds() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_8, "V47Ht");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            Thread.sleep(500);
+
+            int x = 92, z = 92;
+            session.sendBlockPlace(x, 62, z, 1, 4);
+            int blockType = session.waitForBlockChange(x, 63, z, 3000);
+            assertTrue(blockType > 0, "V47 placement at Y=63 (max valid) should succeed");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void v47PlacementAboveMaxHeightFails() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_8, "V47HtF");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            Thread.sleep(500);
+
+            int x = 93, z = 93;
+            session.sendBlockPlace(x, 62, z, 1, 4);
+            assertTrue(session.waitForBlockChange(x, 63, z, 3000) > 0, "Setup block at Y=63");
+
+            session.sendBlockPlace(x, 63, z, 1, 4);
+            int result = session.waitForBlockChange(x, 64, z, 1500);
+            assertTrue(result <= 0,
+                    "V47 placement at Y=64 (out of bounds) should fail, got blockType=" + result);
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
     void placementAtMaxHeightSucceeds() throws Exception {
         BotClient bot = testServer.createBot(ProtocolVersion.BETA_1_8, "HeightBot");
         try {

@@ -199,6 +199,52 @@ class GrassConversionTest {
     }
 
     @Test
+    void v774PlacementAtSurfaceConvertsToGrass() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "GrsV774");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            int x = 240, z = 240;
+            Thread.sleep(500);
+
+            session.sendDigging(0, x, SURFACE_Y, z, 1);
+            assertEquals(0, session.waitForBlockChangeValue(x, SURFACE_Y, z, 0, 3000),
+                    "Block should be broken to air");
+
+            session.sendBlockPlace(x, SURFACE_Y - 1, z, 1, 4);
+            int blockType = session.waitForBlockChangeValue(x, SURFACE_Y, z, GRASS_STATE, 3000);
+            assertEquals(GRASS_STATE, blockType,
+                    "V774 placement at surface Y should convert to grass (state 9)");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void v774PlacementBelowSurfaceStaysCobblestone() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "CobV774");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            int x = 241, z = 241;
+            Thread.sleep(500);
+
+            session.sendDigging(0, x, 41, z, 1);
+            assertEquals(0, session.waitForBlockChangeValue(x, 41, z, 0, 3000),
+                    "Block at Y=41 should be broken to air");
+
+            session.sendBlockPlace(x, 40, z, 1, 4);
+            int blockType = session.waitForBlockChangeValue(x, 41, z, COBBLESTONE_STATE, 3000);
+            assertEquals(COBBLESTONE_STATE, blockType,
+                    "V774 placement below surface should stay cobblestone (state 14)");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
     void v764PlacementBelowSurfaceStaysCobblestone() throws Exception {
         BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "CobV764");
         try {

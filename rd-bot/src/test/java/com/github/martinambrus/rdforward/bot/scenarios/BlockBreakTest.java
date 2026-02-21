@@ -66,6 +66,42 @@ class BlockBreakTest {
     }
 
     @Test
+    void crossVersionBlockBreakingWithV393() throws Exception {
+        BotClient v393Bot = testServer.createBot(ProtocolVersion.RELEASE_1_13, "V393Break");
+        BotClient alphaBot = testServer.createBot(ProtocolVersion.ALPHA_1_2_5, "AlphaBreak4");
+        try {
+            BotSession v393Session = v393Bot.getSession();
+            BotSession alphaSession = alphaBot.getSession();
+            assertTrue(v393Session.isLoginComplete(), "1.13 login should complete");
+            assertTrue(alphaSession.isLoginComplete(), "Alpha login should complete");
+
+            Thread.sleep(500);
+
+            // V393 places block at (47, 42, 47) top face -> target (47, 43, 47)
+            int bx = 47, by = 42, bz = 47;
+            v393Session.sendBlockPlace(bx, by, bz, 1, 4);
+
+            int v393Placed = v393Session.waitForBlockChange(bx, by + 1, bz, 3000);
+            assertTrue(v393Placed > 0, "1.13 should see own placement");
+
+            int alphaPlaced = alphaSession.waitForBlockChange(bx, by + 1, bz, 3000);
+            assertTrue(alphaPlaced > 0, "Alpha should see 1.13's placement");
+
+            // Alpha breaks the block
+            alphaSession.sendDigging(0, bx, by + 1, bz, 1);
+
+            int v393Broken = v393Session.waitForBlockChangeValue(bx, by + 1, bz, 0, 3000);
+            assertEquals(0, v393Broken, "1.13 should see block broken to air");
+
+            int alphaBroken = alphaSession.waitForBlockChangeValue(bx, by + 1, bz, 0, 3000);
+            assertEquals(0, alphaBroken, "Alpha should see block broken to air");
+        } finally {
+            v393Bot.disconnect();
+            alphaBot.disconnect();
+        }
+    }
+
+    @Test
     void crossVersionBlockBreakingWithV109() throws Exception {
         BotClient v109Bot = testServer.createBot(ProtocolVersion.RELEASE_1_9_4, "V109Break");
         BotClient v47Bot = testServer.createBot(ProtocolVersion.RELEASE_1_8, "V47Break");

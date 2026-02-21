@@ -55,6 +55,78 @@ class JoinLeaveBroadcastTest {
     }
 
     @Test
+    void betaJoinAndLeaveBroadcasts() throws Exception {
+        BotClient observer = testServer.createBot(ProtocolVersion.BETA_1_7_3, "BetaObs");
+        try {
+            BotSession observerSession = observer.getSession();
+            assertTrue(observerSession.isLoginComplete(), "Observer login should complete");
+
+            BotClient joiner = testServer.createBot(ProtocolVersion.BETA_1_7_3, "BetaJoin");
+            BotSession joinerSession = joiner.getSession();
+            assertTrue(joinerSession.isLoginComplete(), "BetaJoin login should complete");
+
+            String joinMsg = observerSession.waitForChat("BetaJoin joined the game", 3000);
+            assertNotNull(joinMsg, "Beta observer should receive join broadcast");
+
+            joiner.disconnect();
+            Thread.sleep(200);
+
+            String leaveMsg = observerSession.waitForChat("BetaJoin left the game", 5000);
+            assertNotNull(leaveMsg, "Beta observer should receive leave broadcast");
+        } finally {
+            observer.disconnect();
+        }
+    }
+
+    @Test
+    void nettyV47JoinAndLeaveBroadcasts() throws Exception {
+        BotClient observer = testServer.createBot(ProtocolVersion.RELEASE_1_8, "V47Obs");
+        try {
+            BotSession observerSession = observer.getSession();
+            assertTrue(observerSession.isLoginComplete(), "Observer login should complete");
+
+            BotClient joiner = testServer.createBot(ProtocolVersion.RELEASE_1_8, "V47Join");
+            BotSession joinerSession = joiner.getSession();
+            assertTrue(joinerSession.isLoginComplete(), "V47Join login should complete");
+
+            String joinMsg = observerSession.waitForChat("V47Join joined the game", 3000);
+            assertNotNull(joinMsg, "V47 observer should receive join broadcast");
+
+            joiner.disconnect();
+            Thread.sleep(200);
+
+            String leaveMsg = observerSession.waitForChat("V47Join left the game", 5000);
+            assertNotNull(leaveMsg, "V47 observer should receive leave broadcast");
+        } finally {
+            observer.disconnect();
+        }
+    }
+
+    @Test
+    void v393JoinAndLeaveBroadcasts() throws Exception {
+        BotClient observer = testServer.createBot(ProtocolVersion.RELEASE_1_13, "V393Obs");
+        try {
+            BotSession observerSession = observer.getSession();
+            assertTrue(observerSession.isLoginComplete(), "Observer login should complete");
+
+            BotClient joiner = testServer.createBot(ProtocolVersion.RELEASE_1_13, "V393Join");
+            BotSession joinerSession = joiner.getSession();
+            assertTrue(joinerSession.isLoginComplete(), "V393Join login should complete");
+
+            String joinMsg = observerSession.waitForChat("V393Join joined the game", 3000);
+            assertNotNull(joinMsg, "V393 observer should receive join broadcast");
+
+            joiner.disconnect();
+            Thread.sleep(200);
+
+            String leaveMsg = observerSession.waitForChat("V393Join left the game", 5000);
+            assertNotNull(leaveMsg, "V393 observer should receive leave broadcast");
+        } finally {
+            observer.disconnect();
+        }
+    }
+
+    @Test
     void modernNettyJoinAndLeaveBroadcasts() throws Exception {
         BotClient observer = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "Observer2");
         try {

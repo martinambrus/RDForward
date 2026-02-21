@@ -59,6 +59,90 @@ class PlayerDespawnTest {
     }
 
     @Test
+    void betaDisconnectTriggersDestroy() throws Exception {
+        BotClient observer = testServer.createBot(ProtocolVersion.BETA_1_8, "BetaWatch");
+        BotClient leaver = testServer.createBot(ProtocolVersion.BETA_1_8, "BetaLeave");
+        try {
+            BotSession observerSession = observer.getSession();
+            BotSession leaverSession = leaver.getSession();
+            assertTrue(observerSession.isLoginComplete(), "Observer login should complete");
+            assertTrue(leaverSession.isLoginComplete(), "Leaver login should complete");
+
+            int leaverEntityId = leaverSession.getEntityId();
+
+            Thread.sleep(500);
+            assertTrue(observerSession.getSpawnedPlayers().size() >= 1,
+                    "Observer should see leaver spawn");
+
+            leaver.disconnect();
+            leaver = null;
+            Thread.sleep(200);
+
+            assertTrue(observerSession.waitForDespawn(leaverEntityId, 5000),
+                    "Observer should receive DestroyEntity for disconnected Beta player");
+        } finally {
+            observer.disconnect();
+            if (leaver != null) leaver.disconnect();
+        }
+    }
+
+    @Test
+    void nettyV47DisconnectTriggersDestroy() throws Exception {
+        BotClient observer = testServer.createBot(ProtocolVersion.RELEASE_1_8, "V47Watch");
+        BotClient leaver = testServer.createBot(ProtocolVersion.RELEASE_1_8, "V47Leave");
+        try {
+            BotSession observerSession = observer.getSession();
+            BotSession leaverSession = leaver.getSession();
+            assertTrue(observerSession.isLoginComplete(), "Observer login should complete");
+            assertTrue(leaverSession.isLoginComplete(), "Leaver login should complete");
+
+            int leaverEntityId = leaverSession.getEntityId();
+
+            Thread.sleep(500);
+            assertTrue(observerSession.getSpawnedPlayers().size() >= 1,
+                    "Observer should see leaver spawn");
+
+            leaver.disconnect();
+            leaver = null;
+            Thread.sleep(200);
+
+            assertTrue(observerSession.waitForDespawn(leaverEntityId, 5000),
+                    "Observer should receive DestroyEntity for disconnected V47 player");
+        } finally {
+            observer.disconnect();
+            if (leaver != null) leaver.disconnect();
+        }
+    }
+
+    @Test
+    void v393DisconnectTriggersDestroy() throws Exception {
+        BotClient observer = testServer.createBot(ProtocolVersion.RELEASE_1_13, "V393Watch");
+        BotClient leaver = testServer.createBot(ProtocolVersion.RELEASE_1_13, "V393Leave");
+        try {
+            BotSession observerSession = observer.getSession();
+            BotSession leaverSession = leaver.getSession();
+            assertTrue(observerSession.isLoginComplete(), "Observer login should complete");
+            assertTrue(leaverSession.isLoginComplete(), "Leaver login should complete");
+
+            int leaverEntityId = leaverSession.getEntityId();
+
+            Thread.sleep(500);
+            assertTrue(observerSession.getSpawnedPlayers().size() >= 1,
+                    "Observer should see leaver spawn");
+
+            leaver.disconnect();
+            leaver = null;
+            Thread.sleep(200);
+
+            assertTrue(observerSession.waitForDespawn(leaverEntityId, 5000),
+                    "Observer should receive DestroyEntity for disconnected V393 player");
+        } finally {
+            observer.disconnect();
+            if (leaver != null) leaver.disconnect();
+        }
+    }
+
+    @Test
     void modernNettyDisconnectTriggersDestroy() throws Exception {
         BotClient observer = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "WatchBot2");
         BotClient leaver = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "LeaveBot2");

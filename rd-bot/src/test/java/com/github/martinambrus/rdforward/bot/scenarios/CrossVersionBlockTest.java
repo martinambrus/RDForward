@@ -208,6 +208,52 @@ class CrossVersionBlockTest {
     }
 
     @Test
+    void v393PlacementVisibleToV47() throws Exception {
+        BotClient v393Bot = testServer.createBot(ProtocolVersion.RELEASE_1_13, "V393Placer");
+        BotClient v47Bot = testServer.createBot(ProtocolVersion.RELEASE_1_8, "V47Watch");
+        try {
+            BotSession v393Session = v393Bot.getSession();
+            BotSession v47Session = v47Bot.getSession();
+            assertTrue(v393Session.isLoginComplete(), "1.13 login should complete");
+            assertTrue(v47Session.isLoginComplete(), "1.8 login should complete");
+
+            Thread.sleep(500);
+
+            int placeX = 110, placeY = 42, placeZ = 110;
+            v393Session.sendBlockPlace(placeX, placeY, placeZ, 1, 4);
+
+            int blockType = v47Session.waitForBlockChange(placeX, placeY + 1, placeZ, 3000);
+            assertTrue(blockType > 0, "V47 bot should see 1.13's block placement");
+        } finally {
+            v393Bot.disconnect();
+            v47Bot.disconnect();
+        }
+    }
+
+    @Test
+    void v735PlacementVisibleToAlpha() throws Exception {
+        BotClient v735Bot = testServer.createBot(ProtocolVersion.RELEASE_1_16, "V735Placer");
+        BotClient alphaBot = testServer.createBot(ProtocolVersion.ALPHA_1_2_5, "AlphaWatch4");
+        try {
+            BotSession v735Session = v735Bot.getSession();
+            BotSession alphaSession = alphaBot.getSession();
+            assertTrue(v735Session.isLoginComplete(), "1.16 login should complete");
+            assertTrue(alphaSession.isLoginComplete(), "Alpha login should complete");
+
+            Thread.sleep(500);
+
+            int placeX = 112, placeY = 42, placeZ = 112;
+            v735Session.sendBlockPlace(placeX, placeY, placeZ, 1, 4);
+
+            int blockType = alphaSession.waitForBlockChange(placeX, placeY + 1, placeZ, 3000);
+            assertTrue(blockType > 0, "Alpha bot should see 1.16's block placement");
+        } finally {
+            v735Bot.disconnect();
+            alphaBot.disconnect();
+        }
+    }
+
+    @Test
     void v774PlacementVisibleToV340() throws Exception {
         BotClient v774Bot = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "V774Placer");
         BotClient v340Bot = testServer.createBot(ProtocolVersion.RELEASE_1_12_2, "V340Watch2");

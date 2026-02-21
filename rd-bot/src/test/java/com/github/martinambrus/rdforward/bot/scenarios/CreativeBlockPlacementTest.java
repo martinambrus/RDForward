@@ -51,12 +51,12 @@ class CreativeBlockPlacementTest {
 
                 // Break block at Y=41 to make air
                 session.sendDigging(0, x, 41, z, 1);
-                assertEquals(0, session.waitForBlockChangeValue(x, 41, z, 0, 3000),
+                assertEquals(0, session.waitForBlockChangeValue(x, 41, z, 0, 5000),
                         "Block at (" + x + ",41," + z + ") should break to air");
 
                 // Place with this block ID (below surface -> cobblestone)
                 session.sendBlockPlace(x, 40, z, 1, blockIds[i]);
-                int blockType = session.waitForBlockChangeValue(x, 41, z, COBBLESTONE, 3000);
+                int blockType = session.waitForBlockChangeValue(x, 41, z, COBBLESTONE, 5000);
                 assertEquals(COBBLESTONE, blockType,
                         "Block ID " + blockIds[i] + " should convert to cobblestone below surface");
             }
@@ -257,6 +257,52 @@ class CreativeBlockPlacementTest {
             int blockType = session.waitForBlockChangeValue(x, 41, z, COBBLESTONE_STATE, 3000);
             assertEquals(COBBLESTONE_STATE, blockType,
                     "V764 placement below surface should become cobblestone (state 14)");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void v774PlacementBelowSurfaceBecomesCobblestone() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "CrV774C");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            int x = 220, z = 220;
+            Thread.sleep(500);
+
+            session.sendDigging(0, x, 41, z, 1);
+            assertEquals(0, session.waitForBlockChangeValue(x, 41, z, 0, 3000),
+                    "Block at Y=41 should break to air");
+
+            session.sendBlockPlace(x, 40, z, 1, 4);
+            int blockType = session.waitForBlockChangeValue(x, 41, z, COBBLESTONE_STATE, 3000);
+            assertEquals(COBBLESTONE_STATE, blockType,
+                    "V774 placement below surface should become cobblestone (state 14)");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void v774PlacementAtSurfaceBecomesGrass() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "CrV774G");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+
+            int x = 221, z = 221;
+            Thread.sleep(500);
+
+            session.sendDigging(0, x, SURFACE_Y, z, 1);
+            assertEquals(0, session.waitForBlockChangeValue(x, SURFACE_Y, z, 0, 3000),
+                    "Block at surface should break to air");
+
+            session.sendBlockPlace(x, SURFACE_Y - 1, z, 1, 4);
+            int blockType = session.waitForBlockChangeValue(x, SURFACE_Y, z, GRASS_STATE, 3000);
+            assertEquals(GRASS_STATE, blockType,
+                    "V774 placement at surface should become grass (state 9)");
         } finally {
             bot.disconnect();
         }

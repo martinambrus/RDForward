@@ -66,6 +66,80 @@ class BlockSyncTest {
     }
 
     @Test
+    void bidirectionalPlaceAndBreakSyncV47Beta() throws Exception {
+        BotClient v47Bot = testServer.createBot(ProtocolVersion.RELEASE_1_8, "V47Sync");
+        BotClient betaBot = testServer.createBot(ProtocolVersion.BETA_1_8, "BetaSync");
+        try {
+            BotSession v47Session = v47Bot.getSession();
+            BotSession betaSession = betaBot.getSession();
+            assertTrue(v47Session.isLoginComplete(), "V47 login should complete");
+            assertTrue(betaSession.isLoginComplete(), "Beta login should complete");
+
+            Thread.sleep(500);
+
+            // V47 places at (100, 42, 100) top face -> target (100, 43, 100)
+            v47Session.sendBlockPlace(100, 42, 100, 1, 4);
+            int betaSeesPlace1 = betaSession.waitForBlockChange(100, 43, 100, 3000);
+            assertTrue(betaSeesPlace1 > 0, "Beta should see V47's placement");
+
+            // Beta places at (105, 42, 105) top face -> target (105, 43, 105)
+            betaSession.sendBlockPlace(105, 42, 105, 1, 4);
+            int v47SeesPlace2 = v47Session.waitForBlockChange(105, 43, 105, 3000);
+            assertTrue(v47SeesPlace2 > 0, "V47 should see Beta's placement");
+
+            // V47 breaks block at (100, 43, 100)
+            v47Session.sendDigging(0, 100, 43, 100, 1);
+            int betaSeesBreak1 = betaSession.waitForBlockChangeValue(100, 43, 100, 0, 3000);
+            assertEquals(0, betaSeesBreak1, "Beta should see V47's block broken to air");
+
+            // Beta breaks block at (105, 43, 105)
+            betaSession.sendDigging(0, 105, 43, 105, 1);
+            int v47SeesBreak2 = v47Session.waitForBlockChangeValue(105, 43, 105, 0, 3000);
+            assertEquals(0, v47SeesBreak2, "V47 should see Beta's block broken to air");
+        } finally {
+            v47Bot.disconnect();
+            betaBot.disconnect();
+        }
+    }
+
+    @Test
+    void bidirectionalPlaceAndBreakSyncV340V109() throws Exception {
+        BotClient v340Bot = testServer.createBot(ProtocolVersion.RELEASE_1_12_2, "V340Sync");
+        BotClient v109Bot = testServer.createBot(ProtocolVersion.RELEASE_1_9_4, "V109Sync");
+        try {
+            BotSession v340Session = v340Bot.getSession();
+            BotSession v109Session = v109Bot.getSession();
+            assertTrue(v340Session.isLoginComplete(), "V340 login should complete");
+            assertTrue(v109Session.isLoginComplete(), "V109 login should complete");
+
+            Thread.sleep(500);
+
+            // V340 places at (102, 42, 102) top face -> target (102, 43, 102)
+            v340Session.sendBlockPlace(102, 42, 102, 1, 4);
+            int v109SeesPlace1 = v109Session.waitForBlockChange(102, 43, 102, 3000);
+            assertTrue(v109SeesPlace1 > 0, "V109 should see V340's placement");
+
+            // V109 places at (107, 42, 107) top face -> target (107, 43, 107)
+            v109Session.sendBlockPlace(107, 42, 107, 1, 4);
+            int v340SeesPlace2 = v340Session.waitForBlockChange(107, 43, 107, 3000);
+            assertTrue(v340SeesPlace2 > 0, "V340 should see V109's placement");
+
+            // V340 breaks block at (102, 43, 102)
+            v340Session.sendDigging(0, 102, 43, 102, 1);
+            int v109SeesBreak1 = v109Session.waitForBlockChangeValue(102, 43, 102, 0, 3000);
+            assertEquals(0, v109SeesBreak1, "V109 should see V340's block broken to air");
+
+            // V109 breaks block at (107, 43, 107)
+            v109Session.sendDigging(0, 107, 43, 107, 1);
+            int v340SeesBreak2 = v340Session.waitForBlockChangeValue(107, 43, 107, 0, 3000);
+            assertEquals(0, v340SeesBreak2, "V340 should see V109's block broken to air");
+        } finally {
+            v340Bot.disconnect();
+            v109Bot.disconnect();
+        }
+    }
+
+    @Test
     void bidirectionalPlaceAndBreakSyncModernNetty() throws Exception {
         BotClient v764Bot = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "V764Sync");
         BotClient v477Bot = testServer.createBot(ProtocolVersion.RELEASE_1_14, "V477Sync");

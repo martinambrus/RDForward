@@ -80,6 +80,121 @@ class ChatTest {
     }
 
     @Test
+    void betaBotsCanExchangeChat() throws Exception {
+        BotClient bot1 = testServer.createBot(ProtocolVersion.BETA_1_7_3, "BetaChatA");
+        BotClient bot2 = testServer.createBot(ProtocolVersion.BETA_1_7_3, "BetaChatB");
+        try {
+            BotSession session1 = bot1.getSession();
+            BotSession session2 = bot2.getSession();
+            assertTrue(session1.isLoginComplete(), "Bot1 login should complete");
+            assertTrue(session2.isLoginComplete(), "Bot2 login should complete");
+
+            session1.sendChat("Hello from BetaChatA");
+            String received = session2.waitForChat("Hello from BetaChatA", 3000);
+            assertNotNull(received, "Bot2 should receive chat from Bot1");
+
+            session2.sendChat("Reply from BetaChatB");
+            String reply = session1.waitForChat("Reply from BetaChatB", 3000);
+            assertNotNull(reply, "Bot1 should receive reply from Bot2");
+        } finally {
+            bot1.disconnect();
+            bot2.disconnect();
+        }
+    }
+
+    @Test
+    void preNettyReleaseBotsCanExchangeChat() throws Exception {
+        BotClient bot1 = testServer.createBot(ProtocolVersion.RELEASE_1_5, "PreNtChtA");
+        BotClient bot2 = testServer.createBot(ProtocolVersion.RELEASE_1_5, "PreNtChtB");
+        try {
+            BotSession session1 = bot1.getSession();
+            BotSession session2 = bot2.getSession();
+            assertTrue(session1.isLoginComplete(), "Bot1 login should complete");
+            assertTrue(session2.isLoginComplete(), "Bot2 login should complete");
+
+            session1.sendChat("Hello from PreNtChtA");
+            String received = session2.waitForChat("Hello from PreNtChtA", 3000);
+            assertNotNull(received, "Bot2 should receive chat from Bot1");
+
+            session2.sendChat("Reply from PreNtChtB");
+            String reply = session1.waitForChat("Reply from PreNtChtB", 3000);
+            assertNotNull(reply, "Bot1 should receive reply from Bot2");
+        } finally {
+            bot1.disconnect();
+            bot2.disconnect();
+        }
+    }
+
+    @Test
+    void nettyV47BotsCanExchangeChat() throws Exception {
+        BotClient bot1 = testServer.createBot(ProtocolVersion.RELEASE_1_8, "V47ChatA");
+        BotClient bot2 = testServer.createBot(ProtocolVersion.RELEASE_1_8, "V47ChatB");
+        try {
+            BotSession session1 = bot1.getSession();
+            BotSession session2 = bot2.getSession();
+            assertTrue(session1.isLoginComplete(), "Bot1 login should complete");
+            assertTrue(session2.isLoginComplete(), "Bot2 login should complete");
+
+            session1.sendChat("Hello from V47ChatA");
+            String received = session2.waitForChat("Hello from V47ChatA", 3000);
+            assertNotNull(received, "Bot2 should receive chat from Bot1");
+
+            session2.sendChat("Reply from V47ChatB");
+            String reply = session1.waitForChat("Reply from V47ChatB", 3000);
+            assertNotNull(reply, "Bot1 should receive reply from Bot2");
+        } finally {
+            bot1.disconnect();
+            bot2.disconnect();
+        }
+    }
+
+    @Test
+    void v393BotsCanExchangeChat() throws Exception {
+        BotClient bot1 = testServer.createBot(ProtocolVersion.RELEASE_1_13, "V393ChtA");
+        BotClient bot2 = testServer.createBot(ProtocolVersion.RELEASE_1_13, "V393ChtB");
+        try {
+            BotSession session1 = bot1.getSession();
+            BotSession session2 = bot2.getSession();
+            assertTrue(session1.isLoginComplete(), "Bot1 login should complete");
+            assertTrue(session2.isLoginComplete(), "Bot2 login should complete");
+
+            session1.sendChat("Hello from V393ChtA");
+            String received = session2.waitForChat("Hello from V393ChtA", 3000);
+            assertNotNull(received, "Bot2 should receive chat from Bot1");
+
+            session2.sendChat("Reply from V393ChtB");
+            String reply = session1.waitForChat("Reply from V393ChtB", 3000);
+            assertNotNull(reply, "Bot1 should receive reply from Bot2");
+        } finally {
+            bot1.disconnect();
+            bot2.disconnect();
+        }
+    }
+
+    @Test
+    void v735BotsCanExchangeChat() throws Exception {
+        BotClient bot1 = testServer.createBot(ProtocolVersion.RELEASE_1_16, "V735ChtA");
+        BotClient bot2 = testServer.createBot(ProtocolVersion.RELEASE_1_16, "V735ChtB");
+        try {
+            BotSession session1 = bot1.getSession();
+            BotSession session2 = bot2.getSession();
+            assertTrue(session1.isLoginComplete(), "Bot1 login should complete");
+            assertTrue(session2.isLoginComplete(), "Bot2 login should complete");
+
+            session1.sendChat("Hello from V735ChtA");
+            String received = session2.waitForChat("Hello from V735ChtA", 3000);
+            assertNotNull(received, "Bot2 should receive chat from Bot1");
+
+            session2.sendChat("Reply from V735ChtB");
+            String reply = session1.waitForChat("Reply from V735ChtB", 3000);
+            assertNotNull(reply, "Bot1 should receive reply from Bot2");
+        } finally {
+            bot1.disconnect();
+            bot2.disconnect();
+        }
+    }
+
+    @Test
     void latestProtocolBotsCanExchangeChat() throws Exception {
         BotClient bot1 = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "LateChatA");
         BotClient bot2 = testServer.createBot(ProtocolVersion.RELEASE_1_21_11, "LateChatB");

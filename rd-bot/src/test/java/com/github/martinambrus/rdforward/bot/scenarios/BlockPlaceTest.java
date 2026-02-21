@@ -83,6 +83,74 @@ class BlockPlaceTest {
     }
 
     @Test
+    void betaBlockPlacementReceivesConfirmation() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.BETA_1_8, "BetaPlace");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            Thread.sleep(500);
+
+            int placeX = 70, placeY = 42, placeZ = 70;
+            session.sendBlockPlace(placeX, placeY, placeZ, 1, 4);
+            int blockType = session.waitForBlockChange(placeX, placeY + 1, placeZ, 3000);
+            assertTrue(blockType > 0, "Beta should receive BlockChange confirmation");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void nettyV47BlockPlacementReceivesConfirmation() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_8, "V47Place");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            Thread.sleep(500);
+
+            int placeX = 71, placeY = 42, placeZ = 71;
+            session.sendBlockPlace(placeX, placeY, placeZ, 1, 4);
+            int blockType = session.waitForBlockChange(placeX, placeY + 1, placeZ, 3000);
+            assertTrue(blockType > 0, "V47 should receive BlockChange confirmation");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void v393BlockPlacementReceivesConfirmation() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_13, "V393Place");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            Thread.sleep(500);
+
+            int placeX = 72, placeY = 42, placeZ = 72;
+            session.sendBlockPlace(placeX, placeY, placeZ, 1, 4);
+            int blockType = session.waitForBlockChange(placeX, placeY + 1, placeZ, 3000);
+            assertTrue(blockType > 0, "V393 should receive BlockChange confirmation");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void v735BlockPlacementReceivesConfirmation() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_16, "V735Place");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            Thread.sleep(500);
+
+            int placeX = 73, placeY = 42, placeZ = 73;
+            session.sendBlockPlace(placeX, placeY, placeZ, 1, 4);
+            int blockType = session.waitForBlockChange(placeX, placeY + 1, placeZ, 3000);
+            assertTrue(blockType > 0, "V735 should receive BlockChange confirmation");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
     void modernNettyBlockPlacementReceivesConfirmation() throws Exception {
         BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_20_2, "PlaceBot2");
         try {
