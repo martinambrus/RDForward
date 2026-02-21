@@ -233,8 +233,18 @@ class BotBedrockPacketHandler implements BedrockPacketHandler {
     public PacketSignal handle(TickSyncPacket packet) { return PacketSignal.HANDLED; }
 
     @Override
+    public PacketSignal handle(DisconnectPacket packet) {
+        if (botSession != null) {
+            botSession.markDisconnected();
+        }
+        return PacketSignal.HANDLED;
+    }
+
+    @Override
     public void onDisconnect(CharSequence reason) {
-        System.err.println("BotBedrock disconnected: " + reason);
+        if (botSession != null) {
+            botSession.markDisconnected();
+        }
     }
 
     // ---- Session access ----

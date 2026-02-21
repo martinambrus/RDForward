@@ -430,6 +430,7 @@ public class PlayerManager {
             move.setPosition(Vector3f.from((float) x, (float) eyeY, (float) z));
             move.setRotation(Vector3f.from(pitch, bedrockYaw, bedrockYaw));
             move.setMode(MovePlayerPacket.Mode.TELEPORT);
+            move.setTeleportationCause(MovePlayerPacket.TeleportationCause.UNKNOWN);
             move.setOnGround(true);
             target.getBedrockSession().getSession().sendPacket(move);
         } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_17)) {

@@ -553,6 +553,7 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
                 feetPos.getZ()));
         mpp.setRotation(app.getRotation());
         mpp.setMode(MovePlayerPacket.Mode.TELEPORT);
+        mpp.setTeleportationCause(MovePlayerPacket.TeleportationCause.UNKNOWN);
         mpp.setOnGround(true);
         session.sendPacket(mpp);
     }
@@ -688,6 +689,7 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         // Rotation Vector3f wire order: (pitch, yaw, headYaw) — S2C uses Bedrock convention
         respawn.setRotation(Vector3f.from(0, bedrockYaw, bedrockYaw));
         respawn.setMode(MovePlayerPacket.Mode.TELEPORT);
+        respawn.setTeleportationCause(MovePlayerPacket.TeleportationCause.UNKNOWN);
         respawn.setOnGround(true);
         session.sendPacket(respawn);
     }

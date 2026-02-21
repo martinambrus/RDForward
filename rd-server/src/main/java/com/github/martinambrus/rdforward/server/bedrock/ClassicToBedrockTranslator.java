@@ -303,6 +303,7 @@ public class ClassicToBedrockTranslator {
                     feetPos.getZ()));
             mpp.setRotation(app.getRotation());
             mpp.setMode(MovePlayerPacket.Mode.TELEPORT);
+            mpp.setTeleportationCause(MovePlayerPacket.TeleportationCause.UNKNOWN);
             mpp.setOnGround(true);
             result.add(mpp);
         }

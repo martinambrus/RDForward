@@ -24,6 +24,7 @@ import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData;
 import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType;
 import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction;
 import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket;
+import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockProtocolConstants;
 
 import java.util.Map;
@@ -85,6 +86,9 @@ public class BotSession {
     // Weather tracking
     private volatile int lastWeatherReason = -1;
     private final AtomicInteger weatherChangeCount = new AtomicInteger();
+
+    // Disconnect tracking (for Bedrock async disconnect detection)
+    private volatile boolean disconnected;
 
     // Listeners for wait-for-packet
     private final CopyOnWriteArrayList<PacketListener<?>> packetListeners = new CopyOnWriteArrayList<>();
@@ -175,6 +179,10 @@ public class BotSession {
     void recordWeatherChange(int reason) {
         this.lastWeatherReason = reason;
         weatherChangeCount.incrementAndGet();
+    }
+
+    void markDisconnected() {
+        this.disconnected = true;
     }
 
     // ---- Wait methods ----
@@ -474,6 +482,18 @@ public class BotSession {
     }
 
     public void sendPosition(double x, double y, double z, float yaw, float pitch) {
+        if (version == ProtocolVersion.BEDROCK) {
+            // MovePlayerPacket C2S uses eye-level position; y parameter is feet-level
+            double eyeY = y + (double) 1.62f;
+            MovePlayerPacket move = new MovePlayerPacket();
+            move.setRuntimeEntityId(entityId);
+            move.setPosition(Vector3f.from((float) x, (float) eyeY, (float) z));
+            move.setRotation(Vector3f.from(pitch, yaw, yaw));
+            move.setMode(MovePlayerPacket.Mode.NORMAL);
+            move.setOnGround(false);
+            bedrockSession.sendPacketImmediately(move);
+            return;
+        }
         // C2S: y = feet, stance = eyes
         double feetY = y;
         double eyesY = y + (double) 1.62f;
@@ -706,6 +726,18 @@ public class BotSession {
     public ConcurrentHashMap<Long, Integer> getBlockChanges() { return blockChanges; }
     public Channel getChannel() { return channel; }
     public double getSpawnY() { return spawnY; }
+
+    /**
+     * Returns true if the underlying connection is still active.
+     * Works for both TCP (Netty Channel) and Bedrock (BedrockClientSession).
+     */
+    public boolean isConnected() {
+        if (disconnected) return false;
+        if (bedrockSession != null) {
+            return bedrockSession.isConnected();
+        }
+        return channel != null && channel.isActive();
+    }
 
     /**
      * Returns the block ID at the given world coordinates, or -1 if the
