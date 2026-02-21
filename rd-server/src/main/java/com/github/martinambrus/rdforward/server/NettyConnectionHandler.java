@@ -174,7 +174,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
         String versionName;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_9)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_11)) {
+            versionName = "1.21.11";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_9)) {
             versionName = "1.21.9";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_7)) {
             versionName = "1.21.7";
@@ -547,6 +549,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     }
 
     private void handleSelectKnownPacks(ChannelHandlerContext ctx) {
+        boolean isV774 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_11);
         boolean isV773 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_9);
         boolean isV772 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_7);
         boolean isV771 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_6);
@@ -615,6 +618,16 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         if (isV771) {
             ctx.writeAndFlush(RegistryDataPacketV766.createDialog(ctx.alloc().buffer()));
         }
+        // 1.21.11 added zombie_nautilus_variant and timeline registries
+        if (isV774) {
+            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
+                    "minecraft:zombie_nautilus_variant",
+                    "minecraft:temperate", "minecraft:warm"));
+            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
+                    "minecraft:timeline",
+                    "minecraft:day", "minecraft:early_game",
+                    "minecraft:moon", "minecraft:villager_schedule"));
+        }
         // 1.21.5 added 6 new variant registries (all built-in)
         if (isV770) {
             ctx.writeAndFlush(RegistryDataPacketV766.createPigVariant(ctx.alloc().buffer()));
@@ -630,7 +643,8 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // 1.21 added minecraft:enchantment tag registry (7 registries vs 6)
         // 1.21.2 added minecraft:worldgen/biome tag registry (8 registries vs 7) —
         // required for enchantment built-in data parsing (references biome tags)
-        ctx.writeAndFlush(isV773 ? new UpdateTagsPacketV773()
+        ctx.writeAndFlush(isV774 ? new UpdateTagsPacketV774()
+                        : isV773 ? new UpdateTagsPacketV773()
                         : isV771 ? new UpdateTagsPacketV771()
                         : isV770 ? new UpdateTagsPacketV770()
                         : isV769 ? new UpdateTagsPacketV769()
@@ -677,6 +691,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
+        boolean isV774 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_11);
         boolean isV773 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_9);
         boolean isV771 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_6);
         boolean isV770 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_5);
@@ -1012,7 +1027,11 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                     // 1.20.5: entity type IDs shifted (player: 122 -> 128)
                     // 1.15 removed entity metadata entirely from SpawnPlayer
                     // 1.14 used 0xFF metadata terminator (empty metadata)
-                    if (isV773) {
+                    if (isV774) {
+                        ctx.writeAndFlush(new NettySpawnEntityPacketV774(
+                                existingEntityId, existingUuid, ex, ey, ez,
+                                alphaYaw, pitch));
+                    } else if (isV773) {
                         ctx.writeAndFlush(new NettySpawnEntityPacketV773(
                                 existingEntityId, existingUuid, ex, ey, ez,
                                 alphaYaw, pitch));

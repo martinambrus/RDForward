@@ -789,12 +789,23 @@ public enum ProtocolVersion {
     RELEASE_1_21_9(773, 80, Family.RELEASE, "Release 1.21.9 (v773)", 94),
 
     /**
+     * Minecraft Release 1.21.11 (2025).
+     * No S2C/C2S packet ID changes from v773. Same 139 S2C packets.
+     * 4 new entity types (camel_husk, nautilus, parched, zombie_nautilus)
+     * shift player from 151 -> 155.
+     * New registries: zombie_nautilus_variant, timeline.
+     * Biome tags restructured (5 removed, 1 added). New timeline tag registry.
+     * Netty protocol version 774.
+     */
+    RELEASE_1_21_11(774, 81, Family.RELEASE, "Release 1.21.11 (v774)", 94),
+
+    /**
      * Minecraft Bedrock Edition (1.26.0+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 81, Family.BEDROCK, "Bedrock", 92);
+    BEDROCK(924, 82, Family.BEDROCK, "Bedrock", 92);
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -972,6 +983,7 @@ public enum ProtocolVersion {
             case 771: return "Release 1.21.6";
             case 772: return "Release 1.21.7-1.21.8";
             case 773: return "Release 1.21.9-1.21.10";
+            case 774: return "Release 1.21.11";
             default: return null;
         }
     }
@@ -1035,6 +1047,7 @@ public enum ProtocolVersion {
             case 771: return "1.21.6";
             case 772: return "1.21.7-1.21.8";
             case 773: return "1.21.9-1.21.10";
+            case 774: return "1.21.11";
             default:  return null;
         }
     }

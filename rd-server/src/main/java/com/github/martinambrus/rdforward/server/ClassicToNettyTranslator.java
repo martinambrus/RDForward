@@ -52,6 +52,7 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
     }
 
     private Packet translate(Packet packet) {
+        boolean isV774 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_11);
         boolean isV773 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_9);
         boolean isV771 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_6);
         boolean isV770 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_5);
@@ -157,6 +158,13 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
             int alphaYaw = (sp.getYaw() + 128) & 0xFF;
             // Generate offline UUID from username
             String uuid = generateOfflineUuid(sp.getPlayerName());
+            if (isV774) {
+                // 1.21.11: camel_husk, nautilus, parched, zombie_nautilus inserted (player: 151 -> 155)
+                return new NettySpawnEntityPacketV774(
+                        entityId, uuid,
+                        sp.getX() / 32.0, feetY / 32.0, sp.getZ() / 32.0,
+                        alphaYaw, sp.getPitch());
+            }
             if (isV773) {
                 // 1.21.9: copper_golem + mannequin inserted (player: 149 -> 151)
                 return new NettySpawnEntityPacketV773(

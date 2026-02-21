@@ -196,6 +196,12 @@ public class NettyPacketRegistry {
     /** V773 S2C reverse map overlay: shifted packet IDs for 1.21.9. */
     private static final Map<String, Integer> REVERSE_V773 = new HashMap<String, Integer>();
 
+    /** V774 overlay: S2C packets for 1.21.11 (same IDs as v773, SpawnEntity/UpdateTags classes changed). */
+    private static final Map<String, PacketFactory> REGISTRY_V774 = new HashMap<String, PacketFactory>();
+
+    /** V774 S2C reverse map overlay: class overrides for 1.21.11. */
+    private static final Map<String, Integer> REVERSE_V774 = new HashMap<String, Integer>();
+
     /** Reverse map: (state, direction, className) -> packetId */
     private static final Map<String, Integer> REVERSE = new HashMap<String, Integer>();
 
@@ -3151,6 +3157,32 @@ public class NettyPacketRegistry {
                 new PacketFactory() { public Packet create() { return new UpdateTagsPacketV773(); } });
         registerV773Reverse(ConnectionState.CONFIGURATION, PacketDirection.SERVER_TO_CLIENT,
                 UpdateTagsPacketV773.class, 0x0D);
+
+        // ====================================================================
+        // V774: 1.21.11
+        // ====================================================================
+        // S2C: No packet ID changes from v773. Same 139 S2C packets.
+        // Only SpawnEntity (player type 155) and UpdateTags (new tags) differ.
+        // C2S: No changes from v773/v771.
+        // Entity type: camel_husk, nautilus, parched, zombie_nautilus inserted (player: 151 -> 155).
+
+        // === V774 S2C PLAY forward map entries (overrides only) ===
+        REGISTRY_V774.put(key(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x01),
+                new PacketFactory() { public Packet create() { return new NettySpawnEntityPacketV774(); } });
+        REGISTRY_V774.put(key(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, 0x84),
+                new PacketFactory() { public Packet create() { return new UpdateTagsPacketV774(); } });
+
+        // === V774 S2C PLAY reverse map entries (overrides only) ===
+        REVERSE_V774.put(reverseKey(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT,
+                NettySpawnEntityPacketV774.class), 0x01);
+        REVERSE_V774.put(reverseKey(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT,
+                UpdateTagsPacketV774.class), 0x84);
+
+        // === V774 CONFIG state (UpdateTags override) ===
+        REGISTRY_V774.put(key(ConnectionState.CONFIGURATION, PacketDirection.SERVER_TO_CLIENT, 0x0D),
+                new PacketFactory() { public Packet create() { return new UpdateTagsPacketV774(); } });
+        REVERSE_V774.put(reverseKey(ConnectionState.CONFIGURATION, PacketDirection.SERVER_TO_CLIENT,
+                UpdateTagsPacketV774.class), 0x0D);
     }
 
     private static void registerC2S(ConnectionState state, int packetId,
@@ -3620,6 +3652,13 @@ public class NettyPacketRegistry {
      */
     public static Packet createPacket(ConnectionState state, PacketDirection direction,
                                        int packetId, int protocolVersion) {
+        if (protocolVersion >= 774) {
+            String k = key(state, direction, packetId);
+            PacketFactory factory = REGISTRY_V774.get(k);
+            if (factory != null) {
+                return factory.create();
+            }
+        }
         if (protocolVersion >= 773) {
             String k = key(state, direction, packetId);
             PacketFactory factory = REGISTRY_V773.get(k);
@@ -3851,6 +3890,13 @@ public class NettyPacketRegistry {
      */
     public static int getPacketId(ConnectionState state, PacketDirection direction,
                                    Class<? extends Packet> clazz, int protocolVersion) {
+        if (protocolVersion >= 774) {
+            String rk = reverseKey(state, direction, clazz);
+            Integer id = REVERSE_V774.get(rk);
+            if (id != null) {
+                return id;
+            }
+        }
         if (protocolVersion >= 773) {
             String rk = reverseKey(state, direction, clazz);
             Integer id = REVERSE_V773.get(rk);
