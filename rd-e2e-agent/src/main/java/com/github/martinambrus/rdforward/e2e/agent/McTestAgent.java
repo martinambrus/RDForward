@@ -7,6 +7,7 @@ import com.github.martinambrus.rdforward.e2e.agent.mappings.RubyDungMappings;
 import com.github.martinambrus.rdforward.e2e.agent.scenario.BlockPlaceBreakScenario;
 import com.github.martinambrus.rdforward.e2e.agent.scenario.ChatScenario;
 import com.github.martinambrus.rdforward.e2e.agent.scenario.ColumnBuildScenario;
+import com.github.martinambrus.rdforward.e2e.agent.scenario.CrossClientScenario;
 import com.github.martinambrus.rdforward.e2e.agent.scenario.CreativeBlockPaletteScenario;
 import com.github.martinambrus.rdforward.e2e.agent.scenario.EnvironmentCheckScenario;
 import com.github.martinambrus.rdforward.e2e.agent.scenario.InventoryManipulationScenario;
@@ -49,6 +50,9 @@ public class McTestAgent {
     public static volatile File statusDir;
     public static volatile String scenarioName;
     public static volatile boolean isCreativeMode;
+    public static volatile String username;
+    public static volatile String role;       // "primary" or "secondary" (null for single-client tests)
+    public static volatile File syncDir;      // shared sync directory (null for single-client tests)
     public static volatile boolean runAdviceApplied;
 
     public static void premain(String agentArgs, Instrumentation inst) {
@@ -61,6 +65,10 @@ public class McTestAgent {
         statusDir = new File(args.getOrDefault("statusDir", "/tmp/e2e-status"));
         scenarioName = args.getOrDefault("scenario", "world_loaded");
         isCreativeMode = "true".equals(args.getOrDefault("creative", "false"));
+        username = args.get("username"); // null if not specified
+        role = args.get("role");             // null for single-client tests
+        String syncPath = args.get("syncDir");
+        syncDir = syncPath != null ? new File(syncPath) : null;
 
         // Select mappings for the target client version
         mappings = selectMappings(version);
@@ -149,6 +157,8 @@ public class McTestAgent {
                 return new VoidFallScenario();
             case "creative_block_palette":
                 return new CreativeBlockPaletteScenario();
+            case "cross_client":
+                return new CrossClientScenario();
             default:
                 System.out.println("[McTestAgent] Unknown scenario '" + name
                         + "', defaulting to world_loaded");
@@ -189,6 +199,11 @@ public class McTestAgent {
                     McTestAgent.gameState, sw,
                     new ScreenshotCapture(), McTestAgent.inputController,
                     scenario, McTestAgent.statusDir);
+
+            // Set custom username if specified (before login handshake)
+            if (McTestAgent.username != null) {
+                McTestAgent.gameState.setUsername(McTestAgent.username);
+            }
 
             // Set server host/port via reflection for clients that need it
             // (null field names = connection handled by other means, e.g. CLI args)

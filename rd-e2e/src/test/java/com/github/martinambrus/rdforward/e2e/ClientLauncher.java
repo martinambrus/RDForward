@@ -68,6 +68,16 @@ public class ClientLauncher {
      */
     public Process launchAlpha126(String agentJarPath, int serverPort,
             File statusDir, String display, String scenario) throws IOException, InterruptedException {
+        return launchAlpha126(agentJarPath, serverPort, statusDir, display, scenario,
+                null, null, null);
+    }
+
+    /**
+     * Launch an Alpha 1.2.6 client with cross-client support.
+     */
+    public Process launchAlpha126(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario,
+            String username, String role, File syncDir) throws IOException, InterruptedException {
         ensureLibs();
 
         String clientJar = new File(LIBS_DIR, ALPHA_126_JAR).getAbsolutePath();
@@ -80,6 +90,9 @@ public class ClientLauncher {
                 + ",serverPort=" + serverPort
                 + ",statusDir=" + statusDir.getAbsolutePath()
                 + ",scenario=" + scenario;
+        if (username != null) agentArgs += ",username=" + username;
+        if (role != null) agentArgs += ",role=" + role;
+        if (syncDir != null) agentArgs += ",syncDir=" + syncDir.getAbsolutePath();
 
         List<String> cmd = new ArrayList<>();
         cmd.add(JAVA8_PATH);
@@ -129,6 +142,16 @@ public class ClientLauncher {
      */
     public Process launchBeta181(String agentJarPath, int serverPort,
             File statusDir, String display, String scenario) throws IOException, InterruptedException {
+        return launchBeta181(agentJarPath, serverPort, statusDir, display, scenario,
+                null, null, null);
+    }
+
+    /**
+     * Launch a Beta 1.8.1 client with cross-client support.
+     */
+    public Process launchBeta181(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario,
+            String username, String role, File syncDir) throws IOException, InterruptedException {
         ensureLibs();
 
         String clientJar = new File(LIBS_DIR, BETA_181_JAR).getAbsolutePath();
@@ -143,6 +166,9 @@ public class ClientLauncher {
                 + ",serverPort=" + serverPort
                 + ",statusDir=" + statusDir.getAbsolutePath()
                 + ",scenario=" + scenario;
+        if (username != null) agentArgs += ",username=" + username;
+        if (role != null) agentArgs += ",role=" + role;
+        if (syncDir != null) agentArgs += ",syncDir=" + syncDir.getAbsolutePath();
 
         List<String> cmd = new ArrayList<>();
         cmd.add(JAVA8_PATH);

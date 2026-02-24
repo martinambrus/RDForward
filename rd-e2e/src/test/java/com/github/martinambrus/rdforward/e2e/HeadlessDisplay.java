@@ -8,48 +8,57 @@ import java.io.IOException;
  */
 public class HeadlessDisplay {
 
-    private static final String DISPLAY = ":99";
-    private static final String[] XVFB_CMD = {
-            "Xvfb", DISPLAY,
-            "-screen", "0", "854x480x24",
-            "+extension", "GLX",
-            "+render",
-            "-ac"
-    };
+    private final String display;
+    private final String[] xvfbCmd;
 
     private Process xvfbProcess;
 
+    public HeadlessDisplay() {
+        this(99);
+    }
+
+    public HeadlessDisplay(int displayNum) {
+        this.display = ":" + displayNum;
+        this.xvfbCmd = new String[]{
+                "Xvfb", display,
+                "-screen", "0", "854x480x24",
+                "+extension", "GLX",
+                "+render",
+                "-ac"
+        };
+    }
+
     /**
-     * Start Xvfb. If display :99 is already in use (from a previous run or
+     * Start Xvfb. If the display is already in use (from a previous run or
      * system service), this is a no-op.
      */
     public void start() throws IOException, InterruptedException {
-        // Check if Xvfb is already running on :99 (with a 1 second timeout to prevent
+        // Check if Xvfb is already running (with a 1 second timeout to prevent
         // 75s TCP SYN hanging)
-        ProcessBuilder check = new ProcessBuilder("xdpyinfo", "-display", DISPLAY);
+        ProcessBuilder check = new ProcessBuilder("xdpyinfo", "-display", display);
         check.redirectErrorStream(true);
         Process checkProc = check.start();
         boolean finished = checkProc.waitFor(1, java.util.concurrent.TimeUnit.SECONDS);
         if (finished && checkProc.exitValue() == 0) {
-            System.out.println("[E2E] Xvfb already running on " + DISPLAY);
+            System.out.println("[E2E] Xvfb already running on " + display);
             return;
         } else if (!finished) {
             checkProc.destroyForcibly();
         }
 
-        System.out.println("[E2E] Starting Xvfb on " + DISPLAY);
-        ProcessBuilder pb = new ProcessBuilder(XVFB_CMD);
+        System.out.println("[E2E] Starting Xvfb on " + display);
+        ProcessBuilder pb = new ProcessBuilder(xvfbCmd);
         pb.redirectErrorStream(true);
         xvfbProcess = pb.start();
 
         // Wait for Xvfb to be ready (poll with xdpyinfo)
         for (int i = 0; i < 50; i++) {
             Thread.sleep(100);
-            ProcessBuilder poll = new ProcessBuilder("xdpyinfo", "-display", DISPLAY);
+            ProcessBuilder poll = new ProcessBuilder("xdpyinfo", "-display", display);
             poll.redirectErrorStream(true);
             Process pollProc = poll.start();
             if (pollProc.waitFor() == 0) {
-                System.out.println("[E2E] Xvfb ready on " + DISPLAY);
+                System.out.println("[E2E] Xvfb ready on " + display);
                 return;
             }
         }
@@ -64,6 +73,6 @@ public class HeadlessDisplay {
     }
 
     public String getDisplay() {
-        return DISPLAY;
+        return display;
     }
 }

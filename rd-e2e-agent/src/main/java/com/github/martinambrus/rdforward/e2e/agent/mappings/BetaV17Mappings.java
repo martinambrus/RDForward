@@ -219,6 +219,13 @@ public class BetaV17Mappings implements FieldMappings {
         return "qr";
     }
 
+    // --- Phase 6: Session field ---
+
+    // k = session (type dq) on Minecraft
+    @Override
+    public String sessionFieldName() { return "k"; }
+    // sessionUsernameFieldName default "b" is correct for Beta too
+
     // --- Phase 4: Beta-specific overrides ---
 
     // X = clickCooldown (int, private) on Minecraft

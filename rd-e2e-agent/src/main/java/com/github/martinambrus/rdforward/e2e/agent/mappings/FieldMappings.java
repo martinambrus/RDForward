@@ -116,6 +116,14 @@ public interface FieldMappings {
     /** Obfuscated class name for GuiScreen. */
     default String guiScreenClassName() { return null; }
 
+    // --- Phase 6: Session/username fields for cross-client testing ---
+
+    /** Field name for Session object on Minecraft class. Alpha: "i", Beta: "k". */
+    default String sessionFieldName() { return "i"; }
+
+    /** Field name for username (String) on Session class. Both: "b". */
+    default String sessionUsernameFieldName() { return "b"; }
+
     // --- Phase 4: Beta abstraction fields (hardcoded in Alpha, different in Beta) ---
 
     /** Field name for click cooldown (int) on Minecraft class. Alpha: "S", Beta: "X". */

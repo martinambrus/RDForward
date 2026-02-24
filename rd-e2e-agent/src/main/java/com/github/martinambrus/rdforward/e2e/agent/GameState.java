@@ -61,6 +61,22 @@ public class GameState {
         return minecraftInstance;
     }
 
+    public void setUsername(String name) {
+        try {
+            Field sessionField = resolveField(minecraftInstance.getClass(),
+                    mappings.sessionFieldName(), null);
+            Object session = sessionField.get(minecraftInstance);
+            if (session != null) {
+                Field usernameField = resolveField(session.getClass(),
+                        mappings.sessionUsernameFieldName(), String.class);
+                usernameField.set(session, name);
+                System.out.println("[McTestAgent] Username set to: " + name);
+            }
+        } catch (Exception e) {
+            System.err.println("[McTestAgent] Failed to set username: " + e.getMessage());
+        }
+    }
+
     public Object getPlayer() {
         try {
             if (playerField == null) {
