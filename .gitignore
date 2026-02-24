@@ -30,6 +30,9 @@ bin/
 # LWJGL (downloaded at build time)
 libs/lwjgl/
 
+# E2E client JARs and natives (downloaded at test time)
+rd-e2e/libs/
+
 # Decompiled sources (generated at build time by BuildTools)
 decompiled/
 !decompiled/.gitkeep

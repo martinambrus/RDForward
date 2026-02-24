@@ -135,6 +135,10 @@ ext {
         'com.badlogicgames.gdx:gdx-platform:1.12.1#natives-arm64-v8a',
         'com.badlogicgames.gdx:gdx-platform:1.12.1#natives-x86',
         'com.badlogicgames.gdx:gdx-platform:1.12.1#natives-x86_64',
+        // ByteBuddy (rd-e2e-agent) — Java agent instrumentation
+        'net.bytebuddy:byte-buddy:1.17.5',
+        // Image comparison (rd-e2e) — screenshot baseline diffing
+        'com.github.romankh3:image-comparison:4.4.0',
     ]
 }
 
@@ -209,6 +213,15 @@ subprojects {
     // When building for Android, rd-android applies 'com.android.application'
     // in its own build.gradle, which conflicts with 'java'. Skip it here.
     if (project.name == 'rd-android') return
+
+    // rd-e2e-agent targets Java 8 (injected into Alpha/Beta client JVMs).
+    if (project.name == 'rd-e2e-agent') {
+        apply plugin: 'java'
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+        test { useJUnitPlatform() }
+        return
+    }
 
     apply plugin: 'java'
 

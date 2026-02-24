@@ -1,0 +1,215 @@
+package com.github.martinambrus.rdforward.e2e;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.List;
+import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+
+/**
+ * Downloads client JARs and LWJGL 2 natives from Mojang CDN (cached after first
+ * run),
+ * then launches the Minecraft client subprocess with the ByteBuddy agent
+ * attached.
+ */
+public class ClientLauncher {
+
+    private static final String JAVA8_PATH = "/usr/lib/jvm/temurin-8-jdk-amd64/bin/java";
+    private static final String LIBS_DIR = "rd-e2e/libs";
+    private static final String NATIVES_DIR = LIBS_DIR + "/natives-linux";
+
+    private static final String ALPHA_126_JAR_URL = "https://piston-data.mojang.com/v1/objects/a68c817afd6c05c253ba5462287c2c19bbb57935/client.jar";
+    private static final String ALPHA_126_JAR = "alpha-1.2.6-client.jar";
+
+    // LWJGL 2 from Mojang CDN (includes native .so files)
+    private static final String LWJGL2_NATIVES_URL = "https://libraries.minecraft.net/org/lwjgl/lwjgl/lwjgl-platform/2.9.4-nightly-20150209/lwjgl-platform-2.9.4-nightly-20150209-natives-linux.jar";
+    private static final String LWJGL2_NATIVES_JAR = "lwjgl-platform-natives-linux.jar";
+
+    private static final String LWJGL2_JAR_URL = "https://libraries.minecraft.net/org/lwjgl/lwjgl/lwjgl/2.9.4-nightly-20150209/lwjgl-2.9.4-nightly-20150209.jar";
+    private static final String LWJGL2_JAR = "lwjgl-2.9.4.jar";
+
+    private static final String LWJGL2_UTIL_URL = "https://libraries.minecraft.net/org/lwjgl/lwjgl/lwjgl_util/2.9.4-nightly-20150209/lwjgl_util-2.9.4-nightly-20150209.jar";
+    private static final String LWJGL2_UTIL_JAR = "lwjgl_util-2.9.4.jar";
+
+    private Process clientProcess;
+
+    /**
+     * Launch an Alpha 1.2.6 client with the E2E agent attached.
+     *
+     * @param agentJarPath path to the rd-e2e-agent fat JAR
+     * @param serverPort   the RDForward server port to connect to
+     * @param statusDir    directory for agent status JSON output
+     * @param display      X display string (e.g. ":99")
+     * @return the launched process
+     */
+    public Process launchAlpha126(String agentJarPath, int serverPort,
+            File statusDir, String display) throws IOException, InterruptedException {
+        ensureLibs();
+
+        String clientJar = new File(LIBS_DIR, ALPHA_126_JAR).getAbsolutePath();
+        String lwjglJar = new File(LIBS_DIR, LWJGL2_JAR).getAbsolutePath();
+        String lwjglUtilJar = new File(LIBS_DIR, LWJGL2_UTIL_JAR).getAbsolutePath();
+        String nativesPath = new File(NATIVES_DIR).getAbsolutePath();
+
+        String agentArgs = "version=alpha126"
+                + ",serverHost=localhost"
+                + ",serverPort=" + serverPort
+                + ",statusDir=" + statusDir.getAbsolutePath();
+
+        List<String> cmd = new ArrayList<>();
+        cmd.add(JAVA8_PATH);
+        cmd.add("-javaagent:" + agentJarPath + "=" + agentArgs);
+        cmd.add("-Djava.library.path=" + nativesPath);
+        cmd.add("-Djava.util.Arrays.useLegacyMergeSort=true");
+        cmd.add("-Dhttp.proxyHost=127.0.0.1"); // Fast fail for dead legacy URLs
+        cmd.add("-Dhttp.proxyPort=65535"); // Invalid port
+        cmd.add("-Xmx256m");
+        cmd.add("-cp");
+        cmd.add(clientJar + ":" + lwjglJar + ":" + lwjglUtilJar);
+        cmd.add("net.minecraft.client.Minecraft");
+
+        System.out.println("[E2E] Launching client: " + String.join(" ", cmd));
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        Map<String, String> env = pb.environment();
+        env.put("DISPLAY", display);
+        env.put("LIBGL_ALWAYS_SOFTWARE", "1"); // Mesa software rendering fallback
+        pb.redirectErrorStream(true);
+        pb.inheritIO();
+
+        clientProcess = pb.start();
+        return clientProcess;
+    }
+
+    /**
+     * Launch an RD modded client (for pre-multiplayer versions like RubyDung,
+     * Classic).
+     * The modded fat JAR is built by rd-client and includes Fabric Loader + Mixin +
+     * LWJGL 3 natives. Server connection is handled by the Fabric Mixin via CLI
+     * args.
+     *
+     * Uses Java 21 (rd-client targets Java 21). The E2E agent (Java 8 bytecode)
+     * runs fine on Java 21 via backwards compatibility.
+     *
+     * @param moddedJarPath path to the rd-client fat modded JAR (rd-client-all.jar)
+     * @param agentJarPath  path to the rd-e2e-agent fat JAR
+     * @param version       version identifier for agent mappings (e.g. "rubydung")
+     * @param serverPort    the RDForward server port
+     * @param username      player username
+     * @param statusDir     directory for agent status JSON output
+     * @param display       X display string
+     * @return the launched process
+     */
+    public Process launchModdedClient(String moddedJarPath, String agentJarPath,
+            String version, int serverPort, String username,
+            File statusDir, String display) throws IOException {
+        String agentArgs = "version=" + version
+                + ",statusDir=" + statusDir.getAbsolutePath();
+
+        List<String> cmd = new ArrayList<>();
+        cmd.add("java"); // system Java 21+
+        cmd.add("-javaagent:" + agentJarPath + "=" + agentArgs);
+        cmd.add("-Xmx256m");
+        cmd.add("-jar");
+        cmd.add(moddedJarPath);
+        // Fabric Mixin reads these CLI args and auto-connects to the server
+        cmd.add("--server=localhost:" + serverPort);
+        cmd.add("--username=" + username);
+
+        System.out.println("[E2E] Launching modded client: " + String.join(" ", cmd));
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        Map<String, String> env = pb.environment();
+        env.put("DISPLAY", display);
+        env.put("LIBGL_ALWAYS_SOFTWARE", "1");
+        pb.redirectErrorStream(true);
+        pb.inheritIO();
+
+        clientProcess = pb.start();
+        return clientProcess;
+    }
+
+    public void stop() {
+        if (clientProcess != null && clientProcess.isAlive()) {
+            clientProcess.destroyForcibly();
+            System.out.println("[E2E] Client process stopped");
+        }
+    }
+
+    /**
+     * Ensure all required libraries are downloaded and natives extracted.
+     */
+    private void ensureLibs() throws IOException, InterruptedException {
+        File libsDir = new File(LIBS_DIR);
+        libsDir.mkdirs();
+
+        downloadIfMissing(ALPHA_126_JAR_URL, new File(libsDir, ALPHA_126_JAR));
+        downloadIfMissing(LWJGL2_JAR_URL, new File(libsDir, LWJGL2_JAR));
+        downloadIfMissing(LWJGL2_UTIL_URL, new File(libsDir, LWJGL2_UTIL_JAR));
+        ensureNatives();
+    }
+
+    private void ensureNatives() throws IOException, InterruptedException {
+        File libsDir = new File(LIBS_DIR);
+        libsDir.mkdirs();
+        File nativesDir = new File(NATIVES_DIR);
+        File nativesJar = new File(libsDir, LWJGL2_NATIVES_JAR);
+
+        downloadIfMissing(LWJGL2_NATIVES_URL, nativesJar);
+
+        // Extract .so files from the natives JAR if not already done
+        if (!nativesDir.exists() || nativesDir.list().length == 0) {
+            nativesDir.mkdirs();
+            extractNatives(nativesJar, nativesDir);
+        }
+    }
+
+    private void downloadIfMissing(String url, File dest) throws IOException, InterruptedException {
+        if (dest.exists() && dest.length() > 0)
+            return;
+        System.out.println("[E2E] Downloading " + dest.getName() + "...");
+        ProcessBuilder pb = new ProcessBuilder("curl", "-fSL", "-o", dest.getAbsolutePath(), url);
+        pb.redirectErrorStream(true);
+        pb.inheritIO();
+        Process p = pb.start();
+        int rc = p.waitFor();
+        if (rc != 0) {
+            throw new IOException("Failed to download " + url + " (exit code " + rc + ")");
+        }
+    }
+
+    private void extractNatives(File jar, File destDir) throws IOException {
+        System.out.println("[E2E] Extracting natives to " + destDir.getAbsolutePath());
+        ZipFile zip = new ZipFile(jar);
+        Enumeration<? extends ZipEntry> entries = zip.entries();
+        while (entries.hasMoreElements()) {
+            ZipEntry entry = entries.nextElement();
+            if (entry.isDirectory())
+                continue;
+            String name = entry.getName();
+            // Only extract .so files (Linux natives)
+            if (name.endsWith(".so")) {
+                // Strip directory prefix (e.g. "linux/" or just filename)
+                String filename = name.contains("/")
+                        ? name.substring(name.lastIndexOf('/') + 1)
+                        : name;
+                File dest = new File(destDir, filename);
+                InputStream is = zip.getInputStream(entry);
+                FileOutputStream fos = new FileOutputStream(dest);
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = is.read(buf)) > 0) {
+                    fos.write(buf, 0, n);
+                }
+                fos.close();
+                is.close();
+            }
+        }
+        zip.close();
+    }
+}

@@ -1,0 +1,27 @@
+description = 'RDForward E2E - Visual regression tests with real Minecraft clients'
+
+dependencies {
+    testImplementation project(':rd-server')
+    testImplementation 'com.github.romankh3:image-comparison:4.4.0'
+}
+
+// E2E tests require Xvfb + Java 8 + real client JARs. Skip during normal builds;
+// run explicitly with: ./gradlew :rd-e2e:test
+test {
+    onlyIf { project.hasProperty('e2e') }
+    // Client subprocess may take time to start and render
+    timeout = java.time.Duration.ofMinutes(5)
+    // Run from root project directory so relative paths (rd-e2e-agent/build/libs/,
+    // rd-client/build/libs/, rd-e2e/libs/, rd-e2e/baselines/) resolve correctly.
+    workingDir = rootProject.projectDir
+    // Show stdout/stderr from tests (agent output, download progress, etc.)
+    testLogging {
+        showStandardStreams = true
+    }
+}
+
+// Ensure the agent fat JAR and modded client JAR are built before tests run
+tasks.named('test') {
+    dependsOn ':rd-e2e-agent:fatJar'
+    dependsOn ':rd-client:fatModdedJar'
+}

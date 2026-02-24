@@ -1,0 +1,22 @@
+description = 'RDForward E2E Agent - ByteBuddy agent injected into real Minecraft client JVMs'
+
+dependencies {
+    implementation 'net.bytebuddy:byte-buddy:1.17.5'
+}
+
+// Fat JAR with ByteBuddy + agent classes, Premain-Class manifest for -javaagent usage
+task fatJar(type: Jar) {
+    archiveClassifier = 'all'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes 'Premain-Class': 'com.github.martinambrus.rdforward.e2e.agent.McTestAgent'
+        attributes 'Can-Retransform-Classes': 'true'
+    }
+    from sourceSets.main.output
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+}
+
+// Agent has no tests of its own — tested via rd-e2e orchestrator
+test.enabled = false
