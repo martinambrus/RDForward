@@ -79,4 +79,147 @@ public class AlphaV6Mappings implements FieldMappings {
     public String posZFieldName() {
         return "ay";
     }
+
+    // --- Phase 2: Input/Inventory/World fields ---
+
+    // y = GameSettings (type gq) on Minecraft
+    @Override
+    public String gameSettingsFieldName() {
+        return "y";
+    }
+
+    // a = movementInput (type nn) on bq (EntityPlayerSP)
+    @Override
+    public String movementInputFieldName() {
+        return "a";
+    }
+
+    // f = boolean[10] on he (MovementInputFromOptions)
+    @Override
+    public String pressedKeysFieldName() {
+        return "f";
+    }
+
+    // aC = yaw (float) on lw (Entity)
+    @Override
+    public String yawFieldName() {
+        return "aC";
+    }
+
+    // aD = pitch (float) on lw (Entity)
+    @Override
+    public String pitchFieldName() {
+        return "aD";
+    }
+
+    // aH = onGround (boolean) on lw (Entity)
+    @Override
+    public String onGroundFieldName() {
+        return "aH";
+    }
+
+    // e = inventory (type fo = InventoryPlayer) on eb (EntityPlayer)
+    @Override
+    public String inventoryFieldName() {
+        return "e";
+    }
+
+    // a = mainInventory (type fp[] = ItemStack[]) on fo (InventoryPlayer)
+    @Override
+    public String mainInventoryFieldName() {
+        return "a";
+    }
+
+    // d = currentItem (int) on fo (InventoryPlayer)
+    @Override
+    public String currentItemFieldName() {
+        return "d";
+    }
+
+    // c = itemID (int) on fp (ItemStack)
+    // Verified: fp.a=stackSize, fp.b=itemDamage, fp.c=itemID, fp.d=animationsToGo
+    @Override
+    public String itemIdFieldName() {
+        return "c";
+    }
+
+    // a = stackSize (int) on fp (ItemStack)
+    @Override
+    public String stackSizeFieldName() {
+        return "a";
+    }
+
+    // a = getBlockId(int,int,int) on cy (World)
+    @Override
+    public String getBlockIdMethodName() {
+        return "a";
+    }
+
+    // a = click handler (private void a(int)) on Minecraft
+    @Override
+    public String clickMethodName() {
+        return "a";
+    }
+
+    // L = mouseGrabbed (boolean) on Minecraft
+    @Override
+    public String mouseGrabbedFieldName() {
+        return "L";
+    }
+
+    // --- Phase 3: Chat, Q-drop, inventory GUI ---
+
+    // a = sendChatMessage(String) on mp (EntityPlayerSP)
+    @Override
+    public String sendChatMessageMethodName() {
+        return "a";
+    }
+
+    // a = dropPlayerItem(fp, boolean) on eb (EntityPlayer)
+    @Override
+    public String dropPlayerItemMethodName() {
+        return "a";
+    }
+
+    // a = displayGuiScreen(bp) on Minecraft
+    @Override
+    public String displayGuiScreenMethodName() {
+        return "a";
+    }
+
+    // p = currentScreen (type bp = GuiScreen) on Minecraft
+    @Override
+    public String currentScreenFieldName() {
+        return "p";
+    }
+
+    // u = ingameGUI (type nl = InGameHud) on Minecraft
+    @Override
+    public String ingameGuiFieldName() {
+        return "u";
+    }
+
+    // e = chatLines (List of me = ChatLine) on nl (InGameHud)
+    @Override
+    public String chatLinesFieldName() {
+        return "e";
+    }
+
+    // e = cursorItem (type fp = ItemStack) on fo (InventoryPlayer)
+    @Override
+    public String cursorItemFieldName() {
+        return "e";
+    }
+
+    // c = craftingInventory (type fp[] = ItemStack[]) on fo (InventoryPlayer)
+    @Override
+    public String craftingInventoryFieldName() {
+        return "c";
+    }
+
+    // bp = GuiScreen class name
+    @Override
+    public String guiScreenClassName() {
+        return "bp";
+    }
 }

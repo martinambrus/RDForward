@@ -1,8 +1,19 @@
 package com.github.martinambrus.rdforward.e2e.agent;
 
 import com.github.martinambrus.rdforward.e2e.agent.mappings.AlphaV6Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.BetaV17Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.FieldMappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.RubyDungMappings;
+import com.github.martinambrus.rdforward.e2e.agent.scenario.BlockPlaceBreakScenario;
+import com.github.martinambrus.rdforward.e2e.agent.scenario.ChatScenario;
+import com.github.martinambrus.rdforward.e2e.agent.scenario.ColumnBuildScenario;
+import com.github.martinambrus.rdforward.e2e.agent.scenario.CreativeBlockPaletteScenario;
+import com.github.martinambrus.rdforward.e2e.agent.scenario.EnvironmentCheckScenario;
+import com.github.martinambrus.rdforward.e2e.agent.scenario.InventoryManipulationScenario;
+import com.github.martinambrus.rdforward.e2e.agent.scenario.QDropScenario;
+import com.github.martinambrus.rdforward.e2e.agent.scenario.Scenario;
+import com.github.martinambrus.rdforward.e2e.agent.scenario.VoidFallScenario;
+import com.github.martinambrus.rdforward.e2e.agent.scenario.WorldLoadedScenario;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.description.type.TypeDescription;
@@ -22,6 +33,7 @@ import java.util.Map;
  *
  * Agent args format: key=value,key=value
  * Required keys: version, serverHost, serverPort, statusDir
+ * Optional keys: scenario (default: world_loaded)
  */
 public class McTestAgent {
 
@@ -30,10 +42,13 @@ public class McTestAgent {
     // which is in a different package. Package-private causes IllegalAccessError.
     public static volatile FieldMappings mappings;
     public static volatile GameState gameState;
+    public static volatile InputController inputController;
     public static volatile TickHook tickHook;
     public static volatile String serverHost;
     public static volatile int serverPort;
     public static volatile File statusDir;
+    public static volatile String scenarioName;
+    public static volatile boolean isCreativeMode;
     public static volatile boolean runAdviceApplied;
 
     public static void premain(String agentArgs, Instrumentation inst) {
@@ -44,6 +59,8 @@ public class McTestAgent {
         serverHost = args.get("serverHost");
         serverPort = Integer.parseInt(args.getOrDefault("serverPort", "25565"));
         statusDir = new File(args.getOrDefault("statusDir", "/tmp/e2e-status"));
+        scenarioName = args.getOrDefault("scenario", "world_loaded");
+        isCreativeMode = "true".equals(args.getOrDefault("creative", "false"));
 
         // Select mappings for the target client version
         mappings = selectMappings(version);
@@ -54,6 +71,8 @@ public class McTestAgent {
         System.out.println("[McTestAgent] Target class: " + mappings.minecraftClassName());
         System.out.println("[McTestAgent] Tick method: " + mappings.tickMethodName());
         System.out.println("[McTestAgent] Server: " + serverHost + ":" + serverPort);
+        System.out.println("[McTestAgent] Creative mode: " + isCreativeMode);
+        System.out.println("[McTestAgent] Scenario: " + scenarioName);
 
         // Install ByteBuddy transformers
         new AgentBuilder.Default()
@@ -99,10 +118,41 @@ public class McTestAgent {
             case "alpha126":
             case "alpha_1_2_6":
                 return new AlphaV6Mappings();
+            case "beta18":
+            case "beta_1_8_1":
+                return new BetaV17Mappings();
             default:
                 System.out.println("[McTestAgent] Unknown version '" + version
                         + "', defaulting to Alpha 1.2.6 mappings");
                 return new AlphaV6Mappings();
+        }
+    }
+
+    public static Scenario createScenario(String name) {
+        if (name == null) name = "world_loaded";
+        switch (name) {
+            case "world_loaded":
+                return new WorldLoadedScenario();
+            case "environment_check":
+                return new EnvironmentCheckScenario();
+            case "block_place_break":
+                return new BlockPlaceBreakScenario();
+            case "column_build":
+                return new ColumnBuildScenario();
+            case "q_drop":
+                return new QDropScenario();
+            case "chat":
+                return new ChatScenario();
+            case "inventory_manipulation":
+                return new InventoryManipulationScenario();
+            case "void_fall":
+                return new VoidFallScenario();
+            case "creative_block_palette":
+                return new CreativeBlockPaletteScenario();
+            default:
+                System.out.println("[McTestAgent] Unknown scenario '" + name
+                        + "', defaulting to world_loaded");
+                return new WorldLoadedScenario();
         }
     }
 
@@ -131,10 +181,14 @@ public class McTestAgent {
             McTestAgent.runAdviceApplied = true;
 
             McTestAgent.gameState = new GameState(McTestAgent.mappings, self);
+            McTestAgent.inputController = new InputController(
+                    McTestAgent.gameState, McTestAgent.mappings);
             StatusWriter sw = new StatusWriter(McTestAgent.statusDir);
+            Scenario scenario = McTestAgent.createScenario(McTestAgent.scenarioName);
             McTestAgent.tickHook = new TickHook(
                     McTestAgent.gameState, sw,
-                    new ScreenshotCapture(), McTestAgent.statusDir);
+                    new ScreenshotCapture(), McTestAgent.inputController,
+                    scenario, McTestAgent.statusDir);
 
             // Set server host/port via reflection for clients that need it
             // (null field names = connection handled by other means, e.g. CLI args)

@@ -2,6 +2,8 @@ description = 'RDForward E2E - Visual regression tests with real Minecraft clien
 
 dependencies {
     testImplementation project(':rd-server')
+    testImplementation project(':rd-protocol')
+    testImplementation project(':rd-world')
     testImplementation 'com.github.romankh3:image-comparison:4.4.0'
 }
 

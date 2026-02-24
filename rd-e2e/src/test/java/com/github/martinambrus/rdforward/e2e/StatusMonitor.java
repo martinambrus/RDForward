@@ -93,6 +93,45 @@ public class StatusMonitor {
     }
 
     /**
+     * Extract a numeric field from status JSON.
+     */
+    public static int extractJsonIntField(String json, String field) {
+        String pattern = "\"" + field + "\": ";
+        int start = json.indexOf(pattern);
+        if (start < 0) return -1;
+        start += pattern.length();
+        int end = start;
+        while (end < json.length()) {
+            char c = json.charAt(end);
+            if (c == ',' || c == '\n' || c == '}') break;
+            end++;
+        }
+        try {
+            return Integer.parseInt(json.substring(start, end).trim());
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    /**
+     * Wait for a specific scenario step to appear in the status.
+     */
+    public boolean waitForStep(String stepDescription, long timeoutMs) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            String json = readStatus();
+            if (json != null) {
+                String step = extractJsonField(json, "scenarioStep");
+                if (stepDescription.equals(step)) return true;
+                String state = extractJsonField(json, "state");
+                if ("ERROR".equals(state) || "COMPLETE".equals(state)) return false;
+            }
+            Thread.sleep(POLL_INTERVAL_MS);
+        }
+        return false;
+    }
+
+    /**
      * Minimal JSON string field extractor. No library dependency for simple status parsing.
      */
     public static String extractJsonField(String json, String field) {

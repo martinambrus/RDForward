@@ -44,3 +44,20 @@ mods/
 logs/
 crash-reports/
 *.log
+
+# Server runtime files (created when server starts)
+server-world.dat
+server-players.dat
+banned-players.txt
+banned-ips.txt
+ops.txt
+
+# World data (created by server or client)
+world/
+**/level.dat
+
+# Root-level build artifacts
+/META-INF/
+
+# Debug/test scratch files
+test-jstack.txt

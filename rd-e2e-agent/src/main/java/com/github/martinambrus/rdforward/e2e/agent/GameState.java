@@ -3,6 +3,9 @@ package com.github.martinambrus.rdforward.e2e.agent;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.FieldMappings;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Reflection-based reader for Minecraft client game state.
@@ -28,6 +31,26 @@ public class GameState {
     private Field posXField;
     private Field posYField;
     private Field posZField;
+
+    // Phase 2: rotation, ground, inventory, world, mouse fields
+    private Field yawField;
+    private Field pitchField;
+    private Field onGroundField;
+    private Field inventoryField;
+    private Field mainInventoryField;
+    private Field currentItemField;
+    private Field itemIdField;
+    private Field stackSizeField;
+    private Field mouseGrabbedField;
+    private Method getBlockIdMethod;
+
+    // Phase 3: screen, chat, cursor fields
+    private Field currentScreenField;
+    private Field ingameGuiField;
+    private Field chatLinesField;
+    private Field chatLineTextField;
+    private Field cursorItemField;
+    private Field craftingInventoryField;
 
     public GameState(FieldMappings mappings, Object minecraftInstance) {
         this.mappings = mappings;
@@ -135,6 +158,335 @@ public class GameState {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    // --- Phase 2: rotation, ground, block, inventory, mouse queries ---
+
+    public FieldMappings getMappings() {
+        return mappings;
+    }
+
+    public float getYaw() {
+        Object player = getPlayer();
+        if (player == null) return 0f;
+        try {
+            if (yawField == null) {
+                yawField = resolveField(player.getClass(),
+                        mappings.yawFieldName(), float.class);
+            }
+            return yawField.getFloat(player);
+        } catch (Exception e) {
+            return 0f;
+        }
+    }
+
+    public float getPitch() {
+        Object player = getPlayer();
+        if (player == null) return 0f;
+        try {
+            if (pitchField == null) {
+                pitchField = resolveField(player.getClass(),
+                        mappings.pitchFieldName(), float.class);
+            }
+            return pitchField.getFloat(player);
+        } catch (Exception e) {
+            return 0f;
+        }
+    }
+
+    public boolean isOnGround() {
+        Object player = getPlayer();
+        if (player == null) return false;
+        try {
+            if (onGroundField == null) {
+                onGroundField = resolveField(player.getClass(),
+                        mappings.onGroundFieldName(), boolean.class);
+            }
+            return onGroundField.getBoolean(player);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Returns the block ID at the given world coordinates.
+     * Uses World.getBlockId(int,int,int) via reflection.
+     */
+    public int getBlockId(int x, int y, int z) {
+        Object world = getWorld();
+        if (world == null) return -1;
+        try {
+            if (getBlockIdMethod == null) {
+                // Find the method with exact signature (int,int,int)->int
+                // Walk up hierarchy since World may be a subclass
+                Class<?> c = world.getClass();
+                while (c != null && c != Object.class) {
+                    try {
+                        Method m = c.getDeclaredMethod(mappings.getBlockIdMethodName(),
+                                int.class, int.class, int.class);
+                        if (m.getReturnType() == int.class) {
+                            m.setAccessible(true);
+                            getBlockIdMethod = m;
+                            break;
+                        }
+                    } catch (NoSuchMethodException ignored) {}
+                    c = c.getSuperclass();
+                }
+                if (getBlockIdMethod == null) {
+                    throw new RuntimeException("getBlockId method not found on "
+                            + world.getClass().getName());
+                }
+            }
+            return (Integer) getBlockIdMethod.invoke(world, x, y, z);
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    /**
+     * Returns the block ID below the player's feet.
+     * Player Y is eye-level; subtract 1.62 for feet, then -1 for block below.
+     */
+    public int getBlockBelowFeet() {
+        double[] pos = getPlayerPosition();
+        if (pos == null) return -1;
+        int bx = (int) Math.floor(pos[0]);
+        int by = (int) Math.floor(pos[1] - (double) 1.62f) - 1;
+        int bz = (int) Math.floor(pos[2]);
+        return getBlockId(bx, by, bz);
+    }
+
+    /**
+     * Returns the block ID at the player's feet level.
+     */
+    public int getBlockAtFeet() {
+        double[] pos = getPlayerPosition();
+        if (pos == null) return -1;
+        int bx = (int) Math.floor(pos[0]);
+        int by = (int) Math.floor(pos[1] - (double) 1.62f);
+        int bz = (int) Math.floor(pos[2]);
+        return getBlockId(bx, by, bz);
+    }
+
+    /**
+     * Returns inventory data as int[36][2] where [i][0]=itemId, [i][1]=stackSize.
+     * Returns null if unavailable. Empty slots have itemId=0.
+     */
+    public int[][] getInventorySlots() {
+        Object player = getPlayer();
+        if (player == null) return null;
+        try {
+            if (inventoryField == null) {
+                inventoryField = resolveField(player.getClass(),
+                        mappings.inventoryFieldName(), null);
+            }
+            Object inventory = inventoryField.get(player);
+            if (inventory == null) return null;
+
+            if (mainInventoryField == null) {
+                mainInventoryField = resolveField(inventory.getClass(),
+                        mappings.mainInventoryFieldName(), null);
+            }
+            Object[] mainInventory = (Object[]) mainInventoryField.get(inventory);
+            if (mainInventory == null) return null;
+
+            int len = Math.min(mainInventory.length, 36);
+            int[][] result = new int[len][2];
+            for (int i = 0; i < len; i++) {
+                Object stack = mainInventory[i];
+                if (stack == null) {
+                    result[i][0] = 0;
+                    result[i][1] = 0;
+                } else {
+                    if (itemIdField == null) {
+                        itemIdField = resolveField(stack.getClass(),
+                                mappings.itemIdFieldName(), int.class);
+                        stackSizeField = resolveField(stack.getClass(),
+                                mappings.stackSizeFieldName(), int.class);
+                    }
+                    result[i][0] = itemIdField.getInt(stack);
+                    result[i][1] = stackSizeField.getInt(stack);
+                }
+            }
+            return result;
+        } catch (Exception e) {
+            System.err.println("[McTestAgent] Failed to read inventory: " + e.getMessage());
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+
+    /**
+     * Returns the active hotbar slot index (0-8).
+     */
+    public int getCurrentItemSlot() {
+        Object player = getPlayer();
+        if (player == null) return -1;
+        try {
+            if (inventoryField == null) {
+                inventoryField = resolveField(player.getClass(),
+                        mappings.inventoryFieldName(), null);
+            }
+            Object inventory = inventoryField.get(player);
+            if (inventory == null) return -1;
+
+            if (currentItemField == null) {
+                currentItemField = resolveField(inventory.getClass(),
+                        mappings.currentItemFieldName(), int.class);
+            }
+            return currentItemField.getInt(inventory);
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    /**
+     * Returns whether the mouse is currently grabbed (locked to window).
+     */
+    public boolean isMouseGrabbed() {
+        try {
+            if (mouseGrabbedField == null) {
+                mouseGrabbedField = resolveField(minecraftInstance.getClass(),
+                        mappings.mouseGrabbedFieldName(), boolean.class);
+            }
+            return mouseGrabbedField.getBoolean(minecraftInstance);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Sets the mouse grabbed state.
+     */
+    public void setMouseGrabbed(boolean grabbed) {
+        try {
+            if (mouseGrabbedField == null) {
+                mouseGrabbedField = resolveField(minecraftInstance.getClass(),
+                        mappings.mouseGrabbedFieldName(), boolean.class);
+            }
+            mouseGrabbedField.setBoolean(minecraftInstance, grabbed);
+        } catch (Exception e) {
+            System.err.println("[McTestAgent] Failed to set mouseGrabbed: " + e.getMessage());
+        }
+    }
+
+    // --- Phase 3: screen, chat, cursor, cobblestone queries ---
+
+    /**
+     * Returns the current open screen's class, or null if no screen is open.
+     */
+    public Class<?> getCurrentScreenClass() {
+        try {
+            if (currentScreenField == null) {
+                currentScreenField = resolveField(minecraftInstance.getClass(),
+                        mappings.currentScreenFieldName(), null);
+            }
+            Object screen = currentScreenField.get(minecraftInstance);
+            return screen != null ? screen.getClass() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Returns the current open screen object, or null if no screen is open.
+     */
+    public Object getCurrentScreen() {
+        try {
+            if (currentScreenField == null) {
+                currentScreenField = resolveField(minecraftInstance.getClass(),
+                        mappings.currentScreenFieldName(), null);
+            }
+            return currentScreenField.get(minecraftInstance);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Returns the most recent chat messages (up to count).
+     * Reads InGameHud.chatLines -> each ChatLine.text.
+     */
+    public List<String> getChatMessages(int count) {
+        List<String> result = new ArrayList<String>();
+        try {
+            if (ingameGuiField == null) {
+                ingameGuiField = resolveField(minecraftInstance.getClass(),
+                        mappings.ingameGuiFieldName(), null);
+            }
+            Object hud = ingameGuiField.get(minecraftInstance);
+            if (hud == null) return result;
+
+            if (chatLinesField == null) {
+                chatLinesField = resolveField(hud.getClass(),
+                        mappings.chatLinesFieldName(), null);
+            }
+            List<?> chatLines = (List<?>) chatLinesField.get(hud);
+            if (chatLines == null || chatLines.isEmpty()) return result;
+
+            int limit = Math.min(count, chatLines.size());
+            for (int i = 0; i < limit; i++) {
+                Object chatLine = chatLines.get(i);
+                if (chatLine == null) continue;
+
+                if (chatLineTextField == null) {
+                    chatLineTextField = resolveField(chatLine.getClass(),
+                            mappings.chatLineTextFieldName(), String.class);
+                }
+                String text = (String) chatLineTextField.get(chatLine);
+                if (text != null) result.add(text);
+            }
+        } catch (Exception e) {
+            System.err.println("[McTestAgent] Failed to read chat: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * Returns cursor item as [itemId, stackSize] or null if no cursor item.
+     */
+    public int[] getCursorItem() {
+        Object player = getPlayer();
+        if (player == null) return null;
+        try {
+            if (inventoryField == null) {
+                inventoryField = resolveField(player.getClass(),
+                        mappings.inventoryFieldName(), null);
+            }
+            Object inventory = inventoryField.get(player);
+            if (inventory == null) return null;
+
+            if (cursorItemField == null) {
+                cursorItemField = resolveField(inventory.getClass(),
+                        mappings.cursorItemFieldName(), null);
+            }
+            Object cursorStack = cursorItemField.get(inventory);
+            if (cursorStack == null) return null;
+
+            if (itemIdField == null) {
+                itemIdField = resolveField(cursorStack.getClass(),
+                        mappings.itemIdFieldName(), int.class);
+                stackSizeField = resolveField(cursorStack.getClass(),
+                        mappings.stackSizeFieldName(), int.class);
+            }
+            return new int[]{itemIdField.getInt(cursorStack), stackSizeField.getInt(cursorStack)};
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Returns total cobblestone (id=4) count across all inventory slots.
+     */
+    public int getTotalCobblestone() {
+        int[][] slots = getInventorySlots();
+        if (slots == null) return -1;
+        int total = 0;
+        for (int[] slot : slots) {
+            if (slot[0] == 4) total += slot[1];
+        }
+        return total;
     }
 
     /**

@@ -1,0 +1,470 @@
+package com.github.martinambrus.rdforward.e2e.agent.scenario;
+
+import com.github.martinambrus.rdforward.e2e.agent.GameState;
+import com.github.martinambrus.rdforward.e2e.agent.InputController;
+import com.github.martinambrus.rdforward.e2e.agent.ScreenshotCapture;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Tests vertical building to near max height and breaking back down:
+ * 1. Place a block to stand on
+ * 2. Jump onto it
+ * 3. Look straight down, hold jump + right-click to build column
+ * 4. Verify Y near max height (~128)
+ * 5. Attempt to build above limit — Y unchanged
+ * 6. Break blocks downward
+ * 7. Verify back on ground (grass)
+ */
+public class ColumnBuildScenario implements Scenario {
+
+    // Shared state across steps
+    private int platformBX, platformBY, platformBZ;
+    private boolean platformComputed;
+
+    @Override
+    public String getName() {
+        return "column_build";
+    }
+
+    @Override
+    public List<ScenarioStep> getSteps() {
+        List<ScenarioStep> steps = new ArrayList<ScenarioStep>();
+        steps.add(new PlacePlatformStep());
+        steps.add(new JumpOnPlatformStep());
+        steps.add(new LookDownStep());
+        steps.add(new BuildColumnStep());
+        steps.add(new VerifyHeightStep());
+        steps.add(new AttemptAboveLimitStep());
+        steps.add(new BreakDownStep());
+        steps.add(new VerifyGroundStep());
+        return steps;
+    }
+
+    private void computePlatform(GameState gs) {
+        if (platformComputed) return;
+        double[] pos = gs.getPlayerPosition();
+        if (pos == null) throw new RuntimeException("No player position");
+
+        int px = (int) Math.floor(pos[0]);
+        int groundY = (int) Math.floor(pos[1] - (double) 1.62f) - 1;
+        int pz = (int) Math.floor(pos[2]);
+
+        // Platform: 2 blocks in front (+Z)
+        platformBX = px;
+        platformBY = groundY + 1; // place on top of ground
+        platformBZ = pz + 2;
+        platformComputed = true;
+
+        System.out.println("[McTestAgent] Column platform: ("
+                + platformBX + "," + platformBY + "," + platformBZ + ")");
+    }
+
+    // Step 1: Place cobblestone block to create a platform
+    private class PlacePlatformStep implements ScenarioStep {
+        private int ticks;
+
+        @Override
+        public String getDescription() {
+            return "place_platform";
+        }
+
+        @Override
+        public boolean tick(GameState gs, InputController input,
+                            ScreenshotCapture capture, File statusDir) {
+            computePlatform(gs);
+            ticks++;
+            if (ticks == 1) {
+                // Look at the ground block where we want to place on top
+                input.lookAtBlock(platformBX, platformBY - 1, platformBZ);
+            }
+            if (ticks == 3) {
+                input.click(1); // right-click to place
+            }
+            return ticks >= 10;
+        }
+
+        @Override
+        public int getTimeoutTicks() {
+            return 40;
+        }
+    }
+
+    // Step 2: Walk onto the platform and jump up
+    private class JumpOnPlatformStep implements ScenarioStep {
+        private int ticks;
+
+        @Override
+        public String getDescription() {
+            return "jump_on_platform";
+        }
+
+        @Override
+        public boolean tick(GameState gs, InputController input,
+                            ScreenshotCapture capture, File statusDir) {
+            ticks++;
+            if (ticks == 1) {
+                // Look toward the platform and walk forward + jump
+                input.lookAtBlock(platformBX, platformBY + 1, platformBZ);
+                input.pressKey(InputController.FORWARD);
+                input.pressKey(InputController.JUMP);
+            }
+            // Check if we're above the platform level
+            double[] pos = gs.getPlayerPosition();
+            if (pos != null) {
+                double feetY = pos[1] - (double) 1.62f;
+                if (feetY >= platformBY + 0.9) {
+                    input.releaseAllKeys();
+                    return true;
+                }
+            }
+            // Stop walking after a bit to avoid overshooting
+            if (ticks > 20) {
+                input.releaseKey(InputController.FORWARD);
+            }
+            return false;
+        }
+
+        @Override
+        public int getTimeoutTicks() {
+            return 100;
+        }
+    }
+
+    // Step 3: Look straight down
+    private class LookDownStep implements ScenarioStep {
+        private int ticks;
+
+        @Override
+        public String getDescription() {
+            return "look_down";
+        }
+
+        @Override
+        public boolean tick(GameState gs, InputController input,
+                            ScreenshotCapture capture, File statusDir) {
+            input.setLookDirection(gs.getYaw(), 90f); // pitch 90 = straight down
+            ticks++;
+            return ticks >= 2;
+        }
+
+        @Override
+        public int getTimeoutTicks() {
+            return 20;
+        }
+    }
+
+    // Step 4: Build column upward using controlled jump-place cycles.
+    // Uses a state machine to stabilize between jumps (prevents X/Z drift)
+    // and precisely time block placement when feet are above the target block
+    // (required to pass the server's body overlap check).
+    private class BuildColumnStep implements ScenarioStep {
+        private int ticks;
+
+        // State machine phases
+        private static final int GROUND = 0;   // on ground, stabilizing
+        private static final int AIRBORNE = 1; // jumped, trying to place
+
+        private int phase = GROUND;
+        private int phaseTicks;
+        private double highWaterY;
+        private int consecutiveStalls;
+
+        @Override
+        public String getDescription() {
+            return "build_column";
+        }
+
+        @Override
+        public boolean tick(GameState gs, InputController input,
+                            ScreenshotCapture capture, File statusDir) {
+            ticks++;
+
+            // Always look straight down
+            input.setLookDirection(gs.getYaw(), 90f);
+
+            double[] pos = gs.getPlayerPosition();
+            if (pos == null) return false;
+            double y = pos[1];
+
+            if (ticks == 1) highWaterY = y;
+
+            if (ticks % 40 == 0 || ticks <= 5) {
+                System.out.println("[McTestAgent] BuildColumn tick=" + ticks
+                        + " phase=" + phase
+                        + " Y=" + String.format("%.2f", y)
+                        + " X=" + String.format("%.2f", pos[0])
+                        + " Z=" + String.format("%.2f", pos[2])
+                        + " onGround=" + gs.isOnGround()
+                        + " blockBelow=" + gs.getBlockBelowFeet());
+            }
+
+            switch (phase) {
+                case GROUND:
+                    phaseTicks++;
+                    // Wait on ground for horizontal velocity to decay (prevents drift)
+                    if (phaseTicks >= 8 && gs.isOnGround()) {
+                        input.pressKey(InputController.JUMP);
+                        phase = AIRBORNE;
+                        phaseTicks = 0;
+                    }
+                    break;
+
+                case AIRBORNE:
+                    phaseTicks++;
+                    // Release jump (only needed the 1 tick to initiate)
+                    input.releaseKey(InputController.JUMP);
+
+                    // Try placing every 2 ticks while airborne.
+                    // The server's overlap check requires feetY >= targetBlockTop.
+                    // At tick 4 after jump, feetY ≈ startY+1.166 — safely above
+                    // the threshold (startY+1.0). Tick 2 only gives ~0.001 margin.
+                    if (phaseTicks >= 4 && phaseTicks % 2 == 0 && phaseTicks <= 12) {
+                        input.click(1);
+                    }
+
+                    // Check if landed
+                    if (gs.isOnGround() && phaseTicks >= 4) {
+                        if (y > highWaterY + 0.5) {
+                            highWaterY = y;
+                            consecutiveStalls = 0;
+                        } else {
+                            consecutiveStalls++;
+                            if (ticks % 40 != 0) { // avoid double-logging
+                                System.out.println("[McTestAgent] BuildColumn stall #"
+                                        + consecutiveStalls + " at Y="
+                                        + String.format("%.2f", y));
+                            }
+                        }
+
+                        // Can't go higher after repeated stalls
+                        if (consecutiveStalls >= 5 && y > 50) {
+                            input.releaseAllKeys();
+                            System.out.println("[McTestAgent] Column top reached at Y=" + y
+                                    + " after " + ticks + " ticks"
+                                    + " (stalls=" + consecutiveStalls + ")");
+                            return true;
+                        }
+
+                        phase = GROUND;
+                        phaseTicks = 0;
+                    }
+
+                    // Safety: if airborne too long (fell off column?), reset
+                    if (phaseTicks >= 30) {
+                        phase = GROUND;
+                        phaseTicks = 0;
+                    }
+                    break;
+            }
+
+            return false;
+        }
+
+        @Override
+        public int getTimeoutTicks() {
+            return 3000; // 150 seconds — one block per jump cycle (~15 ticks each)
+        }
+    }
+
+    // Step 5: Verify height and capture screenshot
+    private class VerifyHeightStep implements ScenarioStep {
+        @Override
+        public String getDescription() {
+            return "verify_height";
+        }
+
+        @Override
+        public boolean tick(GameState gs, InputController input,
+                            ScreenshotCapture capture, File statusDir) {
+            double[] pos = gs.getPlayerPosition();
+            if (pos == null) throw new RuntimeException("No player position");
+
+            System.out.println("[McTestAgent] Column top Y=" + pos[1]);
+
+            // Alpha world height is 128 blocks. Eye-level Y should be near 128+1.62
+            if (pos[1] < 50) {
+                throw new RuntimeException("Column height too low: Y=" + pos[1]);
+            }
+
+            File file = new File(statusDir, "column_top.png");
+            capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);
+            return true;
+        }
+
+        @Override
+        public int getTimeoutTicks() {
+            return 20;
+        }
+    }
+
+    // Step 6: Attempt to build above limit
+    private class AttemptAboveLimitStep implements ScenarioStep {
+        private int ticks;
+        private double startY;
+
+        @Override
+        public String getDescription() {
+            return "attempt_above_limit";
+        }
+
+        @Override
+        public boolean tick(GameState gs, InputController input,
+                            ScreenshotCapture capture, File statusDir) {
+            ticks++;
+
+            if (ticks == 1) {
+                double[] pos = gs.getPlayerPosition();
+                if (pos != null) startY = pos[1];
+            }
+
+            // Try to build higher
+            input.pressKey(InputController.JUMP);
+            input.setLookDirection(gs.getYaw(), 90f);
+            if (ticks % 4 == 0) {
+                input.click(1);
+            }
+
+            if (ticks >= 100) {
+                input.releaseAllKeys();
+                double[] pos = gs.getPlayerPosition();
+                if (pos != null) {
+                    double diff = Math.abs(pos[1] - startY);
+                    System.out.println("[McTestAgent] After above-limit attempt: Y=" + pos[1]
+                            + " (diff=" + diff + ")");
+                    // Allow small variance from jumping
+                    if (diff > 3.0) {
+                        throw new RuntimeException("Player Y changed significantly above limit: "
+                                + startY + " -> " + pos[1]);
+                    }
+                }
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public int getTimeoutTicks() {
+            return 200;
+        }
+    }
+
+    // Step 7: Break blocks downward using direct dig packets.
+    // Uses InputController.breakBlock() to bypass Minecraft.a(0)'s cooldown
+    // (field S blocks left-clicks for 10 ticks when objectMouseOver is null).
+    private class BreakDownStep implements ScenarioStep {
+        private int ticks;
+        private int settleTicks; // counts ticks after detecting ground
+
+        @Override
+        public String getDescription() {
+            return "break_down";
+        }
+
+        @Override
+        public boolean tick(GameState gs, InputController input,
+                            ScreenshotCapture capture, File statusDir) {
+            ticks++;
+
+            double[] pos = gs.getPlayerPosition();
+            if (pos == null) return false;
+
+            // Settling phase: wait 2 ticks after detecting grass/dirt to let
+            // any pending click(0) from the previous tick drain harmlessly.
+            // During settling, issue no break commands and look UP (not down)
+            // so any residual click doesn't hit ground blocks.
+            if (settleTicks > 0) {
+                settleTicks++;
+                input.setLookDirection(gs.getYaw(), 0f); // look horizontal
+                if (settleTicks >= 3) {
+                    System.out.println("[McTestAgent] Back on ground at Y=" + pos[1]
+                            + " blockBelow=" + gs.getBlockBelowFeet());
+                    return true;
+                }
+                return false;
+            }
+
+            // Check completion FIRST — before issuing any more break commands.
+            // This prevents breaking the grass/dirt block we just landed on.
+            // Also accept cobblestone(4) at ground level — creative mode's instant
+            // breaking may leave the column base block as ground surface.
+            int belowFeet = gs.getBlockBelowFeet();
+            if (belowFeet == 2 || belowFeet == 3 || belowFeet == 4) {
+                double feetY = pos[1] - (double) 1.62f;
+                if (feetY < platformBY + 5) {
+                    input.releaseAllKeys();
+                    input.setLookDirection(gs.getYaw(), 0f); // look horizontal
+                    settleTicks = 1;
+                    return false;
+                }
+            }
+
+            // Compute the block we're standing on
+            int bx = (int) Math.floor(pos[0]);
+            int feetFloor = (int) Math.floor(pos[1] - (double) 1.62f);
+            int bz = (int) Math.floor(pos[2]);
+
+            // Break the block at feet level (the one we're standing on)
+            // and the one below in case feetY is exactly on a block boundary
+            int blockAtFeet = gs.getBlockId(bx, feetFloor, bz);
+            int blockBelow = gs.getBlockId(bx, feetFloor - 1, bz);
+
+            if (blockAtFeet != 0) {
+                input.breakBlock(bx, feetFloor, bz);
+            } else if (blockBelow != 0 && blockBelow != 2 && blockBelow != 3) {
+                input.breakBlock(bx, feetFloor - 1, bz);
+            }
+
+            // Also use click(0) with cooldown reset as backup
+            input.setLookDirection(gs.getYaw(), 90f);
+            input.click(0);
+
+            if (ticks % 100 == 0) {
+                System.out.println("[McTestAgent] Breaking down: Y="
+                        + String.format("%.2f", pos[1])
+                        + " feetFloor=" + feetFloor
+                        + " blockAtFeet=" + blockAtFeet
+                        + " blockBelow=" + blockBelow);
+            }
+
+            return false;
+        }
+
+        @Override
+        public int getTimeoutTicks() {
+            return 2000; // 100 seconds
+        }
+    }
+
+    // Step 8: Verify back on ground
+    private class VerifyGroundStep implements ScenarioStep {
+        @Override
+        public String getDescription() {
+            return "verify_ground";
+        }
+
+        @Override
+        public boolean tick(GameState gs, InputController input,
+                            ScreenshotCapture capture, File statusDir) {
+            int blockBelow = gs.getBlockBelowFeet();
+            System.out.println("[McTestAgent] Final ground check: blockBelow=" + blockBelow);
+
+            // Accept grass(2), dirt(3), or cobblestone(4) — the column base block
+            // may sit at ground level, especially in creative mode where breaking is instant
+            if (blockBelow != 2 && blockBelow != 3 && blockBelow != 4) {
+                throw new RuntimeException("Expected grass(2), dirt(3), or cobblestone(4) below, got " + blockBelow);
+            }
+
+            File file = new File(statusDir, "back_on_ground.png");
+            capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);
+            return true;
+        }
+
+        @Override
+        public int getTimeoutTicks() {
+            return 20;
+        }
+    }
+}

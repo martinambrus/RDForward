@@ -1,6 +1,8 @@
 package com.github.martinambrus.rdforward.e2e;
 
+import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.server.RDServer;
+import com.github.martinambrus.rdforward.world.FlatWorldGenerator;
 
 import java.io.File;
 
@@ -23,7 +25,10 @@ public class E2ETestServer {
 
     public void start() throws InterruptedException {
         deleteStaleFiles();
-        server = new RDServer(0);
+        // Alpha world height is 128 blocks (Classic/RubyDung default is 64).
+        // Use 128 so placement at Y >= 64 passes ServerWorld.inBounds().
+        server = new RDServer(0, ProtocolVersion.RUBYDUNG,
+                new FlatWorldGenerator(), 0L, 256, 128, 256);
         server.setBedrockPort(0);
         server.start();
         port = server.getActualPort();

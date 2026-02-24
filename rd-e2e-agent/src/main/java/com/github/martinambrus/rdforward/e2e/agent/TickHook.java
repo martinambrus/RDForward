@@ -1,5 +1,8 @@
 package com.github.martinambrus.rdforward.e2e.agent;
 
+import com.github.martinambrus.rdforward.e2e.agent.scenario.Scenario;
+import com.github.martinambrus.rdforward.e2e.agent.scenario.ScenarioRunner;
+
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
@@ -9,7 +12,8 @@ import java.util.List;
  * Called on every game tick via ByteBuddy Advice on the tick method.
  *
  * State progression:
- *   INIT -> WAITING_FOR_WORLD -> WAITING_FOR_PLAYER -> STABILIZING -> CAPTURING -> COMPLETE
+ *   INIT -> WAITING_FOR_WORLD -> WAITING_FOR_PLAYER -> STABILIZING
+ *        -> RUNNING_SCENARIO -> COMPLETE
  */
 public class TickHook {
 
@@ -18,7 +22,7 @@ public class TickHook {
         WAITING_FOR_WORLD,
         WAITING_FOR_PLAYER,
         STABILIZING,
-        CAPTURING,
+        RUNNING_SCENARIO,
         COMPLETE,
         ERROR
     }
@@ -28,6 +32,8 @@ public class TickHook {
     private final GameState gameState;
     private final StatusWriter statusWriter;
     private final ScreenshotCapture screenshotCapture;
+    private final InputController inputController;
+    private final Scenario scenario;
     private final File statusDir;
 
     private State state = State.INIT;
@@ -36,11 +42,16 @@ public class TickHook {
     private final List<String> screenshots = new ArrayList<String>();
     private String error;
 
+    private ScenarioRunner scenarioRunner;
+
     public TickHook(GameState gameState, StatusWriter statusWriter,
-                    ScreenshotCapture screenshotCapture, File statusDir) {
+                    ScreenshotCapture screenshotCapture, InputController inputController,
+                    Scenario scenario, File statusDir) {
         this.gameState = gameState;
         this.statusWriter = statusWriter;
         this.screenshotCapture = screenshotCapture;
+        this.inputController = inputController;
+        this.scenario = scenario;
         this.statusDir = statusDir;
     }
 
@@ -90,23 +101,27 @@ public class TickHook {
                     stabilizeTicks++;
                     if (stabilizeTicks >= STABILIZE_TICKS) {
                         System.out.println("[McTestAgent] Stabilized after "
-                                + STABILIZE_TICKS + " ticks, capturing screenshot");
-                        state = State.CAPTURING;
+                                + STABILIZE_TICKS + " ticks, starting scenario '"
+                                + scenario.getName() + "'");
+                        scenarioRunner = new ScenarioRunner(scenario, gameState,
+                                inputController, screenshotCapture, statusDir);
+                        state = State.RUNNING_SCENARIO;
                         writeStatus();
                     }
                     break;
 
-                case CAPTURING:
-                    int w = gameState.getDisplayWidth();
-                    int h = gameState.getDisplayHeight();
-                    File screenshotFile = new File(statusDir, "world_loaded.png");
-                    boolean ok = screenshotCapture.capture(w, h, screenshotFile);
-                    if (ok) {
-                        screenshots.add("world_loaded.png");
+                case RUNNING_SCENARIO:
+                    // Apply input state before scenario step
+                    inputController.applyInputs();
+
+                    ScenarioRunner.RunnerState rs = scenarioRunner.tick();
+                    if (rs == ScenarioRunner.RunnerState.COMPLETE) {
+                        screenshots.addAll(scenarioRunner.getScreenshots());
                         state = State.COMPLETE;
-                        System.out.println("[McTestAgent] Capture complete at tick " + tickCount);
-                    } else {
-                        error = "Screenshot capture failed";
+                        System.out.println("[McTestAgent] Scenario complete at tick " + tickCount);
+                    } else if (rs == ScenarioRunner.RunnerState.ERROR) {
+                        screenshots.addAll(scenarioRunner.getScreenshots());
+                        error = scenarioRunner.getError();
                         state = State.ERROR;
                     }
                     writeStatus();
@@ -131,7 +146,16 @@ public class TickHook {
     }
 
     private void writeStatus() {
-        statusWriter.write(state.name(), tickCount, screenshots,
-                gameState.getPlayerPosition(), error);
+        if (scenarioRunner != null) {
+            statusWriter.write(state.name(), tickCount, screenshots,
+                    gameState.getPlayerPosition(), error,
+                    scenarioRunner.getCurrentStepDescription(),
+                    scenarioRunner.getCurrentStepIndex(),
+                    scenarioRunner.getTotalSteps(),
+                    scenarioRunner.getResults());
+        } else {
+            statusWriter.write(state.name(), tickCount, screenshots,
+                    gameState.getPlayerPosition(), error);
+        }
     }
 }

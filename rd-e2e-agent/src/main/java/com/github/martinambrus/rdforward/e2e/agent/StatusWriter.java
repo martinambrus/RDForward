@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Writes agent status to a JSON file for the orchestrator to poll.
@@ -51,18 +52,70 @@ public class StatusWriter {
         }
         sb.append("}\n");
 
-        // Atomic write: write to temp file, then rename
+        writeAtomic(sb.toString());
+    }
+
+    /**
+     * Extended status write with scenario progress information.
+     */
+    public void write(String state, int tick, List<String> screenshots,
+                      double[] playerPosition, String error,
+                      String scenarioStep, int stepIndex, int totalSteps,
+                      Map<String, String> results) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("{\n");
+        sb.append("  \"state\": \"").append(escape(state)).append("\",\n");
+        sb.append("  \"tick\": ").append(tick).append(",\n");
+        sb.append("  \"screenshots\": [");
+        for (int i = 0; i < screenshots.size(); i++) {
+            if (i > 0) sb.append(", ");
+            sb.append("\"").append(escape(screenshots.get(i))).append("\"");
+        }
+        sb.append("],\n");
+        if (playerPosition != null && playerPosition.length == 3) {
+            sb.append("  \"playerPosition\": [")
+              .append(playerPosition[0]).append(", ")
+              .append(playerPosition[1]).append(", ")
+              .append(playerPosition[2]).append("],\n");
+        } else {
+            sb.append("  \"playerPosition\": null,\n");
+        }
+        if (scenarioStep != null) {
+            sb.append("  \"scenarioStep\": \"").append(escape(scenarioStep)).append("\",\n");
+        }
+        sb.append("  \"stepIndex\": ").append(stepIndex).append(",\n");
+        sb.append("  \"totalSteps\": ").append(totalSteps).append(",\n");
+        if (results != null && !results.isEmpty()) {
+            sb.append("  \"results\": {");
+            boolean first = true;
+            for (Map.Entry<String, String> entry : results.entrySet()) {
+                if (!first) sb.append(",");
+                sb.append("\n    \"").append(escape(entry.getKey())).append("\": \"")
+                  .append(escape(entry.getValue())).append("\"");
+                first = false;
+            }
+            sb.append("\n  },\n");
+        }
+        if (error != null) {
+            sb.append("  \"error\": \"").append(escape(error)).append("\"\n");
+        } else {
+            sb.append("  \"error\": null\n");
+        }
+        sb.append("}\n");
+
+        writeAtomic(sb.toString());
+    }
+
+    private void writeAtomic(String content) {
         File tmp = new File(statusDir, "status.json.tmp");
         FileWriter fw = null;
         try {
             fw = new FileWriter(tmp);
-            fw.write(sb.toString());
+            fw.write(content);
             fw.flush();
             fw.close();
             fw = null;
-            // Atomic rename (same directory = same filesystem)
             if (!tmp.renameTo(statusFile)) {
-                // Fallback: delete and retry (Windows compatibility)
                 statusFile.delete();
                 tmp.renameTo(statusFile);
             }

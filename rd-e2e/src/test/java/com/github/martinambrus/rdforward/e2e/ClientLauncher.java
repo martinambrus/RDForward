@@ -26,6 +26,15 @@ public class ClientLauncher {
     private static final String ALPHA_126_JAR_URL = "https://piston-data.mojang.com/v1/objects/a68c817afd6c05c253ba5462287c2c19bbb57935/client.jar";
     private static final String ALPHA_126_JAR = "alpha-1.2.6-client.jar";
 
+    private static final String BETA_181_JAR_URL = "https://launcher.mojang.com/v1/objects/6b562463ccc2c7ff12ff350a2b04a67b3adcd37b/client.jar";
+    private static final String BETA_181_JAR = "beta-1.8.1-client.jar";
+
+    // JInput (required by Beta 1.8 for controller support, loaded via LWJGL)
+    private static final String JINPUT_URL = "https://libraries.minecraft.net/net/java/jinput/jinput/2.0.5/jinput-2.0.5.jar";
+    private static final String JINPUT_JAR = "jinput-2.0.5.jar";
+    private static final String JINPUT_NATIVES_URL = "https://libraries.minecraft.net/net/java/jinput/jinput-platform/2.0.5/jinput-platform-2.0.5-natives-linux.jar";
+    private static final String JINPUT_NATIVES_JAR = "jinput-platform-natives-linux.jar";
+
     // LWJGL 2 from Mojang CDN (includes native .so files)
     private static final String LWJGL2_NATIVES_URL = "https://libraries.minecraft.net/org/lwjgl/lwjgl/lwjgl-platform/2.9.4-nightly-20150209/lwjgl-platform-2.9.4-nightly-20150209-natives-linux.jar";
     private static final String LWJGL2_NATIVES_JAR = "lwjgl-platform-natives-linux.jar";
@@ -40,15 +49,25 @@ public class ClientLauncher {
 
     /**
      * Launch an Alpha 1.2.6 client with the E2E agent attached.
+     * Uses the default "world_loaded" scenario.
+     */
+    public Process launchAlpha126(String agentJarPath, int serverPort,
+            File statusDir, String display) throws IOException, InterruptedException {
+        return launchAlpha126(agentJarPath, serverPort, statusDir, display, "world_loaded");
+    }
+
+    /**
+     * Launch an Alpha 1.2.6 client with the E2E agent attached.
      *
      * @param agentJarPath path to the rd-e2e-agent fat JAR
      * @param serverPort   the RDForward server port to connect to
      * @param statusDir    directory for agent status JSON output
      * @param display      X display string (e.g. ":99")
+     * @param scenario     scenario name to run (e.g. "world_loaded", "environment_check")
      * @return the launched process
      */
     public Process launchAlpha126(String agentJarPath, int serverPort,
-            File statusDir, String display) throws IOException, InterruptedException {
+            File statusDir, String display, String scenario) throws IOException, InterruptedException {
         ensureLibs();
 
         String clientJar = new File(LIBS_DIR, ALPHA_126_JAR).getAbsolutePath();
@@ -59,7 +78,8 @@ public class ClientLauncher {
         String agentArgs = "version=alpha126"
                 + ",serverHost=localhost"
                 + ",serverPort=" + serverPort
-                + ",statusDir=" + statusDir.getAbsolutePath();
+                + ",statusDir=" + statusDir.getAbsolutePath()
+                + ",scenario=" + scenario;
 
         List<String> cmd = new ArrayList<>();
         cmd.add(JAVA8_PATH);
@@ -79,6 +99,68 @@ public class ClientLauncher {
         Map<String, String> env = pb.environment();
         env.put("DISPLAY", display);
         env.put("LIBGL_ALWAYS_SOFTWARE", "1"); // Mesa software rendering fallback
+        pb.redirectErrorStream(true);
+        pb.inheritIO();
+
+        clientProcess = pb.start();
+        return clientProcess;
+    }
+
+    /**
+     * Launch a Beta 1.8.1 client with the E2E agent attached.
+     * Uses the default "world_loaded" scenario.
+     */
+    public Process launchBeta181(String agentJarPath, int serverPort,
+            File statusDir, String display) throws IOException, InterruptedException {
+        return launchBeta181(agentJarPath, serverPort, statusDir, display, "world_loaded");
+    }
+
+    /**
+     * Launch a Beta 1.8.1 client with the E2E agent attached.
+     * Beta 1.8 introduced creative mode (gameMode=1). The server sends creative
+     * mode in JoinGame, so the agent gets creative=true to adjust expectations.
+     *
+     * @param agentJarPath path to the rd-e2e-agent fat JAR
+     * @param serverPort   the RDForward server port to connect to
+     * @param statusDir    directory for agent status JSON output
+     * @param display      X display string (e.g. ":99")
+     * @param scenario     scenario name to run
+     * @return the launched process
+     */
+    public Process launchBeta181(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario) throws IOException, InterruptedException {
+        ensureLibs();
+
+        String clientJar = new File(LIBS_DIR, BETA_181_JAR).getAbsolutePath();
+        String lwjglJar = new File(LIBS_DIR, LWJGL2_JAR).getAbsolutePath();
+        String lwjglUtilJar = new File(LIBS_DIR, LWJGL2_UTIL_JAR).getAbsolutePath();
+        String jinputJar = new File(LIBS_DIR, JINPUT_JAR).getAbsolutePath();
+        String nativesPath = new File(NATIVES_DIR).getAbsolutePath();
+
+        String agentArgs = "version=beta18"
+                + ",creative=true"
+                + ",serverHost=localhost"
+                + ",serverPort=" + serverPort
+                + ",statusDir=" + statusDir.getAbsolutePath()
+                + ",scenario=" + scenario;
+
+        List<String> cmd = new ArrayList<>();
+        cmd.add(JAVA8_PATH);
+        cmd.add("-javaagent:" + agentJarPath + "=" + agentArgs);
+        cmd.add("-Djava.library.path=" + nativesPath);
+        cmd.add("-Dhttp.proxyHost=127.0.0.1");
+        cmd.add("-Dhttp.proxyPort=65535");
+        cmd.add("-Xmx256m");
+        cmd.add("-cp");
+        cmd.add(clientJar + ":" + lwjglJar + ":" + lwjglUtilJar + ":" + jinputJar);
+        cmd.add("net.minecraft.client.Minecraft");
+
+        System.out.println("[E2E] Launching Beta 1.8.1 client: " + String.join(" ", cmd));
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        Map<String, String> env = pb.environment();
+        env.put("DISPLAY", display);
+        env.put("LIBGL_ALWAYS_SOFTWARE", "1");
         pb.redirectErrorStream(true);
         pb.inheritIO();
 
@@ -149,8 +231,10 @@ public class ClientLauncher {
         libsDir.mkdirs();
 
         downloadIfMissing(ALPHA_126_JAR_URL, new File(libsDir, ALPHA_126_JAR));
+        downloadIfMissing(BETA_181_JAR_URL, new File(libsDir, BETA_181_JAR));
         downloadIfMissing(LWJGL2_JAR_URL, new File(libsDir, LWJGL2_JAR));
         downloadIfMissing(LWJGL2_UTIL_URL, new File(libsDir, LWJGL2_UTIL_JAR));
+        downloadIfMissing(JINPUT_URL, new File(libsDir, JINPUT_JAR));
         ensureNatives();
     }
 
@@ -159,13 +243,16 @@ public class ClientLauncher {
         libsDir.mkdirs();
         File nativesDir = new File(NATIVES_DIR);
         File nativesJar = new File(libsDir, LWJGL2_NATIVES_JAR);
+        File jinputNativesJar = new File(libsDir, JINPUT_NATIVES_JAR);
 
         downloadIfMissing(LWJGL2_NATIVES_URL, nativesJar);
+        downloadIfMissing(JINPUT_NATIVES_URL, jinputNativesJar);
 
-        // Extract .so files from the natives JAR if not already done
+        // Extract .so files from natives JARs if not already done
         if (!nativesDir.exists() || nativesDir.list().length == 0) {
             nativesDir.mkdirs();
             extractNatives(nativesJar, nativesDir);
+            extractNatives(jinputNativesJar, nativesDir);
         }
     }
 
