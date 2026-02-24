@@ -1,10 +1,9 @@
 package com.github.martinambrus.rdforward.e2e.scenarios;
 
-import com.github.martinambrus.rdforward.e2e.BaselineManager;
 import com.github.martinambrus.rdforward.e2e.ClientLauncher;
 import com.github.martinambrus.rdforward.e2e.E2ETestServer;
 import com.github.martinambrus.rdforward.e2e.HeadlessDisplay;
-import com.github.martinambrus.rdforward.e2e.ImageComparator;
+import com.github.martinambrus.rdforward.e2e.ScreenshotBaselineVerifier;
 import com.github.martinambrus.rdforward.e2e.StatusMonitor;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -23,8 +22,6 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class BetaLoginScreenshotTest {
 
-    private static final String VERSION = "beta181";
-    private static final String CHECKPOINT = "world_loaded";
     private static final long TIMEOUT_MS = 120_000;
 
     private static E2ETestServer server;
@@ -74,27 +71,8 @@ class BetaLoginScreenshotTest {
             assertEquals("COMPLETE", state,
                     "Agent ended in " + state + " state. Error: " + error);
 
-            File screenshot = new File(statusDir, "world_loaded.png");
-            assertTrue(screenshot.exists(), "Screenshot file not produced by agent");
-            assertTrue(screenshot.length() > 0, "Screenshot file is empty");
-
-            BaselineManager baselines = new BaselineManager();
-            if (!baselines.hasBaseline(VERSION, CHECKPOINT)) {
-                baselines.recordBaseline(screenshot, VERSION, CHECKPOINT);
-                System.out.println("[E2E] First run — baseline recorded. "
-                        + "Re-run test to compare against baseline.");
-            } else {
-                ImageComparator comparator = new ImageComparator(0.90);
-                File baseline = baselines.getBaselinePath(VERSION, CHECKPOINT);
-                File diff = baselines.getDiffPath(VERSION, CHECKPOINT);
-
-                ImageComparator.ComparisonResult result =
-                        comparator.compare(baseline, screenshot, diff);
-
-                assertTrue(result.passed,
-                        "Screenshot differs from baseline by " + result.differencePercent
-                                + "% (threshold: 10%). Diff saved to: " + diff.getAbsolutePath());
-            }
+            new ScreenshotBaselineVerifier("beta181", "world_loaded")
+                    .verifyAll(statusDir, "world_loaded.png");
         } finally {
             if (client.isAlive()) {
                 client.destroyForcibly();

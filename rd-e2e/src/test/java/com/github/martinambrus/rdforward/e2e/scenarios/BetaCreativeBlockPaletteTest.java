@@ -3,6 +3,7 @@ package com.github.martinambrus.rdforward.e2e.scenarios;
 import com.github.martinambrus.rdforward.e2e.ClientLauncher;
 import com.github.martinambrus.rdforward.e2e.E2ETestServer;
 import com.github.martinambrus.rdforward.e2e.HeadlessDisplay;
+import com.github.martinambrus.rdforward.e2e.ScreenshotBaselineVerifier;
 import com.github.martinambrus.rdforward.e2e.StatusMonitor;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -71,9 +72,8 @@ class BetaCreativeBlockPaletteTest {
             assertEquals("COMPLETE", state,
                     "Agent ended in " + state + " state. Error: " + error);
 
-            File screenshot = new File(statusDir, "creative_palette.png");
-            assertTrue(screenshot.exists(), "Screenshot creative_palette.png not produced");
-            assertTrue(screenshot.length() > 0, "Screenshot is empty");
+            new ScreenshotBaselineVerifier("beta181", "creative_block_palette")
+                    .verifyAll(statusDir, "creative_palette.png");
         } finally {
             if (client.isAlive()) {
                 client.destroyForcibly();

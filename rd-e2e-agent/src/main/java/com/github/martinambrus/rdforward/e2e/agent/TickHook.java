@@ -98,6 +98,9 @@ public class TickHook {
                     break;
 
                 case STABILIZING:
+                    // Dismiss pause menu overlay from Xvfb focus loss so the
+                    // framebuffer is clean before the first scenario screenshot
+                    inputController.dismissPauseScreen();
                     stabilizeTicks++;
                     if (stabilizeTicks >= STABILIZE_TICKS) {
                         System.out.println("[McTestAgent] Stabilized after "
@@ -111,6 +114,8 @@ public class TickHook {
                     break;
 
                 case RUNNING_SCENARIO:
+                    // Dismiss pause menu overlay from Xvfb focus loss
+                    inputController.dismissPauseScreen();
                     // Apply input state before scenario step
                     inputController.applyInputs();
 

@@ -59,6 +59,24 @@ public class CrossClientScenario implements Scenario {
                 + ") from player pos (" + pos[0] + "," + pos[1] + "," + pos[2] + ")");
     }
 
+    /**
+     * Reusable screenshot step with a specific name.
+     * Used to capture screenshots at cross-client interaction points (steps 25-30).
+     */
+    private class NamedScreenshotStep implements ScenarioStep {
+        private final String name;
+        NamedScreenshotStep(String name) { this.name = name; }
+        @Override public String getDescription() { return name; }
+        @Override public int getTimeoutTicks() { return 20; }
+        @Override public boolean tick(GameState gs, InputController input,
+                                      ScreenshotCapture capture, File statusDir) {
+            File file = new File(statusDir, name + ".png");
+            capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);
+            System.out.println("[McTestAgent] Named screenshot: " + name + ".png");
+            return true;
+        }
+    }
+
     // ======================== PRIMARY STEPS ========================
 
     private List<ScenarioStep> getPrimarySteps() {
@@ -68,16 +86,22 @@ public class CrossClientScenario implements Scenario {
         steps.add(new PrimaryWalkBackward());
         steps.add(new PrimaryTurnToSecondary());
         steps.add(new PrimaryWaitSecondaryChat());
+        steps.add(new NamedScreenshotStep("cross_step25_chat_received"));  // step 25
         steps.add(new PrimarySendChat());
+        steps.add(new NamedScreenshotStep("cross_step26_chat_sent"));      // step 26
         steps.add(new PrimaryWaitSecondarySawChat());
         steps.add(new PrimaryPlaceBlock());
+        steps.add(new NamedScreenshotStep("cross_step27_block_placed"));   // step 27
         steps.add(new PrimaryWaitSecondarySawBlock());
         steps.add(new PrimaryBreakBlock());
+        steps.add(new NamedScreenshotStep("cross_step28_block_broken"));   // step 28
         steps.add(new PrimaryWaitSecondarySawBreak());
         steps.add(new PrimaryWaitSecondaryBlockPlaced());
         steps.add(new PrimaryVerifySecondaryBlock());
+        steps.add(new NamedScreenshotStep("cross_step29_secondary_block")); // step 29
         steps.add(new PrimaryWaitSecondaryBlockBroken());
         steps.add(new PrimaryVerifySecondaryBreak());
+        steps.add(new NamedScreenshotStep("cross_step30_secondary_break")); // step 30
         steps.add(new PrimaryScreenshot());
         return steps;
     }
@@ -330,14 +354,20 @@ public class CrossClientScenario implements Scenario {
         steps.add(new SecondaryWaitWorldReady());
         steps.add(new SecondaryWaitPrimaryJoined());
         steps.add(new SecondarySendChat());
+        steps.add(new NamedScreenshotStep("cross_step25_chat_sent"));      // step 25
         steps.add(new SecondaryWaitPrimaryChat());
+        steps.add(new NamedScreenshotStep("cross_step26_chat_received"));  // step 26
         steps.add(new SecondaryWaitPrimaryBlockPlaced());
         steps.add(new SecondaryVerifyPrimaryBlock());
+        steps.add(new NamedScreenshotStep("cross_step27_primary_block"));  // step 27
         steps.add(new SecondaryWaitPrimaryBlockBroken());
         steps.add(new SecondaryVerifyPrimaryBreak());
+        steps.add(new NamedScreenshotStep("cross_step28_primary_break"));  // step 28
         steps.add(new SecondaryPlaceBlock());
+        steps.add(new NamedScreenshotStep("cross_step29_block_placed"));   // step 29
         steps.add(new SecondaryWaitPrimarySawBlock());
         steps.add(new SecondaryBreakBlock());
+        steps.add(new NamedScreenshotStep("cross_step30_block_broken"));   // step 30
         steps.add(new SecondaryWaitPrimarySawBreak());
         steps.add(new SecondaryScreenshot());
         return steps;

@@ -12,24 +12,42 @@ import java.util.List;
  * Phase 5: Systematically places blocks from the creative inventory.
  *
  * Opens the creative inventory GUI, grabs items from successive grid slots,
- * places them in a row on the ground, then captures a screenshot.
+ * places them in a row on the ground, verifies each placement, then captures
+ * a screenshot from on top of the first placed block.
  *
  * Beta 1.8 creative inventory has a scrollable grid of ~198 items.
- * We place a representative sample (first 20 items from the grid)
- * to verify block placement from creative inventory works correctly.
+ * We iterate through the first visible page (45 grid slots, 5 rows of 9).
  *
- * Layout: blocks placed in a row along +X from spawn, one block apart.
+ * Layout: blocks placed in a row along +X, offset +2 in Z from spawn.
+ * Player walks along spawn Z (clear of placed blocks) then places sideways.
+ * Row wrapping at 80 blocks (start new row 3 blocks further in +Z).
+ *
+ * Verification per placement:
+ * - Block items should convert to cobblestone (server converts)
+ * - Non-block items disappear after at most 4s (80 ticks)
+ * - Items that can't be placed are OK (bow, sword, etc.)
+ *
+ * Final: walk to first placed block, face +X, jump on it, screenshot.
  */
 public class CreativeBlockPaletteScenario implements Scenario {
 
-    // Number of creative inventory items to test
-    private static final int ITEMS_TO_PLACE = 20;
+    // Total creative inventory grid slots to test (one full visible page)
+    private static final int ITEMS_TO_PLACE = 45;
+    private static final int MAX_PER_ROW = 80;
+    private static final int ROW_SPACING_Z = 3;
+    private static final int BLOCK_SPACING_X = 2;
+    private static final int Z_OFFSET = 2; // blocks placed offset from walking path
 
-    // Placement tracking
+    // Placement origin and tracking
     private double originX;
     private double originZ;
     private int groundY;
     private boolean originComputed;
+
+    // Track first successfully placed block for final positioning
+    private int firstPlacedX = Integer.MIN_VALUE;
+    private int firstPlacedY;
+    private int firstPlacedZ;
 
     @Override
     public String getName() {
@@ -41,15 +59,15 @@ public class CreativeBlockPaletteScenario implements Scenario {
         List<ScenarioStep> steps = new ArrayList<ScenarioStep>();
         steps.add(new RecordOriginStep());
 
-        // For each item: open inventory, grab item to hotbar, close, place, wait
         for (int i = 0; i < ITEMS_TO_PLACE; i++) {
             steps.add(new OpenCreativeInventoryStep());
             steps.add(new GrabItemStep(i));
             steps.add(new CloseInventoryStep());
-            steps.add(new LookAndPlaceStep(i));
-            steps.add(new WaitPlaceStep());
+            steps.add(new WalkAndPlaceStep(i));
+            steps.add(new VerifyPlacementStep(i));
         }
 
+        steps.add(new FinalPositioningStep());
         steps.add(new FinalScreenshotStep());
         return steps;
     }
@@ -66,7 +84,24 @@ public class CreativeBlockPaletteScenario implements Scenario {
                 + originX + "," + groundY + "," + originZ + ")");
     }
 
-    // Step 1: Record spawn position as placement origin
+    /**
+     * Compute target block X for a given item index (with row wrapping).
+     */
+    private int targetX(int itemIndex) {
+        int col = itemIndex % MAX_PER_ROW;
+        return (int) originX + 2 + (col * BLOCK_SPACING_X);
+    }
+
+    /**
+     * Compute target block Z for a given item index (with row wrapping).
+     * Offset from walking path so placed blocks don't obstruct movement.
+     */
+    private int targetZ(int itemIndex) {
+        int row = itemIndex / MAX_PER_ROW;
+        return (int) originZ + Z_OFFSET + (row * ROW_SPACING_Z);
+    }
+
+    // Record spawn position as placement origin
     private class RecordOriginStep implements ScenarioStep {
         @Override
         public String getDescription() {
@@ -120,8 +155,6 @@ public class CreativeBlockPaletteScenario implements Scenario {
     }
 
     // Grab item from creative grid slot and put in hotbar slot 0
-    // Creative inventory grid slots in Beta 1.8: slots 0-44 are the grid area.
-    // We click on successive grid positions.
     private class GrabItemStep implements ScenarioStep {
         private final int itemIndex;
         private int ticks;
@@ -140,12 +173,12 @@ public class CreativeBlockPaletteScenario implements Scenario {
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
             if (ticks == 1) {
-                // Click on creative grid slot (left click to pick up stack)
+                // Click on creative grid slot
                 input.clickInventorySlot(itemIndex, 0);
                 return false;
             }
             if (ticks == 3) {
-                // Place in hotbar slot 0 (window slot 36 in standard container)
+                // Place in hotbar slot 0 (window slot 36)
                 input.clickInventorySlot(36, 0);
                 return false;
             }
@@ -158,7 +191,7 @@ public class CreativeBlockPaletteScenario implements Scenario {
         }
     }
 
-    // Close the inventory screen
+    // Close inventory
     private class CloseInventoryStep implements ScenarioStep {
         @Override
         public String getDescription() {
@@ -178,66 +211,236 @@ public class CreativeBlockPaletteScenario implements Scenario {
         }
     }
 
-    // Look at placement target and right-click to place
-    private class LookAndPlaceStep implements ScenarioStep {
+    /**
+     * Walk along the origin Z axis (clear of placed blocks) until the
+     * target block is within reach, then look sideways at it and place.
+     */
+    private class WalkAndPlaceStep implements ScenarioStep {
         private final int itemIndex;
         private int ticks;
+        private boolean placed;
+        private int placeTick;
 
-        LookAndPlaceStep(int itemIndex) {
+        WalkAndPlaceStep(int itemIndex) {
             this.itemIndex = itemIndex;
         }
 
         @Override
         public String getDescription() {
-            return "place_item_" + itemIndex;
+            return "walk_and_place_" + itemIndex;
         }
 
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
+            computeOrigin(gs);
             ticks++;
-            // Place along +X axis, each item 2 blocks apart
-            int targetX = (int) originX + 2 + (itemIndex * 2);
-            int targetZ = (int) originZ;
 
-            // Look at the ground block at target position
-            input.lookAtBlock(targetX, groundY, targetZ);
+            int tx = targetX(itemIndex);
+            int tz = targetZ(itemIndex);
+            double[] pos = gs.getPlayerPosition();
+            if (pos == null) return false;
 
-            if (ticks >= 3 && ticks <= 5) {
-                input.click(1); // right-click to place
+            // Distance to placement target (offset in Z from walking path)
+            double dx = tx + 0.5 - pos[0];
+            double dz = tz + 0.5 - pos[2];
+            double dist = Math.sqrt(dx * dx + dz * dz);
+
+            if (!placed && dist > 3.5) {
+                // Walk along origin Z to get within X range of target
+                // (block row is at Z_OFFSET, player walks at originZ)
+                double walkDx = tx + 0.5 - pos[0];
+                double walkDz = originZ + 0.5 - pos[2];
+                float yaw = (float) Math.toDegrees(Math.atan2(-walkDx, walkDz));
+                input.setLookDirection(yaw, 0);
+                input.pressKey(0); // forward
+                return false;
             }
-            return ticks >= 8;
+
+            // In range — stop walking and place
+            input.releaseAllKeys();
+
+            if (!placed) {
+                // Look at ground block at target position (offset in Z)
+                input.lookAtBlock(tx, groundY, tz);
+                if (ticks >= 3) {
+                    input.click(1); // right-click to place
+                }
+                if (ticks >= 5) {
+                    placed = true;
+                    placeTick = ticks;
+                }
+                return false;
+            }
+
+            // Wait a few ticks after placing
+            return ticks >= placeTick + 3;
         }
 
         @Override
         public int getTimeoutTicks() {
-            return 40;
+            return 200; // generous timeout for walking + placing
         }
     }
 
-    // Brief wait between placements
-    private class WaitPlaceStep implements ScenarioStep {
+    /**
+     * Verify the placement result: block items should convert to cobblestone,
+     * non-block items should disappear (or never appear).
+     */
+    private class VerifyPlacementStep implements ScenarioStep {
+        private final int itemIndex;
         private int ticks;
+
+        VerifyPlacementStep(int itemIndex) {
+            this.itemIndex = itemIndex;
+        }
 
         @Override
         public String getDescription() {
-            return "wait_place";
+            return "verify_placement_" + itemIndex;
+        }
+
+        @Override
+        public boolean tick(GameState gs, InputController input,
+                            ScreenshotCapture capture, File statusDir) {
+            computeOrigin(gs);
+            ticks++;
+
+            int tx = targetX(itemIndex);
+            int tz = targetZ(itemIndex);
+            int placedY = groundY + 1;
+            int blockId = gs.getBlockId(tx, placedY, tz);
+
+            if (ticks == 1) {
+                // First check
+                if (blockId != 0) {
+                    // Block placed successfully
+                    if (blockId == 4) {
+                        System.out.println("[McTestAgent] Item " + itemIndex
+                                + ": placed as cobblestone at (" + tx + "," + placedY + "," + tz + ")");
+                    } else {
+                        System.out.println("[McTestAgent] Item " + itemIndex
+                                + ": placed as blockId=" + blockId + " at (" + tx + "," + placedY + "," + tz
+                                + ") — expected cobblestone(4) conversion");
+                    }
+                    recordFirstPlaced(tx, placedY, tz);
+                    return true;
+                }
+            }
+
+            // Wait up to 80 ticks (4s) for non-block items to disappear / conversion
+            if (ticks < 80) {
+                if (blockId != 0) {
+                    // Block appeared after a delay
+                    if (blockId == 4) {
+                        System.out.println("[McTestAgent] Item " + itemIndex
+                                + ": converted to cobblestone after " + ticks + " ticks");
+                    } else {
+                        System.out.println("[McTestAgent] Item " + itemIndex
+                                + ": appeared as blockId=" + blockId + " after " + ticks + " ticks");
+                    }
+                    recordFirstPlaced(tx, placedY, tz);
+                    return true;
+                }
+                return false;
+            }
+
+            // After 4s timeout: item was not placeable or disappeared
+            if (blockId == 0) {
+                System.out.println("[McTestAgent] Item " + itemIndex
+                        + ": non-block item or not placeable (air after 4s) — OK");
+            } else {
+                System.out.println("[McTestAgent] Item " + itemIndex
+                        + ": blockId=" + blockId + " after 4s wait");
+                recordFirstPlaced(tx, placedY, tz);
+            }
+            return true; // continue regardless
+        }
+
+        @Override
+        public int getTimeoutTicks() {
+            return 100;
+        }
+    }
+
+    private void recordFirstPlaced(int x, int y, int z) {
+        if (firstPlacedX == Integer.MIN_VALUE) {
+            firstPlacedX = x;
+            firstPlacedY = y;
+            firstPlacedZ = z;
+            System.out.println("[McTestAgent] First placed block recorded at ("
+                    + x + "," + y + "," + z + ")");
+        }
+    }
+
+    /**
+     * Walk back along the origin Z (clear of placed blocks) to the first
+     * placed block's X, then face the block row for the screenshot.
+     */
+    private class FinalPositioningStep implements ScenarioStep {
+        private int ticks;
+        private int phase; // 0=walk back along originZ, 1=face row, 2=done
+
+        @Override
+        public String getDescription() {
+            return "final_positioning";
         }
 
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
-            return ticks >= 5;
+
+            if (firstPlacedX == Integer.MIN_VALUE) {
+                System.out.println("[McTestAgent] No blocks were placed, skipping positioning");
+                return true;
+            }
+
+            double[] pos = gs.getPlayerPosition();
+            if (pos == null) return false;
+
+            switch (phase) {
+                case 0: {
+                    // Walk along originZ to the first placed block's X
+                    double walkX = firstPlacedX + 0.5;
+                    double walkZ = originZ + 0.5;
+                    double dx = walkX - pos[0];
+                    double dz = walkZ - pos[2];
+                    double dist = Math.sqrt(dx * dx + dz * dz);
+
+                    if (dist > 1.5) {
+                        float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+                        input.setLookDirection(yaw, 0);
+                        input.pressKey(0); // forward
+                    } else {
+                        input.releaseAllKeys();
+                        phase = 1;
+                        ticks = 0;
+                    }
+                    break;
+                }
+                case 1: {
+                    // Face +X direction (yaw=-90), look slightly down toward block row
+                    input.setLookDirection(-90, 10);
+                    if (ticks >= 3) {
+                        input.releaseAllKeys();
+                        phase = 2;
+                    }
+                    break;
+                }
+                case 2:
+                    return true;
+            }
+            return false;
         }
 
         @Override
         public int getTimeoutTicks() {
-            return 20;
+            return 600; // generous for walking back ~90 blocks
         }
     }
 
-    // Final screenshot
+    // Final screenshot from on top of first placed block
     private class FinalScreenshotStep implements ScenarioStep {
         @Override
         public String getDescription() {

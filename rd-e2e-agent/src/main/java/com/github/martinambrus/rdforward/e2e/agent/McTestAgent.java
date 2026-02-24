@@ -84,6 +84,23 @@ public class McTestAgent {
 
         // Install ByteBuddy transformers
         new AgentBuilder.Default()
+                // Override Display.isActive() to return true — Xvfb never reports
+                // the window as active, which causes the pause menu overlay and
+                // prevents setIngameFocus() from working.
+                .type(ElementMatchers.named("org.lwjgl.opengl.Display"))
+                .transform(new AgentBuilder.Transformer() {
+                    @Override
+                    public DynamicType.Builder<?> transform(DynamicType.Builder<?> builder,
+                            TypeDescription typeDescription, ClassLoader classLoader,
+                            JavaModule module, ProtectionDomain protectionDomain) {
+                        System.out.println("[McTestAgent] Patching Display.isActive()");
+                        return builder
+                                .visit(Advice.to(DisplayActiveAdvice.class)
+                                        .on(ElementMatchers.named("isActive")
+                                                .and(ElementMatchers.takesNoArguments())));
+                    }
+                })
+                // Hook Minecraft class run() and tick methods
                 .type(ElementMatchers.hasSuperType(
                         ElementMatchers.named(mappings.minecraftClassName())))
                 .transform(new AgentBuilder.Transformer() {
@@ -176,6 +193,18 @@ public class McTestAgent {
             }
         }
         return args;
+    }
+
+    /**
+     * Advice inlined into Display.isActive() — forces it to return true.
+     * Xvfb never reports the window as active, which causes Minecraft to open
+     * the pause menu overlay and prevents setIngameFocus() from completing.
+     */
+    public static class DisplayActiveAdvice {
+        @Advice.OnMethodExit
+        public static void onExit(@Advice.Return(readOnly = false) boolean returnValue) {
+            returnValue = true;
+        }
     }
 
     /**

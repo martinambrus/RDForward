@@ -3,6 +3,7 @@ package com.github.martinambrus.rdforward.e2e.scenarios;
 import com.github.martinambrus.rdforward.e2e.ClientLauncher;
 import com.github.martinambrus.rdforward.e2e.E2ETestServer;
 import com.github.martinambrus.rdforward.e2e.HeadlessDisplay;
+import com.github.martinambrus.rdforward.e2e.ScreenshotBaselineVerifier;
 import com.github.martinambrus.rdforward.e2e.StatusMonitor;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -70,14 +71,8 @@ class AlphaColumnBuildTest {
             assertEquals("COMPLETE", state,
                     "Agent ended in " + state + " state. Error: " + error);
 
-            // Verify screenshots
-            File columnTop = new File(statusDir, "column_top.png");
-            assertTrue(columnTop.exists(), "column_top.png not produced");
-            assertTrue(columnTop.length() > 0, "column_top.png is empty");
-
-            File backOnGround = new File(statusDir, "back_on_ground.png");
-            assertTrue(backOnGround.exists(), "back_on_ground.png not produced");
-            assertTrue(backOnGround.length() > 0, "back_on_ground.png is empty");
+            new ScreenshotBaselineVerifier("alpha126", "column_build")
+                    .verifyAll(statusDir, "column_top.png", "back_on_ground.png");
         } finally {
             if (client.isAlive()) {
                 client.destroyForcibly();

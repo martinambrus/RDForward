@@ -51,6 +51,11 @@ public class InputController {
     // Last known player object (to detect respawns)
     private Object lastPlayer;
 
+    // Tracks whether the agent intentionally opened a screen (inventory GUI).
+    // When false and currentScreen is non-null, it's an unwanted pause menu
+    // from Xvfb focus loss, and should be dismissed.
+    private boolean agentOpenedScreen;
+
     // Pending state
     private final boolean[] pendingMovement = new boolean[6];
     private final List<Integer> pendingClicks = new ArrayList<Integer>();
@@ -166,6 +171,24 @@ public class InputController {
         } catch (Exception e) {
             System.err.println("[McTestAgent] InputController.applyInputs error: " + e.getMessage());
             e.printStackTrace();
+        }
+    }
+
+    /**
+     * Dismiss the pause menu if it appeared due to Xvfb focus loss.
+     * Only closes the screen if the agent did NOT intentionally open it
+     * (e.g. inventory GUI). Safe to call every tick.
+     */
+    public void dismissPauseScreen() {
+        try {
+            Object screen = gameState.getCurrentScreen();
+            if (!agentOpenedScreen && screen != null) {
+                ensureDisplayGuiScreenMethod();
+                displayGuiScreenMethod.invoke(gameState.getMinecraftInstance(), (Object) null);
+                gameState.setMouseGrabbed(true);
+            }
+        } catch (Exception e) {
+            // Silently ignore — this is a best-effort safety net
         }
     }
 
@@ -564,6 +587,7 @@ public class InputController {
             return;
         }
         try {
+            agentOpenedScreen = true;
             ensureDisplayGuiScreenMethod();
 
             // Beta-style: creative or survival inventory takes EntityPlayer as constructor arg
@@ -671,6 +695,7 @@ public class InputController {
      */
     public void closeScreen() {
         try {
+            agentOpenedScreen = false;
             ensureDisplayGuiScreenMethod();
             displayGuiScreenMethod.invoke(gameState.getMinecraftInstance(), (Object) null);
             System.out.println("[McTestAgent] Closed screen");

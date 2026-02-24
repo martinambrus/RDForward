@@ -3,6 +3,7 @@ package com.github.martinambrus.rdforward.e2e.scenarios;
 import com.github.martinambrus.rdforward.e2e.ClientLauncher;
 import com.github.martinambrus.rdforward.e2e.E2ETestServer;
 import com.github.martinambrus.rdforward.e2e.HeadlessDisplay;
+import com.github.martinambrus.rdforward.e2e.ScreenshotBaselineVerifier;
 import com.github.martinambrus.rdforward.e2e.StatusMonitor;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -69,11 +70,8 @@ class BetaBlockPlaceBreakTest {
             assertEquals("COMPLETE", state,
                     "Agent ended in " + state + " state. Error: " + error);
 
-            for (String name : new String[]{"grass_broken.png", "block_placed.png", "adjacent_placed.png"}) {
-                File screenshot = new File(statusDir, name);
-                assertTrue(screenshot.exists(), "Screenshot " + name + " not produced");
-                assertTrue(screenshot.length() > 0, "Screenshot " + name + " is empty");
-            }
+            new ScreenshotBaselineVerifier("beta181", "block_place_break")
+                    .verifyAll(statusDir, "grass_broken.png", "block_placed.png", "adjacent_placed.png");
         } finally {
             if (client.isAlive()) {
                 client.destroyForcibly();

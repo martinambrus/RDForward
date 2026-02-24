@@ -3,6 +3,7 @@ package com.github.martinambrus.rdforward.e2e.scenarios;
 import com.github.martinambrus.rdforward.e2e.ClientLauncher;
 import com.github.martinambrus.rdforward.e2e.E2ETestServer;
 import com.github.martinambrus.rdforward.e2e.HeadlessDisplay;
+import com.github.martinambrus.rdforward.e2e.ScreenshotBaselineVerifier;
 import com.github.martinambrus.rdforward.e2e.StatusMonitor;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -70,9 +71,8 @@ class AlphaVoidFallTest {
             assertEquals("COMPLETE", state,
                     "Agent ended in " + state + " state. Error: " + error);
 
-            File screenshot = new File(statusDir, "void_fall_complete.png");
-            assertTrue(screenshot.exists(), "Screenshot void_fall_complete.png not produced");
-            assertTrue(screenshot.length() > 0, "Screenshot void_fall_complete.png is empty");
+            new ScreenshotBaselineVerifier("alpha126", "void_fall")
+                    .verifyAll(statusDir, "void_fall_complete.png");
         } finally {
             if (client.isAlive()) {
                 client.destroyForcibly();

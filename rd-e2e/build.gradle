@@ -11,8 +11,9 @@ dependencies {
 // run explicitly with: ./gradlew :rd-e2e:test
 test {
     onlyIf { project.hasProperty('e2e') }
-    // Client subprocess may take time to start and render
-    timeout = java.time.Duration.ofMinutes(5)
+    // Client subprocess may take time to start and render.
+    // Full suite includes creative palette (~4 min) + cross-client tests (~2 min) + others.
+    timeout = java.time.Duration.ofMinutes(20)
     // Run from root project directory so relative paths (rd-e2e-agent/build/libs/,
     // rd-client/build/libs/, rd-e2e/libs/, rd-e2e/baselines/) resolve correctly.
     workingDir = rootProject.projectDir

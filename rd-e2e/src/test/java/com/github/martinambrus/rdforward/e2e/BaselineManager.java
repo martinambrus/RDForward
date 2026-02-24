@@ -28,10 +28,24 @@ public class BaselineManager {
     }
 
     /**
+     * Get the baseline file path for a given version, scenario, and checkpoint.
+     */
+    public File getBaselinePath(String version, String scenario, String checkpoint) {
+        return new File(baselinesRoot, version + "/" + scenario + "/" + checkpoint + ".png");
+    }
+
+    /**
      * Check if a baseline exists for the given version and checkpoint.
      */
     public boolean hasBaseline(String version, String checkpoint) {
         return getBaselinePath(version, checkpoint).exists();
+    }
+
+    /**
+     * Check if a baseline exists for the given version, scenario, and checkpoint.
+     */
+    public boolean hasBaseline(String version, String scenario, String checkpoint) {
+        return getBaselinePath(version, scenario, checkpoint).exists();
     }
 
     /**
@@ -51,9 +65,28 @@ public class BaselineManager {
     }
 
     /**
+     * Record a screenshot as the new baseline (with scenario subdirectory).
+     */
+    public void recordBaseline(File screenshotFile, String version, String scenario,
+            String checkpoint) throws IOException {
+        File baseline = getBaselinePath(version, scenario, checkpoint);
+        baseline.getParentFile().mkdirs();
+        Files.copy(screenshotFile.toPath(), baseline.toPath(),
+                StandardCopyOption.REPLACE_EXISTING);
+        System.out.println("[E2E] Baseline recorded: " + baseline.getAbsolutePath());
+    }
+
+    /**
      * Get a path for the diff image (saved alongside the baseline on comparison failure).
      */
     public File getDiffPath(String version, String checkpoint) {
         return new File(baselinesRoot, version + "/" + checkpoint + "_diff.png");
+    }
+
+    /**
+     * Get a path for the diff image (with scenario subdirectory).
+     */
+    public File getDiffPath(String version, String scenario, String checkpoint) {
+        return new File(baselinesRoot, version + "/" + scenario + "/" + checkpoint + "_diff.png");
     }
 }

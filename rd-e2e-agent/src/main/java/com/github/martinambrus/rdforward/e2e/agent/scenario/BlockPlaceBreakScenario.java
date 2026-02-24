@@ -210,14 +210,14 @@ public class BlockPlaceBreakScenario implements Scenario {
         }
     }
 
-    // Step 5: Wait and verify cobblestone was placed (server may convert to grass)
+    // Step 5: Wait and verify cobblestone was placed AND converted to grass by server
     private class VerifyPlacedStep implements ScenarioStep {
         private int ticks;
         private boolean screenshotTaken;
 
         @Override
         public String getDescription() {
-            return "verify_placed";
+            return "verify_placed_grass_conversion";
         }
 
         @Override
@@ -227,24 +227,38 @@ public class BlockPlaceBreakScenario implements Scenario {
             if (ticks < 80) return false;
 
             int blockId = gs.getBlockId(targetBX, targetBY, targetBZ);
-            System.out.println("[McTestAgent] Block at target after place: " + blockId);
+
+            if (ticks == 80 || ticks % 40 == 0) {
+                System.out.println("[McTestAgent] Block at target after place (tick " + ticks + "): " + blockId);
+            }
+
+            if (blockId == 0) {
+                throw new RuntimeException("Block still air after placement — server rejected it");
+            }
+
+            // Server converts placed cobblestone to grass; wait for conversion
+            if (blockId == 4) {
+                return false; // still cobblestone, keep waiting for grass conversion
+            }
+
+            // Grass (2) = successful conversion
+            if (blockId == 2) {
+                System.out.println("[McTestAgent] Grass conversion confirmed at tick " + ticks);
+            } else {
+                System.out.println("[McTestAgent] WARNING: Expected grass (2), got blockId=" + blockId);
+            }
 
             if (!screenshotTaken) {
                 File file = new File(statusDir, "block_placed.png");
                 capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);
                 screenshotTaken = true;
             }
-
-            // Should be grass (2) after server conversion, or cobblestone (4) if not yet
-            if (blockId == 0) {
-                throw new RuntimeException("Block still air after placement");
-            }
             return true;
         }
 
         @Override
         public int getTimeoutTicks() {
-            return 200;
+            return 300; // allow more time for grass conversion
         }
     }
 

@@ -371,16 +371,21 @@ public class ColumnBuildScenario implements Scenario {
             double[] pos = gs.getPlayerPosition();
             if (pos == null) return false;
 
-            // Settling phase: wait 2 ticks after detecting grass/dirt to let
-            // any pending click(0) from the previous tick drain harmlessly.
-            // During settling, issue no break commands and look UP (not down)
-            // so any residual click doesn't hit ground blocks.
+            // Settling phase: wait a few ticks after detecting grass/dirt to let
+            // any pending break commands drain. If the block below becomes air
+            // (in-flight break removed it), abort settling and resume breaking.
             if (settleTicks > 0) {
                 settleTicks++;
                 input.setLookDirection(gs.getYaw(), 0f); // look horizontal
-                if (settleTicks >= 3) {
+                int belowNow = gs.getBlockBelowFeet();
+                if (belowNow == 0) {
+                    // In-flight break removed the ground block — resume breaking
+                    settleTicks = 0;
+                    return false;
+                }
+                if (settleTicks >= 5) {
                     System.out.println("[McTestAgent] Back on ground at Y=" + pos[1]
-                            + " blockBelow=" + gs.getBlockBelowFeet());
+                            + " blockBelow=" + belowNow);
                     return true;
                 }
                 return false;
@@ -405,6 +410,13 @@ public class ColumnBuildScenario implements Scenario {
             int bx = (int) Math.floor(pos[0]);
             int feetFloor = (int) Math.floor(pos[1] - (double) 1.62f);
             int bz = (int) Math.floor(pos[2]);
+
+            // Stop issuing breaks when close to the base — in creative mode,
+            // instant breaking can destroy the column base before the settle
+            // check fires, dropping the player into a hole.
+            if (feetFloor <= platformBY + 1) {
+                return false;
+            }
 
             // Break the block at feet level (the one we're standing on)
             // and the one below in case feetY is exactly on a block boundary
@@ -438,8 +450,11 @@ public class ColumnBuildScenario implements Scenario {
         }
     }
 
-    // Step 8: Verify back on ground
+    // Step 8: Verify back on ground (wait for player to settle on solid block)
     private class VerifyGroundStep implements ScenarioStep {
+        private int ticks;
+        private boolean screenshotTaken;
+
         @Override
         public String getDescription() {
             return "verify_ground";
@@ -448,23 +463,32 @@ public class ColumnBuildScenario implements Scenario {
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
+            ticks++;
             int blockBelow = gs.getBlockBelowFeet();
-            System.out.println("[McTestAgent] Final ground check: blockBelow=" + blockBelow);
 
-            // Accept grass(2), dirt(3), or cobblestone(4) — the column base block
-            // may sit at ground level, especially in creative mode where breaking is instant
-            if (blockBelow != 2 && blockBelow != 3 && blockBelow != 4) {
-                throw new RuntimeException("Expected grass(2), dirt(3), or cobblestone(4) below, got " + blockBelow);
+            if (ticks % 20 == 1) {
+                System.out.println("[McTestAgent] Final ground check (tick " + ticks
+                        + "): blockBelow=" + blockBelow);
             }
 
-            File file = new File(statusDir, "back_on_ground.png");
-            capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);
-            return true;
+            // Accept grass(2), dirt(3), or cobblestone(4)
+            if (blockBelow == 2 || blockBelow == 3 || blockBelow == 4) {
+                if (!screenshotTaken) {
+                    File file = new File(statusDir, "back_on_ground.png");
+                    capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);
+                    screenshotTaken = true;
+                }
+                return true;
+            }
+
+            // Player may still be falling after in-flight break removed a block;
+            // wait for them to land on solid ground
+            return false;
         }
 
         @Override
         public int getTimeoutTicks() {
-            return 20;
+            return 200; // generous — player may still be falling
         }
     }
 }

@@ -63,6 +63,30 @@ public class InventoryManipulationScenario implements Scenario {
     }
 
     /**
+     * Returns true if the current client is Alpha (immediate replenishment).
+     * Alpha mappings class names contain "AlphaV".
+     */
+    private boolean isAlphaClient() {
+        String mappingsClass = McTestAgent.mappings.getClass().getSimpleName();
+        return mappingsClass.contains("Alpha");
+    }
+
+    /**
+     * Get a list of individual cobblestone stack sizes in the inventory.
+     */
+    private List<Integer> getCobblestoneStacks(GameState gs) {
+        int[][] slots = gs.getInventorySlots();
+        List<Integer> stacks = new ArrayList<Integer>();
+        if (slots == null) return stacks;
+        for (int[] slot : slots) {
+            if (slot[0] == 4 && slot[1] > 0) {
+                stacks.add(slot[1]);
+            }
+        }
+        return stacks;
+    }
+
+    /**
      * Find the window slot for cobblestone and the first empty slot.
      * mainInventory[0-8] = window 36-44, mainInventory[9-35] = window 9-35.
      */
@@ -337,7 +361,9 @@ public class InventoryManipulationScenario implements Scenario {
         }
     }
 
-    // Step 9: Verify 64 total after throwing 16
+    // Step 9: Verify cobblestone after throwing 16
+    // Alpha: total >= 64 (immediate replenishment)
+    // Non-Alpha survival: exactly 1x32 + 1x16
     private class VerifyAfterThrow16Step implements ScenarioStep {
         @Override
         public String getDescription() {
@@ -348,9 +374,24 @@ public class InventoryManipulationScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             int total = gs.getTotalCobblestone();
-            System.out.println("[McTestAgent] Cobblestone after throw 16: " + total);
-            if (total < 64) {
-                throw new RuntimeException("Expected 64 cobblestone after replenish, found " + total);
+            List<Integer> stacks = getCobblestoneStacks(gs);
+            System.out.println("[McTestAgent] Cobblestone after throw 16: total=" + total
+                    + " stacks=" + stacks);
+
+            if (isAlphaClient()) {
+                if (total < 64) {
+                    throw new RuntimeException("Alpha: expected 64 cobblestone after replenish, found " + total);
+                }
+            } else {
+                // Non-Alpha survival: expect 1x32 + 1x16 = 48 total
+                if (total != 48) {
+                    throw new RuntimeException("Non-Alpha: expected 48 cobblestone (1x32+1x16), found " + total);
+                }
+                boolean has32 = stacks.contains(32);
+                boolean has16 = stacks.contains(16);
+                if (!has32 || !has16 || stacks.size() != 2) {
+                    throw new RuntimeException("Non-Alpha: expected stacks [32,16], found " + stacks);
+                }
             }
             return true;
         }
@@ -463,7 +504,9 @@ public class InventoryManipulationScenario implements Scenario {
         }
     }
 
-    // Step 14: Verify 64 total after throwing 1
+    // Step 14: Verify cobblestone after throwing 1
+    // Alpha: total >= 64 (immediate replenishment)
+    // Non-Alpha survival: exactly 1x31 + 1x16
     private class VerifyAfterThrow1Step implements ScenarioStep {
         @Override
         public String getDescription() {
@@ -474,9 +517,24 @@ public class InventoryManipulationScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             int total = gs.getTotalCobblestone();
-            System.out.println("[McTestAgent] Cobblestone after throw 1: " + total);
-            if (total < 64) {
-                throw new RuntimeException("Expected 64 cobblestone after replenish, found " + total);
+            List<Integer> stacks = getCobblestoneStacks(gs);
+            System.out.println("[McTestAgent] Cobblestone after throw 1: total=" + total
+                    + " stacks=" + stacks);
+
+            if (isAlphaClient()) {
+                if (total < 64) {
+                    throw new RuntimeException("Alpha: expected 64 cobblestone after replenish, found " + total);
+                }
+            } else {
+                // Non-Alpha survival: expect 1x31 + 1x16 = 47 total
+                if (total != 47) {
+                    throw new RuntimeException("Non-Alpha: expected 47 cobblestone (1x31+1x16), found " + total);
+                }
+                boolean has31 = stacks.contains(31);
+                boolean has16 = stacks.contains(16);
+                if (!has31 || !has16 || stacks.size() != 2) {
+                    throw new RuntimeException("Non-Alpha: expected stacks [31,16], found " + stacks);
+                }
             }
             return true;
         }
@@ -529,7 +587,9 @@ public class InventoryManipulationScenario implements Scenario {
         }
     }
 
-    // Step 17: Verify final 64 total cobblestone
+    // Step 17: Verify final cobblestone after closing inventory
+    // Alpha: total >= 64
+    // Non-Alpha survival (Beta): exactly 1x64 (server replenishes on close)
     private class VerifyFinalInventoryStep implements ScenarioStep {
         @Override
         public String getDescription() {
@@ -540,9 +600,22 @@ public class InventoryManipulationScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             int total = gs.getTotalCobblestone();
-            System.out.println("[McTestAgent] Final cobblestone: " + total);
-            if (total < 64) {
-                throw new RuntimeException("Expected 64 cobblestone at end, found " + total);
+            List<Integer> stacks = getCobblestoneStacks(gs);
+            System.out.println("[McTestAgent] Final cobblestone: total=" + total
+                    + " stacks=" + stacks);
+
+            if (isAlphaClient()) {
+                if (total < 64) {
+                    throw new RuntimeException("Alpha: expected 64 cobblestone at end, found " + total);
+                }
+            } else {
+                // Non-Alpha survival: server replenishes to 1x64 on inventory close
+                if (total != 64) {
+                    throw new RuntimeException("Non-Alpha: expected 64 cobblestone at end, found " + total);
+                }
+                if (stacks.size() != 1 || stacks.get(0) != 64) {
+                    throw new RuntimeException("Non-Alpha: expected exactly 1x64 stack, found " + stacks);
+                }
             }
             return true;
         }

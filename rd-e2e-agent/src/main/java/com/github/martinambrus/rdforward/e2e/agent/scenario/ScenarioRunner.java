@@ -73,6 +73,10 @@ public class ScenarioRunner {
             if (done) {
                 System.out.println("[McTestAgent] Step '" + step.getDescription()
                         + "' completed in " + stepTickCount + " ticks");
+
+                // Auto-screenshot after every completed step (testing-todo step -1)
+                autoScreenshot(step.getDescription(), currentStepIndex);
+
                 currentStepIndex++;
                 stepTickCount = 0;
 
@@ -130,5 +134,33 @@ public class ScenarioRunner {
 
     public void putResult(String key, String value) {
         results.put(key, value);
+    }
+
+    /**
+     * Capture a screenshot after each step completes.
+     * Naming: {scenarioName}_step{index}_{sanitizedDescription}.png
+     */
+    private void autoScreenshot(String stepDescription, int stepIndex) {
+        try {
+            int w = gameState.getDisplayWidth();
+            int h = gameState.getDisplayHeight();
+            if (w <= 0 || h <= 0) return;
+
+            String safeName = stepDescription
+                    .replaceAll("[^a-zA-Z0-9_]", "_")
+                    .replaceAll("_+", "_")
+                    .toLowerCase();
+            if (safeName.length() > 60) {
+                safeName = safeName.substring(0, 60);
+            }
+            String filename = scenario.getName() + "_step" + stepIndex + "_" + safeName + ".png";
+            File ssFile = new File(statusDir, filename);
+            if (screenshotCapture.capture(w, h, ssFile)) {
+                screenshots.add(ssFile.getName());
+                System.out.println("[McTestAgent] Auto-screenshot: " + filename);
+            }
+        } catch (Exception ex) {
+            System.err.println("[McTestAgent] Auto-screenshot failed: " + ex.getMessage());
+        }
     }
 }
