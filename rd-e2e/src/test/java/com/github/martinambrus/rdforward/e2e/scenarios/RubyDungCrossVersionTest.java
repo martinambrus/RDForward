@@ -33,9 +33,9 @@ class RubyDungCrossVersionTest {
         server = new E2ETestServer(64);
         server.start();
 
-        display1 = new HeadlessDisplay(99);
+        display1 = HeadlessDisplay.forFork();
         display1.start();
-        display2 = new HeadlessDisplay(100);
+        display2 = HeadlessDisplay.secondForFork();
         display2.start();
     }
 

@@ -34,7 +34,7 @@ class BetaLoginScreenshotTest {
         server = new E2ETestServer();
         server.start();
 
-        display = new HeadlessDisplay();
+        display = HeadlessDisplay.forFork();
         display.start();
 
         statusDir = Files.createTempDirectory("e2e-beta181-").toFile();

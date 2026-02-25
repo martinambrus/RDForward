@@ -69,6 +69,7 @@ public class RDServer {
     private final ProtocolVersion protocolVersion;
     private final WorldGenerator worldGenerator;
     private final long worldSeed;
+    private final File dataDir;
     private final ServerWorld world;
     private final PlayerManager playerManager;
     private final ChunkManager chunkManager;
@@ -97,13 +98,20 @@ public class RDServer {
 
     public RDServer(int port, ProtocolVersion protocolVersion, WorldGenerator worldGenerator, long worldSeed,
                     int worldWidth, int worldHeight, int worldDepth) {
+        this(port, protocolVersion, worldGenerator, worldSeed, worldWidth, worldHeight, worldDepth, null);
+    }
+
+    public RDServer(int port, ProtocolVersion protocolVersion, WorldGenerator worldGenerator, long worldSeed,
+                    int worldWidth, int worldHeight, int worldDepth, File dataDir) {
         this.port = port;
         this.protocolVersion = protocolVersion;
         this.worldGenerator = worldGenerator;
         this.worldSeed = worldSeed;
-        this.world = new ServerWorld(worldWidth, worldHeight, worldDepth);
+        this.dataDir = dataDir;
+        this.world = new ServerWorld(worldWidth, worldHeight, worldDepth, dataDir);
         this.playerManager = new PlayerManager();
-        this.chunkManager = new ChunkManager(worldGenerator, worldSeed, new File(DEFAULT_WORLD_DIR));
+        File worldDir = (dataDir != null) ? new File(dataDir, DEFAULT_WORLD_DIR) : new File(DEFAULT_WORLD_DIR);
+        this.chunkManager = new ChunkManager(worldGenerator, worldSeed, worldDir);
         this.chunkManager.setServerWorld(world);
         this.tickLoop = new ServerTickLoop(playerManager, world, chunkManager);
     }
@@ -113,8 +121,8 @@ public class RDServer {
      */
     public void start() throws InterruptedException {
         // Initialize mod APIs
-        PermissionManager.load();
-        BanManager.load();
+        PermissionManager.load(dataDir);
+        BanManager.load(dataDir);
         Scheduler.init();
         registerBuiltInCommands();
 

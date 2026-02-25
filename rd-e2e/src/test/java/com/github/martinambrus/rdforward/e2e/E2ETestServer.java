@@ -5,6 +5,8 @@ import com.github.martinambrus.rdforward.server.RDServer;
 import com.github.martinambrus.rdforward.world.FlatWorldGenerator;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 
 /**
  * RDServer lifecycle for E2E tests.
@@ -14,15 +16,10 @@ import java.io.File;
  */
 public class E2ETestServer {
 
-    private static final String[] STALE_FILES = {
-            "server-world.dat", "server-players.dat",
-            "banned-players.txt", "banned-ips.txt"
-    };
-    private static final String STALE_DIR = "world";
-
     private RDServer server;
     private int port;
     private final int worldHeight;
+    private File dataDir;
 
     public E2ETestServer() {
         // Alpha world height is 128 blocks (Classic/RubyDung default is 64).
@@ -39,31 +36,30 @@ public class E2ETestServer {
     }
 
     public void start() throws InterruptedException {
-        deleteStaleFiles();
+        try {
+            dataDir = Files.createTempDirectory("e2e-server-").toFile();
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to create temp data directory", e);
+        }
         server = new RDServer(0, ProtocolVersion.RUBYDUNG,
-                new FlatWorldGenerator(), 0L, 256, worldHeight, 256);
+                new FlatWorldGenerator(), 0L, 256, worldHeight, 256, dataDir);
         server.setBedrockPort(0);
         server.start();
         port = server.getActualPort();
-        System.out.println("[E2E] Server started on port " + port);
+        System.out.println("[E2E] Server started on port " + port + " (dataDir=" + dataDir + ")");
     }
 
     public void stop() {
         if (server != null) {
             server.stop();
         }
-        deleteStaleFiles();
+        if (dataDir != null) {
+            deleteDir(dataDir);
+        }
     }
 
     public int getPort() {
         return port;
-    }
-
-    private void deleteStaleFiles() {
-        for (String name : STALE_FILES) {
-            new File(name).delete();
-        }
-        deleteDir(new File(STALE_DIR));
     }
 
     private void deleteDir(File dir) {

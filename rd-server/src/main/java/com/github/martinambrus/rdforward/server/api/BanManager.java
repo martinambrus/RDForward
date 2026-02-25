@@ -22,17 +22,31 @@ public final class BanManager {
 
     private BanManager() {}
 
-    private static final String BANNED_PLAYERS_FILE = "banned-players.txt";
-    private static final String BANNED_IPS_FILE = "banned-ips.txt";
+    private static final String BANNED_PLAYERS_FILE_NAME = "banned-players.txt";
+    private static final String BANNED_IPS_FILE_NAME = "banned-ips.txt";
     private static final Set<String> bannedPlayers = ConcurrentHashMap.newKeySet();
     private static final Set<String> bannedIps = ConcurrentHashMap.newKeySet();
+    private static volatile File bannedPlayersFile = new File(BANNED_PLAYERS_FILE_NAME);
+    private static volatile File bannedIpsFile = new File(BANNED_IPS_FILE_NAME);
 
     /**
      * Load ban lists from disk. Creates files if they don't exist.
      */
     public static void load() {
-        loadFile(BANNED_PLAYERS_FILE, bannedPlayers);
-        loadFile(BANNED_IPS_FILE, bannedIps);
+        load(null);
+    }
+
+    /**
+     * Load ban lists from disk, resolving files relative to dataDir.
+     */
+    public static void load(File dataDir) {
+        File dir = (dataDir != null) ? dataDir : new File(".");
+        bannedPlayersFile = new File(dir, BANNED_PLAYERS_FILE_NAME);
+        bannedIpsFile = new File(dir, BANNED_IPS_FILE_NAME);
+        bannedPlayers.clear();
+        bannedIps.clear();
+        loadFile(bannedPlayersFile, bannedPlayers);
+        loadFile(bannedIpsFile, bannedIps);
         int total = bannedPlayers.size() + bannedIps.size();
         if (total > 0) {
             System.out.println("Loaded " + bannedPlayers.size() + " banned player(s) and "
@@ -40,8 +54,7 @@ public final class BanManager {
         }
     }
 
-    private static void loadFile(String filename, Set<String> target) {
-        File file = new File(filename);
+    private static void loadFile(File file, Set<String> target) {
         if (!file.exists()) return;
         try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
             String line;
@@ -52,12 +65,12 @@ public final class BanManager {
                 }
             }
         } catch (IOException e) {
-            System.err.println("Failed to load " + filename + ": " + e.getMessage());
+            System.err.println("Failed to load " + file + ": " + e.getMessage());
         }
     }
 
-    private static void saveFile(String filename, Set<String> data, String header) {
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(filename))) {
+    private static void saveFile(File file, Set<String> data, String header) {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
             writer.write(header);
             writer.newLine();
             for (String entry : data) {
@@ -65,7 +78,7 @@ public final class BanManager {
                 writer.newLine();
             }
         } catch (IOException e) {
-            System.err.println("Failed to save " + filename + ": " + e.getMessage());
+            System.err.println("Failed to save " + file + ": " + e.getMessage());
         }
     }
 
@@ -73,13 +86,13 @@ public final class BanManager {
 
     public static void banPlayer(String username) {
         if (bannedPlayers.add(username.toLowerCase())) {
-            saveFile(BANNED_PLAYERS_FILE, bannedPlayers, "# Banned players (one per line)");
+            saveFile(bannedPlayersFile, bannedPlayers, "# Banned players (one per line)");
         }
     }
 
     public static void unbanPlayer(String username) {
         if (bannedPlayers.remove(username.toLowerCase())) {
-            saveFile(BANNED_PLAYERS_FILE, bannedPlayers, "# Banned players (one per line)");
+            saveFile(bannedPlayersFile, bannedPlayers, "# Banned players (one per line)");
         }
     }
 
@@ -91,13 +104,13 @@ public final class BanManager {
 
     public static void banIp(String ip) {
         if (bannedIps.add(ip)) {
-            saveFile(BANNED_IPS_FILE, bannedIps, "# Banned IPs (one per line)");
+            saveFile(bannedIpsFile, bannedIps, "# Banned IPs (one per line)");
         }
     }
 
     public static void unbanIp(String ip) {
         if (bannedIps.remove(ip)) {
-            saveFile(BANNED_IPS_FILE, bannedIps, "# Banned IPs (one per line)");
+            saveFile(bannedIpsFile, bannedIps, "# Banned IPs (one per line)");
         }
     }
 

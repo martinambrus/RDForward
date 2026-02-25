@@ -4,6 +4,9 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.RandomAccessFile;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
@@ -281,22 +284,26 @@ public class ClientLauncher {
 
     /**
      * Ensure all required libraries are downloaded and natives extracted.
+     * Uses a file lock to prevent races when multiple Gradle forks run in parallel.
      */
     private void ensureLibs() throws IOException, InterruptedException {
         File libsDir = new File(LIBS_DIR);
         libsDir.mkdirs();
+        File lockFile = new File(libsDir, ".libs-lock");
 
-        downloadIfMissing(ALPHA_126_JAR_URL, new File(libsDir, ALPHA_126_JAR));
-        downloadIfMissing(BETA_181_JAR_URL, new File(libsDir, BETA_181_JAR));
-        downloadIfMissing(LWJGL2_JAR_URL, new File(libsDir, LWJGL2_JAR));
-        downloadIfMissing(LWJGL2_UTIL_URL, new File(libsDir, LWJGL2_UTIL_JAR));
-        downloadIfMissing(JINPUT_URL, new File(libsDir, JINPUT_JAR));
-        ensureNatives();
+        try (RandomAccessFile raf = new RandomAccessFile(lockFile, "rw");
+             FileChannel ch = raf.getChannel();
+             FileLock lock = ch.lock()) {
+            downloadIfMissing(ALPHA_126_JAR_URL, new File(libsDir, ALPHA_126_JAR));
+            downloadIfMissing(BETA_181_JAR_URL, new File(libsDir, BETA_181_JAR));
+            downloadIfMissing(LWJGL2_JAR_URL, new File(libsDir, LWJGL2_JAR));
+            downloadIfMissing(LWJGL2_UTIL_URL, new File(libsDir, LWJGL2_UTIL_JAR));
+            downloadIfMissing(JINPUT_URL, new File(libsDir, JINPUT_JAR));
+            ensureNatives(libsDir);
+        }
     }
 
-    private void ensureNatives() throws IOException, InterruptedException {
-        File libsDir = new File(LIBS_DIR);
-        libsDir.mkdirs();
+    private void ensureNatives(File libsDir) throws IOException, InterruptedException {
         File nativesDir = new File(NATIVES_DIR);
         File nativesJar = new File(libsDir, LWJGL2_NATIVES_JAR);
         File jinputNativesJar = new File(libsDir, JINPUT_NATIVES_JAR);

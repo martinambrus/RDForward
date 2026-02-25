@@ -28,7 +28,7 @@ class RubyDungVoidFallTest {
         server = new E2ETestServer(64);
         server.start();
 
-        display = new HeadlessDisplay();
+        display = HeadlessDisplay.forFork();
         display.start();
 
         statusDir = Files.createTempDirectory("e2e-rd-void-fall-").toFile();

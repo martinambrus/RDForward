@@ -33,13 +33,15 @@ import java.util.zip.GZIPOutputStream;
  */
 public class ServerWorld {
 
-    private static final String SAVE_FILE = "server-world.dat";
-    private static final String PLAYERS_FILE = "server-players.dat";
+    private static final String SAVE_FILE_NAME = "server-world.dat";
+    private static final String PLAYERS_FILE_NAME = "server-players.dat";
 
     private final int width;
     private final int height;
     private final int depth;
     private final byte[] blocks;
+    private final File saveFile;
+    private final File playersFile;
     private volatile boolean dirty = false;
 
     // === Day/night cycle and weather ===
@@ -58,10 +60,17 @@ public class ServerWorld {
             new java.util.concurrent.ConcurrentHashMap<>();
 
     public ServerWorld(int width, int height, int depth) {
+        this(width, height, depth, null);
+    }
+
+    public ServerWorld(int width, int height, int depth, File dataDir) {
         this.width = width;
         this.height = height;
         this.depth = depth;
         this.blocks = new byte[width * height * depth];
+        File dir = (dataDir != null) ? dataDir : new File(".");
+        this.saveFile = new File(dir, SAVE_FILE_NAME);
+        this.playersFile = new File(dir, PLAYERS_FILE_NAME);
     }
 
     /**
@@ -148,11 +157,10 @@ public class ServerWorld {
      * Load world from disk. Returns true if a saved world was loaded.
      */
     public boolean load() {
-        File file = new File(SAVE_FILE);
-        if (!file.exists()) {
+        if (!saveFile.exists()) {
             return false;
         }
-        try (DataInputStream dis = new DataInputStream(new GZIPInputStream(new FileInputStream(file)))) {
+        try (DataInputStream dis = new DataInputStream(new GZIPInputStream(new FileInputStream(saveFile)))) {
             int savedWidth = dis.readInt();
             int savedHeight = dis.readInt();
             int savedDepth = dis.readInt();
@@ -163,10 +171,10 @@ public class ServerWorld {
             }
             dis.readFully(blocks);
             dirty = false;
-            System.out.println("Loaded world from " + SAVE_FILE);
+            System.out.println("Loaded world from " + saveFile);
             return true;
         } catch (IOException e) {
-            System.err.println("Failed to load world from " + SAVE_FILE + ": " + e.getMessage());
+            System.err.println("Failed to load world from " + saveFile + ": " + e.getMessage());
             return false;
         }
     }
@@ -195,13 +203,13 @@ public class ServerWorld {
      * Save world to disk (GZip compressed).
      */
     public synchronized void save() {
-        try (DataOutputStream dos = new DataOutputStream(new GZIPOutputStream(new FileOutputStream(SAVE_FILE)))) {
+        try (DataOutputStream dos = new DataOutputStream(new GZIPOutputStream(new FileOutputStream(saveFile)))) {
             dos.writeInt(width);
             dos.writeInt(height);
             dos.writeInt(depth);
             dos.write(blocks);
             dirty = false;
-            System.out.println("World saved to " + SAVE_FILE);
+            System.out.println("World saved to " + saveFile);
         } catch (IOException e) {
             System.err.println("Failed to save world: " + e.getMessage());
         }
@@ -300,7 +308,7 @@ public class ServerWorld {
 
         if (playerPositionCache.isEmpty()) return;
 
-        try (DataOutputStream dos = new DataOutputStream(new GZIPOutputStream(new FileOutputStream(PLAYERS_FILE)))) {
+        try (DataOutputStream dos = new DataOutputStream(new GZIPOutputStream(new FileOutputStream(playersFile)))) {
             dos.writeInt(playerPositionCache.size());
             for (java.util.Map.Entry<String, short[]> entry : playerPositionCache.entrySet()) {
                 dos.writeUTF(entry.getKey());
@@ -311,7 +319,7 @@ public class ServerWorld {
                 dos.writeByte(pos[3]);
                 dos.writeByte(pos[4]);
             }
-            System.out.println("Saved " + playerPositionCache.size() + " player position(s) to " + PLAYERS_FILE);
+            System.out.println("Saved " + playerPositionCache.size() + " player position(s) to " + playersFile);
         } catch (IOException e) {
             System.err.println("Failed to save player data: " + e.getMessage());
         }
@@ -321,10 +329,9 @@ public class ServerWorld {
      * Load saved player positions into the in-memory cache and return it.
      */
     public java.util.Map<String, short[]> loadPlayerPositions() {
-        File file = new File(PLAYERS_FILE);
-        if (!file.exists()) return playerPositionCache;
+        if (!playersFile.exists()) return playerPositionCache;
 
-        try (DataInputStream dis = new DataInputStream(new GZIPInputStream(new FileInputStream(file)))) {
+        try (DataInputStream dis = new DataInputStream(new GZIPInputStream(new FileInputStream(playersFile)))) {
             int count = dis.readInt();
             for (int i = 0; i < count; i++) {
                 String name = dis.readUTF();
@@ -337,7 +344,7 @@ public class ServerWorld {
                 // priority over stale file data
                 playerPositionCache.putIfAbsent(name, new short[]{x, y, z, yaw, pitch});
             }
-            System.out.println("Loaded " + count + " saved player position(s) from " + PLAYERS_FILE);
+            System.out.println("Loaded " + count + " saved player position(s) from " + playersFile);
         } catch (IOException e) {
             System.err.println("Failed to load player data: " + e.getMessage());
         }

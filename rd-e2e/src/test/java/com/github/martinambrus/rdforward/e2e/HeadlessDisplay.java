@@ -13,6 +13,26 @@ public class HeadlessDisplay {
 
     private Process xvfbProcess;
 
+    /**
+     * Create a display with a unique number derived from the Gradle test fork
+     * worker ID. Each parallel fork gets its own display to avoid collisions.
+     */
+    public static HeadlessDisplay forFork() {
+        String workerId = System.getProperty("org.gradle.test.worker");
+        int id = (workerId != null) ? Integer.parseInt(workerId) : 1;
+        return new HeadlessDisplay(98 + id);
+    }
+
+    /**
+     * Create a second display for cross-version tests that need two concurrent
+     * clients. Offset by 100 from forFork() to avoid collisions.
+     */
+    public static HeadlessDisplay secondForFork() {
+        String workerId = System.getProperty("org.gradle.test.worker");
+        int id = (workerId != null) ? Integer.parseInt(workerId) : 1;
+        return new HeadlessDisplay(198 + id);
+    }
+
     public HeadlessDisplay() {
         this(99);
     }

@@ -24,18 +24,28 @@ public final class PermissionManager {
 
     private PermissionManager() {}
 
-    private static final String OPS_FILE = "ops.txt";
+    private static final String OPS_FILE_NAME = "ops.txt";
     private static final Set<String> ops = ConcurrentHashMap.newKeySet();
+    private static volatile File opsFile = new File(OPS_FILE_NAME);
 
     /**
      * Load operator list from ops.txt. Creates the file if it doesn't exist.
      */
     public static void load() {
-        File file = new File(OPS_FILE);
-        if (!file.exists()) {
+        load(null);
+    }
+
+    /**
+     * Load operator list, resolving the file relative to dataDir.
+     */
+    public static void load(File dataDir) {
+        File dir = (dataDir != null) ? dataDir : new File(".");
+        opsFile = new File(dir, OPS_FILE_NAME);
+        ops.clear();
+        if (!opsFile.exists()) {
             return;
         }
-        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+        try (BufferedReader reader = new BufferedReader(new FileReader(opsFile))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 line = line.trim();
@@ -43,7 +53,7 @@ public final class PermissionManager {
                     ops.add(line);
                 }
             }
-            System.out.println("Loaded " + ops.size() + " operator(s) from " + OPS_FILE);
+            System.out.println("Loaded " + ops.size() + " operator(s) from " + opsFile);
         } catch (IOException e) {
             System.err.println("Failed to load ops: " + e.getMessage());
         }
@@ -53,7 +63,7 @@ public final class PermissionManager {
      * Save operator list to ops.txt.
      */
     public static void save() {
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(OPS_FILE))) {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(opsFile))) {
             writer.write("# Server operators (one per line)");
             writer.newLine();
             for (String op : ops) {

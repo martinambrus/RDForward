@@ -34,17 +34,17 @@ class CrossVersionChatBlockTest {
     private static final long TIMEOUT_MS = 180_000; // 3 minutes total
 
     private static E2ETestServer server;
-    private static HeadlessDisplay display1; // :99 for primary
-    private static HeadlessDisplay display2; // :100 for secondary
+    private static HeadlessDisplay display1;
+    private static HeadlessDisplay display2;
 
     @BeforeAll
     static void setUp() throws Exception {
         server = new E2ETestServer();
         server.start();
 
-        display1 = new HeadlessDisplay(99);
+        display1 = HeadlessDisplay.forFork();
         display1.start();
-        display2 = new HeadlessDisplay(100);
+        display2 = HeadlessDisplay.secondForFork();
         display2.start();
     }
 
