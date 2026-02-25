@@ -162,4 +162,12 @@ public interface FieldMappings {
 
     /** Obfuscated class name for survival inventory GUI. Alpha: "ne", Beta: "abd". */
     default String guiInventoryClassName() { return null; }
+
+    // --- RubyDung-specific: direct block placement via Level.setTile() ---
+
+    /** Method name for Level.setTile(int,int,int,int). RubyDung only. */
+    default String setTileMethodName() { return null; }
+
+    /** Field name for static blockChangeQueue (List) on RubyDung class. */
+    default String blockChangeQueueFieldName() { return null; }
 }

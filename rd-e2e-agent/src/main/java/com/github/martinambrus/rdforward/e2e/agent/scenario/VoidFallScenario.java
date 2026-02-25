@@ -79,7 +79,14 @@ public class VoidFallScenario implements Scenario {
             if (ticks == 1) {
                 // Face east (+X direction): Alpha yaw 270 = east, or equivalently -90
                 input.setLookDirection(-90f, 0f);
-                input.pressKey(InputController.FORWARD);
+                if (!input.isRubyDung()) {
+                    input.pressKey(InputController.FORWARD);
+                }
+            }
+
+            // RubyDung: use direct position writes to walk east
+            if (input.isRubyDung()) {
+                input.movePlayerPosition(0.5f, 0, 0);
             }
 
             double[] pos = gs.getPlayerPosition();
@@ -111,6 +118,20 @@ public class VoidFallScenario implements Scenario {
                             + String.format("%.1f", pos[0])
                             + " Y=" + String.format("%.1f", pos[1])
                             + " (dropped " + String.format("%.1f", yDrop) + " blocks)");
+                    return true;
+                }
+            }
+
+            // RubyDung: detect edge by checking if Y has actually dropped.
+            // blockBelow == 0 alone isn't enough because the player's bounding
+            // box may still overlap the edge block, preventing actual falling.
+            if (input.isRubyDung() && lastGroundYSet) {
+                double yDrop = lastGroundY - pos[1];
+                if (yDrop > 1.0) {
+                    System.out.println("[McTestAgent] RD fell off edge at X="
+                            + String.format("%.1f", pos[0])
+                            + " Y=" + String.format("%.1f", pos[1])
+                            + " (dropped " + String.format("%.1f", yDrop) + ")");
                     return true;
                 }
             }
@@ -151,12 +172,15 @@ public class VoidFallScenario implements Scenario {
             // After 20 ticks (1 second), check fall distance
             if (ticks >= 21) {
                 double fallDist = startY - pos[1];
+                // RubyDung has weaker gravity (~2.4 blocks/sec vs Alpha's ~10+)
+                double minFallSpeed = input.isRubyDung() ? 1.0 : 10.0;
                 System.out.println("[McTestAgent] Fall speed: "
                         + String.format("%.1f", fallDist) + " blocks in 1 second"
                         + " (Y=" + String.format("%.2f", pos[1]) + ")");
-                if (fallDist < 10.0) {
+                if (fallDist < minFallSpeed) {
                     throw new RuntimeException("Fall speed too slow: "
-                            + String.format("%.1f", fallDist) + " blocks/sec (need >= 10)");
+                            + String.format("%.1f", fallDist) + " blocks/sec (need >= "
+                            + String.format("%.0f", minFallSpeed) + ")");
                 }
                 return true;
             }
@@ -178,6 +202,7 @@ public class VoidFallScenario implements Scenario {
         private boolean passedThreshold;
         private int postThresholdTicks;
         private double lowestY = Double.MAX_VALUE;
+        private double prevY = Double.MAX_VALUE;
         private boolean teleportDetected;
         private int postTeleportTicks;
 
@@ -205,6 +230,15 @@ public class VoidFallScenario implements Scenario {
                         + String.format("%.2f", lowestY) + " currentY="
                         + String.format("%.2f", pos[1]));
             }
+
+            // Also detect teleport by sudden upward jump from previous tick
+            if (!teleportDetected && prevY != Double.MAX_VALUE && pos[1] > prevY + 10) {
+                teleportDetected = true;
+                System.out.println("[McTestAgent] Teleport detected (jump): prevY="
+                        + String.format("%.2f", prevY) + " currentY="
+                        + String.format("%.2f", pos[1]));
+            }
+            prevY = pos[1];
 
             if (teleportDetected) {
                 postTeleportTicks++;
@@ -244,7 +278,7 @@ public class VoidFallScenario implements Scenario {
 
         @Override
         public int getTimeoutTicks() {
-            return 200; // 10 seconds
+            return 400; // 20 seconds (RubyDung has weaker gravity)
         }
     }
 
@@ -268,9 +302,9 @@ public class VoidFallScenario implements Scenario {
                     + " Z=" + String.format("%.1f", pos[2])
                     + " blockBelow=" + blockBelow);
 
-            // Verify standing on grass (2) or dirt (3)
-            if (blockBelow != 2 && blockBelow != 3) {
-                throw new RuntimeException("Expected grass(2) or dirt(3) below feet, got "
+            // Verify standing on grass (2) or dirt (3), or solid (1) for RubyDung
+            if (blockBelow != 2 && blockBelow != 3 && blockBelow != 1) {
+                throw new RuntimeException("Expected grass(2)/dirt(3)/solid(1) below feet, got "
                         + blockBelow);
             }
 

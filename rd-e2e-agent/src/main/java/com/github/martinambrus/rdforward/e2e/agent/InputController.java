@@ -1,6 +1,7 @@
 package com.github.martinambrus.rdforward.e2e.agent;
 
 import com.github.martinambrus.rdforward.e2e.agent.mappings.FieldMappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.RubyDungMappings;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -115,8 +116,14 @@ public class InputController {
         double dz = (bz + 0.5) - pos[2];
 
         double dist = Math.sqrt(dx * dx + dz * dz);
-        // Alpha yaw: 0 = south (+Z), 90 = west (-X), 180 = north (-Z), 270 = east (+X)
-        float yaw = (float) (Math.toDegrees(Math.atan2(-dx, dz)));
+        float yaw;
+        if (isRubyDung()) {
+            // RubyDung yaw: 0 = north (-Z), 90 = east (+X). OpenGL convention.
+            yaw = (float) Math.toDegrees(Math.atan2(dx, -dz));
+        } else {
+            // Alpha yaw: 0 = south (+Z), 90 = west (-X), 180 = north (-Z), 270 = east (+X)
+            yaw = (float) (Math.toDegrees(Math.atan2(-dx, dz)));
+        }
         float pitch = (float) (-Math.toDegrees(Math.atan2(dy, dist)));
 
         setLookDirection(yaw, pitch);
@@ -139,8 +146,10 @@ public class InputController {
             }
 
             // Ensure mouse is grabbed (field L on Minecraft)
-            if (!gameState.isMouseGrabbed()) {
-                gameState.setMouseGrabbed(true);
+            if (mappings.mouseGrabbedFieldName() != null) {
+                if (!gameState.isMouseGrabbed()) {
+                    gameState.setMouseGrabbed(true);
+                }
             }
 
             // Apply movement keys to he.f[] boolean array
@@ -180,6 +189,7 @@ public class InputController {
      * (e.g. inventory GUI). Safe to call every tick.
      */
     public void dismissPauseScreen() {
+        if (mappings.displayGuiScreenMethodName() == null) return;
         try {
             Object screen = gameState.getCurrentScreen();
             if (!agentOpenedScreen && screen != null) {
@@ -215,12 +225,218 @@ public class InputController {
         }
     }
 
+    // --- RubyDung-specific methods ---
+
+    /**
+     * Returns true if the current client is RubyDung (uses RubyDungMappings).
+     */
+    public boolean isRubyDung() {
+        return mappings instanceof RubyDungMappings;
+    }
+
+    // Cached reflection handles for RubyDung direct interaction
+    private Method setTileMethod;
+    private Field blockChangeQueueField;
+    private Field rdPlayerXField, rdPlayerYField, rdPlayerZField;
+    private Field rdBbField; // player bounding box
+    private Field rdBbX0, rdBbY0, rdBbZ0, rdBbX1, rdBbY1, rdBbZ1;
+
+    /**
+     * Move the player position by delta values. Used for RubyDung where
+     * GLFW key polling happens before our TickAdvice, making key injection impossible.
+     */
+    public void movePlayerPosition(float dx, float dy, float dz) {
+        Object player = gameState.getPlayer();
+        if (player == null) return;
+        try {
+            if (rdPlayerXField == null) {
+                Class<?> c = player.getClass();
+                while (c != null && c != Object.class) {
+                    try {
+                        Field fx = c.getDeclaredField(mappings.posXFieldName());
+                        fx.setAccessible(true);
+                        rdPlayerXField = fx;
+                        Field fy = c.getDeclaredField(mappings.posYFieldName());
+                        fy.setAccessible(true);
+                        rdPlayerYField = fy;
+                        Field fz = c.getDeclaredField(mappings.posZFieldName());
+                        fz.setAccessible(true);
+                        rdPlayerZField = fz;
+                        break;
+                    } catch (NoSuchFieldException ignored) {}
+                    c = c.getSuperclass();
+                }
+            }
+            if (rdPlayerXField == null) return;
+
+            // RubyDung uses float position fields
+            if (rdPlayerXField.getType() == float.class) {
+                rdPlayerXField.setFloat(player, rdPlayerXField.getFloat(player) + dx);
+                rdPlayerYField.setFloat(player, rdPlayerYField.getFloat(player) + dy);
+                rdPlayerZField.setFloat(player, rdPlayerZField.getFloat(player) + dz);
+            } else {
+                rdPlayerXField.setDouble(player, rdPlayerXField.getDouble(player) + dx);
+                rdPlayerYField.setDouble(player, rdPlayerYField.getDouble(player) + dy);
+                rdPlayerZField.setDouble(player, rdPlayerZField.getDouble(player) + dz);
+            }
+
+            // Also shift the bounding box. Player.move() recalculates x/y/z
+            // from the bounding box, so without this, position changes are reverted.
+            if (rdBbField == null) {
+                Class<?> c = player.getClass();
+                while (c != null && c != Object.class) {
+                    try {
+                        Field f = c.getDeclaredField("bb");
+                        f.setAccessible(true);
+                        rdBbField = f;
+                        break;
+                    } catch (NoSuchFieldException ignored) {}
+                    c = c.getSuperclass();
+                }
+            }
+            if (rdBbField != null) {
+                Object bb = rdBbField.get(player);
+                if (bb != null) {
+                    if (rdBbX0 == null) {
+                        Class<?> bbClass = bb.getClass();
+                        rdBbX0 = bbClass.getDeclaredField("x0"); rdBbX0.setAccessible(true);
+                        rdBbY0 = bbClass.getDeclaredField("y0"); rdBbY0.setAccessible(true);
+                        rdBbZ0 = bbClass.getDeclaredField("z0"); rdBbZ0.setAccessible(true);
+                        rdBbX1 = bbClass.getDeclaredField("x1"); rdBbX1.setAccessible(true);
+                        rdBbY1 = bbClass.getDeclaredField("y1"); rdBbY1.setAccessible(true);
+                        rdBbZ1 = bbClass.getDeclaredField("z1"); rdBbZ1.setAccessible(true);
+                    }
+                    rdBbX0.setFloat(bb, rdBbX0.getFloat(bb) + dx);
+                    rdBbY0.setFloat(bb, rdBbY0.getFloat(bb) + dy);
+                    rdBbZ0.setFloat(bb, rdBbZ0.getFloat(bb) + dz);
+                    rdBbX1.setFloat(bb, rdBbX1.getFloat(bb) + dx);
+                    rdBbY1.setFloat(bb, rdBbY1.getFloat(bb) + dy);
+                    rdBbZ1.setFloat(bb, rdBbZ1.getFloat(bb) + dz);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[McTestAgent] movePlayerPosition error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Place a block directly via Level.setTile() + blockChangeQueue.
+     * RubyDung only — bypasses client click/raycast mechanics.
+     */
+    public void placeBlockDirect(int x, int y, int z, int blockType) {
+        try {
+            Object world = gameState.getWorld();
+            if (world == null) {
+                System.err.println("[McTestAgent] Cannot placeBlockDirect: no world");
+                return;
+            }
+
+            // Call Level.setTile(x, y, z, blockType)
+            if (setTileMethod == null) {
+                Class<?> c = world.getClass();
+                while (c != null && c != Object.class) {
+                    try {
+                        Method m = c.getDeclaredMethod(mappings.setTileMethodName(),
+                                int.class, int.class, int.class, int.class);
+                        m.setAccessible(true);
+                        setTileMethod = m;
+                        break;
+                    } catch (NoSuchMethodException ignored) {}
+                    c = c.getSuperclass();
+                }
+                if (setTileMethod == null) {
+                    throw new RuntimeException("setTile method not found on "
+                            + world.getClass().getName());
+                }
+            }
+            setTileMethod.invoke(world, x, y, z, blockType);
+
+            // Add to blockChangeQueue so the Mixin sends it to the server
+            if (blockChangeQueueField == null) {
+                // blockChangeQueue is a static field on the RubyDung class
+                Class<?> rdClass = gameState.getMinecraftInstance().getClass();
+                while (rdClass != null && rdClass != Object.class) {
+                    try {
+                        Field f = rdClass.getDeclaredField(mappings.blockChangeQueueFieldName());
+                        f.setAccessible(true);
+                        blockChangeQueueField = f;
+                        break;
+                    } catch (NoSuchFieldException ignored) {}
+                    rdClass = rdClass.getSuperclass();
+                }
+            }
+            if (blockChangeQueueField != null) {
+                @SuppressWarnings("unchecked")
+                List<int[]> queue = (List<int[]>) blockChangeQueueField.get(
+                        gameState.getMinecraftInstance());
+                if (queue != null) {
+                    // Queue format: {x, y, z, mode, blockType}
+                    // mode=0 for destroy, mode=1 for place
+                    int mode = (blockType != 0) ? 1 : 0;
+                    queue.add(new int[]{x, y, z, mode, blockType});
+                }
+            }
+
+            System.out.println("[McTestAgent] placeBlockDirect at ("
+                    + x + "," + y + "," + z + ") type=" + blockType);
+        } catch (Exception e) {
+            System.err.println("[McTestAgent] placeBlockDirect error: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Break a block directly via placeBlockDirect(x, y, z, 0).
+     * RubyDung only.
+     */
+    public void breakBlockDirect(int x, int y, int z) {
+        placeBlockDirect(x, y, z, 0);
+    }
+
+    /**
+     * Clear hitResult on the RubyDung instance to remove the pulsing block
+     * highlight overlay. Call before capturing screenshots for consistency.
+     */
+    private Field hitResultField;
+    public void clearHitResult() {
+        if (!isRubyDung()) return;
+        try {
+            Object mc = gameState.getMinecraftInstance();
+            if (mc == null) return;
+            if (hitResultField == null) {
+                Class<?> c = mc.getClass();
+                while (c != null && c != Object.class) {
+                    try {
+                        Field f = c.getDeclaredField("hitResult");
+                        f.setAccessible(true);
+                        hitResultField = f;
+                        break;
+                    } catch (NoSuchFieldException ignored) {}
+                    c = c.getSuperclass();
+                }
+            }
+            if (hitResultField != null) {
+                hitResultField.set(mc, null);
+            }
+        } catch (Exception e) {
+            System.err.println("[McTestAgent] clearHitResult error: " + e.getMessage());
+        }
+    }
+
     private void applyMovement(Object player) throws Exception {
         // Determine movement mode once
         if (!movementModeResolved) {
             useKeyBindingMovement = mappings.pressedKeysFieldName() == null
                     && mappings.keyBindingPressedFieldName() != null;
             movementModeResolved = true;
+        }
+
+        // RubyDung: neither pressedKeys nor keyBinding — skip movement entirely.
+        // RD polls GLFW keys in Player.tick() before our TickAdvice fires,
+        // making key injection impossible. Use movePlayerPosition() instead.
+        if (mappings.pressedKeysFieldName() == null
+                && mappings.keyBindingPressedFieldName() == null) {
+            return;
         }
 
         if (useKeyBindingMovement) {
@@ -474,10 +690,20 @@ public class InputController {
         }
     }
 
+    // Cached RubyDung chat reflection handles
+    private Method rdSendChatMethod;
+    private Object rdClientInstance;
+
     /**
      * Send a chat message via EntityPlayerSP.sendChatMessage(String).
+     * For RubyDung, uses RDClient.getInstance().sendChat(String) via Fabric classloader.
      */
     public void sendChatMessage(String message) {
+        if (isRubyDung()) {
+            sendChatMessageRubyDung(message);
+            return;
+        }
+
         Object player = gameState.getPlayer();
         if (player == null) {
             System.err.println("[McTestAgent] Cannot send chat: no player");
@@ -508,6 +734,24 @@ public class InputController {
             System.out.println("[McTestAgent] Sent chat: " + message);
         } catch (Exception e) {
             System.err.println("[McTestAgent] sendChatMessage error: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private void sendChatMessageRubyDung(String message) {
+        try {
+            if (rdSendChatMethod == null) {
+                ClassLoader cl = gameState.getMinecraftInstance().getClass().getClassLoader();
+                Class<?> rdClientClass = cl.loadClass(
+                        "com.github.martinambrus.rdforward.multiplayer.RDClient");
+                Method getInstance = rdClientClass.getMethod("getInstance");
+                rdClientInstance = getInstance.invoke(null);
+                rdSendChatMethod = rdClientClass.getMethod("sendChat", String.class);
+            }
+            rdSendChatMethod.invoke(rdClientInstance, message);
+            System.out.println("[McTestAgent] RD Sent chat: " + message);
+        } catch (Exception e) {
+            System.err.println("[McTestAgent] RD sendChat error: " + e.getMessage());
             e.printStackTrace();
         }
     }

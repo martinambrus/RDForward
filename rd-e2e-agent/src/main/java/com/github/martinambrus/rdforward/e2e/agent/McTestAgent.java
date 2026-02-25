@@ -82,8 +82,16 @@ public class McTestAgent {
         System.out.println("[McTestAgent] Creative mode: " + isCreativeMode);
         System.out.println("[McTestAgent] Scenario: " + scenarioName);
 
-        // Install ByteBuddy transformers
+        // Install ByteBuddy transformers.
+        // disableClassFormatChanges() switches from REBASE to REDEFINE type strategy,
+        // which prevents ByteBuddy from rebuilding the full class definition. This is
+        // needed for Fabric/Mixin-transformed classes (RubyDung) where @MixinMerged
+        // annotations on injected fields cause "Cannot add" errors during REBASE.
+        // RETRANSFORMATION allows retransforming classes already loaded by Fabric's
+        // KnotClassLoader.
         new AgentBuilder.Default()
+                .disableClassFormatChanges()
+                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 // Override Display.isActive() to return true — Xvfb never reports
                 // the window as active, which causes the pause menu overlay and
                 // prevents setIngameFocus() from working.
@@ -98,6 +106,20 @@ public class McTestAgent {
                                 .visit(Advice.to(DisplayActiveAdvice.class)
                                         .on(ElementMatchers.named("isActive")
                                                 .and(ElementMatchers.takesNoArguments())));
+                    }
+                })
+                // Suppress RubyDung's pulsing block highlight overlay (only
+                // matches on RD clients — class doesn't exist on Alpha/Beta)
+                .type(ElementMatchers.named("com.mojang.rubydung.level.LevelRenderer"))
+                .transform(new AgentBuilder.Transformer() {
+                    @Override
+                    public DynamicType.Builder<?> transform(DynamicType.Builder<?> builder,
+                            TypeDescription typeDescription, ClassLoader classLoader,
+                            JavaModule module, ProtectionDomain protectionDomain) {
+                        System.out.println("[McTestAgent] Patching LevelRenderer.renderHit()");
+                        return builder
+                                .visit(Advice.to(RenderHitAdvice.class)
+                                        .on(ElementMatchers.named("renderHit")));
                     }
                 })
                 // Hook Minecraft class run() and tick methods
@@ -224,9 +246,12 @@ public class McTestAgent {
                     McTestAgent.gameState, McTestAgent.mappings);
             StatusWriter sw = new StatusWriter(McTestAgent.statusDir);
             Scenario scenario = McTestAgent.createScenario(McTestAgent.scenarioName);
+            ScreenshotCapture sc = new ScreenshotCapture();
+            sc.setClassLoader(self.getClass().getClassLoader());
+            sc.setInputController(McTestAgent.inputController);
             McTestAgent.tickHook = new TickHook(
                     McTestAgent.gameState, sw,
-                    new ScreenshotCapture(), McTestAgent.inputController,
+                    sc, McTestAgent.inputController,
                     scenario, McTestAgent.statusDir);
 
             // Set custom username if specified (before login handshake)
@@ -259,6 +284,19 @@ public class McTestAgent {
             if (hook != null) {
                 hook.onTick();
             }
+        }
+    }
+
+    /**
+     * Advice inlined into LevelRenderer.renderHit() — suppresses the pulsing
+     * block highlight overlay. The highlight uses Math.sin() animation that
+     * varies between frames, causing screenshot baseline comparison failures.
+     * Since there's no human watching during e2e tests, skip it entirely.
+     */
+    public static class RenderHitAdvice {
+        @Advice.OnMethodEnter(skipOn = Advice.OnNonDefaultValue.class)
+        public static boolean onEnter() {
+            return true;
         }
     }
 }

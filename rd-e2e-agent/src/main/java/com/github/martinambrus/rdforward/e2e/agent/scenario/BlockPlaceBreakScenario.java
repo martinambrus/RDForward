@@ -57,8 +57,15 @@ public class BlockPlaceBreakScenario implements Scenario {
         if (pos == null) throw new RuntimeException("No player position");
 
         int px = (int) Math.floor(pos[0]);
-        int groundY = (int) Math.floor(pos[1] - (double) 1.62f) - 1;
+        int feetY = (int) Math.floor(pos[1] - (double) 1.62f);
+        int groundY = feetY - 1;
         int pz = (int) Math.floor(pos[2]);
+
+        // If feet are on the surface block (RubyDung spawn edge case),
+        // treat feet level as ground
+        if (gs.getBlockId(px, feetY, pz) != 0) {
+            groundY = feetY;
+        }
 
         // Target: 1 block to the right (+X), same ground level (grass surface)
         // Using 1 block offset to avoid raycast clipping through intermediate blocks
@@ -76,7 +83,7 @@ public class BlockPlaceBreakScenario implements Scenario {
                 + ") secondary=(" + target2BX + "," + targetBY + "," + target2BZ + ")");
     }
 
-    // Step 1: Look at the target grass block
+    // Step 1: Look at the target grass block (skipped for RubyDung — uses direct methods)
     private class LookAtTargetStep implements ScenarioStep {
         private int ticks;
 
@@ -89,6 +96,7 @@ public class BlockPlaceBreakScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             computeTargets(gs);
+            if (input.isRubyDung()) return true; // RD uses direct methods, no raycast needed
             // Look at the top face of the target block
             input.lookAtBlock(targetBX, targetBY, targetBZ);
             ticks++;
@@ -118,11 +126,21 @@ public class BlockPlaceBreakScenario implements Scenario {
             // Check if already broken
             int blockId = gs.getBlockId(targetBX, targetBY, targetBZ);
             if (blockId == 0) {
+                // RD: also break the block below for a 2-deep hole that's
+                // visible from the side (single-block holes are invisible
+                // when all blocks share the same texture)
+                if (input.isRubyDung()) {
+                    input.breakBlockDirect(targetBX, targetBY - 1, targetBZ);
+                }
                 return true; // broken, stop clicking
             }
-            // Keep looking at target and clicking
-            input.lookAtBlock(targetBX, targetBY, targetBZ);
-            input.click(0);
+            if (input.isRubyDung()) {
+                input.breakBlockDirect(targetBX, targetBY, targetBZ);
+            } else {
+                // Keep looking at target and clicking
+                input.lookAtBlock(targetBX, targetBY, targetBZ);
+                input.click(0);
+            }
             return false;
         }
 
@@ -146,6 +164,14 @@ public class BlockPlaceBreakScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
+            // RD: move player back for a side view of the 2-deep broken hole.
+            // A single-block hole on a uniform-texture flat world is invisible
+            // from above, so we step back for a shallower angle that shows
+            // the gray stone side faces inside the hole.
+            if (ticks == 1 && input.isRubyDung()) {
+                input.movePlayerPosition(-3, 0, 0);
+                input.lookAtBlock(targetBX, targetBY - 1, targetBZ);
+            }
             // Wait for server to process and send block change
             if (ticks < 80) return false;
 
@@ -184,6 +210,26 @@ public class BlockPlaceBreakScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
+            if (input.isRubyDung()) {
+                // RD: place solid block (type=1) two levels above ground so
+                // the block is near eye level and its gray side face fills the
+                // screen. Also restore the ground block broken in BreakGrassStep.
+                if (ticks == 1) {
+                    input.placeBlockDirect(targetBX, targetBY, targetBZ, 1);
+                    input.placeBlockDirect(targetBX, targetBY + 1, targetBZ, 1);
+                    input.placeBlockDirect(targetBX, targetBY + 2, targetBZ, 1);
+                }
+                if (ticks > 3) {
+                    int blockId = gs.getBlockId(targetBX, targetBY + 2, targetBZ);
+                    if (blockId != 0) {
+                        System.out.println("[McTestAgent] Block placed at tick " + ticks
+                                + ": id=" + blockId);
+                        return true;
+                    }
+                }
+                return false;
+            }
+
             // Keep looking at the block below the broken grass (place on its top face)
             input.lookAtBlock(targetBX, targetBY - 1, targetBZ);
 
@@ -224,9 +270,17 @@ public class BlockPlaceBreakScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
+            // RD: look at the 3-block pillar from the stepped-back position.
+            // The top block at targetBY+2 is near eye level, showing its
+            // gray side face prominently.
+            if (ticks == 1 && input.isRubyDung()) {
+                input.lookAtBlock(targetBX, targetBY + 2, targetBZ);
+            }
             if (ticks < 80) return false;
 
-            int blockId = gs.getBlockId(targetBX, targetBY, targetBZ);
+            // RD placed pillar up to targetBY+2; Alpha/Beta at ground level
+            int checkY = McTestAgent.inputController.isRubyDung() ? targetBY + 2 : targetBY;
+            int blockId = gs.getBlockId(targetBX, checkY, targetBZ);
 
             if (ticks == 80 || ticks % 40 == 0) {
                 System.out.println("[McTestAgent] Block at target after place (tick " + ticks + "): " + blockId);
@@ -236,16 +290,25 @@ public class BlockPlaceBreakScenario implements Scenario {
                 throw new RuntimeException("Block still air after placement — server rejected it");
             }
 
-            // Server converts placed cobblestone to grass; wait for conversion
-            if (blockId == 4) {
-                return false; // still cobblestone, keep waiting for grass conversion
-            }
-
-            // Grass (2) = successful conversion
-            if (blockId == 2) {
-                System.out.println("[McTestAgent] Grass conversion confirmed at tick " + ticks);
+            // RubyDung: solid (1) is the only block type, no conversion
+            if (McTestAgent.inputController.isRubyDung()) {
+                if (blockId == 1) {
+                    System.out.println("[McTestAgent] Solid block confirmed at tick " + ticks);
+                } else {
+                    System.out.println("[McTestAgent] WARNING: Expected solid (1), got blockId=" + blockId);
+                }
             } else {
-                System.out.println("[McTestAgent] WARNING: Expected grass (2), got blockId=" + blockId);
+                // Server converts placed cobblestone to grass; wait for conversion
+                if (blockId == 4) {
+                    return false; // still cobblestone, keep waiting for grass conversion
+                }
+
+                // Grass (2) = successful conversion
+                if (blockId == 2) {
+                    System.out.println("[McTestAgent] Grass conversion confirmed at tick " + ticks);
+                } else {
+                    System.out.println("[McTestAgent] WARNING: Expected grass (2), got blockId=" + blockId);
+                }
             }
 
             if (!screenshotTaken) {
@@ -272,6 +335,12 @@ public class BlockPlaceBreakScenario implements Scenario {
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
+            // RubyDung has no inventory
+            if (input.isRubyDung()) {
+                System.out.println("[McTestAgent] Replenishment check: skipped (RubyDung, no inventory)");
+                return true;
+            }
+
             int[][] slots = gs.getInventorySlots();
             if (slots == null) throw new RuntimeException("Could not read inventory");
 
@@ -309,6 +378,7 @@ public class BlockPlaceBreakScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             computeTargets(gs);
+            if (input.isRubyDung()) return true; // RD uses direct methods
             input.lookAtBlock(target2BX, targetBY, target2BZ);
             ticks++;
             return ticks >= 2;
@@ -333,6 +403,13 @@ public class BlockPlaceBreakScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
+            if (input.isRubyDung()) {
+                if (ticks == 1) {
+                    input.placeBlockDirect(target2BX, targetBY + 1, target2BZ, 1);
+                    input.placeBlockDirect(target2BX, targetBY + 2, target2BZ, 1);
+                }
+                return ticks >= 4;
+            }
             if (ticks == 1) {
                 input.click(1);
             }
@@ -359,9 +436,14 @@ public class BlockPlaceBreakScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
+            // RD: look at the adjacent pillar from the stepped-back position
+            if (ticks == 1 && input.isRubyDung()) {
+                input.lookAtBlock(target2BX, targetBY + 2, target2BZ);
+            }
             if (ticks < 80) return false;
 
-            int blockId = gs.getBlockId(target2BX, targetBY, target2BZ);
+            int checkY = input.isRubyDung() ? targetBY + 2 : targetBY;
+            int blockId = gs.getBlockId(target2BX, checkY, target2BZ);
             System.out.println("[McTestAgent] Block at adjacent after place: " + blockId);
 
             if (!screenshotTaken) {

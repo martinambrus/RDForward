@@ -137,8 +137,8 @@ public class TickHook {
                     // Terminal states — no further action
                     break;
             }
-        } catch (Exception e) {
-            error = e.getClass().getSimpleName() + ": " + e.getMessage();
+        } catch (Throwable e) {
+            error = e.getClass().getName() + ": " + e.getMessage();
             state = State.ERROR;
             System.err.println("[McTestAgent] Error in tick hook: " + error);
             e.printStackTrace();

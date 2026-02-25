@@ -15,31 +15,22 @@ import java.nio.file.Files;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Cross-version multi-client tests: launches two clients simultaneously on
- * the same server, verifying:
- * - Chat messages sent by one client are visible to the other
- * - Block placement by one client is visible to the other
- * - Block breaking by one client is visible to the other
+ * Cross-version tests involving RubyDung clients.
+ * Uses a 64-height server since RubyDung only supports 64-block worlds.
  *
- * Tests all available version pairings (testing-todo step 28 bottom):
- * - Alpha (primary) + Beta (secondary)
- * - Beta (primary) + Alpha (secondary)
- * - Alpha (primary) + Alpha (secondary)
- * - Beta (primary) + Beta (secondary)
- *
- * Run with: ./gradlew :rd-e2e:test --tests "*.CrossVersionChatBlockTest" -Pe2e
+ * Run with: ./gradlew :rd-e2e:test --tests "*.RubyDungCrossVersionTest" -Pe2e
  */
-class CrossVersionChatBlockTest {
+class RubyDungCrossVersionTest {
 
     private static final long TIMEOUT_MS = 180_000; // 3 minutes total
 
     private static E2ETestServer server;
-    private static HeadlessDisplay display1; // :99 for primary
-    private static HeadlessDisplay display2; // :100 for secondary
+    private static HeadlessDisplay display1;
+    private static HeadlessDisplay display2;
 
     @BeforeAll
     static void setUp() throws Exception {
-        server = new E2ETestServer();
+        server = new E2ETestServer(64);
         server.start();
 
         display1 = new HeadlessDisplay(99);
@@ -56,33 +47,15 @@ class CrossVersionChatBlockTest {
     }
 
     @Test
-    void alphaAndBetaCrossClient() throws Exception {
-        runCrossClientTest("alpha", "beta", "AlphaPlayer", "BetaTester");
+    void rubyDungAndAlphaCrossClient() throws Exception {
+        runCrossClientTest("rubydung", "alpha", "RDPlayer", "AlphaTester");
     }
 
     @Test
-    void betaAndAlphaCrossClient() throws Exception {
-        runCrossClientTest("beta", "alpha", "BetaPlayer", "AlphaTester");
+    void rubyDungAndBetaCrossClient() throws Exception {
+        runCrossClientTest("rubydung", "beta", "RDPlayer", "BetaTester");
     }
 
-    @Test
-    void alphaAndAlphaCrossClient() throws Exception {
-        runCrossClientTest("alpha", "alpha", "Alpha1", "Alpha2");
-    }
-
-    @Test
-    void betaAndBetaCrossClient() throws Exception {
-        runCrossClientTest("beta", "beta", "Beta1", "Beta2");
-    }
-
-    /**
-     * Run a cross-client test with the specified version pairing.
-     *
-     * @param primaryVersion   "alpha" or "beta"
-     * @param secondaryVersion "alpha" or "beta"
-     * @param primaryUsername   username for the primary client
-     * @param secondaryUsername username for the secondary client
-     */
     private void runCrossClientTest(String primaryVersion, String secondaryVersion,
             String primaryUsername, String secondaryUsername) throws Exception {
         File primaryStatusDir = Files.createTempDirectory("e2e-cross-primary-").toFile();
@@ -95,19 +68,16 @@ class CrossVersionChatBlockTest {
         ClientLauncher launcher1 = new ClientLauncher();
         ClientLauncher launcher2 = new ClientLauncher();
 
-        // Launch primary first
         Process primary = launchClient(launcher1, primaryVersion, agentJar,
                 server.getPort(), primaryStatusDir, display1.getDisplay(),
                 "cross_client", primaryUsername, "primary", syncDir);
 
         try {
-            // Wait for primary to reach RUNNING_SCENARIO before launching secondary
             StatusMonitor primaryMonitor = new StatusMonitor(primaryStatusDir);
             assertTrue(primaryMonitor.waitForState("RUNNING_SCENARIO", 60_000),
                     primaryVersion + " primary did not reach RUNNING_SCENARIO. Last status: "
                             + primaryMonitor.readStatus());
 
-            // Launch secondary
             Process secondary = launchClient(launcher2, secondaryVersion, agentJar,
                     server.getPort(), secondaryStatusDir, display2.getDisplay(),
                     "cross_client", secondaryUsername, "secondary", syncDir);
@@ -123,7 +93,6 @@ class CrossVersionChatBlockTest {
                 assertNotNull(secondaryFinal, secondaryVersion + " secondary did not finish within timeout. "
                         + "Last status: " + secondaryMonitor.readStatus());
 
-                // Assert both completed successfully
                 String primaryState = StatusMonitor.extractJsonField(primaryFinal, "state");
                 String primaryError = StatusMonitor.extractJsonField(primaryFinal, "error");
                 assertEquals("COMPLETE", primaryState,
@@ -134,7 +103,6 @@ class CrossVersionChatBlockTest {
                 assertEquals("COMPLETE", secondaryState,
                         secondaryVersion + " secondary error: " + secondaryError);
 
-                // Verify screenshots against baselines
                 String crossVersion = "cross_" + primaryVersion + "_" + secondaryVersion;
                 new ScreenshotBaselineVerifier(crossVersion, "primary", 0.80)
                         .verifyAll(primaryStatusDir, "cross_client_primary.png");
@@ -156,9 +124,6 @@ class CrossVersionChatBlockTest {
         }
     }
 
-    /**
-     * Launch a client of the specified version.
-     */
     private Process launchClient(ClientLauncher launcher, String version, String agentJar,
             int port, File statusDir, String display, String scenario,
             String username, String role, File syncDir) throws Exception {

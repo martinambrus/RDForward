@@ -14,15 +14,7 @@ import java.nio.file.Files;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * E2E test for the RubyDung modded client (rd-132211 with Fabric multiplayer).
- * This tests RDForward's own client — the first version with multiplayer added
- * by the rd-client module. Pre-Alpha 1.0.15 versions don't have built-in
- * multiplayer, so they must be tested with our modded clients.
- *
- * Run with: ./gradlew :rd-e2e:test -Pe2e
- */
-class RubyDungLoginScreenshotTest {
+class RubyDungBlockPlaceBreakTest {
 
     private static final long TIMEOUT_MS = 120_000;
 
@@ -39,7 +31,7 @@ class RubyDungLoginScreenshotTest {
         display = new HeadlessDisplay();
         display.start();
 
-        statusDir = Files.createTempDirectory("e2e-rubydung-").toFile();
+        statusDir = Files.createTempDirectory("e2e-rd-block-").toFile();
         statusDir.deleteOnExit();
 
         launcher = new ClientLauncher();
@@ -53,34 +45,21 @@ class RubyDungLoginScreenshotTest {
     }
 
     @Test
-    void rubyDungModdedClientLoadsWorldAndScreenshotMatchesBaseline() throws Exception {
+    void rubyDungBlockPlaceBreakPasses() throws Exception {
         String agentJar = findAgentJar();
-        assertNotNull(agentJar, "rd-e2e-agent fat JAR not found. "
-                + "Run ./gradlew :rd-e2e-agent:fatJar first.");
+        assertNotNull(agentJar, "rd-e2e-agent fat JAR not found. Run ./gradlew :rd-e2e-agent:fatJar first.");
 
         String moddedJar = findModdedClientJar();
-        assertNotNull(moddedJar, "rd-client modded JAR not found. "
-                + "Run ./gradlew :rd-client:fatModdedJar first.");
+        assertNotNull(moddedJar, "rd-client modded JAR not found. Run ./gradlew :rd-client:fatModdedJar first.");
 
-        // Launch RubyDung modded client — server connection handled by Fabric Mixin
-        // via --server=host:port CLI arg (not by the agent setting fields)
         Process client = launcher.launchModdedClient(
                 moddedJar, agentJar, "rubydung", server.getPort(),
-                "E2EBot", statusDir, display.getDisplay());
+                "E2EBot", statusDir, display.getDisplay(), "block_place_break");
 
         try {
             StatusMonitor monitor = new StatusMonitor(statusDir);
             String finalStatus = monitor.waitForTerminal(TIMEOUT_MS);
 
-            // Dump client log on timeout for debugging
-            if (finalStatus == null) {
-                File logFile = new File(statusDir, "client-output.log");
-                if (logFile.exists()) {
-                    System.err.println("=== CLIENT OUTPUT ===");
-                    System.err.println(new String(java.nio.file.Files.readAllBytes(logFile.toPath())));
-                    System.err.println("=== END CLIENT OUTPUT ===");
-                }
-            }
             assertNotNull(finalStatus, "Agent did not reach terminal state within timeout. "
                     + "Last status: " + monitor.readStatus());
 
@@ -90,8 +69,8 @@ class RubyDungLoginScreenshotTest {
             assertEquals("COMPLETE", state,
                     "Agent ended in " + state + " state. Error: " + error);
 
-            new ScreenshotBaselineVerifier("rubydung", "world_loaded")
-                    .verifyAll(statusDir, "world_loaded.png");
+            new ScreenshotBaselineVerifier("rubydung", "block_place_break")
+                    .verifyAll(statusDir, "grass_broken.png", "block_placed.png");
         } finally {
             if (client.isAlive()) {
                 client.destroyForcibly();

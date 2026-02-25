@@ -8,8 +8,11 @@ import javax.imageio.ImageIO;
 
 /**
  * Captures screenshots from the Minecraft client's OpenGL context.
- * Uses reflection to call LWJGL 2's GL11.glReadPixels since the agent
- * runs on the client's classpath where LWJGL 2 classes are available.
+ * Uses reflection to call GL11.glReadPixels. For Fabric/LWJGL 3 clients,
+ * GL11 must be loaded from the game's classloader (KnotClassLoader) rather
+ * than the system classloader, because GL capabilities are stored per-class
+ * in ThreadLocal state — a GL11 loaded by a different classloader has no
+ * context.
  *
  * MUST be called on the render thread (from within the tick hook).
  */
@@ -18,6 +21,19 @@ public class ScreenshotCapture {
     private Class<?> gl11Class;
     private Method glReadPixelsMethod;
     private boolean initialized;
+    private ClassLoader gameClassLoader;
+    private InputController inputController;
+
+    /**
+     * Set the InputController for pre-capture cleanup (e.g., clearing RubyDung
+     * hitResult highlight). Uses a direct reference instead of a Runnable/lambda
+     * because this is called from ByteBuddy Advice code that gets inlined into
+     * the target class — lambdas compile to private synthetic methods that cause
+     * IllegalAccessError across classloaders (KnotClassLoader vs app).
+     */
+    public void setInputController(InputController ic) {
+        this.inputController = ic;
+    }
 
     /**
      * Capture the current OpenGL framebuffer as a PNG file.
@@ -29,6 +45,9 @@ public class ScreenshotCapture {
      */
     public boolean capture(int width, int height, File destFile) {
         try {
+            if (inputController != null) {
+                inputController.clearHitResult();
+            }
             if (!initialized) {
                 init();
             }
@@ -58,16 +77,32 @@ public class ScreenshotCapture {
             ImageIO.write(image, "PNG", destFile);
             System.out.println("[McTestAgent] Screenshot saved: " + destFile.getAbsolutePath());
             return true;
-        } catch (Exception e) {
-            System.err.println("[McTestAgent] Screenshot capture failed: " + e.getMessage());
+        } catch (Throwable e) {
+            System.err.println("[McTestAgent] Screenshot capture failed: " + e.getClass().getName()
+                    + ": " + e.getMessage());
             e.printStackTrace();
             return false;
         }
     }
 
+    /**
+     * Set the classloader to use for loading GL classes. Must be the game's
+     * classloader (e.g. Fabric KnotClassLoader) so we get the same GL11 class
+     * that holds the active GL capabilities.
+     */
+    public void setClassLoader(ClassLoader cl) {
+        this.gameClassLoader = cl;
+    }
+
     private void init() throws Exception {
-        // LWJGL 2 GL11 class is on the client classpath
-        gl11Class = Class.forName("org.lwjgl.opengl.GL11");
+        // Use game classloader if available (needed for Fabric/LWJGL 3 where
+        // GL capabilities are per-class-instance ThreadLocal state), otherwise
+        // fall back to thread context classloader, then system classloader.
+        ClassLoader cl = gameClassLoader;
+        if (cl == null) cl = Thread.currentThread().getContextClassLoader();
+        if (cl == null) cl = ClassLoader.getSystemClassLoader();
+
+        gl11Class = Class.forName("org.lwjgl.opengl.GL11", true, cl);
         // void glReadPixels(int x, int y, int width, int height, int format, int type, ByteBuffer pixels)
         glReadPixelsMethod = gl11Class.getMethod("glReadPixels",
                 int.class, int.class, int.class, int.class,

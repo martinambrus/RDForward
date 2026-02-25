@@ -62,6 +62,10 @@ public class GameState {
     }
 
     public void setUsername(String name) {
+        if (mappings.sessionFieldName() == null) {
+            System.out.println("[McTestAgent] Skipping setUsername: no session field (RubyDung)");
+            return;
+        }
         try {
             Field sessionField = resolveField(minecraftInstance.getClass(),
                     mappings.sessionFieldName(), null);
@@ -233,14 +237,14 @@ public class GameState {
         if (world == null) return -1;
         try {
             if (getBlockIdMethod == null) {
-                // Find the method with exact signature (int,int,int)->int
+                // Find the method with exact signature (int,int,int)->int or boolean
                 // Walk up hierarchy since World may be a subclass
                 Class<?> c = world.getClass();
                 while (c != null && c != Object.class) {
                     try {
                         Method m = c.getDeclaredMethod(mappings.getBlockIdMethodName(),
                                 int.class, int.class, int.class);
-                        if (m.getReturnType() == int.class) {
+                        if (m.getReturnType() == int.class || m.getReturnType() == boolean.class) {
                             m.setAccessible(true);
                             getBlockIdMethod = m;
                             break;
@@ -253,7 +257,11 @@ public class GameState {
                             + world.getClass().getName());
                 }
             }
-            return (Integer) getBlockIdMethod.invoke(world, x, y, z);
+            Object result = getBlockIdMethod.invoke(world, x, y, z);
+            if (result instanceof Boolean) {
+                return ((Boolean) result) ? 1 : 0;
+            }
+            return (Integer) result;
         } catch (Exception e) {
             return -1;
         }
@@ -289,6 +297,7 @@ public class GameState {
      * Returns null if unavailable. Empty slots have itemId=0.
      */
     public int[][] getInventorySlots() {
+        if (mappings.inventoryFieldName() == null) return null;
         Object player = getPlayer();
         if (player == null) return null;
         try {
@@ -337,6 +346,7 @@ public class GameState {
      * Returns the active hotbar slot index (0-8).
      */
     public int getCurrentItemSlot() {
+        if (mappings.inventoryFieldName() == null) return -1;
         Object player = getPlayer();
         if (player == null) return -1;
         try {
@@ -420,11 +430,21 @@ public class GameState {
         }
     }
 
+    // Cached RubyDung chat reflection handles
+    private Field rdChatMessagesField;
+    private Field rdChatEntryMessageField;
+
     /**
      * Returns the most recent chat messages (up to count).
      * Reads InGameHud.chatLines -> each ChatLine.text.
+     * For RubyDung, reads from ChatRenderer.messages (static field).
      */
     public List<String> getChatMessages(int count) {
+        // RubyDung: read from ChatRenderer (Fabric mixin layer)
+        if (mappings.ingameGuiFieldName() == null) {
+            return getChatMessagesRubyDung(count);
+        }
+
         List<String> result = new ArrayList<String>();
         try {
             if (ingameGuiField == null) {
@@ -455,6 +475,37 @@ public class GameState {
             }
         } catch (Exception e) {
             System.err.println("[McTestAgent] Failed to read chat: " + e.getMessage());
+        }
+        return result;
+    }
+
+    private List<String> getChatMessagesRubyDung(int count) {
+        List<String> result = new ArrayList<String>();
+        try {
+            if (rdChatMessagesField == null) {
+                ClassLoader cl = minecraftInstance.getClass().getClassLoader();
+                Class<?> chatRenderer = cl.loadClass(
+                        "com.github.martinambrus.rdforward.client.ChatRenderer");
+                rdChatMessagesField = chatRenderer.getDeclaredField("messages");
+                rdChatMessagesField.setAccessible(true);
+            }
+            List<?> messages = (List<?>) rdChatMessagesField.get(null); // static field
+            if (messages == null || messages.isEmpty()) return result;
+
+            int limit = Math.min(count, messages.size());
+            for (int i = 0; i < limit; i++) {
+                Object entry = messages.get(i);
+                if (entry == null) continue;
+
+                if (rdChatEntryMessageField == null) {
+                    rdChatEntryMessageField = entry.getClass().getDeclaredField("message");
+                    rdChatEntryMessageField.setAccessible(true);
+                }
+                String text = (String) rdChatEntryMessageField.get(entry);
+                if (text != null) result.add(text);
+            }
+        } catch (Exception e) {
+            System.err.println("[McTestAgent] Failed to read RD chat: " + e.getMessage());
         }
         return result;
     }
@@ -496,6 +547,7 @@ public class GameState {
      * Returns total cobblestone (id=4) count across all inventory slots.
      */
     public int getTotalCobblestone() {
+        if (mappings.inventoryFieldName() == null) return -1;
         int[][] slots = getInventorySlots();
         if (slots == null) return -1;
         int total = 0;

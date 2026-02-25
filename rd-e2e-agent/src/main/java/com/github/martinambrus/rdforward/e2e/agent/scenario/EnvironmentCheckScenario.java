@@ -53,6 +53,12 @@ public class EnvironmentCheckScenario implements Scenario {
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
+            // RubyDung has no ingame GUI — skip join message check
+            if (McTestAgent.mappings.ingameGuiFieldName() == null) {
+                System.out.println("[McTestAgent] Join message check: skipped (no ingame GUI)");
+                return true;
+            }
+
             List<String> messages = gs.getChatMessages(20);
             if (messages == null || messages.isEmpty()) {
                 return false; // keep polling
@@ -109,8 +115,9 @@ public class EnvironmentCheckScenario implements Scenario {
                     int sx = px + dir[0] * dist;
                     int sz = pz + dir[1] * dist;
                     int blockId = gs.getBlockId(sx, groundY, sz);
-                    // On a flat map, surface should be grass (2) or dirt (3)
-                    if (blockId != 2 && blockId != 3) {
+                    // On a flat map, surface should be grass (2) or dirt (3),
+                    // or solid (1) for RubyDung
+                    if (blockId != 2 && blockId != 3 && blockId != 1) {
                         issues++;
                         System.out.println("[McTestAgent] Chunk check failed at ("
                                 + sx + "," + groundY + "," + sz + "): blockId=" + blockId);
@@ -198,11 +205,15 @@ public class EnvironmentCheckScenario implements Scenario {
             System.out.println("[McTestAgent] Environment: blockBelow=" + blockBelow
                     + " blockAtFeet=" + blockAtFeet);
 
-            // Grass = 2, Air = 0
-            if (blockBelow != 2) {
-                throw new RuntimeException("Expected grass (2) below feet, got " + blockBelow);
+            // Grass = 2 (Alpha/Beta), Solid = 1 (RubyDung), Air = 0
+            boolean validGround = blockBelow == 2
+                    || (input.isRubyDung() && blockBelow == 1);
+            if (!validGround) {
+                throw new RuntimeException("Expected grass (2) or solid (1) below feet, got " + blockBelow);
             }
-            if (blockAtFeet != 0) {
+            // For RubyDung, player may spawn with feet exactly on the surface block
+            // (64-height world: ground Y=42, eyes Y≈43.625, feet floor(43.625-1.62)=42)
+            if (blockAtFeet != 0 && !(input.isRubyDung() && blockAtFeet == 1)) {
                 throw new RuntimeException("Expected air (0) at feet, got " + blockAtFeet);
             }
             return true;
@@ -227,9 +238,15 @@ public class EnvironmentCheckScenario implements Scenario {
             if (pos == null) throw new RuntimeException("No player position");
 
             int px = (int) Math.floor(pos[0]);
-            // Eye-level Y -> feet Y -> block below feet
-            int groundY = (int) Math.floor(pos[1] - (double) 1.62f) - 1;
+            int feetY = (int) Math.floor(pos[1] - (double) 1.62f);
+            int groundY = feetY - 1;
             int pz = (int) Math.floor(pos[2]);
+
+            // If feet are on the surface block (RubyDung spawn edge case),
+            // treat feet level as ground so we scan above the actual surface
+            if (gs.getBlockId(px, feetY, pz) != 0) {
+                groundY = feetY;
+            }
 
             // Scan 5 blocks each direction: above ground should be air
             int issues = 0;
@@ -267,6 +284,12 @@ public class EnvironmentCheckScenario implements Scenario {
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
+            // RubyDung has no inventory
+            if (McTestAgent.mappings.inventoryFieldName() == null) {
+                System.out.println("[McTestAgent] Inventory check: skipped (no inventory)");
+                return true;
+            }
+
             int[][] slots = gs.getInventorySlots();
             if (slots == null) throw new RuntimeException("Could not read inventory");
 

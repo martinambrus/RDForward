@@ -216,8 +216,27 @@ public class ClientLauncher {
     public Process launchModdedClient(String moddedJarPath, String agentJarPath,
             String version, int serverPort, String username,
             File statusDir, String display) throws IOException {
+        return launchModdedClient(moddedJarPath, agentJarPath, version, serverPort,
+                username, statusDir, display, null);
+    }
+
+    public Process launchModdedClient(String moddedJarPath, String agentJarPath,
+            String version, int serverPort, String username,
+            File statusDir, String display, String scenario) throws IOException {
+        return launchModdedClient(moddedJarPath, agentJarPath, version, serverPort,
+                username, statusDir, display, scenario, null, null);
+    }
+
+    public Process launchModdedClient(String moddedJarPath, String agentJarPath,
+            String version, int serverPort, String username,
+            File statusDir, String display, String scenario,
+            String role, File syncDir) throws IOException {
         String agentArgs = "version=" + version
                 + ",statusDir=" + statusDir.getAbsolutePath();
+        if (scenario != null) agentArgs += ",scenario=" + scenario;
+        if (username != null) agentArgs += ",username=" + username;
+        if (role != null) agentArgs += ",role=" + role;
+        if (syncDir != null) agentArgs += ",syncDir=" + syncDir.getAbsolutePath();
 
         List<String> cmd = new ArrayList<>();
         cmd.add("java"); // system Java 21+
@@ -227,7 +246,7 @@ public class ClientLauncher {
         cmd.add(moddedJarPath);
         // Fabric Mixin reads these CLI args and auto-connects to the server
         cmd.add("--server=localhost:" + serverPort);
-        cmd.add("--username=" + username);
+        cmd.add("--username=" + (username != null ? username : "E2EBot"));
 
         System.out.println("[E2E] Launching modded client: " + String.join(" ", cmd));
 
@@ -235,8 +254,19 @@ public class ClientLauncher {
         Map<String, String> env = pb.environment();
         env.put("DISPLAY", display);
         env.put("LIBGL_ALWAYS_SOFTWARE", "1");
+        // Force GLFW to use X11 backend (Xvfb) instead of Wayland.
+        // GLFW 3.4+ calls wl_display_connect(NULL) which uses the default
+        // "wayland-0" socket in XDG_RUNTIME_DIR, ignoring WAYLAND_DISPLAY.
+        // Override XDG_RUNTIME_DIR to a clean directory without wayland-0.
+        File cleanRuntime = new File(statusDir, "xdg-runtime");
+        cleanRuntime.mkdirs();
+        env.put("XDG_RUNTIME_DIR", cleanRuntime.getAbsolutePath());
+        env.remove("WAYLAND_DISPLAY");
+        env.put("XDG_SESSION_TYPE", "x11");
         pb.redirectErrorStream(true);
-        pb.inheritIO();
+        // Redirect output to a log file in the status dir so we can debug failures
+        File logFile = new File(statusDir, "client-output.log");
+        pb.redirectOutput(logFile);
 
         clientProcess = pb.start();
         return clientProcess;

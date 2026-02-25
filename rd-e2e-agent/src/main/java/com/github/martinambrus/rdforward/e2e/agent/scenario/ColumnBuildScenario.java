@@ -49,8 +49,15 @@ public class ColumnBuildScenario implements Scenario {
         if (pos == null) throw new RuntimeException("No player position");
 
         int px = (int) Math.floor(pos[0]);
-        int groundY = (int) Math.floor(pos[1] - (double) 1.62f) - 1;
+        int feetY = (int) Math.floor(pos[1] - (double) 1.62f);
+        int groundY = feetY - 1;
         int pz = (int) Math.floor(pos[2]);
+
+        // If feet are on the surface block (RubyDung spawn edge case),
+        // treat feet level as ground
+        if (gs.getBlockId(px, feetY, pz) != 0) {
+            groundY = feetY;
+        }
 
         // Platform: 2 blocks in front (+Z)
         platformBX = px;
@@ -76,6 +83,12 @@ public class ColumnBuildScenario implements Scenario {
                             ScreenshotCapture capture, File statusDir) {
             computePlatform(gs);
             ticks++;
+            if (input.isRubyDung()) {
+                if (ticks == 1) {
+                    input.placeBlockDirect(platformBX, platformBY, platformBZ, 1);
+                }
+                return ticks >= 5;
+            }
             if (ticks == 1) {
                 // Look at the ground block where we want to place on top
                 input.lookAtBlock(platformBX, platformBY - 1, platformBZ);
@@ -105,6 +118,19 @@ public class ColumnBuildScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
+            if (input.isRubyDung()) {
+                // RD: teleport onto the platform directly
+                if (ticks == 1) {
+                    double[] pos = gs.getPlayerPosition();
+                    if (pos != null) {
+                        float dx = platformBX + 0.5f - (float) pos[0];
+                        float dy = (platformBY + 1.0f + 1.62f) - (float) pos[1];
+                        float dz = platformBZ + 0.5f - (float) pos[2];
+                        input.movePlayerPosition(dx, dy, dz);
+                    }
+                }
+                return ticks >= 3;
+            }
             if (ticks == 1) {
                 // Look toward the platform and walk forward + jump
                 input.lookAtBlock(platformBX, platformBY + 1, platformBZ);
@@ -160,10 +186,11 @@ public class ColumnBuildScenario implements Scenario {
     // Uses a state machine to stabilize between jumps (prevents X/Z drift)
     // and precisely time block placement when feet are above the target block
     // (required to pass the server's body overlap check).
+    // RubyDung: uses direct placeBlockDirect + movePlayerPosition instead.
     private class BuildColumnStep implements ScenarioStep {
         private int ticks;
 
-        // State machine phases
+        // State machine phases (Alpha/Beta only)
         private static final int GROUND = 0;   // on ground, stabilizing
         private static final int AIRBORNE = 1; // jumped, trying to place
 
@@ -171,6 +198,9 @@ public class ColumnBuildScenario implements Scenario {
         private int phaseTicks;
         private double highWaterY;
         private int consecutiveStalls;
+
+        // RubyDung column state
+        private int rdCurrentY;
 
         @Override
         public String getDescription() {
@@ -181,6 +211,10 @@ public class ColumnBuildScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
+
+            if (input.isRubyDung()) {
+                return tickRubyDung(gs, input);
+            }
 
             // Always look straight down
             input.setLookDirection(gs.getYaw(), 90f);
@@ -258,6 +292,39 @@ public class ColumnBuildScenario implements Scenario {
                         phaseTicks = 0;
                     }
                     break;
+            }
+
+            return false;
+        }
+
+        /**
+         * RubyDung column build: place block + move player up each tick.
+         * No jump/click needed — direct position writes and setTile calls.
+         */
+        private boolean tickRubyDung(GameState gs, InputController input) {
+            if (ticks == 1) {
+                rdCurrentY = platformBY + 1;
+            }
+
+            // Place one block per 3 ticks (give server time to process)
+            if (ticks % 3 == 1) {
+                // Place solid block at current Y
+                input.placeBlockDirect(platformBX, rdCurrentY, platformBZ, 1);
+                // Move player up to stand on the new block
+                input.movePlayerPosition(0, 1.0f, 0);
+                rdCurrentY++;
+
+                int blockId = gs.getBlockId(platformBX, rdCurrentY - 1, platformBZ);
+                if (ticks % 30 == 1) {
+                    System.out.println("[McTestAgent] RD BuildColumn Y=" + rdCurrentY
+                            + " blockBelow=" + blockId);
+                }
+
+                // RubyDung world height is 64 blocks
+                if (rdCurrentY >= 62) {
+                    System.out.println("[McTestAgent] RD Column top reached at Y=" + rdCurrentY);
+                    return true;
+                }
             }
 
             return false;
@@ -354,9 +421,13 @@ public class ColumnBuildScenario implements Scenario {
     // Step 7: Break blocks downward using direct dig packets.
     // Uses InputController.breakBlock() to bypass Minecraft.a(0)'s cooldown
     // (field S blocks left-clicks for 10 ticks when objectMouseOver is null).
+    // RubyDung: uses breakBlockDirect + movePlayerPosition.
     private class BreakDownStep implements ScenarioStep {
         private int ticks;
         private int settleTicks; // counts ticks after detecting ground
+
+        // RubyDung break-down state
+        private int rdBreakY;
 
         @Override
         public String getDescription() {
@@ -367,6 +438,10 @@ public class ColumnBuildScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
+
+            if (input.isRubyDung()) {
+                return tickRubyDungBreak(gs, input);
+            }
 
             double[] pos = gs.getPlayerPosition();
             if (pos == null) return false;
@@ -444,6 +519,37 @@ public class ColumnBuildScenario implements Scenario {
             return false;
         }
 
+        private boolean tickRubyDungBreak(GameState gs, InputController input) {
+            if (ticks == 1) {
+                // Start breaking from the highest column block downward
+                rdBreakY = 61; // top of RD column
+                // Find actual top
+                while (rdBreakY > platformBY && gs.getBlockId(platformBX, rdBreakY, platformBZ) == 0) {
+                    rdBreakY--;
+                }
+            }
+
+            // Break one block per 3 ticks
+            if (ticks % 3 == 1) {
+                if (rdBreakY <= platformBY) {
+                    // Back on ground
+                    input.movePlayerPosition(0, -1.0f, 0); // settle down
+                    System.out.println("[McTestAgent] RD break-down complete at Y=" + rdBreakY);
+                    return true;
+                }
+
+                input.breakBlockDirect(platformBX, rdBreakY, platformBZ);
+                input.movePlayerPosition(0, -1.0f, 0);
+                rdBreakY--;
+
+                if (ticks % 30 == 1) {
+                    System.out.println("[McTestAgent] RD Breaking down: Y=" + rdBreakY);
+                }
+            }
+
+            return false;
+        }
+
         @Override
         public int getTimeoutTicks() {
             return 2000; // 100 seconds
@@ -471,8 +577,8 @@ public class ColumnBuildScenario implements Scenario {
                         + "): blockBelow=" + blockBelow);
             }
 
-            // Accept grass(2), dirt(3), or cobblestone(4)
-            if (blockBelow == 2 || blockBelow == 3 || blockBelow == 4) {
+            // Accept grass(2), dirt(3), cobblestone(4), or solid(1) for RubyDung
+            if (blockBelow == 2 || blockBelow == 3 || blockBelow == 4 || blockBelow == 1) {
                 if (!screenshotTaken) {
                     File file = new File(statusDir, "back_on_ground.png");
                     capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);

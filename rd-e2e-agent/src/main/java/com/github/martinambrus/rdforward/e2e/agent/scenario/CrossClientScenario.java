@@ -49,8 +49,14 @@ public class CrossClientScenario implements Scenario {
         double[] pos = gs.getPlayerPosition();
         if (pos == null) throw new RuntimeException("No player position for block coords");
         int px = (int) Math.floor(pos[0]);
-        int groundY = (int) Math.floor(pos[1] - (double) 1.62f) - 1;
+        int feetY = (int) Math.floor(pos[1] - (double) 1.62f);
+        int groundY = feetY - 1;
         int pz = (int) Math.floor(pos[2]);
+        // If feet are on the surface block (spawn edge case with 64-height world),
+        // treat feet level as ground so we place on top of it
+        if (gs.getBlockId(px, feetY, pz) != 0) {
+            groundY = feetY;
+        }
         myBlockX = px + 1;
         myBlockY = groundY + 1; // on top of ground
         myBlockZ = pz;
@@ -132,6 +138,13 @@ public class CrossClientScenario implements Scenario {
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
             ticks++;
+            if (input.isRubyDung()) {
+                // RD: move backward by 2 blocks directly
+                if (ticks == 1) {
+                    input.movePlayerPosition(0, 0, -2.0f);
+                }
+                return ticks >= 5;
+            }
             if (ticks == 1) {
                 input.pressKey(InputController.BACK);
             }
@@ -204,13 +217,18 @@ public class CrossClientScenario implements Scenario {
             // Compute block coords on first tick (relative to current position)
             if (ticks == 1) {
                 computeMyBlockCoords(gs);
+                if (input.isRubyDung()) {
+                    input.placeBlockDirect(myBlockX, myBlockY, myBlockZ, 1);
+                }
             }
-            // Look at the ground block where we want to place on top
-            input.lookAtBlock(myBlockX, myBlockY - 1, myBlockZ);
-            if (ticks >= 3 && ticks <= 10) {
-                input.click(1); // right-click to place
+            if (!input.isRubyDung()) {
+                // Look at the ground block where we want to place on top
+                input.lookAtBlock(myBlockX, myBlockY - 1, myBlockZ);
+                if (ticks >= 3 && ticks <= 10) {
+                    input.click(1); // right-click to place
+                }
             }
-            if (ticks > 10) {
+            if (ticks > 10 || (input.isRubyDung() && ticks > 3)) {
                 int placed = gs.getBlockId(myBlockX, myBlockY, myBlockZ);
                 if (placed != 0) {
                     System.out.println("[McTestAgent] Primary placed block id=" + placed
@@ -249,8 +267,11 @@ public class CrossClientScenario implements Scenario {
                 getBarrier().signal("primary_block_broken");
                 return true;
             }
-            // Use direct breakBlock (bypasses raycast/cooldown)
-            input.breakBlock(myBlockX, myBlockY, myBlockZ);
+            if (input.isRubyDung()) {
+                input.breakBlockDirect(myBlockX, myBlockY, myBlockZ);
+            } else {
+                input.breakBlock(myBlockX, myBlockY, myBlockZ);
+            }
             return false;
         }
     }
@@ -504,12 +525,17 @@ public class CrossClientScenario implements Scenario {
             ticks++;
             if (ticks == 1) {
                 computeMyBlockCoords(gs);
+                if (input.isRubyDung()) {
+                    input.placeBlockDirect(myBlockX, myBlockY, myBlockZ, 1);
+                }
             }
-            input.lookAtBlock(myBlockX, myBlockY - 1, myBlockZ);
-            if (ticks >= 3 && ticks <= 10) {
-                input.click(1);
+            if (!input.isRubyDung()) {
+                input.lookAtBlock(myBlockX, myBlockY - 1, myBlockZ);
+                if (ticks >= 3 && ticks <= 10) {
+                    input.click(1);
+                }
             }
-            if (ticks > 10) {
+            if (ticks > 10 || (input.isRubyDung() && ticks > 3)) {
                 int placed = gs.getBlockId(myBlockX, myBlockY, myBlockZ);
                 if (placed != 0) {
                     System.out.println("[McTestAgent] Secondary placed block id=" + placed
@@ -548,7 +574,11 @@ public class CrossClientScenario implements Scenario {
                 getBarrier().signal("secondary_block_broken");
                 return true;
             }
-            input.breakBlock(myBlockX, myBlockY, myBlockZ);
+            if (input.isRubyDung()) {
+                input.breakBlockDirect(myBlockX, myBlockY, myBlockZ);
+            } else {
+                input.breakBlock(myBlockX, myBlockY, myBlockZ);
+            }
             return false;
         }
     }

@@ -76,4 +76,47 @@ public class RubyDungMappings implements FieldMappings {
     public String posZFieldName() {
         return "z";
     }
+
+    // Phase 2: rotation, ground, mouse, block fields
+    @Override
+    public String yawFieldName() {
+        return "yRot";
+    }
+
+    @Override
+    public String pitchFieldName() {
+        return "xRot";
+    }
+
+    @Override
+    public String onGroundFieldName() {
+        return "onGround";
+    }
+
+    @Override
+    public String mouseGrabbedFieldName() {
+        return "mouseGrabbed";
+    }
+
+    @Override
+    public String getBlockIdMethodName() {
+        return "isTile";
+    }
+
+    // No Session object in RubyDung
+    @Override
+    public String sessionFieldName() {
+        return null;
+    }
+
+    // Block interaction via Level.setTile() and RubyDung.blockChangeQueue
+    @Override
+    public String setTileMethodName() {
+        return "setTile";
+    }
+
+    @Override
+    public String blockChangeQueueFieldName() {
+        return "blockChangeQueue";
+    }
 }

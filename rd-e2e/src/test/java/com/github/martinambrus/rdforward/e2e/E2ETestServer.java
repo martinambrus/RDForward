@@ -22,13 +22,26 @@ public class E2ETestServer {
 
     private RDServer server;
     private int port;
+    private final int worldHeight;
+
+    public E2ETestServer() {
+        // Alpha world height is 128 blocks (Classic/RubyDung default is 64).
+        // Use 128 so placement at Y >= 64 passes ServerWorld.inBounds().
+        this(128);
+    }
+
+    /**
+     * Create an E2E test server with a custom world height.
+     * RubyDung clients only support 64-block height worlds.
+     */
+    public E2ETestServer(int worldHeight) {
+        this.worldHeight = worldHeight;
+    }
 
     public void start() throws InterruptedException {
         deleteStaleFiles();
-        // Alpha world height is 128 blocks (Classic/RubyDung default is 64).
-        // Use 128 so placement at Y >= 64 passes ServerWorld.inBounds().
         server = new RDServer(0, ProtocolVersion.RUBYDUNG,
-                new FlatWorldGenerator(), 0L, 256, 128, 256);
+                new FlatWorldGenerator(), 0L, 256, worldHeight, 256);
         server.setBedrockPort(0);
         server.start();
         port = server.getActualPort();
