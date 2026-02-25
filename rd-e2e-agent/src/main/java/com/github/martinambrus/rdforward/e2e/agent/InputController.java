@@ -850,10 +850,13 @@ public class InputController {
             agentOpenedScreen = true;
             ensureDisplayGuiScreenMethod();
 
-            // Beta-style: creative or survival inventory takes EntityPlayer as constructor arg
+            // Try Beta-style first (1-arg EntityPlayer constructor),
+            // fall back to Alpha-style (IInventory + ItemStack[] constructor)
             if (mappings.creativeInventoryClassName() != null
                     || mappings.guiInventoryClassName() != null) {
-                openBetaInventory(player);
+                if (!tryOpenBetaInventory(player)) {
+                    openAlphaInventory(player);
+                }
                 return;
             }
 
@@ -865,7 +868,7 @@ public class InputController {
         }
     }
 
-    private void openBetaInventory(Object player) throws Exception {
+    private boolean tryOpenBetaInventory(Object player) throws Exception {
         String className;
         if (McTestAgent.isCreativeMode && mappings.creativeInventoryClassName() != null) {
             className = mappings.creativeInventoryClassName();
@@ -884,13 +887,13 @@ public class InputController {
             }
         }
         if (ctor == null) {
-            throw new RuntimeException("No suitable constructor found on " + className
-                    + " for player type " + player.getClass().getName());
+            return false; // No Beta-style constructor; caller should try Alpha-style
         }
         ctor.setAccessible(true);
         Object guiInv = ctor.newInstance(player);
         displayGuiScreenMethod.invoke(gameState.getMinecraftInstance(), guiInv);
         System.out.println("[McTestAgent] Opened " + className + " inventory GUI");
+        return true;
     }
 
     private void openAlphaInventory(Object player) throws Exception {
@@ -919,9 +922,11 @@ public class InputController {
         }
         Object craftingInv = craftingInventoryField.get(inventory);
 
-        // Create GuiInventory: ne(hi, fp[]) where hi is an interface of fo
+        // Create GuiInventory: className(hi, fp[]) where hi is an interface of InventoryPlayer
         if (guiInventoryConstructor == null) {
-            Class<?> neClass = Class.forName("ne");
+            String guiClassName = mappings.guiInventoryClassName() != null
+                    ? mappings.guiInventoryClassName() : "ne";
+            Class<?> neClass = Class.forName(guiClassName);
             Class<?> hiClass = null;
             for (Class<?> iface : inventory.getClass().getInterfaces()) {
                 hiClass = iface;
