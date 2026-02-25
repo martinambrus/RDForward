@@ -23,6 +23,8 @@ public class InventoryManipulationScenario implements Scenario {
     private int cobbleSlot = 36;
     // First empty slot found after opening
     private int emptySlot = -1;
+    // Whether emptySlot contains porkchops that need to be cleared first
+    private boolean needsClearSlot;
 
     @Override
     public String getName() {
@@ -59,6 +61,7 @@ public class InventoryManipulationScenario implements Scenario {
             steps.add(new ScreenshotStep());
         } else {
             steps.add(new OpenInventoryStep());
+            steps.add(new ClearSlotStep());
             steps.add(new ClickEmptySlotStep());
             steps.add(new SplitStackStep());
             steps.add(new PlaceSplitStep());
@@ -147,9 +150,63 @@ public class InventoryManipulationScenario implements Scenario {
         }
 
         if (cobbleSlot == -1) throw new RuntimeException("No cobblestone found in inventory");
+
+        // Alpha 1.0.15/1.0.16: server fills all slots with cooked porkchops (320).
+        // Use a porkchop slot as fallback — it will be cleared before the split flow.
+        if (emptySlot == -1) {
+            for (int i = 0; i < slots.length; i++) {
+                if (slots[i][0] != 0 && slots[i][0] != 4) {
+                    int windowSlot = (i < 9) ? (36 + i) : i;
+                    if (windowSlot != cobbleSlot) {
+                        emptySlot = windowSlot;
+                        needsClearSlot = true;
+                        break;
+                    }
+                }
+            }
+        }
+
         if (emptySlot == -1) throw new RuntimeException("No empty slot found in inventory");
 
-        System.out.println("[McTestAgent] Cobble slot=" + cobbleSlot + " empty slot=" + emptySlot);
+        System.out.println("[McTestAgent] Cobble slot=" + cobbleSlot + " empty slot=" + emptySlot
+                + (needsClearSlot ? " (needs clear)" : ""));
+    }
+
+    // Clears a non-empty slot (e.g. porkchops) by picking up and dropping outside.
+    // No-op if the slot was already empty.
+    private class ClearSlotStep implements ScenarioStep {
+        private int ticks;
+
+        @Override
+        public String getDescription() {
+            return "clear_slot";
+        }
+
+        @Override
+        public boolean tick(GameState gs, InputController input,
+                            ScreenshotCapture capture, File statusDir) {
+            if (!needsClearSlot) return true;
+            ticks++;
+            if (ticks == 1) {
+                System.out.println("[McTestAgent] Clearing slot " + emptySlot);
+                clickHotbarSlot(emptySlot, 0, input); // left-click picks up all
+                return false;
+            }
+            if (ticks == 3) {
+                input.clickOutsideInventory(0); // left-click outside drops all
+                return false;
+            }
+            if (ticks >= 5) {
+                needsClearSlot = false;
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public int getTimeoutTicks() {
+            return 20;
+        }
     }
 
     // Grab cobblestone from creative grid slot 0 and place in hotbar slot 1

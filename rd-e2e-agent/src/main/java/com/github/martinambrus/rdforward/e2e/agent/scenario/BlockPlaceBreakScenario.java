@@ -325,8 +325,11 @@ public class BlockPlaceBreakScenario implements Scenario {
         }
     }
 
-    // Step 6: Verify inventory still has 64 cobblestone (replenishment)
+    // Step 6: Verify inventory still has 64 cobblestone (replenishment).
+    // Waits up to the timeout for replenishment packets to arrive.
     private class VerifyReplenishmentStep implements ScenarioStep {
+        private int ticks;
+
         @Override
         public String getDescription() {
             return "verify_replenishment";
@@ -335,6 +338,8 @@ public class BlockPlaceBreakScenario implements Scenario {
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
+            ticks++;
+
             // RubyDung has no inventory
             if (input.isRubyDung()) {
                 System.out.println("[McTestAgent] Replenishment check: skipped (RubyDung, no inventory)");
@@ -350,13 +355,25 @@ public class BlockPlaceBreakScenario implements Scenario {
             }
             // Creative mode: client has 1 cobblestone and doesn't consume on placement
             int expected = McTestAgent.isCreativeMode ? 1 : 64;
-            System.out.println("[McTestAgent] Cobblestone after place: " + cobbleCount
-                    + " (expected >=" + expected + ")");
 
-            if (cobbleCount < expected) {
-                throw new RuntimeException("Expected " + expected + " cobblestone after replenishment, found " + cobbleCount);
+            if (cobbleCount >= expected) {
+                System.out.println("[McTestAgent] Cobblestone after place: " + cobbleCount
+                        + " (expected >=" + expected + ") — OK after " + ticks + " ticks");
+                return true;
             }
-            return true;
+
+            // Log periodically while waiting
+            if (ticks % 20 == 0) {
+                System.out.println("[McTestAgent] Waiting for replenishment: " + cobbleCount
+                        + "/" + expected + " (tick " + ticks + ")");
+            }
+
+            // Throw a clear error near timeout so the step runner gets a useful message
+            if (ticks >= 95) {
+                throw new RuntimeException("Expected " + expected
+                        + " cobblestone after replenishment, found " + cobbleCount);
+            }
+            return false;
         }
 
         @Override

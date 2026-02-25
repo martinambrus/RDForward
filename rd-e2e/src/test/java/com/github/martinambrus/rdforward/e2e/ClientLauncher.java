@@ -26,6 +26,9 @@ public class ClientLauncher {
     private static final String LIBS_DIR = "rd-e2e/libs";
     private static final String NATIVES_DIR = LIBS_DIR + "/natives-linux";
 
+    private static final String ALPHA_1016_JAR_URL = "https://launcher.mojang.com/v1/objects/98ce80c7630ccb3bb38687ff98bfd18935d49a57/client.jar";
+    private static final String ALPHA_1016_JAR = "alpha-1.0.16-client.jar";
+
     private static final String ALPHA_1017_JAR_URL = "https://launcher.mojang.com/v1/objects/61cb4c717981f34bf90e8502d2eb8cf2aa6db0cd/client.jar";
     private static final String ALPHA_1017_JAR = "alpha-1.0.17_04-client.jar";
 
@@ -130,6 +133,68 @@ public class ClientLauncher {
         Map<String, String> env = pb.environment();
         env.put("DISPLAY", display);
         env.put("LIBGL_ALWAYS_SOFTWARE", "1"); // Mesa software rendering fallback
+        pb.redirectErrorStream(true);
+        pb.inheritIO();
+
+        clientProcess = pb.start();
+        return clientProcess;
+    }
+
+    /**
+     * Launch an Alpha 1.0.16 client with the E2E agent attached.
+     * Uses the default "world_loaded" scenario.
+     */
+    public Process launchAlpha1016(String agentJarPath, int serverPort,
+            File statusDir, String display) throws IOException, InterruptedException {
+        return launchAlpha1016(agentJarPath, serverPort, statusDir, display, "world_loaded");
+    }
+
+    public Process launchAlpha1016(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario) throws IOException, InterruptedException {
+        return launchAlpha1016(agentJarPath, serverPort, statusDir, display, scenario,
+                null, null, null);
+    }
+
+    public Process launchAlpha1016(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario,
+            String username, String role, File syncDir) throws IOException, InterruptedException {
+        ensureLibs();
+
+        String clientJar = new File(LIBS_DIR, ALPHA_1016_JAR).getAbsolutePath();
+        String lwjglJar = new File(LIBS_DIR, LWJGL2_JAR).getAbsolutePath();
+        String lwjglUtilJar = new File(LIBS_DIR, LWJGL2_UTIL_JAR).getAbsolutePath();
+        String nativesPath = new File(NATIVES_DIR).getAbsolutePath();
+
+        // Pre-1.2.0 clients get kicked on first connect (TimSort warning).
+        if (username == null) username = "E2EBot";
+
+        String agentArgs = "version=alpha1016"
+                + ",serverHost=localhost"
+                + ",serverPort=" + serverPort
+                + ",statusDir=" + statusDir.getAbsolutePath()
+                + ",scenario=" + scenario;
+        agentArgs += ",username=" + username;
+        if (role != null) agentArgs += ",role=" + role;
+        if (syncDir != null) agentArgs += ",syncDir=" + syncDir.getAbsolutePath();
+
+        List<String> cmd = new ArrayList<>();
+        cmd.add(JAVA8_PATH);
+        cmd.add("-javaagent:" + agentJarPath + "=" + agentArgs);
+        cmd.add("-Djava.library.path=" + nativesPath);
+        cmd.add("-Djava.util.Arrays.useLegacyMergeSort=true");
+        cmd.add("-Dhttp.proxyHost=127.0.0.1");
+        cmd.add("-Dhttp.proxyPort=65535");
+        cmd.add("-Xmx256m");
+        cmd.add("-cp");
+        cmd.add(clientJar + ":" + lwjglJar + ":" + lwjglUtilJar);
+        cmd.add("net.minecraft.client.Minecraft");
+
+        System.out.println("[E2E] Launching Alpha 1.0.16 client: " + String.join(" ", cmd));
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        Map<String, String> env = pb.environment();
+        env.put("DISPLAY", display);
+        env.put("LIBGL_ALWAYS_SOFTWARE", "1");
         pb.redirectErrorStream(true);
         pb.inheritIO();
 
@@ -612,6 +677,7 @@ public class ClientLauncher {
         try (RandomAccessFile raf = new RandomAccessFile(lockFile, "rw");
              FileChannel ch = raf.getChannel();
              FileLock lock = ch.lock()) {
+            downloadIfMissing(ALPHA_1016_JAR_URL, new File(libsDir, ALPHA_1016_JAR));
             downloadIfMissing(ALPHA_1017_JAR_URL, new File(libsDir, ALPHA_1017_JAR));
             downloadIfMissing(ALPHA_110_JAR_URL, new File(libsDir, ALPHA_110_JAR));
             downloadIfMissing(ALPHA_120_JAR_URL, new File(libsDir, ALPHA_120_JAR));

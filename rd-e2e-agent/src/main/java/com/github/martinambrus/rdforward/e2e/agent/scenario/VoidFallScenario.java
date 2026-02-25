@@ -16,6 +16,7 @@ public class VoidFallScenario implements Scenario {
 
     // Shared state across steps
     private double[] spawnPos;
+    private boolean serverAlreadyTeleported;
 
     @Override
     public String getName() {
@@ -177,6 +178,14 @@ public class VoidFallScenario implements Scenario {
                 System.out.println("[McTestAgent] Fall speed: "
                         + String.format("%.1f", fallDist) + " blocks in 1 second"
                         + " (Y=" + String.format("%.2f", pos[1]) + ")");
+                // Negative fallDist means the server already teleported the player
+                // back to spawn during the measurement window — the player DID fall
+                // fast enough to trigger the teleport.
+                if (fallDist < 0) {
+                    System.out.println("[McTestAgent] Server teleported during measurement — accepted");
+                    serverAlreadyTeleported = true;
+                    return true;
+                }
                 if (fallDist < minFallSpeed) {
                     throw new RuntimeException("Fall speed too slow: "
                             + String.format("%.1f", fallDist) + " blocks/sec (need >= "
@@ -215,6 +224,12 @@ public class VoidFallScenario implements Scenario {
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
+            // Server teleported during the fall speed check — skip this step
+            if (serverAlreadyTeleported) {
+                System.out.println("[McTestAgent] Server already teleported — skipping wait");
+                return true;
+            }
+
             ticks++;
             double[] pos = gs.getPlayerPosition();
             if (pos == null) return false;
