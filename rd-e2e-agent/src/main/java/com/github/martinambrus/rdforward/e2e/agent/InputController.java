@@ -758,7 +758,13 @@ public class InputController {
 
     /**
      * Drop the current held item (Q-drop).
-     * Calls InventoryPlayer.decrStackSize(currentSlot, 1) then EntityPlayer.dropPlayerItem(stack, false).
+     *
+     * For Beta 1.8.1+ multiplayer clients: calls EntityPlayer.dropOneItem() which
+     * is overridden in EntityClientPlayerMP to send Packet14BlockDig(status=4) to
+     * the server. The server handles the actual inventory change and replenishment.
+     *
+     * For Alpha clients: manually calls decrStackSize + dropPlayerItem, which
+     * triggers a PickupSpawnPacket to the server.
      */
     public void dropCurrentItem() {
         Object player = gameState.getPlayer();
@@ -767,6 +773,16 @@ public class InputController {
             return;
         }
         try {
+            // Beta path: use dropOneItem() which sends the proper network packet
+            if (mappings.dropOneItemMethodName() != null) {
+                Method dropOneItem = player.getClass().getMethod(
+                        mappings.dropOneItemMethodName());
+                dropOneItem.invoke(player);
+                System.out.println("[McTestAgent] Dropped item via dropOneItem()");
+                return;
+            }
+
+            // Alpha path: manual decrStackSize + dropPlayerItem
             ensureInventoryFields(player);
             Object inventory = inventoryField.get(player);
             if (inventory == null) {

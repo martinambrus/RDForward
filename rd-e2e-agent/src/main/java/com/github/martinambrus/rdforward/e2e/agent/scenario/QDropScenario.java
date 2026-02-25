@@ -110,20 +110,12 @@ public class QDropScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             int total = gs.getTotalCobblestone();
-            if (McTestAgent.isCreativeMode) {
-                // Creative mode: server does not replenish cobblestone.
-                // Verify the drop worked (count should be 0).
-                System.out.println("[McTestAgent] Cobblestone after drop (creative): " + total
-                        + " (expected 0)");
-                if (total != 0) {
-                    throw new RuntimeException("Expected 0 cobblestone after creative Q-drop, found " + total);
-                }
-            } else {
-                System.out.println("[McTestAgent] Cobblestone after replenish: " + total
-                        + " (expected >=64)");
-                if (total < 64) {
-                    throw new RuntimeException("Expected 64 cobblestone after replenishment, found " + total);
-                }
+            int expected = McTestAgent.isCreativeMode ? 1 : 64;
+            System.out.println("[McTestAgent] Cobblestone after replenish: " + total
+                    + " (expected >=" + expected + ")");
+            if (total < expected) {
+                throw new RuntimeException("Expected " + expected
+                        + " cobblestone after replenishment, found " + total);
             }
             return true;
         }

@@ -893,10 +893,10 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Q-drop (status 4): player pressed Q to drop an item.
         // Beta clients use this instead of PickupSpawnPacket for drops.
         // Replenish cobblestone so the player can keep building.
-        // v17+ creative mode has infinite inventory, no replenishment needed.
         if (packet.getStatus() == PlayerDiggingPacket.STATUS_DROP_ITEM) {
-            if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)
-                    && !clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
+            if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
+                giveItem(ctx, BlockRegistry.COBBLESTONE, 1);
+            } else if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)) {
                 giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
             }
             return;

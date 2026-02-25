@@ -177,6 +177,13 @@ public class BetaV17Mappings implements FieldMappings {
         return "a";
     }
 
+    // ah = dropOneItem() on sz (EntityPlayer)
+    // Overridden in aan (EntityClientPlayerMP) to send Packet14BlockDig(status=4)
+    @Override
+    public String dropOneItemMethodName() {
+        return "ah";
+    }
+
     // a = displayGuiScreen(qr) on Minecraft
     @Override
     public String displayGuiScreenMethodName() {

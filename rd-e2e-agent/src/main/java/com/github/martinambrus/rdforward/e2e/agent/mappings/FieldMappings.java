@@ -95,6 +95,15 @@ public interface FieldMappings {
     /** Method name for EntityPlayer.dropPlayerItem(ItemStack, boolean). */
     default String dropPlayerItemMethodName() { return null; }
 
+    /**
+     * Method name for EntityPlayer.dropOneItem() (no-arg).
+     * In multiplayer Beta 1.8.1, the overridden method on EntityClientPlayerMP
+     * sends Packet14BlockDig(status=4) to the server instead of spawning a local
+     * EntityItem. When non-null, dropCurrentItem() uses this instead of
+     * decrStackSize + dropPlayerItem.
+     */
+    default String dropOneItemMethodName() { return null; }
+
     /** Method name for Minecraft.displayGuiScreen(GuiScreen). */
     default String displayGuiScreenMethodName() { return null; }
 
