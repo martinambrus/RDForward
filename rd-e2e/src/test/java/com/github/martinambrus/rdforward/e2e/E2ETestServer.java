@@ -62,6 +62,17 @@ public class E2ETestServer {
         return port;
     }
 
+    /**
+     * Pre-save a player position so pre-1.2.0 Alpha clients (which get kicked
+     * on first connect to warn about JVM flags) are recognized as returning
+     * players and allowed through immediately.
+     */
+    public void preSeedPlayerPosition(String username) {
+        if (server != null) {
+            server.getWorld().savePlayerPosition(username.trim());
+        }
+    }
+
     private void deleteDir(File dir) {
         if (!dir.exists())
             return;
