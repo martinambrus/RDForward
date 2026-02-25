@@ -30,6 +30,7 @@ public class VoidFallScenario implements Scenario {
         steps.add(new VerifyFallSpeedStep());
         steps.add(new WaitTeleportStep());
         steps.add(new VerifySpawnReturnStep());
+        steps.add(new WaitSettleStep());
         steps.add(new ScreenshotStep());
         return steps;
     }
@@ -294,7 +295,29 @@ public class VoidFallScenario implements Scenario {
         }
     }
 
-    // Step 6: Capture final screenshot
+    // Step 6: Wait for world to render after teleport
+    private class WaitSettleStep implements ScenarioStep {
+        private int ticks;
+
+        @Override
+        public String getDescription() {
+            return "wait_settle";
+        }
+
+        @Override
+        public boolean tick(GameState gs, InputController input,
+                            ScreenshotCapture capture, File statusDir) {
+            ticks++;
+            return ticks >= 60; // 3 seconds for chunks to load and render
+        }
+
+        @Override
+        public int getTimeoutTicks() {
+            return 80;
+        }
+    }
+
+    // Step 7: Capture final screenshot
     private class ScreenshotStep implements ScenarioStep {
         @Override
         public String getDescription() {

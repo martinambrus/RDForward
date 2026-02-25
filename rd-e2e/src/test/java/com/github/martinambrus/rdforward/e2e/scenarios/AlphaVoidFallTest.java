@@ -71,7 +71,8 @@ class AlphaVoidFallTest {
             assertEquals("COMPLETE", state,
                     "Agent ended in " + state + " state. Error: " + error);
 
-            new ScreenshotBaselineVerifier("alpha126", "void_fall")
+            // Higher tolerance (15%) for sky/cloud movement between runs
+            new ScreenshotBaselineVerifier("alpha126", "void_fall", 0.85)
                     .verifyAll(statusDir, "void_fall_complete.png");
         } finally {
             if (client.isAlive()) {

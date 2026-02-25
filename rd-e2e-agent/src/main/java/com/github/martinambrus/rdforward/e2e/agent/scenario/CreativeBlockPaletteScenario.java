@@ -16,7 +16,7 @@ import java.util.List;
  * a screenshot from on top of the first placed block.
  *
  * Beta 1.8 creative inventory has a scrollable grid of ~198 items.
- * We iterate through the first visible page (45 grid slots, 5 rows of 9).
+ * We iterate through the first 45 grid slots (8 columns, ~6 rows).
  *
  * Layout: blocks placed in a row along +X, offset +2 in Z from spawn.
  * Player walks along spawn Z (clear of placed blocks) then places sideways.
@@ -173,13 +173,13 @@ public class CreativeBlockPaletteScenario implements Scenario {
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
             if (ticks == 1) {
-                // Click on creative grid slot
-                input.clickInventorySlot(itemIndex, 0);
+                // Click on creative grid slot (8 columns, scrollable rows)
+                input.clickCreativeGridSlot(itemIndex, 0);
                 return false;
             }
             if (ticks == 3) {
-                // Place in hotbar slot 0 (window slot 36)
-                input.clickInventorySlot(36, 0);
+                // Place in hotbar slot 0 (selected by default)
+                input.clickCreativeHotbar(0, 0);
                 return false;
             }
             return ticks >= 5;
