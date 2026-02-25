@@ -319,7 +319,7 @@ public class CreativeBlockPaletteScenario implements Scenario {
                         System.out.println("[McTestAgent] Item " + itemIndex
                                 + ": placed as cobblestone at (" + tx + "," + placedY + "," + tz + ")");
                     } else {
-                        System.out.println("[McTestAgent] Item " + itemIndex
+                        throw new RuntimeException("Item " + itemIndex
                                 + ": placed as blockId=" + blockId + " at (" + tx + "," + placedY + "," + tz
                                 + ") — expected cobblestone(4) conversion");
                     }
@@ -336,8 +336,9 @@ public class CreativeBlockPaletteScenario implements Scenario {
                         System.out.println("[McTestAgent] Item " + itemIndex
                                 + ": converted to cobblestone after " + ticks + " ticks");
                     } else {
-                        System.out.println("[McTestAgent] Item " + itemIndex
-                                + ": appeared as blockId=" + blockId + " after " + ticks + " ticks");
+                        throw new RuntimeException("Item " + itemIndex
+                                + ": appeared as blockId=" + blockId + " after " + ticks + " ticks"
+                                + " — expected cobblestone(4) conversion");
                     }
                     recordFirstPlaced(tx, placedY, tz);
                     return true;
@@ -350,9 +351,9 @@ public class CreativeBlockPaletteScenario implements Scenario {
                 System.out.println("[McTestAgent] Item " + itemIndex
                         + ": non-block item or not placeable (air after 4s) — OK");
             } else {
-                System.out.println("[McTestAgent] Item " + itemIndex
-                        + ": blockId=" + blockId + " after 4s wait");
-                recordFirstPlaced(tx, placedY, tz);
+                throw new RuntimeException("Item " + itemIndex
+                        + ": blockId=" + blockId + " after 4s wait"
+                        + " — expected cobblestone(4) conversion");
             }
             return true; // continue regardless
         }

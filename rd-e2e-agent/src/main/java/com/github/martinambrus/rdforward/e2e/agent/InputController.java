@@ -747,6 +747,58 @@ public class InputController {
     }
 
     /**
+     * Click at a container-relative position with specified container dimensions.
+     */
+    private void clickAtContainerPosition(int containerX, int containerY,
+            int containerW, int containerH, int button) {
+        Object screen = gameState.getCurrentScreen();
+        if (screen == null) return;
+        try {
+            ensureGuiContainerFields(screen);
+            int scaledWidth = guiScreenWidthField.getInt(screen);
+            int scaledHeight = guiScreenHeightField.getInt(screen);
+            int guiLeft = (scaledWidth - containerW) / 2;
+            int guiTop = (scaledHeight - containerH) / 2;
+            int mouseX = guiLeft + containerX + 8; // center of slot
+            int mouseY = guiTop + containerY + 8;
+            guiContainerMouseClickedMethod.invoke(screen, mouseX, mouseY, button);
+        } catch (Exception e) {
+            System.err.println("[McTestAgent] clickAtContainerPosition error: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Click a creative inventory grid slot (8 columns, rows scroll).
+     *
+     * @param gridIndex slot index in the creative grid (0-based)
+     * @param button    0=left click, 1=right click
+     */
+    public void clickCreativeGridSlot(int gridIndex, int button) {
+        int col = gridIndex % 8;
+        int row = gridIndex / 8;
+        int containerX = 8 + col * 18;
+        int containerY = 18 + row * 18;
+        clickAtContainerPosition(containerX, containerY, 176, 208, button);
+        System.out.println("[McTestAgent] Clicked creative grid slot " + gridIndex
+                + " (col=" + col + ",row=" + row + ") button=" + button);
+    }
+
+    /**
+     * Click a creative inventory hotbar slot (0-8).
+     *
+     * @param hotbarIndex hotbar slot index (0-8)
+     * @param button      0=left click, 1=right click
+     */
+    public void clickCreativeHotbar(int hotbarIndex, int button) {
+        int containerX = 8 + hotbarIndex * 18;
+        int containerY = 184;
+        clickAtContainerPosition(containerX, containerY, 176, 208, button);
+        System.out.println("[McTestAgent] Clicked creative hotbar slot " + hotbarIndex
+                + " button=" + button);
+    }
+
+    /**
      * Click outside the inventory to drop items from cursor.
      * Uses coordinates outside the container bounds.
      *

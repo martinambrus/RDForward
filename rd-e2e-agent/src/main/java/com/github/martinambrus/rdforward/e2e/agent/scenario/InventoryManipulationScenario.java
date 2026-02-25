@@ -33,11 +33,29 @@ public class InventoryManipulationScenario implements Scenario {
     public List<ScenarioStep> getSteps() {
         List<ScenarioStep> steps = new ArrayList<ScenarioStep>();
         if (McTestAgent.isCreativeMode) {
-            // Creative mode: simplified test (1 cobblestone, no split/throw)
+            // Setup: grab cobblestone from creative inventory into hotbar slot 1
             steps.add(new OpenInventoryStep());
-            steps.add(new CreativeClickEmptyStep());
+            steps.add(new GrabCobblestoneFromCreativeStep());
             steps.add(new CloseInventoryStep());
             steps.add(new WaitAfterCloseStep());
+            // Full split/throw/verify cycle (same steps as survival)
+            steps.add(new OpenInventoryStep());
+            steps.add(new ClickEmptySlotStep());
+            steps.add(new SplitStackStep());
+            steps.add(new PlaceSplitStep());
+            steps.add(new VerifySplitStep());
+            steps.add(new PickUpHalfStep());
+            steps.add(new ThrowHalfOutsideStep());
+            steps.add(new WaitReplenish16Step());
+            steps.add(new VerifyAfterThrow16Step());
+            steps.add(new PickUpHalfAgainStep());
+            steps.add(new ThrowOneOutsideStep());
+            steps.add(new PutBackStep());
+            steps.add(new WaitReplenish1Step());
+            steps.add(new VerifyAfterThrow1Step());
+            steps.add(new CloseInventoryStep());
+            steps.add(new WaitAfterCloseStep());
+            steps.add(new VerifyFinalInventoryStep());
             steps.add(new ScreenshotStep());
         } else {
             steps.add(new OpenInventoryStep());
@@ -72,6 +90,18 @@ public class InventoryManipulationScenario implements Scenario {
     }
 
     /**
+     * Click a hotbar slot, using the correct method for creative vs survival mode.
+     * Creative inventory has different container dimensions (176x208 vs 176x166).
+     */
+    private void clickHotbarSlot(int windowSlot, int button, InputController input) {
+        if (McTestAgent.isCreativeMode) {
+            input.clickCreativeHotbar(windowSlot - 36, button);
+        } else {
+            input.clickInventorySlot(windowSlot, button);
+        }
+    }
+
+    /**
      * Get a list of individual cobblestone stack sizes in the inventory.
      */
     private List<Integer> getCobblestoneStacks(GameState gs) {
@@ -97,13 +127,22 @@ public class InventoryManipulationScenario implements Scenario {
         cobbleSlot = -1;
         emptySlot = -1;
 
-        for (int i = 0; i < slots.length; i++) {
-            int windowSlot = (i < 9) ? (36 + i) : i;
-            if (slots[i][0] == 4 && cobbleSlot == -1) {
-                cobbleSlot = windowSlot;
+        if (McTestAgent.isCreativeMode) {
+            // Creative inventory only shows grid + hotbar, no main inventory area
+            for (int i = 0; i < 9; i++) {
+                int windowSlot = 36 + i;
+                if (slots[i][0] == 4 && cobbleSlot == -1) cobbleSlot = windowSlot;
+                if (slots[i][0] == 0 && emptySlot == -1) emptySlot = windowSlot;
             }
-            if (slots[i][0] == 0 && emptySlot == -1) {
-                emptySlot = windowSlot;
+        } else {
+            for (int i = 0; i < slots.length; i++) {
+                int windowSlot = (i < 9) ? (36 + i) : i;
+                if (slots[i][0] == 4 && cobbleSlot == -1) {
+                    cobbleSlot = windowSlot;
+                }
+                if (slots[i][0] == 0 && emptySlot == -1) {
+                    emptySlot = windowSlot;
+                }
             }
         }
 
@@ -113,29 +152,38 @@ public class InventoryManipulationScenario implements Scenario {
         System.out.println("[McTestAgent] Cobble slot=" + cobbleSlot + " empty slot=" + emptySlot);
     }
 
-    // Creative mode: click an empty slot (no-crash validation), then close
-    private class CreativeClickEmptyStep implements ScenarioStep {
+    // Grab cobblestone from creative grid slot 0 and place in hotbar slot 1
+    private class GrabCobblestoneFromCreativeStep implements ScenarioStep {
         private int ticks;
-        private boolean clicked;
 
         @Override
         public String getDescription() {
-            return "creative_click_empty";
+            return "grab_cobble_creative";
         }
 
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
-            if (!clicked) {
-                // Click outside the grid area (no-crash test)
-                Class<?> screen = gs.getCurrentScreenClass();
-                if (screen == null) return false; // wait for screen
-                input.clickInventorySlot(9, 1); // slot 9 is typically empty in creative
-                clicked = true;
+            if (ticks == 1) {
+                input.clickCreativeGridSlot(0, 0); // cobblestone at grid index 0
                 return false;
             }
-            return ticks >= 3;
+            if (ticks == 3) {
+                input.clickCreativeHotbar(1, 0); // place in hotbar slot 1
+                return false;
+            }
+            if (ticks >= 5) {
+                int[][] slots = gs.getInventorySlots();
+                if (slots != null && slots[1][0] == 4) {
+                    System.out.println("[McTestAgent] Cobblestone placed in hotbar slot 1: "
+                            + slots[1][1] + " stack");
+                } else {
+                    throw new RuntimeException("Failed to place cobblestone in hotbar slot 1");
+                }
+                return true;
+            }
+            return false;
         }
 
         @Override
@@ -196,7 +244,7 @@ public class InventoryManipulationScenario implements Scenario {
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
             if (ticks == 1) {
-                input.clickInventorySlot(emptySlot, 1);
+                clickHotbarSlot(emptySlot, 1, input);
                 return false;
             }
             return ticks >= 3;
@@ -222,7 +270,7 @@ public class InventoryManipulationScenario implements Scenario {
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
             if (ticks == 1) {
-                input.clickInventorySlot(cobbleSlot, 1); // right-click picks up half
+                clickHotbarSlot(cobbleSlot, 1, input); // right-click picks up half
                 return false;
             }
             return ticks >= 3;
@@ -248,7 +296,7 @@ public class InventoryManipulationScenario implements Scenario {
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
             if (ticks == 1) {
-                input.clickInventorySlot(emptySlot, 0); // left-click places all
+                clickHotbarSlot(emptySlot, 0, input); // left-click places all
                 return false;
             }
             return ticks >= 3;
@@ -260,7 +308,8 @@ public class InventoryManipulationScenario implements Scenario {
         }
     }
 
-    // Step 5: Verify split (2 stacks totaling 64) and screenshot
+    // Step 5: Verify split and screenshot
+    // Survival: 2 stacks totaling 64. Creative: 2 stacks totaling 2 (server gives 1 + grab gives 1).
     private class VerifySplitStep implements ScenarioStep {
         @Override
         public String getDescription() {
@@ -271,9 +320,11 @@ public class InventoryManipulationScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             int total = gs.getTotalCobblestone();
+            int expected = McTestAgent.isCreativeMode ? 2 : 64;
             System.out.println("[McTestAgent] Cobblestone after split: " + total);
-            if (total != 64) {
-                throw new RuntimeException("Expected 64 total cobblestone after split, found " + total);
+            if (total != expected) {
+                throw new RuntimeException("Expected " + expected
+                        + " total cobblestone after split, found " + total);
             }
 
             File file = new File(statusDir, "inventory_split.png");
@@ -301,7 +352,7 @@ public class InventoryManipulationScenario implements Scenario {
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
             if (ticks == 1) {
-                input.clickInventorySlot(emptySlot, 1); // right-click = pick up half
+                clickHotbarSlot(emptySlot, 1, input); // right-click = pick up half
                 return false;
             }
             return ticks >= 3;
@@ -361,9 +412,10 @@ public class InventoryManipulationScenario implements Scenario {
         }
     }
 
-    // Step 9: Verify cobblestone after throwing 16
+    // Step 9: Verify cobblestone after first throw
     // Alpha: total >= 64 (immediate replenishment)
     // Non-Alpha survival: exactly 1x32 + 1x16
+    // Creative: total = 1 (no replenishment)
     private class VerifyAfterThrow16Step implements ScenarioStep {
         @Override
         public String getDescription() {
@@ -375,10 +427,15 @@ public class InventoryManipulationScenario implements Scenario {
                             ScreenshotCapture capture, File statusDir) {
             int total = gs.getTotalCobblestone();
             List<Integer> stacks = getCobblestoneStacks(gs);
-            System.out.println("[McTestAgent] Cobblestone after throw 16: total=" + total
+            System.out.println("[McTestAgent] Cobblestone after throw: total=" + total
                     + " stacks=" + stacks);
 
-            if (isAlphaClient()) {
+            if (McTestAgent.isCreativeMode) {
+                // Creative: no replenishment, 1 cobblestone remains
+                if (total != 1) {
+                    throw new RuntimeException("Creative: expected 1 cobblestone after throw, found " + total);
+                }
+            } else if (isAlphaClient()) {
                 if (total < 64) {
                     throw new RuntimeException("Alpha: expected 64 cobblestone after replenish, found " + total);
                 }
@@ -418,7 +475,7 @@ public class InventoryManipulationScenario implements Scenario {
             if (ticks == 1) {
                 // Re-find slots since replenishment may have changed layout
                 findSlots(gs);
-                input.clickInventorySlot(cobbleSlot, 1);
+                clickHotbarSlot(cobbleSlot, 1, input);
                 return false;
             }
             return ticks >= 3;
@@ -470,7 +527,7 @@ public class InventoryManipulationScenario implements Scenario {
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
             if (ticks == 1) {
-                input.clickInventorySlot(cobbleSlot, 0); // left-click to put back
+                clickHotbarSlot(cobbleSlot, 0, input); // left-click to put back
                 return false;
             }
             return ticks >= 3;
@@ -504,9 +561,10 @@ public class InventoryManipulationScenario implements Scenario {
         }
     }
 
-    // Step 14: Verify cobblestone after throwing 1
+    // Step 14: Verify cobblestone after second throw
     // Alpha: total >= 64 (immediate replenishment)
     // Non-Alpha survival: exactly 1x31 + 1x16
+    // Creative: total = 0 (no replenishment, all cobblestone thrown)
     private class VerifyAfterThrow1Step implements ScenarioStep {
         @Override
         public String getDescription() {
@@ -521,7 +579,12 @@ public class InventoryManipulationScenario implements Scenario {
             System.out.println("[McTestAgent] Cobblestone after throw 1: total=" + total
                     + " stacks=" + stacks);
 
-            if (isAlphaClient()) {
+            if (McTestAgent.isCreativeMode) {
+                // Creative: no replenishment, all cobblestone thrown away
+                if (total != 0) {
+                    throw new RuntimeException("Creative: expected 0 cobblestone after throws, found " + total);
+                }
+            } else if (isAlphaClient()) {
                 if (total < 64) {
                     throw new RuntimeException("Alpha: expected 64 cobblestone after replenish, found " + total);
                 }
@@ -590,6 +653,7 @@ public class InventoryManipulationScenario implements Scenario {
     // Step 17: Verify final cobblestone after closing inventory
     // Alpha: total >= 64
     // Non-Alpha survival (Beta): exactly 1x64 (server replenishes on close)
+    // Creative: total = 0 (no replenishment on close)
     private class VerifyFinalInventoryStep implements ScenarioStep {
         @Override
         public String getDescription() {
@@ -604,7 +668,12 @@ public class InventoryManipulationScenario implements Scenario {
             System.out.println("[McTestAgent] Final cobblestone: total=" + total
                     + " stacks=" + stacks);
 
-            if (isAlphaClient()) {
+            if (McTestAgent.isCreativeMode) {
+                // Creative: no replenishment, all cobblestone was thrown away
+                if (total != 0) {
+                    throw new RuntimeException("Creative: expected 0 cobblestone at end, found " + total);
+                }
+            } else if (isAlphaClient()) {
                 if (total < 64) {
                     throw new RuntimeException("Alpha: expected 64 cobblestone at end, found " + total);
                 }

@@ -72,7 +72,7 @@ class BetaInventoryManipulationTest {
                     "Agent ended in " + state + " state. Error: " + error);
 
             new ScreenshotBaselineVerifier("beta181", "inventory_manipulation")
-                    .verifyAll(statusDir, "inventory_complete.png");
+                    .verifyAll(statusDir, "inventory_split.png", "inventory_complete.png");
         } finally {
             if (client.isAlive()) {
                 client.destroyForcibly();
