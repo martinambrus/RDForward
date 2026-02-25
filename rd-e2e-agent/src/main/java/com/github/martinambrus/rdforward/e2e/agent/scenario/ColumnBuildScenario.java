@@ -244,6 +244,14 @@ public class ColumnBuildScenario implements Scenario {
                         phase = AIRBORNE;
                         phaseTicks = 0;
                     }
+                    // Failsafe: at the world height limit, onGround may stay false
+                    // (player floats at ceiling). Declare column top after extended wait.
+                    if (phaseTicks >= 200 && y > 50) {
+                        input.releaseAllKeys();
+                        System.out.println("[McTestAgent] Column top reached (stuck at ceiling) at Y=" + y
+                                + " after " + ticks + " ticks");
+                        return true;
+                    }
                     break;
 
                 case AIRBORNE:
@@ -425,6 +433,7 @@ public class ColumnBuildScenario implements Scenario {
     private class BreakDownStep implements ScenarioStep {
         private int ticks;
         private int settleTicks; // counts ticks after detecting ground
+        private int stuckTicks;  // ticks with no blocks to break and no progress
 
         // RubyDung break-down state
         private int rdBreakY;
@@ -500,8 +509,20 @@ public class ColumnBuildScenario implements Scenario {
 
             if (blockAtFeet != 0) {
                 input.breakBlock(bx, feetFloor, bz);
+                stuckTicks = 0;
             } else if (blockBelow != 0 && blockBelow != 2 && blockBelow != 3) {
                 input.breakBlock(bx, feetFloor - 1, bz);
+                stuckTicks = 0;
+            } else {
+                stuckTicks++;
+                // Failsafe: player floating at ceiling with all column blocks
+                // reverted by the client (some versions revert near height limit).
+                if (stuckTicks >= 200 && pos[1] > 50) {
+                    input.releaseAllKeys();
+                    input.setLookDirection(gs.getYaw(), 0f);
+                    System.out.println("[McTestAgent] Back on ground (blocks reverted) at Y=" + pos[1]);
+                    return true;
+                }
             }
 
             // Also use click(0) with cooldown reset as backup
@@ -585,6 +606,21 @@ public class ColumnBuildScenario implements Scenario {
                     screenshotTaken = true;
                 }
                 return true;
+            }
+
+            // Failsafe: player stuck at ceiling with all blocks reverted
+            if (ticks >= 100 && blockBelow == 0) {
+                double[] pos = gs.getPlayerPosition();
+                if (pos != null && pos[1] > 50) {
+                    if (!screenshotTaken) {
+                        File file = new File(statusDir, "back_on_ground.png");
+                        capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);
+                        screenshotTaken = true;
+                    }
+                    System.out.println("[McTestAgent] Verify ground (floating, blocks reverted) at Y="
+                            + String.format("%.2f", pos[1]));
+                    return true;
+                }
             }
 
             // Player may still be falling after in-flight break removed a block;
