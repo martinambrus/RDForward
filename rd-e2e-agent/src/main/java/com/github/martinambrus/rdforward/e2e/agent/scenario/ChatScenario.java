@@ -54,6 +54,10 @@ public class ChatScenario implements Scenario {
 
     private static class WaitChatEchoStep implements ScenarioStep {
         private int ticks;
+        private int foundTick = -1;
+        // Wait extra ticks after finding the echo so at least one render
+        // frame draws the chat line before the screenshot step captures it.
+        private static final int RENDER_SETTLE_TICKS = 10;
 
         @Override
         public String getDescription() {
@@ -64,6 +68,12 @@ public class ChatScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
+
+            if (foundTick > 0) {
+                // Already found — wait for renderer to catch up
+                return (ticks - foundTick) >= RENDER_SETTLE_TICKS;
+            }
+
             List<String> messages = gs.getChatMessages(10);
             for (String msg : messages) {
                 if (msg.contains(TEST_MESSAGE)) {
@@ -74,7 +84,8 @@ public class ChatScenario implements Scenario {
                         System.out.println("[McTestAgent] Warning: chat echo missing "
                                 + "username separator, but message found");
                     }
-                    return true;
+                    foundTick = ticks;
+                    return false; // wait for render settle
                 }
             }
             if (ticks % 20 == 0) {
@@ -86,7 +97,7 @@ public class ChatScenario implements Scenario {
 
         @Override
         public int getTimeoutTicks() {
-            return 60; // 3 seconds
+            return 80; // 4 seconds (extra room for render settle)
         }
     }
 
