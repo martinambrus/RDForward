@@ -259,6 +259,39 @@ public class GameState {
         }
     }
 
+    /**
+     * Forces player position using both Entity.a() and direct field writes.
+     * Entity.a() updates the bounding box (needed for some versions like 1.2.0),
+     * while field writes correct any wrong method resolution (needed for 1.2.2+
+     * where Entity.a() may resolve to move() instead of setPosition()).
+     * Also sets onGround=true to prevent the physics engine from overriding.
+     */
+    public boolean forcePlayerPosition(double x, double y, double z) {
+        Object player = getPlayer();
+        if (player == null) return false;
+        try {
+            // First: call Entity.a() to update bounding box
+            setPlayerPosition(x, y, z);
+            // Then: direct field writes to ensure position is correct
+            if (posYField == null) getPlayerPosition(); // ensure fields resolved
+            posXField.setDouble(player, x);
+            posYField.setDouble(player, y);
+            posZField.setDouble(player, z);
+            // Also set onGround to prevent physics override
+            if (onGroundField == null && mappings.onGroundFieldName() != null) {
+                onGroundField = resolveField(player.getClass(),
+                        mappings.onGroundFieldName(), boolean.class);
+            }
+            if (onGroundField != null) {
+                onGroundField.setBoolean(player, true);
+            }
+            return true;
+        } catch (Exception e) {
+            System.err.println("[McTestAgent] forcePlayerPosition error: " + e.getMessage());
+            return false;
+        }
+    }
+
     public boolean isOnGround() {
         Object player = getPlayer();
         if (player == null) return false;

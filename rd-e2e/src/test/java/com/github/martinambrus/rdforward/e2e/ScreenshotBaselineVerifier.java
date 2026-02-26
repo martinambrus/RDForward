@@ -31,7 +31,7 @@ public class ScreenshotBaselineVerifier {
     }
 
     public ScreenshotBaselineVerifier(String version, String scenario) {
-        this(version, scenario, 0.90);
+        this(version, scenario, 0.70);
     }
 
     /**

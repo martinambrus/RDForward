@@ -974,10 +974,10 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             // above the world height limit).
             sendBlockChange(ctx, targetX, targetY, targetZ, 0, 0);
             // Don't decrement trackedCobblestone — the client's own OOB check
-            // usually prevents consumption. But during rapid jumping, some
-            // clicks may target in-bounds side faces that the client consumes
-            // before the server rejects. Schedule replenishment so the
-            // inventory sync (which has the real count) can drive a top-up.
+            // usually prevents consumption. Don't reset the replenishment
+            // timer either: failed placements don't consume cobblestone, and
+            // resetting the timer here prevents it from firing between jump
+            // cycles (the ~20-tick gap only barely exceeds the 1-second timer).
             // v1 has no inventory sync and no way to know if the client
             // consumed, so skip the give-back to avoid inflation.
             // Beta uses SetSlot per-placement so just re-set the slot to 64.
@@ -986,8 +986,6 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 // Creative mode — no replenishment needed
             } else if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)) {
                 giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
-            } else if (clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_1_0)) {
-                scheduleReplenishment(ctx);
             }
             return;
         }
@@ -1002,22 +1000,19 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         boolean overlapsZ = targetZ < pz + 0.3 && pz - 0.3 < targetZ + 1;
         if (overlapsX && overlapsY && overlapsZ) {
             sendBlockChange(ctx, targetX, targetY, targetZ, 0, 0);
-            // Count as consumed for v2+: during rapid jumping the client's
-            // position is ahead of the server's, so the client's own overlap
-            // check may pass (consuming the item) while the server's check
-            // fails. The batched replenishment tops up to 64, so slight
-            // over-counting is harmless.
-            // v1 has no inventory sync — skip give-back to avoid inflation
-            // when both client and server reject the overlap.
+            // Don't decrement or reset the replenishment timer for v2-v6:
+            // most overlap rejections happen when the client also rejects the
+            // placement (same overlap check), so no cobblestone is consumed.
+            // Resetting the timer here prevented it from firing between jump
+            // cycles. The inventory sync (0x05) corrects the tracker for the
+            // rare case where the client's overlap check does pass.
+            // v1 has no inventory sync — skip give-back to avoid inflation.
             // Beta uses SetSlot per-placement so just re-set the slot to 64.
             // v17+ creative mode has infinite inventory, no replenishment needed.
             if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
                 // Creative mode — no replenishment needed
             } else if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_0)) {
                 giveItem(ctx, BlockRegistry.COBBLESTONE, 64);
-            } else if (clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_1_0)) {
-                trackedCobblestone--;
-                scheduleReplenishment(ctx);
             }
             return;
         }
@@ -1137,11 +1132,17 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     }
 
     /**
-     * Schedule a batched cobblestone replenishment. Resets the 2-second timer
-     * on each call. When the timer fires (no placement for 2 seconds), tops
+     * Schedule a batched cobblestone replenishment. Resets the 1-second timer
+     * on each call. When the timer fires (no placement for 1 second), tops
      * up to 64 using trackedCobblestone (corrected by inventory sync packets).
      * This avoids sending AddToInventory packets during rapid placement, which
      * can confuse the Alpha client's input handling.
+     *
+     * A follow-up round fires 1 second after the first to catch cases where the
+     * tracker was stale when the first round fired (e.g. the inventory sync
+     * corrects it downward, or the client doesn't send a sync at all). The
+     * follow-up gives a full 64 cobblestone if the first round gave anything,
+     * guaranteeing the client's first slot reaches 64 even without a sync.
      */
     private void scheduleReplenishment(ChannelHandlerContext ctx) {
         if (replenishTask != null) {
@@ -1149,11 +1150,28 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
         replenishTask = ctx.executor().schedule(() -> {
             int deficit = 64 - trackedCobblestone;
+            boolean gave = false;
             if (ctx.channel().isActive() && deficit > 0) {
                 giveItem(ctx, BlockRegistry.COBBLESTONE, deficit);
                 trackedCobblestone = 64;
+                gave = true;
             }
             replenishTask = null;
+
+            // Follow-up: re-check deficit after 1 more second in case the
+            // tracker was stale when the first round fired. Only sends the
+            // remaining deficit (not a full 64) to avoid creating extra stacks.
+            if (gave) {
+                ctx.executor().schedule(() -> {
+                    if (replenishTask == null && ctx.channel().isActive()) {
+                        int followUpDeficit = 64 - trackedCobblestone;
+                        if (followUpDeficit > 0) {
+                            giveItem(ctx, BlockRegistry.COBBLESTONE, followUpDeficit);
+                            trackedCobblestone = 64;
+                        }
+                    }
+                }, REPLENISH_DELAY_MS, TimeUnit.MILLISECONDS);
+            }
         }, REPLENISH_DELAY_MS, TimeUnit.MILLISECONDS);
     }
 

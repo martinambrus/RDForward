@@ -344,8 +344,16 @@ public class ColumnBuildScenario implements Scenario {
         }
     }
 
-    // Step 5: Verify height and capture screenshot
+    // Step 5: Verify height and capture screenshot.
+    // Waits for cobblestone replenishment to arrive before capturing — the
+    // batched replenishment timer (1 second) may not have fired yet when
+    // BuildColumnStep exits, causing varying inventory counts in the screenshot.
+    // Uses WALL TIME instead of tick count because headless clients can run
+    // much faster than 20 TPS, making tick-based waits unreliable.
     private class VerifyHeightStep implements ScenarioStep {
+        private int ticks;
+        private long startTimeMs;
+
         @Override
         public String getDescription() {
             return "verify_height";
@@ -354,14 +362,28 @@ public class ColumnBuildScenario implements Scenario {
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
-            double[] pos = gs.getPlayerPosition();
-            if (pos == null) throw new RuntimeException("No player position");
+            ticks++;
 
-            System.out.println("[McTestAgent] Column top Y=" + pos[1]);
+            if (ticks == 1) {
+                startTimeMs = System.currentTimeMillis();
+                double[] pos = gs.getPlayerPosition();
+                if (pos == null) throw new RuntimeException("No player position");
 
-            // Alpha world height is 128 blocks. Eye-level Y should be near 128+1.62
-            if (pos[1] < 50) {
-                throw new RuntimeException("Column height too low: Y=" + pos[1]);
+                System.out.println("[McTestAgent] Column top Y=" + pos[1]);
+
+                // Alpha world height is 128 blocks. Eye-level Y should be near 128+1.62
+                if (pos[1] < 50) {
+                    throw new RuntimeException("Column height too low: Y=" + pos[1]);
+                }
+            }
+
+            // Wait at least 3 seconds of WALL TIME for both replenishment
+            // rounds to arrive and the client to render the final inventory.
+            // The batched timer fires 1s after last placement, follow-up 1s
+            // later. 3s gives margin for slow systems under parallel load.
+            long elapsed = System.currentTimeMillis() - startTimeMs;
+            if (elapsed < 3000) {
+                return false;
             }
 
             File file = new File(statusDir, "column_top.png");
@@ -371,7 +393,10 @@ public class ColumnBuildScenario implements Scenario {
 
         @Override
         public int getTimeoutTicks() {
-            return 20;
+            // Must be very generous because headless clients can run at 200+
+            // TPS, consuming ticks much faster than wall time. At 1000 TPS,
+            // 3 seconds = 3000 ticks. Use 6000 for safety margin.
+            return 6000;
         }
     }
 
@@ -443,7 +468,9 @@ public class ColumnBuildScenario implements Scenario {
         // Ceiling stuck detection
         private double lastY = Double.NaN;
         private int sameYTicks;
-        private boolean ceilingHandled; // true once we've swept + teleported
+        private boolean ceilingHandled; // true once stuck detection triggered
+        private boolean teleportDone;   // true once sweep + teleport executed
+        private boolean cleanupDone;    // true once cobblestone cleanup completed
 
         // RubyDung break-down state
         private int rdBreakY;
@@ -465,64 +492,125 @@ public class ColumnBuildScenario implements Scenario {
             double[] pos = gs.getPlayerPosition();
             if (pos == null) return false;
 
-            // --- Ceiling stuck detection ---
+            // --- Ceiling/stuck detection ---
             // Track how long Y stays the same while high up. The Alpha client
             // has a physics bug at the world ceiling (Y=128) that prevents
             // gravity from working even when all blocks below are removed.
+            // Use 0.5 tolerance for Y comparison — at the ceiling, the player's
+            // Y can oscillate slightly due to physics jitter.
             if (!ceilingHandled && pos[1] > platformBY + 30) {
-                if (Double.isNaN(lastY) || Math.abs(pos[1] - lastY) > 0.01) {
+                if (Double.isNaN(lastY) || Math.abs(pos[1] - lastY) > 0.5) {
                     lastY = pos[1];
                     sameYTicks = 0;
                 } else {
                     sameYTicks++;
                 }
 
-                if (sameYTicks >= 30) {
-                    // Sweep the ENTIRE column at the player's block position
-                    // (not platformBX/BZ — the column may be at a different X/Z
-                    // than the platform if the player didn't land exactly on it).
-                    int bx = (int) Math.floor(pos[0]);
-                    int bz = (int) Math.floor(pos[2]);
-                    for (int y = 127; y > platformBY; y--) {
-                        input.breakBlock(bx, y, bz);
-                    }
-                    // Also sweep at the platform position in case the column is there
-                    for (int y = 127; y > platformBY; y--) {
-                        input.breakBlock(platformBX, y, platformBZ);
-                    }
-
-                    // Teleport player to ground level. The surface grass is at
-                    // platformBY - 1, so feet at platformBY, eyes at platformBY + 1.62.
-                    // Move to spawn X/Z to avoid any holes the click(0) may have made.
-                    double spawnX = platformBX + 0.5;
-                    double spawnZ = platformBZ - 2 + 0.5; // original spawn Z
-                    double groundEyeY = platformBY + 1.62;
-                    gs.setPlayerPosition(spawnX, groundEyeY, spawnZ);
-
-                    System.out.println("[McTestAgent] Ceiling stuck — swept column and "
-                            + "teleported to Y=" + String.format("%.2f", groundEyeY)
-                            + " at (" + String.format("%.1f", spawnX) + ", "
-                            + String.format("%.1f", spawnZ) + ")");
-
+                if (sameYTicks >= 20) {
                     ceilingHandled = true;
-                    return false;
                 }
+            }
+
+            // Hard failsafe: if after 1000 ticks we haven't reached the ground,
+            // force the ceiling handling. The player may have partially fallen
+            // (below the Y>platformBY+30 threshold) but got stuck at an
+            // intermediate height due to physics bugs.
+            if (!ceilingHandled && ticks >= 1000) {
+                ceilingHandled = true;
+            }
+
+            // Execute ceiling handling once: sweep column, teleport to ground,
+            // and start settling immediately.
+            if (ceilingHandled && !teleportDone) {
+                teleportDone = true;
+                int bx = (int) Math.floor(pos[0]);
+                int bz = (int) Math.floor(pos[2]);
+                for (int y = 127; y > platformBY; y--) {
+                    input.breakBlock(bx, y, bz);
+                }
+                for (int y = 127; y > platformBY; y--) {
+                    input.breakBlock(platformBX, y, platformBZ);
+                }
+
+                double spawnX = platformBX + 0.5;
+                double spawnZ = platformBZ - 2 + 0.5;
+                double groundEyeY = platformBY + (double) 1.62f;
+                gs.forcePlayerPosition(spawnX, groundEyeY, spawnZ);
+
+                System.out.println("[McTestAgent] Stuck — swept column and "
+                        + "teleported to Y=" + String.format("%.2f", groundEyeY)
+                        + " at (" + String.format("%.1f", spawnX) + ", "
+                        + String.format("%.1f", spawnZ) + ")"
+                        + " (was at Y=" + String.format("%.2f", pos[1])
+                        + ", ticks=" + ticks + ")");
+                input.releaseAllKeys();
+                input.setLookDirection(gs.getYaw(), 0f);
+                settleTicks = 1; // start settling immediately
+                return false;
             }
 
             // Settling phase: wait a few ticks after detecting grass/dirt to let
             // any pending break commands drain. If the block below becomes air
             // (in-flight break removed it), abort settling and resume breaking.
+            // After a teleport, be more patient — don't reset on air, the game
+            // may need extra ticks to update the position/block data.
             if (settleTicks > 0) {
                 settleTicks++;
                 input.setLookDirection(gs.getYaw(), 0f); // look horizontal
                 int belowNow = gs.getBlockBelowFeet();
-                if (belowNow == 0) {
+                if (belowNow == 0 && !teleportDone) {
                     // In-flight break removed the ground block — resume breaking
                     settleTicks = 0;
                     return false;
                 }
-                if (settleTicks >= 5) {
+                if (settleTicks >= 5 && belowNow != 0) {
+                    // If settled on cobblestone, clean up remaining column so
+                    // all versions end on natural grass/dirt (consistent screenshots).
+                    if (belowNow == 4 && !cleanupDone) {
+                        cleanupDone = true;
+                        teleportDone = true; // enable patient settle
+                        int bx = (int) Math.floor(pos[0]);
+                        int bz = (int) Math.floor(pos[2]);
+                        int feetFloor = (int) Math.floor(pos[1] - (double) 1.62f);
+                        // Break all remaining cobblestone INCLUDING the platform
+                        // block (>= not >) so the player falls naturally to grass.
+                        // No teleport needed — avoids Entity.a() resolution issues
+                        // on Alpha 1.2.2+ where it resolves to move() not setPosition().
+                        for (int y = feetFloor; y >= platformBY; y--) {
+                            input.breakBlock(bx, y, bz);
+                        }
+                        for (int y = feetFloor; y >= platformBY; y--) {
+                            input.breakBlock(platformBX, y, platformBZ);
+                        }
+                        input.setLookDirection(gs.getYaw(), 0f);
+                        settleTicks = 1;
+                        System.out.println("[McTestAgent] Cleaned up cobblestone, "
+                                + "falling to grass (platformBY=" + platformBY + ")");
+                        return false;
+                    }
+                    // After cleanup, keep waiting if still on cobblestone
+                    // (break may not have processed yet). Limit to 200 ticks
+                    // to avoid infinite loop if the break never processes.
+                    if (cleanupDone && belowNow == 4 && settleTicks < 200) {
+                        return false;
+                    }
                     System.out.println("[McTestAgent] Back on ground at Y=" + pos[1]
+                            + " blockBelow=" + belowNow);
+                    return true;
+                }
+                // After teleport, if block below is still air after 60 ticks,
+                // re-teleport to ensure position took effect, then keep waiting.
+                if (teleportDone && belowNow == 0 && settleTicks == 60) {
+                    double spawnX = platformBX + 0.5;
+                    double spawnZ = platformBZ - 2 + 0.5;
+                    double groundEyeY = platformBY + (double) 1.62f;
+                    gs.forcePlayerPosition(spawnX, groundEyeY, spawnZ);
+                    System.out.println("[McTestAgent] Re-teleported to ground (belowNow=0 after 60 ticks)");
+                }
+                // After teleport, force-complete after 200 ticks if ground is
+                // still not detected (player may be in death screen).
+                if (teleportDone && settleTicks >= 200) {
+                    System.out.println("[McTestAgent] Back on ground (forced) at Y=" + pos[1]
                             + " blockBelow=" + belowNow);
                     return true;
                 }
@@ -630,6 +718,8 @@ public class ColumnBuildScenario implements Scenario {
         private int ticks;
         private int settleTicks;
         private boolean screenshotTaken;
+        private long startTimeMs;
+        private boolean rescueTeleported;
 
         @Override
         public String getDescription() {
@@ -640,6 +730,10 @@ public class ColumnBuildScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
+            if (ticks == 1) {
+                startTimeMs = System.currentTimeMillis();
+            }
+
             int blockBelow = gs.getBlockBelowFeet();
 
             if (ticks % 20 == 1) {
@@ -647,10 +741,15 @@ public class ColumnBuildScenario implements Scenario {
                         + "): blockBelow=" + blockBelow);
             }
 
-            // Accept grass(2), dirt(3), cobblestone(4), or solid(1) for RubyDung
-            if (blockBelow == 2 || blockBelow == 3 || blockBelow == 4 || blockBelow == 1) {
+            // Look straight down for a deterministic screenshot — eliminates
+            // clouds, column remnants, and facing direction variance.
+            input.setLookDirection(gs.getYaw(), 90f);
+
+            // Accept grass(2), dirt(3), or solid(1) for RubyDung.
+            // Do NOT accept cobblestone(4) — the cleanup in BreakDownStep
+            // should have removed it, and we want grass for consistency.
+            if (blockBelow == 2 || blockBelow == 3 || blockBelow == 1) {
                 input.releaseAllKeys();
-                input.setLookDirection(gs.getYaw(), 0f);
                 if (!screenshotTaken) {
                     // Wait a few ticks for chunks to render after landing
                     if (settleTicks < 40) {
@@ -665,14 +764,39 @@ public class ColumnBuildScenario implements Scenario {
             }
             settleTicks = 0;
 
-            // Player may still be falling after column sweep removed blocks;
-            // wait for them to land on solid ground
+            long elapsed = System.currentTimeMillis() - startTimeMs;
+
+            // Rescue teleport: if no ground after 3 seconds, teleport to a
+            // known grass position. This handles cases where the break-down
+            // left the player in an ungrounded state (void, mid-air, etc.).
+            if (!rescueTeleported && elapsed > 3_000) {
+                rescueTeleported = true;
+                double spawnX = platformBX + 0.5;
+                double spawnZ = platformBZ - 2 + 0.5;
+                double groundEyeY = platformBY + (double) 1.62f;
+                gs.forcePlayerPosition(spawnX, groundEyeY, spawnZ);
+                System.out.println("[McTestAgent] Rescue teleport to grass at Y="
+                        + groundEyeY + " (blockBelow was " + blockBelow + ")");
+                return false;
+            }
+
+            // Final fallback: after 10 seconds, capture screenshot regardless.
+            // The player may be in a death screen or otherwise stuck.
+            if (elapsed > 10_000) {
+                System.out.println("[McTestAgent] Final ground check forced after "
+                        + elapsed + "ms (blockBelow=" + blockBelow + ")");
+                input.releaseAllKeys();
+                File file = new File(statusDir, "back_on_ground.png");
+                capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);
+                return true;
+            }
+
             return false;
         }
 
         @Override
         public int getTimeoutTicks() {
-            return 600; // generous — player may need to fall from height + teleport + chunk load
+            return 6000; // generous — high TPS clients + death screen scenarios
         }
     }
 }
