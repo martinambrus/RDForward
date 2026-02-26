@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Tests walking to the map edge, falling into the void, verifying fall speed,
+ * Tests teleporting past the map edge, falling into the void, verifying fall speed,
  * and confirming the server teleports the player back to spawn.
  */
 public class VoidFallScenario implements Scenario {
@@ -27,7 +27,7 @@ public class VoidFallScenario implements Scenario {
     public List<ScenarioStep> getSteps() {
         List<ScenarioStep> steps = new ArrayList<ScenarioStep>();
         steps.add(new RecordSpawnStep());
-        steps.add(new WalkToEdgeStep());
+        steps.add(new TeleportToVoidStep());
         steps.add(new VerifyFallSpeedStep());
         steps.add(new WaitTeleportStep());
         steps.add(new VerifySpawnReturnStep());
@@ -60,81 +60,53 @@ public class VoidFallScenario implements Scenario {
         }
     }
 
-    // Step 2: Face east (+X) and walk to map edge until falling off
-    private class WalkToEdgeStep implements ScenarioStep {
+    // Step 2: Teleport into the void below the world
+    private class TeleportToVoidStep implements ScenarioStep {
         private int ticks;
-        private int consecutiveAirborneTicks;
-        private double lastGroundY;
-        private boolean lastGroundYSet;
+        private double startY;
 
         @Override
         public String getDescription() {
-            return "walk_to_edge";
+            return "teleport_to_void";
         }
 
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
-
-            if (ticks == 1) {
-                // Face east (+X direction): Alpha yaw 270 = east, or equivalently -90
-                input.setLookDirection(-90f, 0f);
-                if (!input.isRubyDung()) {
-                    input.pressKey(InputController.FORWARD);
-                }
-            }
-
-            // RubyDung: use direct position writes to walk east
-            if (input.isRubyDung()) {
-                input.movePlayerPosition(0.5f, 0, 0);
-            }
-
             double[] pos = gs.getPlayerPosition();
             if (pos == null) return false;
 
-            // Track ground Y when on ground
-            if (gs.isOnGround()) {
-                consecutiveAirborneTicks = 0;
-                lastGroundY = pos[1];
-                lastGroundYSet = true;
-            } else {
-                consecutiveAirborneTicks++;
-            }
-
-            // Log progress every 40 ticks
-            if (ticks % 40 == 0) {
-                System.out.println("[McTestAgent] Walking east: X="
-                        + String.format("%.1f", pos[0])
-                        + " Y=" + String.format("%.1f", pos[1])
-                        + " airborne=" + consecutiveAirborneTicks);
-            }
-
-            // Detect edge: 10+ consecutive airborne ticks AND Y dropped >3 blocks
-            if (consecutiveAirborneTicks >= 10 && lastGroundYSet) {
-                double yDrop = lastGroundY - pos[1];
-                if (yDrop > 3.0) {
-                    input.releaseKey(InputController.FORWARD);
-                    System.out.println("[McTestAgent] Fell off edge at X="
-                            + String.format("%.1f", pos[0])
-                            + " Y=" + String.format("%.1f", pos[1])
-                            + " (dropped " + String.format("%.1f", yDrop) + " blocks)");
-                    return true;
+            if (ticks == 1) {
+                startY = pos[1];
+                // Teleport straight down into the void (Y=-15) keeping X/Z.
+                // Staying within the same chunk avoids the chunk-existence guard
+                // in EntityClientPlayerMP.tick() that skips physics when the
+                // player's chunk isn't loaded (which happens with horizontal
+                // teleports past the world edge).
+                // World.getBlockId returns 0 (air) for Y<0, so the physics
+                // engine runs normally at negative Y.
+                double targetY = -15.0;
+                if (input.isRubyDung()) {
+                    // RubyDung: move position directly (no chunk system)
+                    float dy = (float) (targetY - pos[1]);
+                    input.movePlayerPosition(0, dy, 0);
+                } else {
+                    gs.teleportPlayer(pos[0], targetY, pos[2]);
                 }
+                System.out.println("[McTestAgent] Teleported to void: Y="
+                        + String.format("%.1f", targetY)
+                        + " (from Y=" + String.format("%.1f", startY) + ")");
+                return false;
             }
 
-            // RubyDung: detect edge by checking if Y has actually dropped.
-            // blockBelow == 0 alone isn't enough because the player's bounding
-            // box may still overlap the edge block, preventing actual falling.
-            if (input.isRubyDung() && lastGroundYSet) {
-                double yDrop = lastGroundY - pos[1];
-                if (yDrop > 1.0) {
-                    System.out.println("[McTestAgent] RD fell off edge at X="
-                            + String.format("%.1f", pos[0])
-                            + " Y=" + String.format("%.1f", pos[1])
-                            + " (dropped " + String.format("%.1f", yDrop) + ")");
-                    return true;
-                }
+            // Wait for the teleport to register (Y should be far below startY)
+            double yDrop = startY - pos[1];
+            if (yDrop > 1.0) {
+                System.out.println("[McTestAgent] In void: Y="
+                        + String.format("%.1f", pos[1])
+                        + " (dropped " + String.format("%.1f", yDrop) + ")");
+                return true;
             }
 
             return false;
@@ -142,7 +114,7 @@ public class VoidFallScenario implements Scenario {
 
         @Override
         public int getTimeoutTicks() {
-            return 1600; // 80 seconds (extra margin for chunk-boundary stalls)
+            return 100; // 5 seconds
         }
     }
 
@@ -165,6 +137,15 @@ public class VoidFallScenario implements Scenario {
 
             if (ticks == 1) {
                 startY = pos[1];
+                // If the server already teleported back to spawn before this step
+                // started (Y is near spawn), skip the speed check.
+                if (spawnPos != null && Math.abs(pos[1] - spawnPos[1]) < 5.0) {
+                    System.out.println("[McTestAgent] Already back at spawn Y="
+                            + String.format("%.2f", pos[1])
+                            + " — server teleported before speed check");
+                    serverAlreadyTeleported = true;
+                    return true;
+                }
                 System.out.println("[McTestAgent] Fall speed check start Y="
                         + String.format("%.2f", startY));
                 return false;

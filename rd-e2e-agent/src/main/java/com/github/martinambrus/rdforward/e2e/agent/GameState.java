@@ -326,6 +326,121 @@ public class GameState {
         }
     }
 
+    // Cached BB reflection handles
+    private java.lang.reflect.Field bbField;
+    private java.lang.reflect.Field bbX0, bbY0, bbZ0, bbX1, bbY1, bbZ1;
+
+    /**
+     * Teleports the player by updating position fields, bounding box fields,
+     * and setting onGround=false. Unlike forcePlayerPosition, this directly
+     * patches the BB so physics doesn't snap the player back.
+     * The player half-width is 0.3 blocks, height 1.8 blocks, eye height 1.62f.
+     */
+    public boolean teleportPlayer(double x, double y, double z) {
+        Object player = getPlayer();
+        if (player == null) return false;
+        try {
+            if (posYField == null) getPlayerPosition(); // ensure position fields resolved
+
+            // Read current position for BB validation
+            double origX = posXField.getDouble(player);
+
+            // Set position fields
+            posXField.setDouble(player, x);
+            posYField.setDouble(player, y);
+            posZField.setDouble(player, z);
+
+            // Find and update the bounding box directly
+            if (bbField == null) {
+                // Scan entity class hierarchy for the BB field.
+                // Validate candidates: the field whose first numeric sub-field
+                // approximately equals origX - 0.3 (player half-width) is the BB.
+                double expectedMinX = origX - 0.3;
+                Class<?> c = player.getClass();
+                outer:
+                while (c != null && c != Object.class) {
+                    for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                        if (f.getType().isPrimitive() || f.getType() == String.class) continue;
+                        if (f.getType().isArray()) continue;
+                        if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                        f.setAccessible(true);
+                        Object val = f.get(player);
+                        if (val == null) continue;
+                        // Collect numeric instance fields from this object's class
+                        java.util.List<java.lang.reflect.Field> numericFields =
+                                new java.util.ArrayList<java.lang.reflect.Field>();
+                        for (java.lang.reflect.Field sf : val.getClass().getDeclaredFields()) {
+                            if (java.lang.reflect.Modifier.isStatic(sf.getModifiers())) continue;
+                            if (sf.getType() == double.class || sf.getType() == float.class) {
+                                sf.setAccessible(true);
+                                numericFields.add(sf);
+                            }
+                        }
+                        if (numericFields.size() < 6) continue;
+                        // Validate: first numeric field should be ≈ origX - 0.3 (BB minX)
+                        java.lang.reflect.Field candidate0 = numericFields.get(0);
+                        double val0 = candidate0.getType() == float.class
+                                ? candidate0.getFloat(val) : candidate0.getDouble(val);
+                        if (Math.abs(val0 - expectedMinX) < 1.0) {
+                            bbField = f;
+                            bbX0 = numericFields.get(0);
+                            bbY0 = numericFields.get(1);
+                            bbZ0 = numericFields.get(2);
+                            bbX1 = numericFields.get(3);
+                            bbY1 = numericFields.get(4);
+                            bbZ1 = numericFields.get(5);
+                            break outer;
+                        }
+                    }
+                    c = c.getSuperclass();
+                }
+                if (bbField == null) {
+                    System.err.println("[McTestAgent] BB field NOT found!"
+                            + " expectedMinX=" + String.format("%.2f", expectedMinX));
+                }
+            }
+
+            if (bbField != null) {
+                Object bb = bbField.get(player);
+                if (bb != null) {
+                    double w = 0.3;  // player half-width
+                    double feetY = y - (double) 1.62f;
+                    double headY = feetY + 1.8;
+                    if (bbX0.getType() == float.class) {
+                        bbX0.setFloat(bb, (float) (x - w));
+                        bbY0.setFloat(bb, (float) feetY);
+                        bbZ0.setFloat(bb, (float) (z - w));
+                        bbX1.setFloat(bb, (float) (x + w));
+                        bbY1.setFloat(bb, (float) headY);
+                        bbZ1.setFloat(bb, (float) (z + w));
+                    } else {
+                        bbX0.setDouble(bb, x - w);
+                        bbY0.setDouble(bb, feetY);
+                        bbZ0.setDouble(bb, z - w);
+                        bbX1.setDouble(bb, x + w);
+                        bbY1.setDouble(bb, headY);
+                        bbZ1.setDouble(bb, z + w);
+                    }
+                }
+            }
+
+            // Set onGround=false so physics applies gravity immediately
+            if (onGroundField == null && mappings.onGroundFieldName() != null) {
+                onGroundField = resolveField(player.getClass(),
+                        mappings.onGroundFieldName(), boolean.class);
+            }
+            if (onGroundField != null) {
+                onGroundField.setBoolean(player, false);
+            }
+
+            return true;
+        } catch (Exception e) {
+            System.err.println("[McTestAgent] teleportPlayer error: " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
+    }
+
     public boolean isOnGround() {
         Object player = getPlayer();
         if (player == null) return false;
