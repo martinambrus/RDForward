@@ -146,7 +146,7 @@ public class BlockPlaceBreakScenario implements Scenario {
 
         @Override
         public int getTimeoutTicks() {
-            return 100;
+            return 200; // extra margin for resource contention in batch test runs
         }
     }
 

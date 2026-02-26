@@ -142,7 +142,7 @@ public class VoidFallScenario implements Scenario {
 
         @Override
         public int getTimeoutTicks() {
-            return 1200; // 60 seconds
+            return 1600; // 80 seconds (extra margin for chunk-boundary stalls)
         }
     }
 

@@ -266,6 +266,40 @@ public class GameState {
      * where Entity.a() may resolve to move() instead of setPosition()).
      * Also sets onGround=true to prevent the physics engine from overriding.
      */
+    /**
+     * Offsets the player's X position by the given delta using direct field
+     * write only (no Entity.a() call). Safe on all versions including
+     * Alpha 1.2.2+ where Entity.a() resolves to move().
+     */
+    public void offsetPlayerX(double dx) {
+        Object player = getPlayer();
+        if (player == null) return;
+        try {
+            if (posXField == null) getPlayerPosition(); // ensure fields resolved
+            double curX = posXField.getDouble(player);
+            posXField.setDouble(player, curX + dx);
+        } catch (Exception e) {
+            System.err.println("[McTestAgent] offsetPlayerX error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Offsets the player's Z position by the given delta using direct field
+     * write only (no Entity.a() call). Safe on all versions including
+     * Alpha 1.2.2+ where Entity.a() resolves to move().
+     */
+    public void offsetPlayerZ(double dz) {
+        Object player = getPlayer();
+        if (player == null) return;
+        try {
+            if (posZField == null) getPlayerPosition(); // ensure fields resolved
+            double curZ = posZField.getDouble(player);
+            posZField.setDouble(player, curZ + dz);
+        } catch (Exception e) {
+            System.err.println("[McTestAgent] offsetPlayerZ error: " + e.getMessage());
+        }
+    }
+
     public boolean forcePlayerPosition(double x, double y, double z) {
         Object player = getPlayer();
         if (player == null) return false;

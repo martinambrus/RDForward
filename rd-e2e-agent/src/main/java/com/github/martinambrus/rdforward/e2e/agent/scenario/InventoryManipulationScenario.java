@@ -393,8 +393,10 @@ public class InventoryManipulationScenario implements Scenario {
                 return false; // wait for GUI to render the updated state
             }
 
-            // Wait a few ticks for the inventory GUI to redraw before capturing
-            if (ticks < 5) return false;
+            // Wait for the inventory GUI to redraw before capturing.
+            // Some versions need extra ticks for the placed stack to visually
+            // settle into the slot (floating item animation).
+            if (ticks < 20) return false;
 
             File file = new File(statusDir, "inventory_split.png");
             capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);

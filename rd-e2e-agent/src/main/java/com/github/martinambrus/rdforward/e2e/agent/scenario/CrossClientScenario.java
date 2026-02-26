@@ -37,6 +37,9 @@ public class CrossClientScenario implements Scenario {
     // Block coords computed by this client's place step, reused for breaking
     private int myBlockX, myBlockY, myBlockZ;
 
+    // Yaw to face the other player, saved for re-use before final screenshots
+    private float facingOtherYaw;
+
     private SyncBarrier getBarrier() {
         return new SyncBarrier(McTestAgent.syncDir, McTestAgent.role);
     }
@@ -139,9 +142,11 @@ public class CrossClientScenario implements Scenario {
                                       ScreenshotCapture capture, File statusDir) {
             ticks++;
             if (input.isRubyDung()) {
-                // RD: move backward by 2 blocks directly
+                // RD: move away from spawn by 2 blocks in +Z.
+                // Must match non-RD direction (+Z from walking backward)
+                // so SecondaryTurnToPrimary faces the right way.
                 if (ticks == 1) {
-                    input.movePlayerPosition(0, 0, -2.0f);
+                    input.movePlayerPosition(0, 0, +2.0f);
                 }
                 return ticks >= 5;
             }
@@ -164,9 +169,12 @@ public class CrossClientScenario implements Scenario {
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
             ticks++;
-            // Turn 180 degrees to face spawn (where secondary is)
             float currentYaw = gs.getYaw();
-            input.setLookDirection(currentYaw + 180f, 0f);
+            // Both RD and Alpha/Beta primaries move in +Z (away from spawn).
+            // Spawn yaw faces North (-Z), so current yaw already points back
+            // toward spawn where the secondary stands.
+            facingOtherYaw = currentYaw;
+            input.setLookDirection(facingOtherYaw, 0f);
             return ticks >= 3;
         }
     }
@@ -358,10 +366,16 @@ public class CrossClientScenario implements Scenario {
     }
 
     private class PrimaryScreenshot implements ScenarioStep {
+        private int ticks;
         @Override public String getDescription() { return "screenshot"; }
         @Override public int getTimeoutTicks() { return 20; }
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
+            // Set look direction every tick to override game mouse handling,
+            // then wait for a render cycle before capturing
+            input.setLookDirection(facingOtherYaw, 0f);
+            ticks++;
+            if (ticks < 5) return false; // wait for render cycle
             File file = new File(statusDir, "cross_client_primary.png");
             capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);
             return true;
@@ -374,6 +388,7 @@ public class CrossClientScenario implements Scenario {
         List<ScenarioStep> steps = new ArrayList<ScenarioStep>();
         steps.add(new SecondaryWaitWorldReady());
         steps.add(new SecondaryWaitPrimaryJoined());
+        steps.add(new SecondaryTurnToPrimary());
         steps.add(new SecondarySendChat());
         steps.add(new NamedScreenshotStep("cross_step25_chat_sent"));      // step 25
         steps.add(new SecondaryWaitPrimaryChat());
@@ -410,6 +425,24 @@ public class CrossClientScenario implements Scenario {
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
             return getBarrier().waitFor("world_ready");
+        }
+    }
+
+    /**
+     * Turn secondary to face the primary (who walked backward from spawn).
+     * Uses yaw+180 from spawn yaw, same logic as primary's turn.
+     */
+    private class SecondaryTurnToPrimary implements ScenarioStep {
+        private int ticks;
+        @Override public String getDescription() { return "turn_to_primary"; }
+        @Override public int getTimeoutTicks() { return 20; }
+        @Override public boolean tick(GameState gs, InputController input,
+                                      ScreenshotCapture capture, File statusDir) {
+            ticks++;
+            float currentYaw = gs.getYaw();
+            facingOtherYaw = currentYaw + 180f;
+            input.setLookDirection(facingOtherYaw, 0f);
+            return ticks >= 3;
         }
     }
 
@@ -593,10 +626,16 @@ public class CrossClientScenario implements Scenario {
     }
 
     private class SecondaryScreenshot implements ScenarioStep {
+        private int ticks;
         @Override public String getDescription() { return "screenshot"; }
         @Override public int getTimeoutTicks() { return 20; }
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
+            // Set look direction every tick to override game mouse handling,
+            // then wait for a render cycle before capturing
+            input.setLookDirection(facingOtherYaw, 0f);
+            ticks++;
+            if (ticks < 5) return false; // wait for render cycle
             File file = new File(statusDir, "cross_client_secondary.png");
             capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);
             return true;

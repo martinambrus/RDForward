@@ -50,6 +50,30 @@ public class ClientLauncher {
     private static final String ALPHA_126_JAR_URL = "https://piston-data.mojang.com/v1/objects/a68c817afd6c05c253ba5462287c2c19bbb57935/client.jar";
     private static final String ALPHA_126_JAR = "alpha-1.2.6-client.jar";
 
+    private static final String BETA_10_JAR_URL = "https://launcher.mojang.com/v1/objects/93faf3398ebf8008d59852dc3c2b22b909ca8a49/client.jar";
+    private static final String BETA_10_JAR = "beta-1.0-client.jar";
+
+    private static final String BETA_122_JAR_URL = "https://launcher.mojang.com/v1/objects/093f371e1a05d89664cfb8068d607953687d5d94/client.jar";
+    private static final String BETA_122_JAR = "beta-1.2_02-client.jar";
+
+    private static final String BETA_131_JAR_URL = "https://launcher.mojang.com/v1/objects/add3809d2c075e985d4b583632dac3d9c3872945/client.jar";
+    private static final String BETA_131_JAR = "beta-1.3_01-client.jar";
+
+    private static final String BETA_141_JAR_URL = "https://launcher.mojang.com/v1/objects/6f157f26955c35006c1afa8b0479e0ce785fb864/client.jar";
+    private static final String BETA_141_JAR = "beta-1.4_01-client.jar";
+
+    private static final String BETA_151_JAR_URL = "https://launcher.mojang.com/v1/objects/e2a692e5e8160c84b29c834ecbf398618db9749c/client.jar";
+    private static final String BETA_151_JAR = "beta-1.5_01-client.jar";
+
+    private static final String BETA_16_JAR_URL = "https://launcher.mojang.com/v1/objects/ecc0288d218fd7479027a17c150cbf283fa950a1/client.jar";
+    private static final String BETA_16_JAR = "beta-1.6-client.jar";
+
+    private static final String BETA_17_JAR_URL = "https://launcher.mojang.com/v1/objects/ad7960853437bcab86bd72c4a1b95f6fe19f4258/client.jar";
+    private static final String BETA_17_JAR = "beta-1.7-client.jar";
+
+    private static final String BETA_173_JAR_URL = "https://launcher.mojang.com/v1/objects/43db9b498cb67058d2e12d394e6507722e71bb45/client.jar";
+    private static final String BETA_173_JAR = "beta-1.7.3-client.jar";
+
     private static final String BETA_181_JAR_URL = "https://launcher.mojang.com/v1/objects/6b562463ccc2c7ff12ff350a2b04a67b3adcd37b/client.jar";
     private static final String BETA_181_JAR = "beta-1.8.1-client.jar";
 
@@ -570,6 +594,200 @@ public class ClientLauncher {
         return clientProcess;
     }
 
+    // --- Beta 1.0 through 1.7.3 launchers (survival only, no JInput) ---
+
+    public Process launchBeta10(String agentJarPath, int serverPort,
+            File statusDir, String display) throws IOException, InterruptedException {
+        return launchBeta10(agentJarPath, serverPort, statusDir, display, "world_loaded");
+    }
+
+    public Process launchBeta10(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario) throws IOException, InterruptedException {
+        return launchBeta10(agentJarPath, serverPort, statusDir, display, scenario,
+                null, null, null);
+    }
+
+    public Process launchBeta10(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario,
+            String username, String role, File syncDir) throws IOException, InterruptedException {
+        return launchPreBeta18(BETA_10_JAR, "beta10", "Beta 1.0",
+                agentJarPath, serverPort, statusDir, display, scenario, username, role, syncDir);
+    }
+
+    public Process launchBeta122(String agentJarPath, int serverPort,
+            File statusDir, String display) throws IOException, InterruptedException {
+        return launchBeta122(agentJarPath, serverPort, statusDir, display, "world_loaded");
+    }
+
+    public Process launchBeta122(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario) throws IOException, InterruptedException {
+        return launchBeta122(agentJarPath, serverPort, statusDir, display, scenario,
+                null, null, null);
+    }
+
+    public Process launchBeta122(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario,
+            String username, String role, File syncDir) throws IOException, InterruptedException {
+        return launchPreBeta18(BETA_122_JAR, "beta12", "Beta 1.2_02",
+                agentJarPath, serverPort, statusDir, display, scenario, username, role, syncDir);
+    }
+
+    public Process launchBeta131(String agentJarPath, int serverPort,
+            File statusDir, String display) throws IOException, InterruptedException {
+        return launchBeta131(agentJarPath, serverPort, statusDir, display, "world_loaded");
+    }
+
+    public Process launchBeta131(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario) throws IOException, InterruptedException {
+        return launchBeta131(agentJarPath, serverPort, statusDir, display, scenario,
+                null, null, null);
+    }
+
+    public Process launchBeta131(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario,
+            String username, String role, File syncDir) throws IOException, InterruptedException {
+        return launchPreBeta18(BETA_131_JAR, "beta13", "Beta 1.3_01",
+                agentJarPath, serverPort, statusDir, display, scenario, username, role, syncDir);
+    }
+
+    public Process launchBeta141(String agentJarPath, int serverPort,
+            File statusDir, String display) throws IOException, InterruptedException {
+        return launchBeta141(agentJarPath, serverPort, statusDir, display, "world_loaded");
+    }
+
+    public Process launchBeta141(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario) throws IOException, InterruptedException {
+        return launchBeta141(agentJarPath, serverPort, statusDir, display, scenario,
+                null, null, null);
+    }
+
+    public Process launchBeta141(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario,
+            String username, String role, File syncDir) throws IOException, InterruptedException {
+        return launchPreBeta18(BETA_141_JAR, "beta14", "Beta 1.4_01",
+                agentJarPath, serverPort, statusDir, display, scenario, username, role, syncDir);
+    }
+
+    public Process launchBeta151(String agentJarPath, int serverPort,
+            File statusDir, String display) throws IOException, InterruptedException {
+        return launchBeta151(agentJarPath, serverPort, statusDir, display, "world_loaded");
+    }
+
+    public Process launchBeta151(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario) throws IOException, InterruptedException {
+        return launchBeta151(agentJarPath, serverPort, statusDir, display, scenario,
+                null, null, null);
+    }
+
+    public Process launchBeta151(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario,
+            String username, String role, File syncDir) throws IOException, InterruptedException {
+        return launchPreBeta18(BETA_151_JAR, "beta15", "Beta 1.5_01",
+                agentJarPath, serverPort, statusDir, display, scenario, username, role, syncDir);
+    }
+
+    public Process launchBeta16(String agentJarPath, int serverPort,
+            File statusDir, String display) throws IOException, InterruptedException {
+        return launchBeta16(agentJarPath, serverPort, statusDir, display, "world_loaded");
+    }
+
+    public Process launchBeta16(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario) throws IOException, InterruptedException {
+        return launchBeta16(agentJarPath, serverPort, statusDir, display, scenario,
+                null, null, null);
+    }
+
+    public Process launchBeta16(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario,
+            String username, String role, File syncDir) throws IOException, InterruptedException {
+        return launchPreBeta18(BETA_16_JAR, "beta16", "Beta 1.6",
+                agentJarPath, serverPort, statusDir, display, scenario, username, role, syncDir);
+    }
+
+    public Process launchBeta17(String agentJarPath, int serverPort,
+            File statusDir, String display) throws IOException, InterruptedException {
+        return launchBeta17(agentJarPath, serverPort, statusDir, display, "world_loaded");
+    }
+
+    public Process launchBeta17(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario) throws IOException, InterruptedException {
+        return launchBeta17(agentJarPath, serverPort, statusDir, display, scenario,
+                null, null, null);
+    }
+
+    public Process launchBeta17(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario,
+            String username, String role, File syncDir) throws IOException, InterruptedException {
+        return launchPreBeta18(BETA_17_JAR, "beta17", "Beta 1.7",
+                agentJarPath, serverPort, statusDir, display, scenario, username, role, syncDir);
+    }
+
+    public Process launchBeta173(String agentJarPath, int serverPort,
+            File statusDir, String display) throws IOException, InterruptedException {
+        return launchBeta173(agentJarPath, serverPort, statusDir, display, "world_loaded");
+    }
+
+    public Process launchBeta173(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario) throws IOException, InterruptedException {
+        return launchBeta173(agentJarPath, serverPort, statusDir, display, scenario,
+                null, null, null);
+    }
+
+    public Process launchBeta173(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario,
+            String username, String role, File syncDir) throws IOException, InterruptedException {
+        return launchPreBeta18(BETA_173_JAR, "beta173", "Beta 1.7.3",
+                agentJarPath, serverPort, statusDir, display, scenario, username, role, syncDir);
+    }
+
+    /**
+     * Shared launcher for pre-1.8 Beta clients (survival only, no JInput needed).
+     */
+    private Process launchPreBeta18(String jarName, String versionId, String displayName,
+            String agentJarPath, int serverPort, File statusDir, String display,
+            String scenario, String username, String role,
+            File syncDir) throws IOException, InterruptedException {
+        ensureLibs();
+
+        String clientJar = new File(LIBS_DIR, jarName).getAbsolutePath();
+        String lwjglJar = new File(LIBS_DIR, LWJGL2_JAR).getAbsolutePath();
+        String lwjglUtilJar = new File(LIBS_DIR, LWJGL2_UTIL_JAR).getAbsolutePath();
+        String nativesPath = new File(NATIVES_DIR).getAbsolutePath();
+
+        String agentArgs = "version=" + versionId
+                + ",serverHost=localhost"
+                + ",serverPort=" + serverPort
+                + ",statusDir=" + statusDir.getAbsolutePath()
+                + ",scenario=" + scenario;
+        if (username != null) agentArgs += ",username=" + username;
+        if (role != null) agentArgs += ",role=" + role;
+        if (syncDir != null) agentArgs += ",syncDir=" + syncDir.getAbsolutePath();
+
+        List<String> cmd = new ArrayList<>();
+        cmd.add(JAVA8_PATH);
+        cmd.add("-javaagent:" + agentJarPath + "=" + agentArgs);
+        cmd.add("-Djava.library.path=" + nativesPath);
+        cmd.add("-Djava.util.Arrays.useLegacyMergeSort=true");
+        cmd.add("-Dhttp.proxyHost=127.0.0.1");
+        cmd.add("-Dhttp.proxyPort=65535");
+        cmd.add("-Xmx256m");
+        cmd.add("-cp");
+        cmd.add(clientJar + ":" + lwjglJar + ":" + lwjglUtilJar);
+        cmd.add("net.minecraft.client.Minecraft");
+
+        System.out.println("[E2E] Launching " + displayName + " client: " + String.join(" ", cmd));
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        Map<String, String> env = pb.environment();
+        env.put("DISPLAY", display);
+        env.put("LIBGL_ALWAYS_SOFTWARE", "1");
+        pb.redirectErrorStream(true);
+        pb.inheritIO();
+
+        clientProcess = pb.start();
+        return clientProcess;
+    }
+
     /**
      * Launch a Beta 1.8.1 client with the E2E agent attached.
      * Uses the default "world_loaded" scenario.
@@ -750,6 +968,14 @@ public class ClientLauncher {
             downloadIfMissing(ALPHA_122_JAR_URL, new File(libsDir, ALPHA_122_JAR));
             downloadIfMissing(ALPHA_123_JAR_URL, new File(libsDir, ALPHA_123_JAR));
             downloadIfMissing(ALPHA_126_JAR_URL, new File(libsDir, ALPHA_126_JAR));
+            downloadIfMissing(BETA_10_JAR_URL, new File(libsDir, BETA_10_JAR));
+            downloadIfMissing(BETA_122_JAR_URL, new File(libsDir, BETA_122_JAR));
+            downloadIfMissing(BETA_131_JAR_URL, new File(libsDir, BETA_131_JAR));
+            downloadIfMissing(BETA_141_JAR_URL, new File(libsDir, BETA_141_JAR));
+            downloadIfMissing(BETA_151_JAR_URL, new File(libsDir, BETA_151_JAR));
+            downloadIfMissing(BETA_16_JAR_URL, new File(libsDir, BETA_16_JAR));
+            downloadIfMissing(BETA_17_JAR_URL, new File(libsDir, BETA_17_JAR));
+            downloadIfMissing(BETA_173_JAR_URL, new File(libsDir, BETA_173_JAR));
             downloadIfMissing(BETA_181_JAR_URL, new File(libsDir, BETA_181_JAR));
             downloadIfMissing(LWJGL2_JAR_URL, new File(libsDir, LWJGL2_JAR));
             downloadIfMissing(LWJGL2_UTIL_URL, new File(libsDir, LWJGL2_UTIL_JAR));

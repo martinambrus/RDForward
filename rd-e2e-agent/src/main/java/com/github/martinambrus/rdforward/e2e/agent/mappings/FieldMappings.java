@@ -172,6 +172,13 @@ public interface FieldMappings {
     /** Obfuscated class name for survival inventory GUI. Alpha: "ne", Beta: "abd". */
     default String guiInventoryClassName() { return null; }
 
+    /**
+     * Method name for EntityClientPlayerMP.closeContainer() (no-arg void).
+     * Sends CloseWindowPacket to the server and resets the container.
+     * Null = version doesn't need explicit close (creative mode or Alpha).
+     */
+    default String closeContainerMethodName() { return null; }
+
     // --- RubyDung-specific: direct block placement via Level.setTile() ---
 
     /** Method name for Level.setTile(int,int,int,int). RubyDung only. */

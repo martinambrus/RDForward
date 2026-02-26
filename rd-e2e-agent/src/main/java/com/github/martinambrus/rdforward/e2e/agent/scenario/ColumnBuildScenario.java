@@ -688,8 +688,8 @@ public class ColumnBuildScenario implements Scenario {
 
             // Break one block per 3 ticks
             if (ticks % 3 == 1) {
-                if (rdBreakY <= platformBY) {
-                    // Back on ground
+                if (rdBreakY < platformBY) {
+                    // Back on ground (platform block also broken)
                     input.movePlayerPosition(0, -1.0f, 0); // settle down
                     System.out.println("[McTestAgent] RD break-down complete at Y=" + rdBreakY);
                     return true;
@@ -720,10 +720,42 @@ public class ColumnBuildScenario implements Scenario {
         private boolean screenshotTaken;
         private long startTimeMs;
         private boolean rescueTeleported;
+        private boolean cobbleCleaned;
 
         @Override
         public String getDescription() {
             return "verify_ground";
+        }
+
+        /**
+         * Break every cobblestone block in a 3-block XZ radius around the
+         * platform and the player's current position, for all Y from
+         * platformBY down to platformBY-1 and up to 128. This catches any
+         * column remnants that BreakDownStep missed due to player drift.
+         */
+        private void sweepCobblestone(GameState gs, InputController input) {
+            double[] pos = gs.getPlayerPosition();
+            int px = (pos != null) ? (int) Math.floor(pos[0]) : platformBX;
+            int pz = (pos != null) ? (int) Math.floor(pos[2]) : platformBZ;
+            int minX = Math.min(px, platformBX) - 3;
+            int maxX = Math.max(px, platformBX) + 3;
+            int minZ = Math.min(pz, platformBZ) - 3;
+            int maxZ = Math.max(pz, platformBZ) + 3;
+            int broken = 0;
+            for (int y = 128; y >= platformBY - 1; y--) {
+                for (int x = minX; x <= maxX; x++) {
+                    for (int z = minZ; z <= maxZ; z++) {
+                        if (gs.getBlockId(x, y, z) == 4) {
+                            input.breakBlock(x, y, z);
+                            broken++;
+                        }
+                    }
+                }
+            }
+            if (broken > 0) {
+                System.out.println("[McTestAgent] Sweep cleaned " + broken
+                        + " cobblestone blocks");
+            }
         }
 
         @Override
@@ -741,9 +773,8 @@ public class ColumnBuildScenario implements Scenario {
                         + "): blockBelow=" + blockBelow);
             }
 
-            // Look straight down for a deterministic screenshot — eliminates
-            // clouds, column remnants, and facing direction variance.
-            input.setLookDirection(gs.getYaw(), 90f);
+            // Look straight down for a deterministic screenshot.
+            input.setLookDirection(180f, 90f);
 
             // Accept grass(2), dirt(3), or solid(1) for RubyDung.
             // Do NOT accept cobblestone(4) — the cleanup in BreakDownStep
@@ -751,8 +782,14 @@ public class ColumnBuildScenario implements Scenario {
             if (blockBelow == 2 || blockBelow == 3 || blockBelow == 1) {
                 input.releaseAllKeys();
                 if (!screenshotTaken) {
-                    // Wait a few ticks for chunks to render after landing
-                    if (settleTicks < 40) {
+                    // On first settle tick, sweep all remaining cobblestone
+                    // near the column so it doesn't appear in the screenshot.
+                    if (!cobbleCleaned && !input.isRubyDung()) {
+                        cobbleCleaned = true;
+                        sweepCobblestone(gs, input);
+                    }
+                    // Wait for sweep breaks to process and scene to render
+                    if (settleTicks < 20) {
                         settleTicks++;
                         return false;
                     }
@@ -786,6 +823,11 @@ public class ColumnBuildScenario implements Scenario {
                 System.out.println("[McTestAgent] Final ground check forced after "
                         + elapsed + "ms (blockBelow=" + blockBelow + ")");
                 input.releaseAllKeys();
+                // Sweep cobblestone before forced screenshot too
+                if (!cobbleCleaned && !input.isRubyDung()) {
+                    cobbleCleaned = true;
+                    sweepCobblestone(gs, input);
+                }
                 File file = new File(statusDir, "back_on_ground.png");
                 capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);
                 return true;

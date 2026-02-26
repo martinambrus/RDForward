@@ -37,6 +37,8 @@ public class InputController {
     private Field pressedKeysField;     // boolean[] (Alpha only)
     private Field yawField;
     private Field pitchField;
+    private Field prevYawField;
+    private Field prevPitchField;
     private Method clickMethod;
     private Field clickCooldownField;
     private Field playerControllerField;
@@ -98,6 +100,11 @@ public class InputController {
             ensureYawPitchFields(player);
             yawField.setFloat(player, yaw);
             pitchField.setFloat(player, pitch);
+            // Also set prevRotation fields to eliminate render interpolation artifacts.
+            // The renderer computes: prevPitch + (pitch - prevPitch) * partialTick,
+            // so without setting prev fields, the camera may not match the intended angle.
+            if (prevYawField != null) prevYawField.setFloat(player, yaw);
+            if (prevPitchField != null) prevPitchField.setFloat(player, pitch);
         } catch (Exception e) {
             System.err.println("[McTestAgent] Failed to set look direction: " + e.getMessage());
         }
@@ -142,6 +149,8 @@ public class InputController {
                 movementInputField = null;
                 yawField = null;
                 pitchField = null;
+                prevYawField = null;
+                prevPitchField = null;
                 lastPlayer = player;
             }
 
@@ -576,11 +585,57 @@ public class InputController {
                     yawField = f;
                     pitchField = c.getDeclaredField(mappings.pitchFieldName());
                     pitchField.setAccessible(true);
+                    // Resolve prevRotation fields (declared +2 positions after rotation
+                    // in obfuscated Entity class: yaw,pitch,prevYaw,prevPitch)
+                    resolvePrevRotationFields(c);
                     break;
                 } catch (NoSuchFieldException ignored) {}
                 c = c.getSuperclass();
             }
         }
+    }
+
+    /**
+     * Try to find prevRotationYaw and prevRotationPitch fields in the given class.
+     * In obfuscated Minecraft, these are the next two float fields after yaw/pitch
+     * (e.g. aS,aT -> aU,aV). For non-obfuscated names (RubyDung), this is skipped.
+     */
+    private void resolvePrevRotationFields(Class<?> declaringClass) {
+        String yawName = mappings.yawFieldName();
+        String pitchName = mappings.pitchFieldName();
+        if (yawName == null || pitchName == null) return;
+
+        // Compute prev field names by incrementing last character by 2
+        // This works for obfuscated single/two-char names (aS->aU, u->w)
+        String prevYawName = incrementFieldName(pitchName, 1); // prevYaw is pitch+1
+        String prevPitchName = incrementFieldName(pitchName, 2); // prevPitch is pitch+2
+
+        try {
+            Field f = declaringClass.getDeclaredField(prevYawName);
+            if (f.getType() == float.class) {
+                f.setAccessible(true);
+                prevYawField = f;
+            }
+        } catch (NoSuchFieldException ignored) {}
+
+        try {
+            Field f = declaringClass.getDeclaredField(prevPitchName);
+            if (f.getType() == float.class) {
+                f.setAccessible(true);
+                prevPitchField = f;
+            }
+        } catch (NoSuchFieldException ignored) {}
+
+        if (prevYawField != null && prevPitchField != null) {
+            System.out.println("[McTestAgent] Resolved prevRotation fields: "
+                    + prevYawName + ", " + prevPitchName);
+        }
+    }
+
+    private static String incrementFieldName(String name, int offset) {
+        if (name == null || name.isEmpty()) return null;
+        char last = name.charAt(name.length() - 1);
+        return name.substring(0, name.length() - 1) + (char) (last + offset);
     }
 
     private void ensureClickMethod() throws Exception {
@@ -956,14 +1011,27 @@ public class InputController {
     }
 
     /**
-     * Close any open screen via Minecraft.displayGuiScreen(null).
+     * Close any open screen. If the mappings provide a closeContainerMethodName,
+     * call the player's close-container method (which sends CloseWindowPacket to the
+     * server and then calls displayGuiScreen(null)). Otherwise fall back to
+     * calling displayGuiScreen(null) directly.
      */
     public void closeScreen() {
         try {
             agentOpenedScreen = false;
+            String closeMethodName = mappings.closeContainerMethodName();
+            if (closeMethodName != null) {
+                Object player = gameState.getPlayer();
+                if (player != null) {
+                    Method closeMethod = player.getClass().getMethod(closeMethodName);
+                    closeMethod.invoke(player);
+                    System.out.println("[McTestAgent] Closed screen via player." + closeMethodName + "()");
+                    return;
+                }
+            }
             ensureDisplayGuiScreenMethod();
             displayGuiScreenMethod.invoke(gameState.getMinecraftInstance(), (Object) null);
-            System.out.println("[McTestAgent] Closed screen");
+            System.out.println("[McTestAgent] Closed screen via displayGuiScreen(null)");
         } catch (Exception e) {
             System.err.println("[McTestAgent] closeScreen error: " + e.getMessage());
             e.printStackTrace();

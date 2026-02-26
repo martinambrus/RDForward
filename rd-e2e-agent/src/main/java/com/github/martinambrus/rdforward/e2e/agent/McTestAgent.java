@@ -8,6 +8,14 @@ import com.github.martinambrus.rdforward.e2e.agent.mappings.AlphaV3Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.AlphaV4Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.AlphaV5Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.AlphaV6Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.BetaV7Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.BetaV8Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.BetaV9Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.BetaV10Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.BetaV11Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.BetaV12Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.BetaV13Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.BetaV14Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.BetaV17Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.FieldMappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.RubyDungMappings;
@@ -193,6 +201,30 @@ public class McTestAgent {
             case "alpha126":
             case "alpha_1_2_6":
                 return new AlphaV6Mappings();
+            case "beta10":
+            case "beta_1_0":
+                return new BetaV7Mappings();
+            case "beta12":
+            case "beta_1_2":
+                return new BetaV8Mappings();
+            case "beta13":
+            case "beta_1_3":
+                return new BetaV9Mappings();
+            case "beta14":
+            case "beta_1_4":
+                return new BetaV10Mappings();
+            case "beta15":
+            case "beta_1_5":
+                return new BetaV11Mappings();
+            case "beta16":
+            case "beta_1_6":
+                return new BetaV12Mappings();
+            case "beta17":
+            case "beta_1_7":
+                return new BetaV13Mappings();
+            case "beta173":
+            case "beta_1_7_3":
+                return new BetaV14Mappings();
             case "beta18":
             case "beta_1_8_1":
                 return new BetaV17Mappings();

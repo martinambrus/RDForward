@@ -71,7 +71,7 @@ class RubyDungColumnBuildTest {
 
             // RubyDung 3D rendering has more visual variance across runs than Alpha/Beta
             new ScreenshotBaselineVerifier("rubydung", "column_build", 0.80)
-                    .verifyAll(statusDir, "column_top.png");
+                    .verifyAll(statusDir, "column_top.png", "back_on_ground.png");
         } finally {
             if (client.isAlive()) {
                 client.destroyForcibly();

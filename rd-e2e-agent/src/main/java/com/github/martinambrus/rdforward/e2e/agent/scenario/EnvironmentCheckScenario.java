@@ -317,6 +317,8 @@ public class EnvironmentCheckScenario implements Scenario {
     }
 
     private static class CaptureStep implements ScenarioStep {
+        private long startTimeMs;
+
         @Override
         public String getDescription() {
             return "screenshot";
@@ -325,6 +327,19 @@ public class EnvironmentCheckScenario implements Scenario {
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
+            if (startTimeMs == 0) {
+                startTimeMs = System.currentTimeMillis();
+            }
+
+            // RubyDung's renderer needs extra wall-time to build chunk
+            // geometry before the screenshot shows a fully rendered map.
+            if (input.isRubyDung()) {
+                long elapsed = System.currentTimeMillis() - startTimeMs;
+                if (elapsed < 5000) {
+                    return false;
+                }
+            }
+
             int w = gs.getDisplayWidth();
             int h = gs.getDisplayHeight();
             File file = new File(statusDir, "environment_check.png");
@@ -337,7 +352,7 @@ public class EnvironmentCheckScenario implements Scenario {
 
         @Override
         public int getTimeoutTicks() {
-            return 100;
+            return 6000; // generous for high-TPS clients + RD render wait
         }
     }
 }
