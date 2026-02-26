@@ -77,6 +77,9 @@ public class ClientLauncher {
     private static final String BETA_181_JAR_URL = "https://launcher.mojang.com/v1/objects/6b562463ccc2c7ff12ff350a2b04a67b3adcd37b/client.jar";
     private static final String BETA_181_JAR = "beta-1.8.1-client.jar";
 
+    private static final String BETA_19PRE5_JAR_URL = "https://vault.omniarchive.uk/archive/java/client-beta/b1.9/pre/b1.9-pre5.jar";
+    private static final String BETA_19PRE5_JAR = "beta-1.9-pre5-client.jar";
+
     // JInput (required by Beta 1.8 for controller support, loaded via LWJGL)
     private static final String JINPUT_URL = "https://libraries.minecraft.net/net/java/jinput/jinput/2.0.5/jinput-2.0.5.jar";
     private static final String JINPUT_JAR = "jinput-2.0.5.jar";
@@ -864,6 +867,80 @@ public class ClientLauncher {
     }
 
     /**
+     * Launch a Beta 1.9 Pre-release 5 client with the E2E agent attached.
+     * Uses the default "world_loaded" scenario.
+     */
+    public Process launchBeta19Pre5(String agentJarPath, int serverPort,
+            File statusDir, String display) throws IOException, InterruptedException {
+        return launchBeta19Pre5(agentJarPath, serverPort, statusDir, display, "world_loaded");
+    }
+
+    /**
+     * Launch a Beta 1.9 Pre-release 5 client with the E2E agent attached.
+     * Beta 1.9 has creative mode (like 1.8.1), so creative=true.
+     *
+     * @param agentJarPath path to the rd-e2e-agent fat JAR
+     * @param serverPort   the RDForward server port to connect to
+     * @param statusDir    directory for agent status JSON output
+     * @param display      X display string (e.g. ":99")
+     * @param scenario     scenario name to run
+     * @return the launched process
+     */
+    public Process launchBeta19Pre5(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario) throws IOException, InterruptedException {
+        return launchBeta19Pre5(agentJarPath, serverPort, statusDir, display, scenario,
+                null, null, null);
+    }
+
+    /**
+     * Launch a Beta 1.9 Pre-release 5 client with cross-client support.
+     */
+    public Process launchBeta19Pre5(String agentJarPath, int serverPort,
+            File statusDir, String display, String scenario,
+            String username, String role, File syncDir) throws IOException, InterruptedException {
+        ensureLibs();
+
+        String clientJar = new File(LIBS_DIR, BETA_19PRE5_JAR).getAbsolutePath();
+        String lwjglJar = new File(LIBS_DIR, LWJGL2_JAR).getAbsolutePath();
+        String lwjglUtilJar = new File(LIBS_DIR, LWJGL2_UTIL_JAR).getAbsolutePath();
+        String jinputJar = new File(LIBS_DIR, JINPUT_JAR).getAbsolutePath();
+        String nativesPath = new File(NATIVES_DIR).getAbsolutePath();
+
+        String agentArgs = "version=beta19pre5"
+                + ",creative=true"
+                + ",serverHost=localhost"
+                + ",serverPort=" + serverPort
+                + ",statusDir=" + statusDir.getAbsolutePath()
+                + ",scenario=" + scenario;
+        if (username != null) agentArgs += ",username=" + username;
+        if (role != null) agentArgs += ",role=" + role;
+        if (syncDir != null) agentArgs += ",syncDir=" + syncDir.getAbsolutePath();
+
+        List<String> cmd = new ArrayList<>();
+        cmd.add(JAVA8_PATH);
+        cmd.add("-javaagent:" + agentJarPath + "=" + agentArgs);
+        cmd.add("-Djava.library.path=" + nativesPath);
+        cmd.add("-Dhttp.proxyHost=127.0.0.1");
+        cmd.add("-Dhttp.proxyPort=65535");
+        cmd.add("-Xmx256m");
+        cmd.add("-cp");
+        cmd.add(clientJar + ":" + lwjglJar + ":" + lwjglUtilJar + ":" + jinputJar);
+        cmd.add("net.minecraft.client.Minecraft");
+
+        System.out.println("[E2E] Launching Beta 1.9 Pre-release 5 client: " + String.join(" ", cmd));
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        Map<String, String> env = pb.environment();
+        env.put("DISPLAY", display);
+        env.put("LIBGL_ALWAYS_SOFTWARE", "1");
+        pb.redirectErrorStream(true);
+        pb.inheritIO();
+
+        clientProcess = pb.start();
+        return clientProcess;
+    }
+
+    /**
      * Launch an RD modded client (for pre-multiplayer versions like RubyDung,
      * Classic).
      * The modded fat JAR is built by rd-client and includes Fabric Loader + Mixin +
@@ -977,6 +1054,7 @@ public class ClientLauncher {
             downloadIfMissing(BETA_17_JAR_URL, new File(libsDir, BETA_17_JAR));
             downloadIfMissing(BETA_173_JAR_URL, new File(libsDir, BETA_173_JAR));
             downloadIfMissing(BETA_181_JAR_URL, new File(libsDir, BETA_181_JAR));
+            downloadIfMissing(BETA_19PRE5_JAR_URL, new File(libsDir, BETA_19PRE5_JAR));
             downloadIfMissing(LWJGL2_JAR_URL, new File(libsDir, LWJGL2_JAR));
             downloadIfMissing(LWJGL2_UTIL_URL, new File(libsDir, LWJGL2_UTIL_JAR));
             downloadIfMissing(JINPUT_URL, new File(libsDir, JINPUT_JAR));

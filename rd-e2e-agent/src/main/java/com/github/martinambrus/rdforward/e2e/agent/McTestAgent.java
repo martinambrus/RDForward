@@ -17,6 +17,7 @@ import com.github.martinambrus.rdforward.e2e.agent.mappings.BetaV12Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.BetaV13Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.BetaV14Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.BetaV17Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.BetaV21Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.FieldMappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.RubyDungMappings;
 import com.github.martinambrus.rdforward.e2e.agent.scenario.BlockPlaceBreakScenario;
@@ -228,6 +229,9 @@ public class McTestAgent {
             case "beta18":
             case "beta_1_8_1":
                 return new BetaV17Mappings();
+            case "beta19pre5":
+            case "beta_1_9_pre5":
+                return new BetaV21Mappings();
             default:
                 System.out.println("[McTestAgent] Unknown version '" + version
                         + "', defaulting to Alpha 1.2.6 mappings");
