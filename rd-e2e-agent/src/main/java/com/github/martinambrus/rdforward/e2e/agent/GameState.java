@@ -180,6 +180,51 @@ public class GameState {
         }
     }
 
+    private java.lang.reflect.Method setPositionMethod;
+
+    /**
+     * Teleports the player by invoking the entity's setPosition(x, y, z) method,
+     * which updates both the position fields AND the bounding box.
+     * Simply writing to posX/posY/posZ is insufficient because the bounding box
+     * stays at the old position, causing the physics engine to override the change.
+     */
+    public boolean setPlayerPosition(double x, double y, double z) {
+        Object player = getPlayer();
+        if (player == null) return false;
+        try {
+            if (setPositionMethod == null) {
+                // Entity.setPosition is obfuscated as "a" in all Alpha/Beta versions.
+                // Signature: void a(double, double, double)
+                Class<?> c = player.getClass();
+                while (c != null && c != Object.class) {
+                    try {
+                        java.lang.reflect.Method m = c.getDeclaredMethod("a",
+                                double.class, double.class, double.class);
+                        if (m.getReturnType() == void.class) {
+                            m.setAccessible(true);
+                            setPositionMethod = m;
+                            break;
+                        }
+                    } catch (NoSuchMethodException ignored) {}
+                    c = c.getSuperclass();
+                }
+                if (setPositionMethod == null) {
+                    System.err.println("[McTestAgent] setPosition method not found, falling back to field writes");
+                    if (posYField == null) getPlayerPosition();
+                    posXField.setDouble(player, x);
+                    posYField.setDouble(player, y);
+                    posZField.setDouble(player, z);
+                    return true;
+                }
+            }
+            setPositionMethod.invoke(player, x, y, z);
+            return true;
+        } catch (Exception e) {
+            System.err.println("[McTestAgent] setPlayerPosition error: " + e.getMessage());
+            return false;
+        }
+    }
+
     // --- Phase 2: rotation, ground, block, inventory, mouse queries ---
 
     public FieldMappings getMappings() {

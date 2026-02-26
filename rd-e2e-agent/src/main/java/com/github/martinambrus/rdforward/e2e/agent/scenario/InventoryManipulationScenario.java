@@ -368,6 +368,9 @@ public class InventoryManipulationScenario implements Scenario {
     // Step 5: Verify split and screenshot
     // Survival: 2 stacks totaling 64. Creative: 2 stacks totaling 2 (server gives 1 + grab gives 1).
     private class VerifySplitStep implements ScenarioStep {
+        private int ticks;
+        private boolean verified;
+
         @Override
         public String getDescription() {
             return "verify_split";
@@ -376,13 +379,22 @@ public class InventoryManipulationScenario implements Scenario {
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
-            int total = gs.getTotalCobblestone();
-            int expected = McTestAgent.isCreativeMode ? 2 : 64;
-            System.out.println("[McTestAgent] Cobblestone after split: " + total);
-            if (total != expected) {
-                throw new RuntimeException("Expected " + expected
-                        + " total cobblestone after split, found " + total);
+            ticks++;
+
+            if (!verified) {
+                int total = gs.getTotalCobblestone();
+                int expected = McTestAgent.isCreativeMode ? 2 : 64;
+                System.out.println("[McTestAgent] Cobblestone after split: " + total);
+                if (total != expected) {
+                    throw new RuntimeException("Expected " + expected
+                            + " total cobblestone after split, found " + total);
+                }
+                verified = true;
+                return false; // wait for GUI to render the updated state
             }
+
+            // Wait a few ticks for the inventory GUI to redraw before capturing
+            if (ticks < 5) return false;
 
             File file = new File(statusDir, "inventory_split.png");
             capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);
@@ -391,7 +403,7 @@ public class InventoryManipulationScenario implements Scenario {
 
         @Override
         public int getTimeoutTicks() {
-            return 20;
+            return 30;
         }
     }
 

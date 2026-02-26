@@ -751,8 +751,12 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             }
         }
 
-        // If player falls below the world, teleport to spawn
-        if (y < -10) {
+        // If player falls below the world, teleport to spawn.
+        // Pre-1.2.2 clients clip Y near 0 at the void floor (their physics
+        // code prevents falling below ~Y=0), so the normal -10 threshold
+        // never triggers. Use y < 0 for those versions.
+        double voidThreshold = clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_2_2) ? -10 : 0;
+        if (y < voidThreshold) {
             respawnToSafePosition(ctx, yaw);
             return;
         }

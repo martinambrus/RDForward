@@ -1,6 +1,7 @@
 package com.github.martinambrus.rdforward.e2e.agent;
 
 import com.github.martinambrus.rdforward.e2e.agent.mappings.AlphaV1Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.AlphaV13Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.AlphaV14Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.AlphaV2Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.AlphaV3Mappings;
@@ -168,6 +169,9 @@ public class McTestAgent {
             case "rubydung":
             case "rd132211":
                 return new RubyDungMappings();
+            case "alpha1015":
+            case "alpha_1_0_15":
+                return new AlphaV13Mappings();
             case "alpha1016":
             case "alpha_1_0_16":
                 return new AlphaV14Mappings();

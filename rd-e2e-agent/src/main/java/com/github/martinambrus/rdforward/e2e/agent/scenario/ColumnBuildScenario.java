@@ -430,10 +430,20 @@ public class ColumnBuildScenario implements Scenario {
     // Uses InputController.breakBlock() to bypass Minecraft.a(0)'s cooldown
     // (field S blocks left-clicks for 10 ticks when objectMouseOver is null).
     // RubyDung: uses breakBlockDirect + movePlayerPosition.
+    //
+    // Ceiling bug workaround: Alpha clients at the world height limit (Y=128)
+    // can get stuck — gravity stops working even after all blocks below are
+    // removed. When this is detected (Y unchanged for 30 ticks while high up),
+    // we sweep the entire column via breakBlock, then teleport the player to
+    // ground level using direct position field writes.
     private class BreakDownStep implements ScenarioStep {
         private int ticks;
         private int settleTicks; // counts ticks after detecting ground
-        private int stuckTicks;  // ticks with no blocks to break and no progress
+
+        // Ceiling stuck detection
+        private double lastY = Double.NaN;
+        private int sameYTicks;
+        private boolean ceilingHandled; // true once we've swept + teleported
 
         // RubyDung break-down state
         private int rdBreakY;
@@ -454,6 +464,50 @@ public class ColumnBuildScenario implements Scenario {
 
             double[] pos = gs.getPlayerPosition();
             if (pos == null) return false;
+
+            // --- Ceiling stuck detection ---
+            // Track how long Y stays the same while high up. The Alpha client
+            // has a physics bug at the world ceiling (Y=128) that prevents
+            // gravity from working even when all blocks below are removed.
+            if (!ceilingHandled && pos[1] > platformBY + 30) {
+                if (Double.isNaN(lastY) || Math.abs(pos[1] - lastY) > 0.01) {
+                    lastY = pos[1];
+                    sameYTicks = 0;
+                } else {
+                    sameYTicks++;
+                }
+
+                if (sameYTicks >= 30) {
+                    // Sweep the ENTIRE column at the player's block position
+                    // (not platformBX/BZ — the column may be at a different X/Z
+                    // than the platform if the player didn't land exactly on it).
+                    int bx = (int) Math.floor(pos[0]);
+                    int bz = (int) Math.floor(pos[2]);
+                    for (int y = 127; y > platformBY; y--) {
+                        input.breakBlock(bx, y, bz);
+                    }
+                    // Also sweep at the platform position in case the column is there
+                    for (int y = 127; y > platformBY; y--) {
+                        input.breakBlock(platformBX, y, platformBZ);
+                    }
+
+                    // Teleport player to ground level. The surface grass is at
+                    // platformBY - 1, so feet at platformBY, eyes at platformBY + 1.62.
+                    // Move to spawn X/Z to avoid any holes the click(0) may have made.
+                    double spawnX = platformBX + 0.5;
+                    double spawnZ = platformBZ - 2 + 0.5; // original spawn Z
+                    double groundEyeY = platformBY + 1.62;
+                    gs.setPlayerPosition(spawnX, groundEyeY, spawnZ);
+
+                    System.out.println("[McTestAgent] Ceiling stuck — swept column and "
+                            + "teleported to Y=" + String.format("%.2f", groundEyeY)
+                            + " at (" + String.format("%.1f", spawnX) + ", "
+                            + String.format("%.1f", spawnZ) + ")");
+
+                    ceilingHandled = true;
+                    return false;
+                }
+            }
 
             // Settling phase: wait a few ticks after detecting grass/dirt to let
             // any pending break commands drain. If the block below becomes air
@@ -490,6 +544,12 @@ public class ColumnBuildScenario implements Scenario {
                 }
             }
 
+            // After ceiling teleport, just wait for the settle check above —
+            // don't issue more breaks that could destroy the ground.
+            if (ceilingHandled) {
+                return false;
+            }
+
             // Compute the block we're standing on
             int bx = (int) Math.floor(pos[0]);
             int feetFloor = (int) Math.floor(pos[1] - (double) 1.62f);
@@ -509,20 +569,8 @@ public class ColumnBuildScenario implements Scenario {
 
             if (blockAtFeet != 0) {
                 input.breakBlock(bx, feetFloor, bz);
-                stuckTicks = 0;
             } else if (blockBelow != 0 && blockBelow != 2 && blockBelow != 3) {
                 input.breakBlock(bx, feetFloor - 1, bz);
-                stuckTicks = 0;
-            } else {
-                stuckTicks++;
-                // Failsafe: player floating at ceiling with all column blocks
-                // reverted by the client (some versions revert near height limit).
-                if (stuckTicks >= 200 && pos[1] > 50) {
-                    input.releaseAllKeys();
-                    input.setLookDirection(gs.getYaw(), 0f);
-                    System.out.println("[McTestAgent] Back on ground (blocks reverted) at Y=" + pos[1]);
-                    return true;
-                }
             }
 
             // Also use click(0) with cooldown reset as backup
@@ -580,6 +628,7 @@ public class ColumnBuildScenario implements Scenario {
     // Step 8: Verify back on ground (wait for player to settle on solid block)
     private class VerifyGroundStep implements ScenarioStep {
         private int ticks;
+        private int settleTicks;
         private boolean screenshotTaken;
 
         @Override
@@ -600,37 +649,30 @@ public class ColumnBuildScenario implements Scenario {
 
             // Accept grass(2), dirt(3), cobblestone(4), or solid(1) for RubyDung
             if (blockBelow == 2 || blockBelow == 3 || blockBelow == 4 || blockBelow == 1) {
+                input.releaseAllKeys();
+                input.setLookDirection(gs.getYaw(), 0f);
                 if (!screenshotTaken) {
+                    // Wait a few ticks for chunks to render after landing
+                    if (settleTicks < 40) {
+                        settleTicks++;
+                        return false;
+                    }
                     File file = new File(statusDir, "back_on_ground.png");
                     capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);
                     screenshotTaken = true;
                 }
                 return true;
             }
+            settleTicks = 0;
 
-            // Failsafe: player stuck at ceiling with all blocks reverted
-            if (ticks >= 100 && blockBelow == 0) {
-                double[] pos = gs.getPlayerPosition();
-                if (pos != null && pos[1] > 50) {
-                    if (!screenshotTaken) {
-                        File file = new File(statusDir, "back_on_ground.png");
-                        capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);
-                        screenshotTaken = true;
-                    }
-                    System.out.println("[McTestAgent] Verify ground (floating, blocks reverted) at Y="
-                            + String.format("%.2f", pos[1]));
-                    return true;
-                }
-            }
-
-            // Player may still be falling after in-flight break removed a block;
+            // Player may still be falling after column sweep removed blocks;
             // wait for them to land on solid ground
             return false;
         }
 
         @Override
         public int getTimeoutTicks() {
-            return 200; // generous — player may still be falling
+            return 600; // generous — player may need to fall from height + teleport + chunk load
         }
     }
 }

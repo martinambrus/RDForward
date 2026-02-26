@@ -27,10 +27,39 @@ public class ChatScenario implements Scenario {
     @Override
     public List<ScenarioStep> getSteps() {
         List<ScenarioStep> steps = new ArrayList<ScenarioStep>();
+        steps.add(new WaitSettleStep());
         steps.add(new SendChatStep());
         steps.add(new WaitChatEchoStep());
         steps.add(new ScreenshotStep());
         return steps;
+    }
+
+    private static class WaitSettleStep implements ScenarioStep {
+        private int ticks;
+
+        @Override
+        public String getDescription() {
+            return "wait_settle";
+        }
+
+        @Override
+        public boolean tick(GameState gs, InputController input,
+                            ScreenshotCapture capture, File statusDir) {
+            ticks++;
+            // Wait for world to load and player to settle on solid ground
+            if (ticks >= 40) {
+                int blockBelow = gs.getBlockBelowFeet();
+                if (blockBelow != 0 || ticks >= 80) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        @Override
+        public int getTimeoutTicks() {
+            return 100;
+        }
     }
 
     private static class SendChatStep implements ScenarioStep {

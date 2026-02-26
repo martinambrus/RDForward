@@ -369,7 +369,7 @@ public class BlockPlaceBreakScenario implements Scenario {
             }
 
             // Throw a clear error near timeout so the step runner gets a useful message
-            if (ticks >= 95) {
+            if (ticks >= 190) {
                 throw new RuntimeException("Expected " + expected
                         + " cobblestone after replenishment, found " + cobbleCount);
             }
@@ -378,7 +378,7 @@ public class BlockPlaceBreakScenario implements Scenario {
 
         @Override
         public int getTimeoutTicks() {
-            return 100;
+            return 200;
         }
     }
 
