@@ -40,7 +40,7 @@ import java.util.Arrays;
 public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet> {
 
     /** Seconds to wait for PlayerIdentification before disconnecting. */
-    static final int LOGIN_TIMEOUT_SECONDS = 5;
+    static final int LOGIN_TIMEOUT_SECONDS = 30;
 
     /** Player eye height in blocks. Internal Y convention is eye-level. */
     private static final double PLAYER_EYE_HEIGHT = 1.62;

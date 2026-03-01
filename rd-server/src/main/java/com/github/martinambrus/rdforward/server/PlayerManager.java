@@ -5,6 +5,7 @@ import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.ChangeGameStatePacket;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.PlayerPositionAndLookS2CPacket;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.TimeUpdatePacket;
+import com.github.martinambrus.rdforward.protocol.packet.alpha.TimeUpdatePacketV47;
 import com.github.martinambrus.rdforward.protocol.packet.classic.DespawnPlayerPacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.MessagePacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.PlayerTeleportPacket;
@@ -200,6 +201,7 @@ public class PlayerManager {
      */
     public void broadcastTimeUpdate(long worldAge, long timeOfDay) {
         TimeUpdatePacket preNetty = new TimeUpdatePacket(timeOfDay);
+        TimeUpdatePacketV47 preNettyV47 = new TimeUpdatePacketV47(worldAge, timeOfDay);
         NettyTimeUpdatePacket netty = new NettyTimeUpdatePacket(worldAge, timeOfDay);
         NettyTimeUpdatePacketV768 nettyV768 = new NettyTimeUpdatePacketV768(worldAge, timeOfDay);
 
@@ -215,6 +217,8 @@ public class PlayerManager {
                 player.sendPacket(nettyV768);
             } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_7_2)) {
                 player.sendPacket(netty);
+            } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_4_2)) {
+                player.sendPacket(preNettyV47);
             } else if (v.isAtLeast(ProtocolVersion.ALPHA_1_2_0)) {
                 player.sendPacket(preNetty);
             }

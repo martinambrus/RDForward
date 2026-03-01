@@ -13,7 +13,7 @@ dependencies {
 // and temp data directory. Pre-1.19 clients get high parallelism; 1.19+ get max 3.
 test {
     onlyIf { project.hasProperty('e2e') }
-    timeout = java.time.Duration.ofMinutes(20)
+    timeout = java.time.Duration.ofMinutes(30)
     // Run from root project directory so relative paths (rd-e2e-agent/build/libs/,
     // rd-client/build/libs/, rd-e2e/libs/, rd-e2e/baselines/) resolve correctly.
     workingDir = rootProject.projectDir
@@ -24,17 +24,25 @@ test {
     // Show stdout/stderr from tests (agent output, download progress, etc.)
     testLogging {
         showStandardStreams = true
+        events 'FAILED'
+        exceptionFormat 'short'
     }
 
-    // Pre-1.19 test classes only (RubyDung, Alpha, Beta, CrossVersion)
+    // Pre-1.19 test classes (RubyDung, Alpha, Beta, Release 1.0-1.18.x, CrossVersion)
     include '**/scenarios/RubyDung*Test.class'
     include '**/scenarios/Alpha*Test.class'
     include '**/scenarios/Beta*Test.class'
+    include '**/scenarios/Release*Test.class'
     include '**/scenarios/CrossVersion*Test.class'
+    // Exclude 1.19+ (handled by testModern task)
+    exclude '**/scenarios/Release119*Test.class'
+    exclude '**/scenarios/Release120*Test.class'
+    exclude '**/scenarios/Release121*Test.class'
 }
 
 // Separate task for 1.19+ clients with lower parallelism (heavier JVMs)
 tasks.register('testModern', Test) {
+    useJUnitPlatform()
     onlyIf { project.hasProperty('e2e') }
     timeout = java.time.Duration.ofMinutes(30)
     workingDir = rootProject.projectDir
@@ -50,6 +58,47 @@ tasks.register('testModern', Test) {
     include '**/scenarios/Release121*Test.class'
 }
 
+// Pre-Netty release tests only (1.0-1.6.4): use for baseline generation
+// Run with: ./gradlew :rd-e2e:testPreNetty -Pe2e
+tasks.register('testPreNetty', Test) {
+    useJUnitPlatform()
+    onlyIf { project.hasProperty('e2e') }
+    timeout = java.time.Duration.ofMinutes(30)
+    workingDir = rootProject.projectDir
+    maxParallelForks = Math.max(Runtime.runtime.availableProcessors().intdiv(2), 4)
+    classpath = sourceSets.test.runtimeClasspath
+    testClassesDirs = sourceSets.test.output.classesDirs
+    testLogging {
+        showStandardStreams = true
+    }
+
+    include '**/scenarios/Release10*Test.class'
+    include '**/scenarios/Release11*Test.class'
+    include '**/scenarios/Release1_2_*Test.class'
+    include '**/scenarios/Release131*Test.class'
+    include '**/scenarios/Release132*Test.class'
+    include '**/scenarios/Release142*Test.class'
+    include '**/scenarios/Release144*Test.class'
+    include '**/scenarios/Release145*Test.class'
+    include '**/scenarios/Release146*Test.class'
+    include '**/scenarios/Release147*Test.class'
+    include '**/scenarios/Release151*Test.class'
+    include '**/scenarios/Release152*Test.class'
+    include '**/scenarios/Release161*Test.class'
+    include '**/scenarios/Release162*Test.class'
+    include '**/scenarios/Release164*Test.class'
+    // Exclude colliding Netty versions (1.10+, 1.13+, 1.14+, 1.15+, 1.16+, 1.17+, 1.18+)
+    exclude '**/scenarios/Release110*Test.class'
+    exclude '**/scenarios/Release111*Test.class'
+    exclude '**/scenarios/Release112*Test.class'
+    exclude '**/scenarios/Release113*Test.class'
+    exclude '**/scenarios/Release114*Test.class'
+    exclude '**/scenarios/Release115*Test.class'
+    exclude '**/scenarios/Release116*Test.class'
+    exclude '**/scenarios/Release117*Test.class'
+    exclude '**/scenarios/Release118*Test.class'
+}
+
 // Convenience task to run both pre-1.19 and modern test suites
 tasks.register('testAll') {
     dependsOn test, tasks.named('testModern')
@@ -61,6 +110,10 @@ tasks.named('test') {
     dependsOn ':rd-client:fatModdedJar'
 }
 tasks.named('testModern') {
+    dependsOn ':rd-e2e-agent:fatJar'
+    dependsOn ':rd-client:fatModdedJar'
+}
+tasks.named('testPreNetty') {
     dependsOn ':rd-e2e-agent:fatJar'
     dependsOn ':rd-client:fatModdedJar'
 }

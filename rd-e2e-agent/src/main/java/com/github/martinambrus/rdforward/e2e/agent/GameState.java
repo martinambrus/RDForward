@@ -2,8 +2,10 @@ package com.github.martinambrus.rdforward.e2e.agent;
 
 import com.github.martinambrus.rdforward.e2e.agent.mappings.FieldMappings;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -24,6 +26,7 @@ public class GameState {
     private Field worldField;
     private Field serverHostField;
     private Field serverPortField;
+    private Field displayObjectField; // Window sub-object on Minecraft (1.14+)
     private Field displayWidthField;
     private Field displayHeightField;
 
@@ -42,11 +45,19 @@ public class GameState {
     private Field itemIdField;
     private Field stackSizeField;
     private Field mouseGrabbedField;
+    private Field mouseHelperField;
     private Method getBlockIdMethod;
+    private boolean getBlockIdUsesBlockPos;
+    private Constructor<?> blockPosConstructor;
+    private Method blockToIdMethod;
+    private Method stateGetBlockMethod;
+    private Method itemToIdMethod;
+    private Method chatTextMethod;
 
     // Phase 3: screen, chat, cursor fields
     private Field currentScreenField;
     private Field ingameGuiField;
+    private Field chatGuiField; // GuiNewChat sub-object on GuiIngame (1.3.1+)
     private Field chatLinesField;
     private Field chatLineTextField;
     private Field cursorItemField;
@@ -133,11 +144,12 @@ public class GameState {
 
     public int getDisplayWidth() {
         try {
+            Object target = getDisplayObject();
             if (displayWidthField == null) {
-                displayWidthField = resolveField(minecraftInstance.getClass(),
+                displayWidthField = resolveField(target.getClass(),
                         mappings.displayWidthFieldName(), null);
             }
-            return displayWidthField.getInt(minecraftInstance);
+            return displayWidthField.getInt(target);
         } catch (Exception e) {
             return 854; // default
         }
@@ -145,14 +157,27 @@ public class GameState {
 
     public int getDisplayHeight() {
         try {
+            Object target = getDisplayObject();
             if (displayHeightField == null) {
-                displayHeightField = resolveField(minecraftInstance.getClass(),
+                displayHeightField = resolveField(target.getClass(),
                         mappings.displayHeightFieldName(), null);
             }
-            return displayHeightField.getInt(minecraftInstance);
+            return displayHeightField.getInt(target);
         } catch (Exception e) {
             return 480; // default
         }
+    }
+
+    /** Returns the Window sub-object (1.14+) or the Minecraft instance itself. */
+    private Object getDisplayObject() throws Exception {
+        if (mappings.displayObjectFieldName() == null) {
+            return minecraftInstance;
+        }
+        if (displayObjectField == null) {
+            displayObjectField = resolveField(minecraftInstance.getClass(),
+                    mappings.displayObjectFieldName(), null);
+        }
+        return displayObjectField.get(minecraftInstance);
     }
 
     /**
@@ -169,14 +194,33 @@ public class GameState {
                         mappings.posYFieldName(), double.class);
                 posZField = resolveField(player.getClass(),
                         mappings.posZFieldName(), double.class);
+                System.out.println("[McTestAgent] posY field resolved: "
+                        + posYField.getDeclaringClass().getName() + "." + posYField.getName()
+                        + " type=" + posYField.getType().getName()
+                        + " posYIsFeetLevel=" + mappings.posYIsFeetLevel());
+            }
+            double y = posYField.getDouble(player);
+            if (mappings.posYIsFeetLevel()) {
+                y += (double) 1.62f; // normalize feet → eye-level
             }
             return new double[]{
                 posXField.getDouble(player),
-                posYField.getDouble(player),
+                y,
                 posZField.getDouble(player)
             };
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    public double getRawPosY() {
+        Object player = getPlayer();
+        if (player == null) return Double.NaN;
+        try {
+            if (posYField == null) getPlayerPosition();
+            return posYField.getDouble(player);
+        } catch (Exception e) {
+            return Double.NaN;
         }
     }
 
@@ -191,6 +235,8 @@ public class GameState {
     public boolean setPlayerPosition(double x, double y, double z) {
         Object player = getPlayer();
         if (player == null) return false;
+        // Callers pass eye-level Y; convert to feet for 1.8+ clients
+        double storageY = mappings.posYIsFeetLevel() ? y - (double) 1.62f : y;
         try {
             if (setPositionMethod == null) {
                 // Entity.setPosition is obfuscated as "a" in all Alpha/Beta versions.
@@ -212,12 +258,12 @@ public class GameState {
                     System.err.println("[McTestAgent] setPosition method not found, falling back to field writes");
                     if (posYField == null) getPlayerPosition();
                     posXField.setDouble(player, x);
-                    posYField.setDouble(player, y);
+                    posYField.setDouble(player, storageY);
                     posZField.setDouble(player, z);
                     return true;
                 }
             }
-            setPositionMethod.invoke(player, x, y, z);
+            setPositionMethod.invoke(player, x, storageY, z);
             return true;
         } catch (Exception e) {
             System.err.println("[McTestAgent] setPlayerPosition error: " + e.getMessage());
@@ -303,13 +349,14 @@ public class GameState {
     public boolean forcePlayerPosition(double x, double y, double z) {
         Object player = getPlayer();
         if (player == null) return false;
+        double storageY = mappings.posYIsFeetLevel() ? y - (double) 1.62f : y;
         try {
             // First: call Entity.a() to update bounding box
             setPlayerPosition(x, y, z);
             // Then: direct field writes to ensure position is correct
             if (posYField == null) getPlayerPosition(); // ensure fields resolved
             posXField.setDouble(player, x);
-            posYField.setDouble(player, y);
+            posYField.setDouble(player, storageY);
             posZField.setDouble(player, z);
             // Also set onGround to prevent physics override
             if (onGroundField == null && mappings.onGroundFieldName() != null) {
@@ -339,6 +386,7 @@ public class GameState {
     public boolean teleportPlayer(double x, double y, double z) {
         Object player = getPlayer();
         if (player == null) return false;
+        double storageY = mappings.posYIsFeetLevel() ? y - (double) 1.62f : y;
         try {
             if (posYField == null) getPlayerPosition(); // ensure position fields resolved
 
@@ -347,7 +395,7 @@ public class GameState {
 
             // Set position fields
             posXField.setDouble(player, x);
-            posYField.setDouble(player, y);
+            posYField.setDouble(player, storageY);
             posZField.setDouble(player, z);
 
             // Find and update the bounding box directly
@@ -457,41 +505,198 @@ public class GameState {
 
     /**
      * Returns the block ID at the given world coordinates.
-     * Uses World.getBlockId(int,int,int) via reflection.
+     * Pre-Netty: World.getBlockId(int,int,int) returns int or boolean.
+     * V4/V5 (1.7.x): World.a(int,int,int) returns Block object.
+     * V47+ (1.8+): World.p(BlockPos) returns IBlockState object.
      */
     public int getBlockId(int x, int y, int z) {
         Object world = getWorld();
-        if (world == null) return -1;
+        if (world == null) {
+            System.err.println("[McTestAgent] getBlockId: world is null at " + x + "," + y + "," + z);
+            return -1;
+        }
         try {
             if (getBlockIdMethod == null) {
-                // Find the method with exact signature (int,int,int)->int or boolean
-                // Walk up hierarchy since World may be a subclass
+                String methodName = mappings.getBlockIdMethodName();
+                // Try (int,int,int) first — pre-Netty + V4/V5 (1.7.x)
                 Class<?> c = world.getClass();
                 while (c != null && c != Object.class) {
                     try {
-                        Method m = c.getDeclaredMethod(mappings.getBlockIdMethodName(),
+                        Method m = c.getDeclaredMethod(methodName,
                                 int.class, int.class, int.class);
-                        if (m.getReturnType() == int.class || m.getReturnType() == boolean.class) {
-                            m.setAccessible(true);
-                            getBlockIdMethod = m;
-                            break;
-                        }
+                        m.setAccessible(true);
+                        getBlockIdMethod = m;
+                        getBlockIdUsesBlockPos = false;
+                        break;
                     } catch (NoSuchMethodException ignored) {}
                     c = c.getSuperclass();
+                }
+                // If not found with (int,int,int), search for 1-param method (V47+ BlockPos)
+                if (getBlockIdMethod == null) {
+                    c = world.getClass();
+                    outer:
+                    while (c != null && c != Object.class) {
+                        for (Method m : c.getDeclaredMethods()) {
+                            if (m.getName().equals(methodName) && m.getParameterCount() == 1
+                                    && !m.getParameterTypes()[0].isPrimitive()) {
+                                m.setAccessible(true);
+                                getBlockIdMethod = m;
+                                getBlockIdUsesBlockPos = true;
+                                Class<?> bpClass = m.getParameterTypes()[0];
+                                blockPosConstructor = bpClass.getConstructor(
+                                        int.class, int.class, int.class);
+                                blockPosConstructor.setAccessible(true);
+                                break outer;
+                            }
+                        }
+                        c = c.getSuperclass();
+                    }
                 }
                 if (getBlockIdMethod == null) {
                     throw new RuntimeException("getBlockId method not found on "
                             + world.getClass().getName());
                 }
             }
-            Object result = getBlockIdMethod.invoke(world, x, y, z);
-            if (result instanceof Boolean) {
-                return ((Boolean) result) ? 1 : 0;
+            Object result;
+            if (getBlockIdUsesBlockPos) {
+                Object pos = blockPosConstructor.newInstance(x, y, z);
+                result = getBlockIdMethod.invoke(world, pos);
+            } else {
+                result = getBlockIdMethod.invoke(world, x, y, z);
             }
-            return (Integer) result;
+            if (result instanceof Integer) return (Integer) result;
+            if (result instanceof Boolean) return ((Boolean) result) ? 1 : 0;
+            // Object result: Block or IBlockState — convert to int block ID
+            return convertToBlockId(result);
         } catch (Exception e) {
+            System.err.println("[McTestAgent] getBlockId error: " + e.getClass().getName() + ": " + e.getMessage());
             return -1;
         }
+    }
+
+    /**
+     * Converts a Block or IBlockState/BlockState object to an int block ID.
+     * For Block: calls Block.getIdFromBlock(Block) static method.
+     * For IBlockState: calls getBlock() first, then getIdFromBlock.
+     */
+    private int convertToBlockId(Object blockOrState) throws Exception {
+        if (blockToIdMethod == null) {
+            discoverBlockConversion(blockOrState);
+        }
+        Object block = blockOrState;
+        if (stateGetBlockMethod != null) {
+            block = stateGetBlockMethod.invoke(blockOrState);
+        }
+        return (int) blockToIdMethod.invoke(null, block);
+    }
+
+    private void discoverBlockConversion(Object blockOrState) throws Exception {
+        Class<?> clazz = blockOrState.getClass();
+        System.out.println("[McTestAgent] discoverBlockConversion: object class=" + clazz.getName());
+        // Check if this class has a static int method taking itself (i.e., IS Block class)
+        Method m = findStaticIntMethod(clazz);
+        if (m != null) {
+            blockToIdMethod = m;
+            stateGetBlockMethod = null;
+            System.out.println("[McTestAgent] Block direct: idMethod=" + m.getDeclaringClass().getName() + "." + m.getName());
+            return;
+        }
+        // Must be IBlockState — find a no-arg method returning a type that has the static int method
+        for (Method method : clazz.getMethods()) {
+            if (method.getParameterCount() == 0 && !method.getReturnType().isPrimitive()
+                    && method.getReturnType() != Object.class
+                    && method.getReturnType() != String.class) {
+                Method idMethod = findStaticIntMethod(method.getReturnType());
+                if (idMethod != null) {
+                    stateGetBlockMethod = method;
+                    stateGetBlockMethod.setAccessible(true);
+                    blockToIdMethod = idMethod;
+                    System.out.println("[McTestAgent] IBlockState path: getBlock=" + method.getDeclaringClass().getName() + "." + method.getName()
+                            + " -> " + method.getReturnType().getName()
+                            + " idMethod=" + idMethod.getDeclaringClass().getName() + "." + idMethod.getName());
+                    // List ALL candidate static int methods on block class for debugging
+                    for (Method cm : method.getReturnType().getDeclaredMethods()) {
+                        if (Modifier.isStatic(cm.getModifiers()) && cm.getReturnType() == int.class
+                                && cm.getParameterCount() == 1 && cm.getParameterTypes()[0].isAssignableFrom(method.getReturnType())) {
+                            System.out.println("[McTestAgent]   candidate: " + cm.getName() + "(" + cm.getParameterTypes()[0].getName() + ") -> int");
+                        }
+                    }
+                    return;
+                }
+            }
+        }
+        // Fallback: try to find a static int method that takes the BlockState class directly
+        // on any of its superclasses (e.g., Block.getRawIdFromState(BlockState) in 1.13+)
+        for (Method method : clazz.getMethods()) {
+            if (method.getParameterCount() == 0 && !method.getReturnType().isPrimitive()
+                    && method.getReturnType() != Object.class
+                    && method.getReturnType() != String.class) {
+                // Check if the return type's class has a static int method that takes
+                // the ORIGINAL class (BlockState) as param — e.g., Block.getRawIdFromState(BlockState)
+                Method idMethod = findStaticIntMethodForParam(method.getReturnType(), clazz);
+                if (idMethod != null) {
+                    // Use this method directly with the original BlockState object (no getBlock step)
+                    stateGetBlockMethod = null;
+                    blockToIdMethod = idMethod;
+                    System.out.println("[McTestAgent] BlockState direct ID path: idMethod="
+                            + idMethod.getDeclaringClass().getName() + "." + idMethod.getName()
+                            + "(" + clazz.getName() + ")");
+                    return;
+                }
+            }
+        }
+        System.err.println("[McTestAgent] Cannot convert " + clazz.getName()
+                + " to block ID. No-arg methods on class:");
+        for (Method method : clazz.getMethods()) {
+            if (method.getParameterCount() == 0 && !method.getReturnType().isPrimitive()
+                    && method.getReturnType() != Object.class
+                    && method.getReturnType() != String.class) {
+                System.err.println("[McTestAgent]   " + method.getName() + "() -> " + method.getReturnType().getName());
+            }
+        }
+        throw new RuntimeException("Cannot convert " + clazz.getName() + " to block ID");
+    }
+
+    /**
+     * Finds a static method on a class that takes one argument of that class type
+     * and returns int. Used for Block.getIdFromBlock(Block) and Item.getIdFromItem(Item).
+     */
+    private Method findStaticIntMethod(Class<?> clazz) {
+        for (Method m : clazz.getDeclaredMethods()) {
+            if (Modifier.isStatic(m.getModifiers())
+                    && m.getReturnType() == int.class
+                    && m.getParameterCount() == 1
+                    && m.getParameterTypes()[0].isAssignableFrom(clazz)) {
+                m.setAccessible(true);
+                return m;
+            }
+        }
+        Class<?> parent = clazz.getSuperclass();
+        if (parent != null && parent != Object.class) {
+            return findStaticIntMethod(parent);
+        }
+        return null;
+    }
+
+    /**
+     * Finds a static method on searchClass (or its parents) that takes paramClass
+     * as its single parameter and returns int. Used for e.g. Block.getRawIdFromState(BlockState).
+     */
+    private Method findStaticIntMethodForParam(Class<?> searchClass, Class<?> paramClass) {
+        Class<?> c = searchClass;
+        while (c != null && c != Object.class) {
+            for (Method m : c.getDeclaredMethods()) {
+                if (Modifier.isStatic(m.getModifiers())
+                        && m.getReturnType() == int.class
+                        && m.getParameterCount() == 1
+                        && m.getParameterTypes()[0].isAssignableFrom(paramClass)) {
+                    m.setAccessible(true);
+                    return m;
+                }
+            }
+            c = c.getSuperclass();
+        }
+        return null;
     }
 
     /**
@@ -539,24 +744,38 @@ public class GameState {
                 mainInventoryField = resolveField(inventory.getClass(),
                         mappings.mainInventoryFieldName(), null);
             }
-            Object[] mainInventory = (Object[]) mainInventoryField.get(inventory);
-            if (mainInventory == null) return null;
+            Object rawInv = mainInventoryField.get(inventory);
+            if (rawInv == null) return null;
 
-            int len = Math.min(mainInventory.length, 36);
+            // mainInventory is Object[] in 1.7-1.9, NonNullList (List) in 1.12+
+            int len;
+            Object[] arrInv = null;
+            List<?> listInv = null;
+            if (rawInv instanceof Object[]) {
+                arrInv = (Object[]) rawInv;
+                len = Math.min(arrInv.length, 36);
+            } else if (rawInv instanceof List) {
+                listInv = (List<?>) rawInv;
+                len = Math.min(listInv.size(), 36);
+            } else {
+                return null;
+            }
+
             int[][] result = new int[len][2];
             for (int i = 0; i < len; i++) {
-                Object stack = mainInventory[i];
+                Object stack = (arrInv != null) ? arrInv[i] : listInv.get(i);
                 if (stack == null) {
                     result[i][0] = 0;
                     result[i][1] = 0;
                 } else {
                     if (itemIdField == null) {
+                        // Use null type filter: Netty versions store Item object, not int
                         itemIdField = resolveField(stack.getClass(),
-                                mappings.itemIdFieldName(), int.class);
+                                mappings.itemIdFieldName(), null);
                         stackSizeField = resolveField(stack.getClass(),
                                 mappings.stackSizeFieldName(), int.class);
                     }
-                    result[i][0] = itemIdField.getInt(stack);
+                    result[i][0] = getItemId(stack);
                     result[i][1] = stackSizeField.getInt(stack);
                 }
             }
@@ -566,6 +785,30 @@ public class GameState {
             e.printStackTrace();
             return null;
         }
+    }
+
+    /**
+     * Extracts the int item ID from an ItemStack's item field.
+     * Pre-Netty: field is int, return directly.
+     * Netty: field is Item object, convert via Item.getIdFromItem(Item).
+     */
+    private int getItemId(Object stack) throws Exception {
+        Object itemValue = itemIdField.get(stack);
+        if (itemValue instanceof Integer) {
+            return (Integer) itemValue;
+        }
+        if (itemValue == null) {
+            return 0;
+        }
+        // Item object — find static int method on Item's class
+        if (itemToIdMethod == null) {
+            itemToIdMethod = findStaticIntMethod(itemValue.getClass());
+            if (itemToIdMethod == null) {
+                throw new RuntimeException("No static int method found on "
+                        + itemValue.getClass().getName());
+            }
+        }
+        return (int) itemToIdMethod.invoke(null, itemValue);
     }
 
 
@@ -599,11 +842,13 @@ public class GameState {
      */
     public boolean isMouseGrabbed() {
         try {
+            Object target = getMouseGrabbedTarget();
+            if (target == null) return false;
             if (mouseGrabbedField == null) {
-                mouseGrabbedField = resolveField(minecraftInstance.getClass(),
+                mouseGrabbedField = resolveField(target.getClass(),
                         mappings.mouseGrabbedFieldName(), boolean.class);
             }
-            return mouseGrabbedField.getBoolean(minecraftInstance);
+            return mouseGrabbedField.getBoolean(target);
         } catch (Exception e) {
             return false;
         }
@@ -614,14 +859,32 @@ public class GameState {
      */
     public void setMouseGrabbed(boolean grabbed) {
         try {
+            Object target = getMouseGrabbedTarget();
+            if (target == null) return;
             if (mouseGrabbedField == null) {
-                mouseGrabbedField = resolveField(minecraftInstance.getClass(),
+                mouseGrabbedField = resolveField(target.getClass(),
                         mappings.mouseGrabbedFieldName(), boolean.class);
             }
-            mouseGrabbedField.setBoolean(minecraftInstance, grabbed);
+            mouseGrabbedField.setBoolean(target, grabbed);
         } catch (Exception e) {
             System.err.println("[McTestAgent] Failed to set mouseGrabbed: " + e.getMessage());
         }
+    }
+
+    /**
+     * Returns the object that holds the mouseGrabbed boolean field.
+     * For LWJGL3 clients (1.13+), this is the MouseHelper sub-object.
+     * For pre-LWJGL3 clients, this is the Minecraft instance directly.
+     */
+    private Object getMouseGrabbedTarget() throws Exception {
+        if (mappings.mouseHelperFieldName() == null) {
+            return minecraftInstance;
+        }
+        if (mouseHelperField == null) {
+            mouseHelperField = resolveField(minecraftInstance.getClass(),
+                    mappings.mouseHelperFieldName(), null);
+        }
+        return mouseHelperField.get(minecraftInstance);
     }
 
     // --- Phase 3: screen, chat, cursor, cobblestone queries ---
@@ -681,11 +944,35 @@ public class GameState {
             Object hud = ingameGuiField.get(minecraftInstance);
             if (hud == null) return result;
 
+            // In 1.3.1+ chatLines moved from GuiIngame to a GuiNewChat sub-object.
+            // Try direct List access first; if the field isn't a List, auto-discover
+            // the GuiNewChat intermediate that holds the actual chat lines.
+            Object chatContainer = hud;
             if (chatLinesField == null) {
-                chatLinesField = resolveField(hud.getClass(),
+                Field candidate = resolveField(hud.getClass(),
                         mappings.chatLinesFieldName(), null);
+                if (java.util.List.class.isAssignableFrom(candidate.getType())) {
+                    chatLinesField = candidate;
+                } else {
+                    // Field "c" on GuiIngame isn't a List — look for GuiNewChat
+                    chatGuiField = findFieldWithChild(hud.getClass(),
+                            mappings.chatLinesFieldName());
+                    if (chatGuiField != null) {
+                        Object chatGui = chatGuiField.get(hud);
+                        if (chatGui == null) return result;
+                        chatLinesField = resolveField(chatGui.getClass(),
+                                mappings.chatLinesFieldName(), null);
+                    } else {
+                        // Last resort: use the candidate anyway
+                        chatLinesField = candidate;
+                    }
+                }
             }
-            List<?> chatLines = (List<?>) chatLinesField.get(hud);
+            if (chatGuiField != null) {
+                chatContainer = chatGuiField.get(hud);
+                if (chatContainer == null) return result;
+            }
+            List<?> chatLines = (List<?>) chatLinesField.get(chatContainer);
             if (chatLines == null || chatLines.isEmpty()) return result;
 
             int limit = Math.min(count, chatLines.size());
@@ -694,10 +981,24 @@ public class GameState {
                 if (chatLine == null) continue;
 
                 if (chatLineTextField == null) {
+                    // Use null type filter: Netty stores IChatComponent, not String
                     chatLineTextField = resolveField(chatLine.getClass(),
-                            mappings.chatLineTextFieldName(), String.class);
+                            mappings.chatLineTextFieldName(), null);
                 }
-                String text = (String) chatLineTextField.get(chatLine);
+                Object textObj = chatLineTextField.get(chatLine);
+                String text;
+                if (textObj instanceof String) {
+                    text = (String) textObj;
+                } else if (textObj != null) {
+                    if (chatTextMethod == null) {
+                        chatTextMethod = discoverChatTextMethod(textObj);
+                    }
+                    text = (chatTextMethod != null)
+                            ? (String) chatTextMethod.invoke(textObj)
+                            : textObj.toString();
+                } else {
+                    continue;
+                }
                 if (text != null) result.add(text);
             }
         } catch (Exception e) {
@@ -759,12 +1060,15 @@ public class GameState {
             if (cursorStack == null) return null;
 
             if (itemIdField == null) {
+                // Use null type filter: Netty versions store Item object, not int
                 itemIdField = resolveField(cursorStack.getClass(),
-                        mappings.itemIdFieldName(), int.class);
+                        mappings.itemIdFieldName(), null);
                 stackSizeField = resolveField(cursorStack.getClass(),
                         mappings.stackSizeFieldName(), int.class);
             }
-            return new int[]{itemIdField.getInt(cursorStack), stackSizeField.getInt(cursorStack)};
+            int itemId = getItemId(cursorStack);
+            if (itemId == 0) return null; // empty item = no cursor item
+            return new int[]{itemId, stackSizeField.getInt(cursorStack)};
         } catch (Exception e) {
             return null;
         }
@@ -785,12 +1089,67 @@ public class GameState {
     }
 
     /**
+     * Discovers the method to extract plain text from an IChatComponent/ITextComponent.
+     * Uses explicit mapping if available, otherwise scans for no-arg String methods.
+     */
+    private Method discoverChatTextMethod(Object textComponent) {
+        try {
+            // Use explicit mapping if available
+            if (mappings.chatTextMethodName() != null) {
+                Method m = textComponent.getClass().getMethod(mappings.chatTextMethodName());
+                m.setAccessible(true);
+                System.out.println("[McTestAgent] Chat text method (explicit): "
+                        + mappings.chatTextMethodName());
+                return m;
+            }
+            // Runtime discovery: find no-arg methods returning String
+            for (Method m : textComponent.getClass().getMethods()) {
+                if (m.getParameterCount() == 0 && m.getReturnType() == String.class
+                        && !m.getName().equals("toString")
+                        && !m.getName().equals("getClass")
+                        && !m.getDeclaringClass().equals(Object.class)) {
+                    m.setAccessible(true);
+                    // Validate: try calling it and check for non-null result
+                    try {
+                        String test = (String) m.invoke(textComponent);
+                        if (test != null && !test.isEmpty() && !test.startsWith("{")) {
+                            System.out.println("[McTestAgent] Chat text method (discovered): "
+                                    + m.getName() + " -> \"" + test + "\"");
+                            return m;
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[McTestAgent] Failed to discover chat text method: "
+                    + e.getMessage());
+        }
+        return null;
+    }
+
+    /**
      * Resolve a field by name, searching the class hierarchy.
      * If the exact name isn't found and expectedType is provided,
      * falls back to scanning all fields for one matching the expected type.
      */
     private Field resolveField(Class<?> clazz, String name, Class<?> expectedType) {
-        // First: try exact name match up the hierarchy
+        // First: try exact name + type match up the hierarchy (avoids shadowed fields)
+        if (expectedType != null) {
+            Class<?> c = clazz;
+            while (c != null && c != Object.class) {
+                try {
+                    Field f = c.getDeclaredField(name);
+                    if (f.getType() == expectedType) {
+                        f.setAccessible(true);
+                        return f;
+                    }
+                    // Name matches but wrong type — keep searching parent classes
+                } catch (NoSuchFieldException ignored) {}
+                c = c.getSuperclass();
+            }
+        }
+
+        // Name-only match (no type filter or typed match failed)
         Class<?> c = clazz;
         while (c != null && c != Object.class) {
             try {
@@ -818,6 +1177,32 @@ public class GameState {
         }
 
         throw new RuntimeException("Field not found: " + name + " in " + clazz.getName());
+    }
+
+    /**
+     * Finds a field on parentClass whose type has a declared field named childFieldName
+     * of List type. Used to auto-discover GuiNewChat (1.3.1+) from GuiIngame.
+     */
+    private Field findFieldWithChild(Class<?> parentClass, String childFieldName) {
+        Class<?> c = parentClass;
+        while (c != null && c != Object.class) {
+            for (Field f : c.getDeclaredFields()) {
+                Class<?> ft = f.getType();
+                if (ft == Object.class || ft.isPrimitive() || ft.isArray()
+                        || ft.getName().startsWith("java.")) continue;
+                try {
+                    Field child = ft.getDeclaredField(childFieldName);
+                    if (java.util.List.class.isAssignableFrom(child.getType())) {
+                        f.setAccessible(true);
+                        System.out.println("[McTestAgent] Chat sub-object: "
+                                + c.getName() + "." + f.getName() + " (" + ft.getName() + ")");
+                        return f;
+                    }
+                } catch (NoSuchFieldException ignored) {}
+            }
+            c = c.getSuperclass();
+        }
+        return null;
     }
 
     /**

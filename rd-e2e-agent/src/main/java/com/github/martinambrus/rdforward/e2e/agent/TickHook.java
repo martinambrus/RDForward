@@ -4,6 +4,8 @@ import com.github.martinambrus.rdforward.e2e.agent.scenario.Scenario;
 import com.github.martinambrus.rdforward.e2e.agent.scenario.ScenarioRunner;
 
 import java.io.File;
+import java.io.FileWriter;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -43,6 +45,7 @@ public class TickHook {
     private String error;
 
     private ScenarioRunner scenarioRunner;
+    private PrintWriter debugLog;
 
     public TickHook(GameState gameState, StatusWriter statusWriter,
                     ScreenshotCapture screenshotCapture, InputController inputController,
@@ -78,8 +81,16 @@ public class TickHook {
                 case WAITING_FOR_WORLD:
                     if (gameState.getWorld() != null) {
                         System.out.println("[McTestAgent] World loaded at tick " + tickCount);
+                        // Signal to RenderLoopSafetyAdvice that 3D world rendering
+                        // is about to start. On 1.17+ Core Profile clients the next
+                        // render call would crash the JVM under Mesa llvmpipe, so
+                        // the advice switches to permanent skip once it sees this.
+                        System.setProperty("mctestagent.world.loaded", "true");
                         state = State.WAITING_FOR_PLAYER;
                         writeStatus();
+                        // For Core Profile clients: TickAdvice checks this flag
+                        // after onTick() returns and throws to abort f() before
+                        // the render portion executes (would crash on Mesa).
                     }
                     break;
 
@@ -102,14 +113,38 @@ public class TickHook {
                     // framebuffer is clean before the first scenario screenshot
                     inputController.dismissPauseScreen();
                     stabilizeTicks++;
+
+                    // Debug: log position every 10 ticks during stabilization
+                    if (stabilizeTicks == 1 || stabilizeTicks % 10 == 0
+                            || stabilizeTicks >= STABILIZE_TICKS) {
+                        if (debugLog == null) {
+                            try {
+                                debugLog = new PrintWriter(new FileWriter(
+                                        new File(statusDir, "debug_position.log")), true);
+                            } catch (Exception ignored) {}
+                        }
+                        if (debugLog != null) {
+                            double[] dpos = gameState.getPlayerPosition();
+                            double rawY = gameState.getRawPosY();
+                            if (dpos != null) {
+                                debugLog.printf("STAB tick=%d/%d normalizedY=%.2f rawY=%.2f X=%.2f Z=%.2f%n",
+                                        stabilizeTicks, STABILIZE_TICKS,
+                                        dpos[1], rawY, dpos[0], dpos[2]);
+                            }
+                        }
+                    }
+
                     if (stabilizeTicks >= STABILIZE_TICKS) {
                         System.out.println("[McTestAgent] Stabilized after "
-                                + STABILIZE_TICKS + " ticks, starting scenario '"
+                                + stabilizeTicks + " ticks, starting scenario '"
                                 + scenario.getName() + "'");
                         scenarioRunner = new ScenarioRunner(scenario, gameState,
                                 inputController, screenshotCapture, statusDir);
                         state = State.RUNNING_SCENARIO;
                         writeStatus();
+                    } else if (stabilizeTicks <= 5 || stabilizeTicks % 200 == 0) {
+                        System.out.println("[McTestAgent] Stabilizing: tick "
+                                + stabilizeTicks + "/" + STABILIZE_TICKS);
                     }
                     break;
 
@@ -118,6 +153,23 @@ public class TickHook {
                     inputController.dismissPauseScreen();
                     // Apply input state before scenario step
                     inputController.applyInputs();
+
+                    // Debug position logging
+                    if (debugLog == null) {
+                        try {
+                            debugLog = new PrintWriter(new FileWriter(
+                                    new File(statusDir, "debug_position.log")), true);
+                        } catch (Exception ignored) {}
+                    }
+                    if (debugLog != null) {
+                        double[] dpos = gameState.getPlayerPosition();
+                        if (dpos != null) {
+                            debugLog.printf("tick=%d step=%s Y=%.2f X=%.2f Z=%.2f%n",
+                                    tickCount,
+                                    scenarioRunner.getCurrentStepDescription(),
+                                    dpos[1], dpos[0], dpos[2]);
+                        }
+                    }
 
                     ScenarioRunner.RunnerState rs = scenarioRunner.tick();
                     if (rs == ScenarioRunner.RunnerState.COMPLETE) {

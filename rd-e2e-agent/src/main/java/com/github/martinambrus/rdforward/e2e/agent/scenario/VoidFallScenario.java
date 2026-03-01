@@ -320,9 +320,10 @@ public class VoidFallScenario implements Scenario {
                 return true;
             }
 
-            // Verify standing on grass (2) or dirt (3), or solid (1) for RubyDung
-            if (blockBelow != 2 && blockBelow != 3 && blockBelow != 1) {
-                throw new RuntimeException("Expected grass(2)/dirt(3)/solid(1) below feet, got "
+            // Verify standing on solid ground (any non-air block).
+            // Block IDs vary by version: legacy (grass=2, dirt=3) vs 1.13+ state IDs.
+            if (blockBelow <= 0) {
+                throw new RuntimeException("Expected solid ground below feet, got blockId="
                         + blockBelow);
             }
 

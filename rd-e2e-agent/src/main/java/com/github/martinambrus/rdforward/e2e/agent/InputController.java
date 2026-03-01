@@ -40,9 +40,16 @@ public class InputController {
     private Field prevYawField;
     private Field prevPitchField;
     private Method clickMethod;
+    private Method rightClickMethod;
+    // 0=int param (pre-Netty), 1=no-arg, 2=boolean param
+    private int clickMethodType;
+    private int rightClickMethodType;
     private Field clickCooldownField;
     private Field playerControllerField;
     private Method digMethod;
+    private boolean usesBlockPos;
+    private Constructor<?> digBlockPosConstructor;
+    private Object enumFacingUp;
 
     // KeyBinding-based movement (Beta 1.8+)
     private boolean useKeyBindingMovement;
@@ -181,8 +188,20 @@ public class InputController {
                     clickCooldownField.setInt(gameState.getMinecraftInstance(), 0);
                 }
 
+                Object mc = gameState.getMinecraftInstance();
                 for (int button : pendingClicks) {
-                    clickMethod.invoke(gameState.getMinecraftInstance(), button);
+                    if (clickMethodType == 0) {
+                        // Pre-Netty: a(int)
+                        clickMethod.invoke(mc, button);
+                    } else if (button == 0) {
+                        // Left click
+                        if (clickMethodType == 2) clickMethod.invoke(mc, true);
+                        else clickMethod.invoke(mc);
+                    } else if (button == 1 && rightClickMethod != null) {
+                        // Right click
+                        if (rightClickMethodType == 2) rightClickMethod.invoke(mc, true);
+                        else rightClickMethod.invoke(mc);
+                    }
                 }
                 pendingClicks.clear();
             }
@@ -227,7 +246,12 @@ public class InputController {
                 return;
             }
             ensureDigMethod(playerController);
-            digMethod.invoke(playerController, x, y, z, 1); // face=1 (top)
+            if (usesBlockPos) {
+                Object pos = digBlockPosConstructor.newInstance(x, y, z);
+                digMethod.invoke(playerController, pos, enumFacingUp);
+            } else {
+                digMethod.invoke(playerController, x, y, z, 1); // face=1 (top)
+            }
         } catch (Exception e) {
             System.err.println("[McTestAgent] breakBlock error: " + e.getMessage());
             e.printStackTrace();
@@ -635,24 +659,115 @@ public class InputController {
     private static String incrementFieldName(String name, int offset) {
         if (name == null || name.isEmpty()) return null;
         char last = name.charAt(name.length() - 1);
-        return name.substring(0, name.length() - 1) + (char) (last + offset);
+        char incremented = (char) (last + offset);
+        // ProGuard field naming goes a-z then A-Z. Handle the wrap.
+        if (last >= 'a' && last <= 'z' && incremented > 'z') {
+            incremented = (char) ('A' + (incremented - 'z' - 1));
+        }
+        return name.substring(0, name.length() - 1) + incremented;
     }
 
     private void ensureClickMethod() throws Exception {
         if (clickMethod != null) return;
         Class<?> mcClass = gameState.getMinecraftInstance().getClass();
-        // Minecraft.a(int) is private — resolve with exact signature
+        String methodName = mappings.clickMethodName();
+
+        if (!mappings.isNettyClient()) {
+            // Pre-Netty: int param (the only variant)
+            Class<?> c = mcClass;
+            while (c != null && c != Object.class) {
+                try {
+                    Method m = c.getDeclaredMethod(methodName, int.class);
+                    m.setAccessible(true);
+                    clickMethod = m;
+                    clickMethodType = 0;
+                    return;
+                } catch (NoSuchMethodException ignored) {}
+                c = c.getSuperclass();
+            }
+        } else {
+            // Netty: try boolean first (1.9.1+), then no-arg (1.7-1.9.0).
+            // Boolean first prevents generic names like "b" matching wrong no-arg methods.
+            Class<?> c = mcClass;
+            while (c != null && c != Object.class) {
+                try {
+                    Method m = c.getDeclaredMethod(methodName, boolean.class);
+                    if (m.getReturnType() == void.class) {
+                        m.setAccessible(true);
+                        clickMethod = m;
+                        clickMethodType = 2;
+                        resolveRightClickMethod(mcClass, 2);
+                        System.out.println("[McTestAgent] Click method: "
+                                + methodName + "(boolean) on " + c.getName());
+                        return;
+                    }
+                } catch (NoSuchMethodException ignored) {}
+                c = c.getSuperclass();
+            }
+            c = mcClass;
+            while (c != null && c != Object.class) {
+                try {
+                    Method m = c.getDeclaredMethod(methodName);
+                    if (m.getReturnType() == void.class) {
+                        m.setAccessible(true);
+                        clickMethod = m;
+                        clickMethodType = 1;
+                        resolveRightClickMethod(mcClass, 1);
+                        System.out.println("[McTestAgent] Click method: "
+                                + methodName + "() on " + c.getName());
+                        return;
+                    }
+                } catch (NoSuchMethodException ignored) {}
+                c = c.getSuperclass();
+            }
+        }
+
+        throw new RuntimeException("Click method '" + methodName + "' not found on "
+                + mcClass.getName());
+    }
+
+    /**
+     * Resolves the right-click method on the Minecraft class.
+     * Uses explicit mapping if available, otherwise discovers by incrementing
+     * the left-click method name.
+     */
+    private void resolveRightClickMethod(Class<?> mcClass, int expectedType) {
+        String rightName = mappings.rightClickMethodName();
+        if (rightName == null) {
+            // Discovery: try incrementing last char of click method name
+            rightName = incrementFieldName(mappings.clickMethodName(), 1);
+        }
+        if (rightName == null) return;
+
+        // Try boolean first (1.9.1+), then no-arg (1.7-1.9.0).
+        // Boolean first prevents generic names matching wrong no-arg methods.
         Class<?> c = mcClass;
         while (c != null && c != Object.class) {
             try {
-                Method m = c.getDeclaredMethod(mappings.clickMethodName(), int.class);
-                m.setAccessible(true);
-                clickMethod = m;
-                return;
+                Method m = c.getDeclaredMethod(rightName, boolean.class);
+                if (m.getReturnType() == void.class) {
+                    m.setAccessible(true);
+                    rightClickMethod = m;
+                    rightClickMethodType = 2;
+                    System.out.println("[McTestAgent] Right-click method: "
+                            + rightName + "(boolean)");
+                    return;
+                }
+            } catch (NoSuchMethodException ignored) {}
+            try {
+                Method m = c.getDeclaredMethod(rightName);
+                if (m.getReturnType() == void.class) {
+                    m.setAccessible(true);
+                    rightClickMethod = m;
+                    rightClickMethodType = 1;
+                    System.out.println("[McTestAgent] Right-click method: " + rightName + "()");
+                    return;
+                }
             } catch (NoSuchMethodException ignored) {}
             c = c.getSuperclass();
         }
-        throw new RuntimeException("Click method not found on " + mcClass.getName());
+        System.err.println("[McTestAgent] Right-click method '" + rightName
+                + "' not found — right-clicks will be ignored");
     }
 
     private void ensureClickCooldownField() throws Exception {
@@ -693,6 +808,8 @@ public class InputController {
     private void ensureDigMethod(Object playerController) throws Exception {
         if (digMethod != null) return;
         String methodName = mappings.digMethodName();
+
+        // Try 1: (int,int,int,int) — pre-Netty + V4/V5 (1.7.x)
         Class<?> c = playerController.getClass();
         while (c != null && c != Object.class) {
             try {
@@ -700,11 +817,39 @@ public class InputController {
                         int.class, int.class, int.class, int.class);
                 m.setAccessible(true);
                 digMethod = m;
+                usesBlockPos = false;
                 return;
             } catch (NoSuchMethodException ignored) {}
             c = c.getSuperclass();
         }
-        throw new RuntimeException("Dig method '" + methodName + "' not found on " + playerController.getClass().getName());
+
+        // Try 2: 2-param method (V47+ BlockPos + EnumFacing)
+        c = playerController.getClass();
+        while (c != null && c != Object.class) {
+            for (Method m : c.getDeclaredMethods()) {
+                if (m.getName().equals(methodName) && m.getParameterCount() == 2
+                        && !m.getParameterTypes()[0].isPrimitive()
+                        && !m.getParameterTypes()[1].isPrimitive()) {
+                    m.setAccessible(true);
+                    digMethod = m;
+                    usesBlockPos = true;
+                    Class<?>[] paramTypes = m.getParameterTypes();
+                    digBlockPosConstructor = paramTypes[0].getConstructor(
+                            int.class, int.class, int.class);
+                    digBlockPosConstructor.setAccessible(true);
+                    // Get EnumFacing.UP: ordinal 1 in all Netty versions
+                    enumFacingUp = paramTypes[1].getEnumConstants()[1];
+                    System.out.println("[McTestAgent] Dig method uses BlockPos+"
+                            + paramTypes[1].getSimpleName()
+                            + "; UP=" + enumFacingUp);
+                    return;
+                }
+            }
+            c = c.getSuperclass();
+        }
+
+        throw new RuntimeException("Dig method '" + methodName + "' not found on "
+                + playerController.getClass().getName());
     }
 
     // --- Phase 3: Chat, Q-drop, inventory GUI methods ---
@@ -932,9 +1077,10 @@ public class InputController {
         }
 
         Class<?> guiClass = Class.forName(className);
-        // Find constructor that takes the player's class or a superclass
+        // Find constructor that takes the player's class or a superclass.
+        // Use getDeclaredConstructors to include non-public constructors (Netty versions).
         Constructor<?> ctor = null;
-        for (Constructor<?> c : guiClass.getConstructors()) {
+        for (Constructor<?> c : guiClass.getDeclaredConstructors()) {
             Class<?>[] params = c.getParameterTypes();
             if (params.length == 1 && params[0].isAssignableFrom(player.getClass())) {
                 ctor = c;

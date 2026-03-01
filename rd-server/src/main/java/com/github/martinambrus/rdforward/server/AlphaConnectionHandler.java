@@ -645,7 +645,11 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Send initial time update (Alpha 1.2.0+ supports day/night cycle)
         if (clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_2_0)) {
             long timeOfDay = world.isTimeFrozen() ? -world.getWorldTime() : world.getWorldTime();
-            ctx.writeAndFlush(new TimeUpdatePacket(timeOfDay));
+            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_4_2)) {
+                ctx.writeAndFlush(new TimeUpdatePacketV47(0, timeOfDay));
+            } else {
+                ctx.writeAndFlush(new TimeUpdatePacket(timeOfDay));
+            }
         }
 
         // Send initial weather state (Beta 1.5+ supports weather)

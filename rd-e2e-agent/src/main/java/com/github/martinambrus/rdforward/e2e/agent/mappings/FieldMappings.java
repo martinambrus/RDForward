@@ -28,11 +28,14 @@ public interface FieldMappings {
     /** Field name for serverPort (int) on Minecraft class. */
     String serverPortFieldName();
 
-    /** Field name for displayWidth (int) on Minecraft class. */
+    /** Field name for displayWidth (int) on Minecraft class or Window sub-object. */
     String displayWidthFieldName();
 
-    /** Field name for displayHeight (int) on Minecraft class. */
+    /** Field name for displayHeight (int) on Minecraft class or Window sub-object. */
     String displayHeightFieldName();
+
+    /** Field name for Window sub-object on Minecraft class. Null = read width/height directly from Minecraft. */
+    default String displayObjectFieldName() { return null; }
 
     /** Field name for posX (double) on Entity class. */
     String posXFieldName();
@@ -84,8 +87,11 @@ public interface FieldMappings {
     /** Method name for Minecraft click handler (private void, takes int button). */
     default String clickMethodName() { return null; }
 
-    /** Field name for mouseGrabbed (boolean) on Minecraft class. */
+    /** Field name for mouseGrabbed (boolean). On Minecraft class for pre-LWJGL3, on MouseHelper for LWJGL3. */
     default String mouseGrabbedFieldName() { return null; }
+
+    /** Field name for MouseHelper sub-object on Minecraft class. Null = mouseGrabbed is directly on Minecraft. */
+    default String mouseHelperFieldName() { return null; }
 
     // --- Phase 3: Chat, Q-drop, inventory GUI methods ---
 
@@ -186,4 +192,47 @@ public interface FieldMappings {
 
     /** Field name for static blockChangeQueue (List) on RubyDung class. */
     default String blockChangeQueueFieldName() { return null; }
+
+    // --- Version capability flags ---
+
+    /** Whether the client uses LWJGL3 (1.13+). Override true in 1.13+ mappings. */
+    default boolean isLwjgl3() { return false; }
+
+    /** Whether the client uses the Netty network stack (1.7.2+). Override true in 1.7.2+ mappings. */
+    default boolean isNettyClient() { return false; }
+
+    /** Right-click/use method name on Minecraft class. Null = pre-Netty (uses clickMethodName with int param). */
+    default String rightClickMethodName() { return null; }
+
+    /** Method name on IChatComponent/ITextComponent to get plain text String. Null = field is already String. */
+    default String chatTextMethodName() { return null; }
+
+    /** Whether Entity.posY stores feet-level Y (true for 1.8+). False means posY is eye-level. */
+    default boolean posYIsFeetLevel() { return false; }
+
+    /**
+     * Obfuscated class name for BlockRenderDispatcher (1.14+).
+     * Used to add a ByteBuddy safety net that catches tessellation NPEs
+     * caused by the async resource reload not completing before the first
+     * render frame. Null = no patch needed (pre-1.14 or not applicable).
+     */
+    default String blockRenderDispatcherClassName() { return null; }
+
+    /**
+     * Obfuscated name of the render method on the Minecraft class (1.14+).
+     * This is the method that pushes the GL matrix stack and calls
+     * GameRenderer.render(). It takes a single boolean parameter.
+     * Used for REBASE safety patching — on exception, the GL matrix stack
+     * is reset to prevent GL_STACK_OVERFLOW on subsequent frames.
+     * Null = no render-method patching (pre-1.14 or not applicable).
+     */
+    default String renderMethodName() { return null; }
+
+    /**
+     * Obfuscated class name of the GameRenderer (1.17+ Core Profile only).
+     * The GameRenderer's main render method is skipped once the world is loaded
+     * to prevent Mesa llvmpipe from crashing on MC 1.17+'s shader pipeline.
+     * Null = no GameRenderer patching needed (pre-1.17).
+     */
+    default String gameRendererClassName() { return null; }
 }

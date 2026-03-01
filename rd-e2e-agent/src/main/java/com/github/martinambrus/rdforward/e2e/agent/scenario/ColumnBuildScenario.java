@@ -619,10 +619,10 @@ public class ColumnBuildScenario implements Scenario {
 
             // Check completion FIRST — before issuing any more break commands.
             // This prevents breaking the grass/dirt block we just landed on.
-            // Also accept cobblestone(4) at ground level — creative mode's instant
-            // breaking may leave the column base block as ground surface.
+            // Any solid block below feet near ground means we've descended.
+            // Block IDs vary by version (legacy grass=2/dirt=3 vs 1.13+ state IDs).
             int belowFeet = gs.getBlockBelowFeet();
-            if (belowFeet == 2 || belowFeet == 3 || belowFeet == 4) {
+            if (belowFeet > 0) {
                 double feetY = pos[1] - (double) 1.62f;
                 if (feetY < platformBY + 5) {
                     input.releaseAllKeys();
@@ -657,7 +657,8 @@ public class ColumnBuildScenario implements Scenario {
 
             if (blockAtFeet != 0) {
                 input.breakBlock(bx, feetFloor, bz);
-            } else if (blockBelow != 0 && blockBelow != 2 && blockBelow != 3) {
+            } else if (blockBelow != 0 && feetFloor - 1 > platformBY) {
+                // Break below feet only if above platform level to avoid destroying ground
                 input.breakBlock(bx, feetFloor - 1, bz);
             }
 
@@ -721,6 +722,7 @@ public class ColumnBuildScenario implements Scenario {
         private long startTimeMs;
         private boolean rescueTeleported;
         private boolean cobbleCleaned;
+        private boolean relocated;
 
         @Override
         public String getDescription() {
@@ -773,22 +775,29 @@ public class ColumnBuildScenario implements Scenario {
                         + "): blockBelow=" + blockBelow);
             }
 
-            // Look straight down for a deterministic screenshot.
-            input.setLookDirection(180f, 90f);
-
-            // Accept grass(2), dirt(3), or solid(1) for RubyDung.
-            // Do NOT accept cobblestone(4) — the cleanup in BreakDownStep
-            // should have removed it, and we want grass for consistency.
-            if (blockBelow == 2 || blockBelow == 3 || blockBelow == 1) {
+            // Accept any solid ground (non-air). Block IDs vary by version
+            // (legacy grass=2/dirt=3 vs 1.13+ state IDs).
+            if (blockBelow > 0) {
                 input.releaseAllKeys();
                 if (!screenshotTaken) {
-                    // On first settle tick, sweep all remaining cobblestone
-                    // near the column so it doesn't appear in the screenshot.
-                    if (!cobbleCleaned && !input.isRubyDung()) {
-                        cobbleCleaned = true;
-                        sweepCobblestone(gs, input);
+                    // Teleport player to clean grass away from the column.
+                    // The column build/cleanup leaves holes and cobblestone
+                    // remnants near the build area that vary per version.
+                    // Moving 5 blocks away ensures flat grass in the screenshot.
+                    // Uses teleportPlayer which patches the BB directly to prevent
+                    // the physics engine from snapping the player back.
+                    if (!relocated && !input.isRubyDung()) {
+                        relocated = true;
+                        double cleanX = platformBX + 0.5;
+                        double cleanZ = platformBZ - 5 + 0.5;
+                        double grassEyeY = (platformBY - 1) + 1.0 + (double) 1.62f;
+                        gs.teleportPlayer(cleanX, grassEyeY, cleanZ);
+                        settleTicks = 0;
+                        return false;
                     }
-                    // Wait for sweep breaks to process and scene to render
+                    // Look straight down for a deterministic screenshot.
+                    input.setLookDirection(180f, 90f);
+                    // Wait for position to take effect and scene to render.
                     if (settleTicks < 20) {
                         settleTicks++;
                         return false;
@@ -808,12 +817,13 @@ public class ColumnBuildScenario implements Scenario {
             // left the player in an ungrounded state (void, mid-air, etc.).
             if (!rescueTeleported && elapsed > 3_000) {
                 rescueTeleported = true;
+                // Teleport to clean grass away from the column.
                 double spawnX = platformBX + 0.5;
-                double spawnZ = platformBZ - 2 + 0.5;
-                double groundEyeY = platformBY + (double) 1.62f;
-                gs.forcePlayerPosition(spawnX, groundEyeY, spawnZ);
+                double spawnZ = platformBZ - 5 + 0.5;
+                double grassEyeY = (platformBY - 1) + 1.0 + (double) 1.62f;
+                gs.teleportPlayer(spawnX, grassEyeY, spawnZ);
                 System.out.println("[McTestAgent] Rescue teleport to grass at Y="
-                        + groundEyeY + " (blockBelow was " + blockBelow + ")");
+                        + grassEyeY + " (blockBelow was " + blockBelow + ")");
                 return false;
             }
 

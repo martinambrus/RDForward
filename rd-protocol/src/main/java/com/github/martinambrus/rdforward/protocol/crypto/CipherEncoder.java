@@ -24,6 +24,8 @@ public class CipherEncoder extends MessageToByteEncoder<ByteBuf> {
         byte[] input = new byte[readable];
         msg.readBytes(input);
         byte[] encrypted = cipher.update(input);
-        out.writeBytes(encrypted);
+        if (encrypted != null) {
+            out.writeBytes(encrypted);
+        }
     }
 }

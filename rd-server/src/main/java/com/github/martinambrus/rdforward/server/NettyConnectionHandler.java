@@ -277,27 +277,46 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     private void handleLoginStart(ChannelHandlerContext ctx, LoginStartPacket packet) {
         pendingUsername = packet.getUsername();
 
-        try {
-            KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
-            keyGen.initialize(1024);
-            rsaKeyPair = keyGen.generateKeyPair();
-            verifyToken = new byte[4];
-            new java.security.SecureRandom().nextBytes(verifyToken);
+        // RDForward is an offline-mode server — skip encryption and go
+        // directly to LoginSuccess.  Netty-era clients (1.7.2+) always
+        // attempt Mojang session authentication when they receive an
+        // EncryptionRequest, which fails in E2E tests (and for any
+        // offline-mode scenario).  Skipping encryption avoids this.
+        completeLogin(ctx);
+    }
 
-            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
-                ctx.writeAndFlush(new NettyEncryptionRequestPacketV766(
-                        "", rsaKeyPair.getPublic().getEncoded(), verifyToken, false));
-            } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
-                ctx.writeAndFlush(new NettyEncryptionRequestPacketV47(
-                        "", rsaKeyPair.getPublic().getEncoded(), verifyToken));
-            } else {
-                ctx.writeAndFlush(new NettyEncryptionRequestPacket(
-                        "", rsaKeyPair.getPublic().getEncoded(), verifyToken));
-            }
-            awaitingEncryptionResponse = true;
-        } catch (Exception e) {
-            System.err.println("Failed to generate RSA keypair: " + e.getMessage());
-            sendLoginDisconnect(ctx, "Encryption error");
+    /**
+     * Send LoginSuccess and transition to PLAY (or CONFIGURATION for v764+).
+     * Called after encryption completes or directly for offline-mode logins.
+     */
+    private void completeLogin(ChannelHandlerContext ctx) {
+        // Remove login timeout
+        if (ctx.pipeline().get("loginTimeout") != null) {
+            ctx.pipeline().remove("loginTimeout");
+        }
+
+        // Send LoginSuccess — version-specific variants
+        String uuid = ClassicToNettyTranslator.generateOfflineUuid(pendingUsername);
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
+            ctx.writeAndFlush(new LoginSuccessPacketV768(uuid, pendingUsername));
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
+            ctx.writeAndFlush(new LoginSuccessPacketV766(uuid, pendingUsername));
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19)) {
+            ctx.writeAndFlush(new LoginSuccessPacketV759(uuid, pendingUsername));
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16)) {
+            ctx.writeAndFlush(new LoginSuccessPacketV735(uuid, pendingUsername));
+        } else {
+            ctx.writeAndFlush(new LoginSuccessPacket(uuid, pendingUsername));
+        }
+
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_2)) {
+            // V764+: stay in LOGIN state, wait for LoginAcknowledged
+            // (which will trigger CONFIGURATION -> PLAY transition)
+        } else {
+            // Pre-V764: transition directly to PLAY state
+            state = ConnectionState.PLAY;
+            setCodecState(ctx, ConnectionState.PLAY);
+            handleJoinGame(ctx);
         }
     }
 
@@ -329,37 +348,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.pipeline().addBefore("decoder", "decrypt", new CipherDecoder(decryptCipher));
             ctx.pipeline().addBefore("encoder", "encrypt", new CipherEncoder(encryptCipher));
 
-            // Remove login timeout — encryption succeeded, CONFIG phase may take longer
-            if (ctx.pipeline().get("loginTimeout") != null) {
-                ctx.pipeline().remove("loginTimeout");
-            }
-
-            // Send LoginSuccess — this transitions to PLAY state (or CONFIGURATION for v764+)
-            // 1.21.2 removed strictErrorHandling boolean
-            // 1.20.5 added strictErrorHandling boolean
-            // 1.16 changed UUID from VarIntString to binary (2 longs)
-            String uuid = ClassicToNettyTranslator.generateOfflineUuid(pendingUsername);
-            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
-                ctx.writeAndFlush(new LoginSuccessPacketV768(uuid, pendingUsername));
-            } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
-                ctx.writeAndFlush(new LoginSuccessPacketV766(uuid, pendingUsername));
-            } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19)) {
-                ctx.writeAndFlush(new LoginSuccessPacketV759(uuid, pendingUsername));
-            } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16)) {
-                ctx.writeAndFlush(new LoginSuccessPacketV735(uuid, pendingUsername));
-            } else {
-                ctx.writeAndFlush(new LoginSuccessPacket(uuid, pendingUsername));
-            }
-
-            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_2)) {
-                // V764+: stay in LOGIN state, wait for LoginAcknowledged
-                // (which will trigger CONFIGURATION -> PLAY transition)
-            } else {
-                // Pre-V764: transition directly to PLAY state
-                state = ConnectionState.PLAY;
-                setCodecState(ctx, ConnectionState.PLAY);
-                handleJoinGame(ctx);
-            }
+            completeLogin(ctx);
 
         } catch (Exception e) {
             System.err.println("Encryption handshake failed for " + pendingUsername
@@ -396,36 +385,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.pipeline().addBefore("decoder", "decrypt", new CipherDecoder(decryptCipher));
             ctx.pipeline().addBefore("encoder", "encrypt", new CipherEncoder(encryptCipher));
 
-            // Remove login timeout — encryption succeeded, CONFIG phase may take longer
-            if (ctx.pipeline().get("loginTimeout") != null) {
-                ctx.pipeline().remove("loginTimeout");
-            }
-
-            // Send LoginSuccess — this transitions to PLAY state (or CONFIGURATION for v764+)
-            // 1.21.2 removed strictErrorHandling boolean
-            // 1.20.5 added strictErrorHandling boolean
-            // 1.16 changed UUID from VarIntString to binary (2 longs)
-            String uuid = ClassicToNettyTranslator.generateOfflineUuid(pendingUsername);
-            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
-                ctx.writeAndFlush(new LoginSuccessPacketV768(uuid, pendingUsername));
-            } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
-                ctx.writeAndFlush(new LoginSuccessPacketV766(uuid, pendingUsername));
-            } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19)) {
-                ctx.writeAndFlush(new LoginSuccessPacketV759(uuid, pendingUsername));
-            } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16)) {
-                ctx.writeAndFlush(new LoginSuccessPacketV735(uuid, pendingUsername));
-            } else {
-                ctx.writeAndFlush(new LoginSuccessPacket(uuid, pendingUsername));
-            }
-
-            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_2)) {
-                // V764+: stay in LOGIN state, wait for LoginAcknowledged
-            } else {
-                // Pre-V764: transition directly to PLAY state
-                state = ConnectionState.PLAY;
-                setCodecState(ctx, ConnectionState.PLAY);
-                handleJoinGame(ctx);
-            }
+            completeLogin(ctx);
 
         } catch (Exception e) {
             System.err.println("Encryption handshake failed for " + pendingUsername
@@ -468,29 +428,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.pipeline().addBefore("decoder", "decrypt", new CipherDecoder(decryptCipher));
             ctx.pipeline().addBefore("encoder", "encrypt", new CipherEncoder(encryptCipher));
 
-            // Remove login timeout — encryption succeeded, CONFIG phase may take longer
-            if (ctx.pipeline().get("loginTimeout") != null) {
-                ctx.pipeline().remove("loginTimeout");
-            }
-
-            // Send LoginSuccess — 1.21.2 removes strictErrorHandling, 1.20.5 adds it, 1.19 adds property array
-            String uuid = ClassicToNettyTranslator.generateOfflineUuid(pendingUsername);
-            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
-                ctx.writeAndFlush(new LoginSuccessPacketV768(uuid, pendingUsername));
-            } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
-                ctx.writeAndFlush(new LoginSuccessPacketV766(uuid, pendingUsername));
-            } else {
-                ctx.writeAndFlush(new LoginSuccessPacketV759(uuid, pendingUsername));
-            }
-
-            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_2)) {
-                // V764+: stay in LOGIN state, wait for LoginAcknowledged
-            } else {
-                // Pre-V764: transition directly to PLAY state
-                state = ConnectionState.PLAY;
-                setCodecState(ctx, ConnectionState.PLAY);
-                handleJoinGame(ctx);
-            }
+            completeLogin(ctx);
 
         } catch (Exception e) {
             System.err.println("Encryption handshake failed for " + pendingUsername
@@ -1115,52 +1053,62 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         InventoryAdapter adapter = playerManager.getInventoryAdapter();
         adapter.initPlayer(player.getUsername());
 
-        // Give 1 cobblestone for right-click
-        // v404 (1.13.2)+ uses boolean+VarInt slot format (also used by v477/1.14)
+        // Give 1 cobblestone for right-click.
+        // v404 (1.13.2)+ uses boolean+VarInt slot format (also used by v477/1.14).
+        // For 1.14+ clients: delay the SetSlot by 10 seconds so the client's async
+        // resource reload (model baking) completes before the hotbar tries to render
+        // the item. Without this delay, ItemRenderer NPEs on null BakedModel.
         boolean isV404 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13_2);
-        if (isV766) {
-            ctx.writeAndFlush(new NettySetSlotPacketV766(0, 0, 36,
-                    BlockStateMapper.toV765ItemId(BlockRegistry.COBBLESTONE), 1));
-        } else if (isV765) {
-            ctx.writeAndFlush(new NettySetSlotPacketV756(0, 0, 36,
-                    BlockStateMapper.toV765ItemId(BlockRegistry.COBBLESTONE), 1));
-        } else if (isV764) {
-            ctx.writeAndFlush(new NettySetSlotPacketV756(0, 0, 36,
-                    BlockStateMapper.toV759ItemId(BlockRegistry.COBBLESTONE), 1));
-        } else if (isV763) {
-            ctx.writeAndFlush(new NettySetSlotPacketV756(0, 0, 36,
-                    BlockStateMapper.toV759ItemId(BlockRegistry.COBBLESTONE), 1));
-        } else if (isV762) {
-            ctx.writeAndFlush(new NettySetSlotPacketV756(0, 0, 36,
-                    BlockStateMapper.toV759ItemId(BlockRegistry.COBBLESTONE), 1));
-        } else if (isV761) {
-            ctx.writeAndFlush(new NettySetSlotPacketV756(0, 0, 36,
-                    BlockStateMapper.toV759ItemId(BlockRegistry.COBBLESTONE), 1));
-        } else if (isV760) {
-            ctx.writeAndFlush(new NettySetSlotPacketV756(0, 0, 36,
-                    BlockStateMapper.toV759ItemId(BlockRegistry.COBBLESTONE), 1));
-        } else if (isV759) {
-            ctx.writeAndFlush(new NettySetSlotPacketV756(0, 0, 36,
-                    BlockStateMapper.toV759ItemId(BlockRegistry.COBBLESTONE), 1));
-        } else if (isV756) {
-            ctx.writeAndFlush(new NettySetSlotPacketV756(0, 0, 36,
-                    BlockStateMapper.toV755ItemId(BlockRegistry.COBBLESTONE), 1));
-        } else if (isV755) {
-            ctx.writeAndFlush(new NettySetSlotPacketV404(0, 36,
-                    BlockStateMapper.toV755ItemId(BlockRegistry.COBBLESTONE), 1));
-        } else if (isV735) {
-            ctx.writeAndFlush(new NettySetSlotPacketV404(0, 36,
-                    BlockStateMapper.toV735ItemId(BlockRegistry.COBBLESTONE), 1));
-        } else if (isV404) {
-            ctx.writeAndFlush(new NettySetSlotPacketV404(0, 36,
-                    BlockStateMapper.toV393ItemId(BlockRegistry.COBBLESTONE), 1));
-        } else if (isV393) {
-            ctx.writeAndFlush(new NettySetSlotPacketV393(0, 36,
-                    BlockStateMapper.toV393ItemId(BlockRegistry.COBBLESTONE), 1));
-        } else if (isV47) {
-            ctx.writeAndFlush(new NettySetSlotPacketV47(0, 36, BlockRegistry.COBBLESTONE, 1, 0));
+        Runnable sendSetSlot = () -> {
+            if (isV766) {
+                ctx.writeAndFlush(new NettySetSlotPacketV766(0, 0, 36,
+                        BlockStateMapper.toV765ItemId(BlockRegistry.COBBLESTONE), 1));
+            } else if (isV765) {
+                ctx.writeAndFlush(new NettySetSlotPacketV756(0, 0, 36,
+                        BlockStateMapper.toV765ItemId(BlockRegistry.COBBLESTONE), 1));
+            } else if (isV764) {
+                ctx.writeAndFlush(new NettySetSlotPacketV756(0, 0, 36,
+                        BlockStateMapper.toV759ItemId(BlockRegistry.COBBLESTONE), 1));
+            } else if (isV763) {
+                ctx.writeAndFlush(new NettySetSlotPacketV756(0, 0, 36,
+                        BlockStateMapper.toV759ItemId(BlockRegistry.COBBLESTONE), 1));
+            } else if (isV762) {
+                ctx.writeAndFlush(new NettySetSlotPacketV756(0, 0, 36,
+                        BlockStateMapper.toV759ItemId(BlockRegistry.COBBLESTONE), 1));
+            } else if (isV761) {
+                ctx.writeAndFlush(new NettySetSlotPacketV756(0, 0, 36,
+                        BlockStateMapper.toV759ItemId(BlockRegistry.COBBLESTONE), 1));
+            } else if (isV760) {
+                ctx.writeAndFlush(new NettySetSlotPacketV756(0, 0, 36,
+                        BlockStateMapper.toV759ItemId(BlockRegistry.COBBLESTONE), 1));
+            } else if (isV759) {
+                ctx.writeAndFlush(new NettySetSlotPacketV756(0, 0, 36,
+                        BlockStateMapper.toV759ItemId(BlockRegistry.COBBLESTONE), 1));
+            } else if (isV756) {
+                ctx.writeAndFlush(new NettySetSlotPacketV756(0, 0, 36,
+                        BlockStateMapper.toV755ItemId(BlockRegistry.COBBLESTONE), 1));
+            } else if (isV755) {
+                ctx.writeAndFlush(new NettySetSlotPacketV404(0, 36,
+                        BlockStateMapper.toV755ItemId(BlockRegistry.COBBLESTONE), 1));
+            } else if (isV735) {
+                ctx.writeAndFlush(new NettySetSlotPacketV404(0, 36,
+                        BlockStateMapper.toV735ItemId(BlockRegistry.COBBLESTONE), 1));
+            } else if (isV404) {
+                ctx.writeAndFlush(new NettySetSlotPacketV404(0, 36,
+                        BlockStateMapper.toV393ItemId(BlockRegistry.COBBLESTONE), 1));
+            } else if (isV393) {
+                ctx.writeAndFlush(new NettySetSlotPacketV393(0, 36,
+                        BlockStateMapper.toV393ItemId(BlockRegistry.COBBLESTONE), 1));
+            } else if (isV47) {
+                ctx.writeAndFlush(new NettySetSlotPacketV47(0, 36, BlockRegistry.COBBLESTONE, 1, 0));
+            } else {
+                ctx.writeAndFlush(new NettySetSlotPacket(0, 36, BlockRegistry.COBBLESTONE, 1, 0));
+            }
+        };
+        if (isV477) {
+            ctx.executor().schedule(sendSetSlot, 10, java.util.concurrent.TimeUnit.SECONDS);
         } else {
-            ctx.writeAndFlush(new NettySetSlotPacket(0, 36, BlockRegistry.COBBLESTONE, 1, 0));
+            sendSetSlot.run();
         }
         adapter.setSlot(player.getUsername(), 36, BlockRegistry.COBBLESTONE, 1, 0);
 
