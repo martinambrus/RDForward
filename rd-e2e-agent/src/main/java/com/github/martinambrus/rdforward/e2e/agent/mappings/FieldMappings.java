@@ -98,6 +98,14 @@ public interface FieldMappings {
     /** Method name for EntityPlayerSP.sendChatMessage(String). */
     default String sendChatMessageMethodName() { return null; }
 
+    /**
+     * Field name for the ClientPlayNetworkHandler on ClientPlayerEntity.
+     * In 1.19.3+, sendChatMessage(String) moved from the player to the network handler.
+     * When non-null, InputController will look for the sendChatMessage method on the
+     * network handler object instead of on the player hierarchy.
+     */
+    default String networkHandlerFieldName() { return null; }
+
     /** Method name for EntityPlayer.dropPlayerItem(ItemStack, boolean). */
     default String dropPlayerItemMethodName() { return null; }
 

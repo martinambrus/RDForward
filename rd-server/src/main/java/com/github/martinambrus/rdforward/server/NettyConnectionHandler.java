@@ -668,50 +668,50 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // v108 (1.9.1) changed dimension from byte to int.
         if (isV768) {
             ctx.writeAndFlush(new JoinGamePacketV768(entityId, 1,
-                    20, ChunkManager.DEFAULT_VIEW_DISTANCE, ChunkManager.DEFAULT_VIEW_DISTANCE));
+                    20, ChunkManager.CLIENT_VIEW_DISTANCE, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV766) {
             ctx.writeAndFlush(new JoinGamePacketV766(entityId, 1,
-                    20, ChunkManager.DEFAULT_VIEW_DISTANCE, ChunkManager.DEFAULT_VIEW_DISTANCE));
+                    20, ChunkManager.CLIENT_VIEW_DISTANCE, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV764) {
             ctx.writeAndFlush(new JoinGamePacketV764(entityId, 1,
-                    20, ChunkManager.DEFAULT_VIEW_DISTANCE, ChunkManager.DEFAULT_VIEW_DISTANCE));
+                    20, ChunkManager.CLIENT_VIEW_DISTANCE, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV763) {
             ctx.writeAndFlush(new JoinGamePacketV763(entityId, 1,
-                    20, ChunkManager.DEFAULT_VIEW_DISTANCE, ChunkManager.DEFAULT_VIEW_DISTANCE));
+                    20, ChunkManager.CLIENT_VIEW_DISTANCE, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV762) {
             ctx.writeAndFlush(new JoinGamePacketV762(entityId, 1,
-                    20, ChunkManager.DEFAULT_VIEW_DISTANCE, ChunkManager.DEFAULT_VIEW_DISTANCE));
+                    20, ChunkManager.CLIENT_VIEW_DISTANCE, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV761) {
             // V761 reuses V760 JoinGame format; registry handles the ID shift (0x25 -> 0x24)
             ctx.writeAndFlush(new JoinGamePacketV760(entityId, 1,
-                    20, ChunkManager.DEFAULT_VIEW_DISTANCE, ChunkManager.DEFAULT_VIEW_DISTANCE));
+                    20, ChunkManager.CLIENT_VIEW_DISTANCE, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV760) {
             ctx.writeAndFlush(new JoinGamePacketV760(entityId, 1,
-                    20, ChunkManager.DEFAULT_VIEW_DISTANCE, ChunkManager.DEFAULT_VIEW_DISTANCE));
+                    20, ChunkManager.CLIENT_VIEW_DISTANCE, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV759) {
             ctx.writeAndFlush(new JoinGamePacketV759(entityId, 1,
-                    20, ChunkManager.DEFAULT_VIEW_DISTANCE, ChunkManager.DEFAULT_VIEW_DISTANCE));
+                    20, ChunkManager.CLIENT_VIEW_DISTANCE, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV758) {
             ctx.writeAndFlush(new JoinGamePacketV758(entityId, 1,
-                    20, ChunkManager.DEFAULT_VIEW_DISTANCE, ChunkManager.DEFAULT_VIEW_DISTANCE));
+                    20, ChunkManager.CLIENT_VIEW_DISTANCE, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV757) {
             ctx.writeAndFlush(new JoinGamePacketV757(entityId, 1,
-                    20, ChunkManager.DEFAULT_VIEW_DISTANCE, ChunkManager.DEFAULT_VIEW_DISTANCE));
+                    20, ChunkManager.CLIENT_VIEW_DISTANCE, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV755) {
             ctx.writeAndFlush(new JoinGamePacketV755(entityId, 1,
-                    20, ChunkManager.DEFAULT_VIEW_DISTANCE));
+                    20, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV751) {
             ctx.writeAndFlush(new JoinGamePacketV751(entityId, 1,
-                    20, ChunkManager.DEFAULT_VIEW_DISTANCE));
+                    20, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV735) {
             ctx.writeAndFlush(new JoinGamePacketV735(entityId, 1,
-                    20, ChunkManager.DEFAULT_VIEW_DISTANCE));
+                    20, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV573) {
             ctx.writeAndFlush(new JoinGamePacketV573(entityId, 1, 0,
-                    20, "default", ChunkManager.DEFAULT_VIEW_DISTANCE));
+                    20, "default", ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV477) {
             ctx.writeAndFlush(new JoinGamePacketV477(entityId, 1, 0,
-                    20, "default", ChunkManager.DEFAULT_VIEW_DISTANCE));
+                    20, "default", ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_9_1)) {
             ctx.writeAndFlush(new JoinGamePacketV108(entityId, 1, 0, 0,
                     20, "default"));
@@ -738,7 +738,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         // 1.14+: Send chunk cache radius (view distance) right after JoinGame
         if (isV477) {
-            ctx.writeAndFlush(new SetChunkCacheRadiusPacketV477(ChunkManager.DEFAULT_VIEW_DISTANCE));
+            ctx.writeAndFlush(new SetChunkCacheRadiusPacketV477(ChunkManager.CLIENT_VIEW_DISTANCE));
         }
 
         // 1.13+: Send mandatory DeclareCommands, UpdateRecipes, UpdateTags, Brand
@@ -1511,7 +1511,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                         } else if (isV760) {
                             player.sendPacket(new SystemChatPacketV760(json, false));
                         } else if (isV759) {
-                            player.sendPacket(new SystemChatPacketV759(json, 1));
+                            player.sendPacket(new SystemChatPacketV759(json, 0));
                         } else if (isV735) {
                             player.sendPacket(new NettyChatS2CPacketV735(json, (byte) 0, 0L, 0L));
                         } else {
@@ -1536,7 +1536,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 } else if (isV760) {
                     player.sendPacket(new SystemChatPacketV760(json, false));
                 } else if (isV759) {
-                    player.sendPacket(new SystemChatPacketV759(json, 1));
+                    player.sendPacket(new SystemChatPacketV759(json, 0));
                 } else if (isV735) {
                     player.sendPacket(new NettyChatS2CPacketV735(json, (byte) 0, 0L, 0L));
                 } else {
@@ -1564,7 +1564,11 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         // S2C Y: 1.7.2 = eye-level; 1.8+ = feet-level.
         float alphaYaw = (yaw + 180.0f) % 360.0f;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_4)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
+            awaitingTeleportConfirm = true;
+            ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV768(
+                    spawnX, spawnFeetY, spawnZ, alphaYaw, 0, ++nextTeleportId));
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_4)) {
             awaitingTeleportConfirm = true;
             ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV762(
                     spawnX, spawnFeetY, spawnZ, alphaYaw, 0, ++nextTeleportId));

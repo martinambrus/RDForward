@@ -2,6 +2,7 @@ package com.github.martinambrus.rdforward.e2e.agent.scenario;
 
 import com.github.martinambrus.rdforward.e2e.agent.GameState;
 import com.github.martinambrus.rdforward.e2e.agent.InputController;
+import com.github.martinambrus.rdforward.e2e.agent.McTestAgent;
 import com.github.martinambrus.rdforward.e2e.agent.ScreenshotCapture;
 
 import java.io.File;
@@ -35,7 +36,10 @@ public class CreativeBlockPaletteScenario implements Scenario {
 
     // Total creative inventory grid slots to test (one full visible page)
     private static final int ITEMS_TO_PLACE = 45;
-    private static final int MAX_PER_ROW = 80;
+    // Serpentine layout: 10 blocks per row, alternating +X/-X direction.
+    // Keeps the player within ~22x15 blocks of spawn, avoiding map-edge
+    // falls and reducing per-step walk distance to ~2 blocks.
+    private static final int MAX_PER_ROW = 10;
     private static final int ROW_SPACING_Z = 3;
     private static final int BLOCK_SPACING_X = 2;
     private static final int Z_OFFSET = 2; // blocks placed offset from walking path
@@ -70,6 +74,7 @@ public class CreativeBlockPaletteScenario implements Scenario {
         }
 
         steps.add(new FinalPositioningStep());
+        steps.add(new RenderSettleStep());
         steps.add(new FinalScreenshotStep());
         return steps;
     }
@@ -87,10 +92,16 @@ public class CreativeBlockPaletteScenario implements Scenario {
     }
 
     /**
-     * Compute target block X for a given item index (with row wrapping).
+     * Compute target block X for a given item index (serpentine pattern).
+     * Even rows go +X, odd rows go -X, so row transitions are short walks.
      */
     private int targetX(int itemIndex) {
+        int row = itemIndex / MAX_PER_ROW;
         int col = itemIndex % MAX_PER_ROW;
+        if (row % 2 == 1) {
+            // Odd rows: reverse direction
+            col = MAX_PER_ROW - 1 - col;
+        }
         return (int) originX + 2 + (col * BLOCK_SPACING_X);
     }
 
@@ -101,6 +112,14 @@ public class CreativeBlockPaletteScenario implements Scenario {
     private int targetZ(int itemIndex) {
         int row = itemIndex / MAX_PER_ROW;
         return (int) originZ + Z_OFFSET + (row * ROW_SPACING_Z);
+    }
+
+    /**
+     * Compute walking path Z for a given item index (row-aware).
+     */
+    private double walkPathZ(int itemIndex) {
+        int row = itemIndex / MAX_PER_ROW;
+        return originZ + (row * ROW_SPACING_Z);
     }
 
     // Record spawn position as placement origin
@@ -251,10 +270,22 @@ public class CreativeBlockPaletteScenario implements Scenario {
             double dist = Math.sqrt(dx * dx + dz * dz);
 
             if (!placed && dist > 3.5) {
-                // Walk along origin Z to get within X range of target
-                // (block row is at Z_OFFSET, player walks at originZ)
+                // 1.13 clients reset player position to spawn when closing
+                // the creative inventory. If the player is >10 blocks from
+                // the target, teleport them close instead of walking the
+                // full distance (which would exceed the step timeout).
+                if (dist > 10.0 && ticks == 1) {
+                    double nearX = tx + 0.5 - 2.0; // 2 blocks before target
+                    double wpz = walkPathZ(itemIndex);
+                    gs.teleportPlayer(nearX, pos[1], wpz + 0.5);
+                    System.out.println("[McTestAgent] Teleported to near placement target X="
+                            + String.format("%.1f", nearX));
+                    return false;
+                }
+                // Walk along the row's walking path Z to get within range
+                double wpz = walkPathZ(itemIndex);
                 double walkDx = tx + 0.5 - pos[0];
-                double walkDz = originZ + 0.5 - pos[2];
+                double walkDz = wpz + 0.5 - pos[2];
                 float yaw = (float) Math.toDegrees(Math.atan2(-walkDx, walkDz));
                 input.setLookDirection(yaw, 0);
                 input.pressKey(0); // forward
@@ -292,7 +323,11 @@ public class CreativeBlockPaletteScenario implements Scenario {
 
         @Override
         public int getTimeoutTicks() {
-            return 200; // generous timeout for walking + placing
+            // LWJGL3 clients share CPU with Mesa llvmpipe software renderer;
+            // under parallel test load, tick processing slows down so walking
+            // the same distance takes more ticks.
+            boolean isLwjgl3 = McTestAgent.mappings != null && McTestAgent.mappings.isLwjgl3();
+            return isLwjgl3 ? 400 : 200;
         }
     }
 
@@ -436,7 +471,50 @@ public class CreativeBlockPaletteScenario implements Scenario {
 
         @Override
         public int getTimeoutTicks() {
-            return 600; // generous for walking back ~90 blocks
+            return 400; // generous for walking back (max ~20 blocks with serpentine)
+        }
+    }
+
+    // Wait for chunk meshes to update after block placements.
+    // LWJGL3: frame-stable detection (consecutive identical framebuffer hashes)
+    // instead of a fixed timeout. Adapts to any CPU speed and parallel load.
+    private static class RenderSettleStep implements ScenarioStep {
+        private int ticks;
+        private long lastHash;
+        private int stableCount;
+
+        @Override
+        public String getDescription() {
+            return "render_settle";
+        }
+
+        @Override
+        public boolean tick(GameState gs, InputController input,
+                            ScreenshotCapture capture, File statusDir) {
+            ticks++;
+            boolean isLwjgl3 = McTestAgent.mappings != null && McTestAgent.mappings.isLwjgl3();
+            if (!isLwjgl3) return true; // pre-LWJGL3: no extra wait needed
+
+            // Sample every 20 ticks after minimum 40 ticks
+            if (ticks >= 40 && ticks % 20 == 0) {
+                int w = gs.getDisplayWidth();
+                int h = gs.getDisplayHeight();
+                if (w > 0 && h > 0) {
+                    long hash = capture.captureFrameHash(w, h);
+                    if (hash != 0 && hash == lastHash) {
+                        stableCount++;
+                    } else {
+                        stableCount = 0;
+                    }
+                    lastHash = hash;
+                }
+            }
+            return stableCount >= 3;
+        }
+
+        @Override
+        public int getTimeoutTicks() {
+            return 1200; // 60 second safety net
         }
     }
 

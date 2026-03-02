@@ -114,7 +114,7 @@ public class InventoryManipulationScenario implements Scenario {
         List<Integer> stacks = new ArrayList<Integer>();
         if (slots == null) return stacks;
         for (int[] slot : slots) {
-            if (slot[0] == 4 && slot[1] > 0) {
+            if (slot[0] == gs.getCobblestoneItemId() && slot[1] > 0) {
                 stacks.add(slot[1]);
             }
         }

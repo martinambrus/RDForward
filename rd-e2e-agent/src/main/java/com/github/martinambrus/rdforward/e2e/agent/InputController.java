@@ -3,10 +3,15 @@ package com.github.martinambrus.rdforward.e2e.agent;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.FieldMappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.RubyDungMappings;
 
+import java.io.File;
+import java.io.FileWriter;
+import java.io.PrintWriter;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -61,6 +66,23 @@ public class InputController {
     // Last known player object (to detect respawns)
     private Object lastPlayer;
 
+    // Debug tracking for right-click invocations
+    private String lastRightClickResult = "none";
+    // Debug tracking for lookAtBlock
+    private String lastLookResult = "none";
+
+    /**
+     * Returns debug info about right-click method resolution.
+     */
+    public String getRightClickDebug() {
+        if (rightClickMethod == null && clickMethod == null) {
+            return "not_resolved_yet";
+        }
+        return "click=" + (clickMethod != null ? clickMethod.getName() + "(type=" + clickMethodType + ")" : "null")
+                + " rightClick=" + (rightClickMethod != null ? rightClickMethod.getName() + "(type=" + rightClickMethodType + ")" : "NULL")
+                + " pending=" + pendingClicks + " lastRC=" + lastRightClickResult;
+    }
+
     // Tracks whether the agent intentionally opened a screen (inventory GUI).
     // When false and currentScreen is non-null, it's an unwanted pause menu
     // from Xvfb focus loss, and should be dismissed.
@@ -73,6 +95,20 @@ public class InputController {
     public InputController(GameState gameState, FieldMappings mappings) {
         this.gameState = gameState;
         this.mappings = mappings;
+    }
+
+    /** Append a debug line to statusDir/debug_inventory.log (best-effort). */
+    private void debugLog(String msg) {
+        System.out.println("[McTestAgent] " + msg);
+        try {
+            File dir = McTestAgent.statusDir;
+            if (dir != null) {
+                try (PrintWriter pw = new PrintWriter(
+                        new FileWriter(new File(dir, "debug_inventory.log"), true))) {
+                    pw.println(msg);
+                }
+            }
+        } catch (Exception ignored) {}
     }
 
     public void pressKey(int index) {
@@ -102,20 +138,28 @@ public class InputController {
      */
     public void setLookDirection(float yaw, float pitch) {
         Object player = gameState.getPlayer();
-        if (player == null) return;
+        if (player == null) { lastLookResult = "no_player"; return; }
         try {
             ensureYawPitchFields(player);
+            float oldYaw = yawField.getFloat(player);
             yawField.setFloat(player, yaw);
             pitchField.setFloat(player, pitch);
+            float readBack = yawField.getFloat(player);
+            lastLookResult = "set(y=" + yaw + ",p=" + pitch + ") old=" + oldYaw
+                    + " rb=" + readBack
+                    + " fld=" + yawField.getName() + "@" + yawField.getDeclaringClass().getSimpleName()
+                    + " obj=" + player.getClass().getSimpleName();
             // Also set prevRotation fields to eliminate render interpolation artifacts.
             // The renderer computes: prevPitch + (pitch - prevPitch) * partialTick,
             // so without setting prev fields, the camera may not match the intended angle.
             if (prevYawField != null) prevYawField.setFloat(player, yaw);
             if (prevPitchField != null) prevPitchField.setFloat(player, pitch);
         } catch (Exception e) {
-            System.err.println("[McTestAgent] Failed to set look direction: " + e.getMessage());
+            lastLookResult = "error:" + e.getMessage();
         }
     }
+
+    public String getLastLookResult() { return lastLookResult; }
 
     /**
      * Compute yaw/pitch to look at a specific block position from the player's current position.
@@ -199,8 +243,17 @@ public class InputController {
                         else clickMethod.invoke(mc);
                     } else if (button == 1 && rightClickMethod != null) {
                         // Right click
-                        if (rightClickMethodType == 2) rightClickMethod.invoke(mc, true);
-                        else rightClickMethod.invoke(mc);
+                        try {
+                            if (rightClickMethodType == 2) rightClickMethod.invoke(mc, true);
+                            else rightClickMethod.invoke(mc);
+                            lastRightClickResult = "ok";
+                        } catch (Exception rcEx) {
+                            lastRightClickResult = "error:" + rcEx.getMessage();
+                            System.err.println("[McTestAgent] Right-click invoke error: " + rcEx);
+                            rcEx.printStackTrace();
+                        }
+                    } else if (button == 1) {
+                        lastRightClickResult = "null_method";
                     }
                 }
                 pendingClicks.clear();
@@ -246,16 +299,60 @@ public class InputController {
                 return;
             }
             ensureDigMethod(playerController);
+
+            // For 1.8+ (posYIsFeetLevel), snapshot non-static boolean fields
+            // before dig — startDestroyBlock() sets an internal isDestroying
+            // flag that blocks subsequent right-clicks. We find which field
+            // changed and reset it. Skip for pre-1.8 where dig doesn't set
+            // this flag (and the reset can cause side effects).
+            boolean resetIsDestroying = gameState.getMappings().posYIsFeetLevel();
+            java.lang.reflect.Field[] boolFields = null;
+            boolean[] before = null;
+            if (resetIsDestroying) {
+                boolFields = getBooleanFields(playerController);
+                before = new boolean[boolFields.length];
+                for (int i = 0; i < boolFields.length; i++) {
+                    before[i] = boolFields[i].getBoolean(playerController);
+                }
+            }
+
             if (usesBlockPos) {
                 Object pos = digBlockPosConstructor.newInstance(x, y, z);
                 digMethod.invoke(playerController, pos, enumFacingUp);
             } else {
                 digMethod.invoke(playerController, x, y, z, 1); // face=1 (top)
             }
+
+            if (resetIsDestroying) {
+                // Reset isDestroying: find the boolean that flipped false→true
+                for (int i = 0; i < boolFields.length; i++) {
+                    boolean after = boolFields[i].getBoolean(playerController);
+                    if (!before[i] && after) {
+                        boolFields[i].setBoolean(playerController, false);
+                        break;
+                    }
+                }
+            }
         } catch (Exception e) {
             System.err.println("[McTestAgent] breakBlock error: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    private java.lang.reflect.Field[] getBooleanFields(Object obj) {
+        java.util.List<java.lang.reflect.Field> result = new java.util.ArrayList<java.lang.reflect.Field>();
+        Class<?> c = obj.getClass();
+        while (c != null && c != Object.class) {
+            for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                if (f.getType() == boolean.class
+                        && !java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                    f.setAccessible(true);
+                    result.add(f);
+                }
+            }
+            c = c.getSuperclass();
+        }
+        return result.toArray(new java.lang.reflect.Field[0]);
     }
 
     // --- RubyDung-specific methods ---
@@ -605,14 +702,20 @@ public class InputController {
             while (c != null && c != Object.class) {
                 try {
                     Field f = c.getDeclaredField(mappings.yawFieldName());
-                    f.setAccessible(true);
-                    yawField = f;
-                    pitchField = c.getDeclaredField(mappings.pitchFieldName());
-                    pitchField.setAccessible(true);
-                    // Resolve prevRotation fields (declared +2 positions after rotation
-                    // in obfuscated Entity class: yaw,pitch,prevYaw,prevPitch)
-                    resolvePrevRotationFields(c);
-                    break;
+                    // Must be a non-static float — avoid shadowing by
+                    // static final int fields on intermediate classes (e.g.
+                    // LivingEntity.aA shadows Entity.aA in 1.18.2)
+                    if (f.getType() == float.class
+                            && !java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                        f.setAccessible(true);
+                        yawField = f;
+                        pitchField = c.getDeclaredField(mappings.pitchFieldName());
+                        pitchField.setAccessible(true);
+                        // Resolve prevRotation fields (declared +2 positions after rotation
+                        // in obfuscated Entity class: yaw,pitch,prevYaw,prevPitch)
+                        resolvePrevRotationFields(c);
+                        break;
+                    }
                 } catch (NoSuchFieldException ignored) {}
                 c = c.getSuperclass();
             }
@@ -856,6 +959,8 @@ public class InputController {
 
     // Cached reflection handles for Phase 3
     private Method sendChatMessageMethod;
+    private boolean sendChatIs2Param; // 1.19.1+: chatSigned(String, Component)
+    private Field sendChatNetworkHandler; // 1.19.3+: handler field on player for chat
     private Method dropPlayerItemMethod;
     private Method displayGuiScreenMethod;
     private Field inventoryField;
@@ -896,6 +1001,8 @@ public class InputController {
 
     /**
      * Send a chat message via EntityPlayerSP.sendChatMessage(String).
+     * For 1.19.3+, the method moved to ClientPlayNetworkHandler; accessed via
+     * the networkHandler field on the player.
      * For RubyDung, uses RDClient.getInstance().sendChat(String) via Fabric classloader.
      */
     public void sendChatMessage(String message) {
@@ -911,26 +1018,112 @@ public class InputController {
         }
         try {
             if (sendChatMessageMethod == null) {
-                // mp.a(String) — walk hierarchy for method taking String, returning void
-                Class<?> c = player.getClass();
-                while (c != null && c != Object.class) {
-                    try {
-                        Method m = c.getDeclaredMethod(mappings.sendChatMessageMethodName(),
-                                String.class);
-                        if (m.getReturnType() == void.class) {
-                            m.setAccessible(true);
-                            sendChatMessageMethod = m;
-                            break;
+                String methodName = mappings.sendChatMessageMethodName();
+                String handlerField = mappings.networkHandlerFieldName();
+
+                System.out.println("[McTestAgent] sendChat: handlerField="
+                        + handlerField + " methodName=" + methodName);
+                if (handlerField != null && methodName != null) {
+                    // 1.19.3+ path: sendChatMessage is on the network handler, not the player.
+                    // Use getDeclaredFields() instead of getDeclaredField() because ProGuard
+                    // can map multiple fields to the same name with different types (e.g.,
+                    // "cz" = ClientPacketListener AND "cz" = int on LocalPlayer in 1.20.6).
+                    // We need the non-primitive Object field.
+                    Class<?> pc = player.getClass();
+                    while (pc != null && pc != Object.class) {
+                        for (Field f : pc.getDeclaredFields()) {
+                            if (f.getName().equals(handlerField)
+                                    && !f.getType().isPrimitive()
+                                    && !Modifier.isStatic(f.getModifiers())) {
+                                f.setAccessible(true);
+                                sendChatNetworkHandler = f;
+                                System.out.println("[McTestAgent] sendChat: found handler field "
+                                        + pc.getName() + "." + f.getName()
+                                        + " (type=" + f.getType().getName() + ")");
+                                break;
+                            }
                         }
-                    } catch (NoSuchMethodException ignored) {}
-                    c = c.getSuperclass();
+                        if (sendChatNetworkHandler != null) break;
+                        pc = pc.getSuperclass();
+                    }
+                    if (sendChatNetworkHandler != null) {
+                        Object handler = sendChatNetworkHandler.get(player);
+                        System.out.println("[McTestAgent] sendChat: handler object="
+                                + (handler != null ? handler.getClass().getName() : "null"));
+                        if (handler != null) {
+                            Class<?> c = handler.getClass();
+                            while (c != null && c != Object.class) {
+                                try {
+                                    Method m = c.getDeclaredMethod(methodName, String.class);
+                                    if (m.getReturnType() == void.class) {
+                                        m.setAccessible(true);
+                                        sendChatMessageMethod = m;
+                                        break;
+                                    }
+                                } catch (NoSuchMethodException ignored) {}
+                                c = c.getSuperclass();
+                            }
+                        }
+                    } else {
+                        System.out.println("[McTestAgent] sendChat: handler field not found on hierarchy");
+                    }
                 }
+
+                if (sendChatMessageMethod == null && methodName != null) {
+                    // Pre-1.19.3 path: method is on the player hierarchy
+                    // First try single-param chat(String) (pre-1.19.1)
+                    Class<?> c = player.getClass();
+                    while (c != null && c != Object.class) {
+                        try {
+                            Method m = c.getDeclaredMethod(methodName, String.class);
+                            if (m.getReturnType() == void.class) {
+                                m.setAccessible(true);
+                                sendChatMessageMethod = m;
+                                break;
+                            }
+                        } catch (NoSuchMethodException ignored) {}
+                        c = c.getSuperclass();
+                    }
+                    // If single-param not found, try chatSigned(String, Component) (1.19.1+)
+                    if (sendChatMessageMethod == null) {
+                        c = player.getClass();
+                        while (c != null && c != Object.class) {
+                            for (Method m : c.getDeclaredMethods()) {
+                                if (m.getName().equals(methodName)
+                                        && m.getReturnType() == void.class
+                                        && m.getParameterCount() == 2
+                                        && m.getParameterTypes()[0] == String.class
+                                        && !m.getParameterTypes()[1].isPrimitive()) {
+                                    m.setAccessible(true);
+                                    sendChatMessageMethod = m;
+                                    sendChatIs2Param = true;
+                                    break;
+                                }
+                            }
+                            if (sendChatMessageMethod != null) break;
+                            c = c.getSuperclass();
+                        }
+                    }
+                }
+
                 if (sendChatMessageMethod == null) {
                     throw new RuntimeException("sendChatMessage method not found on "
-                            + player.getClass().getName());
+                            + player.getClass().getName()
+                            + (handlerField != null ? " or its networkHandler" : ""));
                 }
             }
-            sendChatMessageMethod.invoke(player, message);
+
+            if (sendChatNetworkHandler != null) {
+                // 1.19.3+ path: invoke on the handler object
+                Object handler = sendChatNetworkHandler.get(player);
+                sendChatMessageMethod.invoke(handler, message);
+            } else if (sendChatIs2Param) {
+                // 1.19.1+ path: chatSigned(String, Component) — pass null for Component
+                sendChatMessageMethod.invoke(player, message, null);
+            } else {
+                // Pre-1.19.1 path: chat(String) on the player
+                sendChatMessageMethod.invoke(player, message);
+            }
             System.out.println("[McTestAgent] Sent chat: " + message);
         } catch (Exception e) {
             System.err.println("[McTestAgent] sendChatMessage error: " + e.getMessage());
@@ -1076,25 +1269,304 @@ public class InputController {
             className = mappings.guiInventoryClassName();
         }
 
-        Class<?> guiClass = Class.forName(className);
+        debugLog("tryOpenBetaInventory: className=" + className
+                + " player=" + player.getClass().getName());
+        Class<?> guiClass = loadGuiClassWithFallback(className);
+        debugLog("tryOpenBetaInventory: guiClass=" + guiClass.getName());
         // Find constructor that takes the player's class or a superclass.
         // Use getDeclaredConstructors to include non-public constructors (Netty versions).
+        // First try 1-param (pre-1.19.3), then multi-param with defaults.
         Constructor<?> ctor = null;
+        Object[] ctorArgs = null;
         for (Constructor<?> c : guiClass.getDeclaredConstructors()) {
             Class<?>[] params = c.getParameterTypes();
+            debugLog("  ctor: " + Arrays.toString(params));
             if (params.length == 1 && params[0].isAssignableFrom(player.getClass())) {
                 ctor = c;
+                ctorArgs = new Object[]{player};
+                debugLog("  -> matched 1-param constructor");
                 break;
             }
         }
+        // If no 1-param constructor, try multi-param where first param is player.
+        // For non-primitive params, try to resolve from world/player no-arg methods.
         if (ctor == null) {
+            Object world = gameState.getWorld();
+            for (Constructor<?> c : guiClass.getDeclaredConstructors()) {
+                Class<?>[] params = c.getParameterTypes();
+                if (params.length >= 2 && params[0].isAssignableFrom(player.getClass())) {
+                    Object[] args = new Object[params.length];
+                    args[0] = player;
+                    boolean canFill = true;
+                    for (int i = 1; i < params.length; i++) {
+                        if (params[i] == boolean.class) args[i] = false;
+                        else if (params[i] == int.class) args[i] = 0;
+                        else if (params[i] == float.class) args[i] = 0f;
+                        else if (params[i] == double.class) args[i] = 0d;
+                        else if (params[i] == long.class) args[i] = 0L;
+                        else if (!params[i].isPrimitive()) {
+                            // Try to find a no-arg method on world or player returning this type
+                            Object resolved = resolveParamFromSources(params[i], world, player);
+                            debugLog("  resolved param[" + i + "] " + params[i].getName()
+                                    + " = " + (resolved == null ? "NULL" : resolved.getClass().getName()));
+                            args[i] = resolved; // may still be null if unresolvable
+                        }
+                        else { canFill = false; break; }
+                    }
+                    if (canFill) {
+                        ctor = c;
+                        ctorArgs = args;
+                        debugLog("  -> matched " + params.length + "-param constructor");
+                        System.out.println("[McTestAgent] Using " + params.length
+                                + "-param constructor for " + className);
+                        break;
+                    }
+                }
+            }
+        }
+        if (ctor == null) {
+            debugLog("tryOpenBetaInventory: No suitable constructor for " + className);
+            System.out.println("[McTestAgent] No suitable constructor for " + className);
             return false; // No Beta-style constructor; caller should try Alpha-style
         }
         ctor.setAccessible(true);
-        Object guiInv = ctor.newInstance(player);
-        displayGuiScreenMethod.invoke(gameState.getMinecraftInstance(), guiInv);
-        System.out.println("[McTestAgent] Opened " + className + " inventory GUI");
-        return true;
+        try {
+            Object guiInv = ctor.newInstance(ctorArgs);
+            debugLog("tryOpenBetaInventory: constructor succeeded, invoking displayGuiScreen");
+            displayGuiScreenMethod.invoke(gameState.getMinecraftInstance(), guiInv);
+            System.out.println("[McTestAgent] Opened " + className + " inventory GUI");
+            return true;
+        } catch (Exception e) {
+            debugLog("tryOpenBetaInventory: constructor/display threw: " + e
+                    + (e.getCause() != null ? " cause=" + e.getCause() : ""));
+            // Fall back to other approaches
+            return false;
+        }
+    }
+
+    /**
+     * Try to resolve a constructor parameter type from game objects (world, player).
+     * Searches for no-arg methods on the given sources that return the target type.
+     */
+    private Object resolveParamFromSources(Class<?> targetType, Object... sources) {
+        for (Object source : sources) {
+            if (source == null) continue;
+            Class<?> c = source.getClass();
+            while (c != null && c != Object.class) {
+                for (java.lang.reflect.Method m : c.getDeclaredMethods()) {
+                    if (m.getParameterCount() == 0
+                            && targetType.isAssignableFrom(m.getReturnType())) {
+                        try {
+                            m.setAccessible(true);
+                            Object val = m.invoke(source);
+                            if (val != null) {
+                                System.out.println("[McTestAgent] Resolved " + targetType.getName()
+                                        + " from " + c.getName() + "." + m.getName() + "()");
+                                return val;
+                            }
+                        } catch (Exception ignored) {}
+                    }
+                }
+                c = c.getSuperclass();
+            }
+        }
+        // Try static no-arg factory methods on the target type itself.
+        // E.g. CreativeModeTabs.a() returns default tab set.
+        for (java.lang.reflect.Method m : targetType.getDeclaredMethods()) {
+            if (m.getParameterCount() == 0
+                    && java.lang.reflect.Modifier.isStatic(m.getModifiers())
+                    && targetType.isAssignableFrom(m.getReturnType())) {
+                try {
+                    m.setAccessible(true);
+                    Object val = m.invoke(null);
+                    if (val != null) {
+                        System.out.println("[McTestAgent] Resolved " + targetType.getName()
+                                + " via static " + targetType.getName() + "." + m.getName() + "()");
+                        return val;
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Load a GUI class by name, falling back to nearby obfuscated names if the
+     * exact name doesn't have a suitable Player constructor (obfuscation shift).
+     */
+    private Class<?> loadGuiClassWithFallback(String className) throws ClassNotFoundException {
+        debugLog("loadGuiClassWithFallback: trying " + className);
+        // Try exact name first — verify it has a Player-compatible constructor
+        try {
+            Class<?> cls = Class.forName(className);
+            if (hasPlayerConstructor(cls)) {
+                debugLog("loadGuiClassWithFallback: exact match " + className);
+                return cls;
+            }
+            debugLog(className + " loaded but has no Player constructor, searching nearby...");
+            System.out.println("[McTestAgent] " + className
+                    + " loaded but has no Player constructor, searching nearby...");
+        } catch (ClassNotFoundException ignored) {
+            debugLog(className + " not found, searching nearby...");
+            System.out.println("[McTestAgent] " + className
+                    + " not found, searching nearby...");
+        }
+
+        // Get the Screen base class from displayGuiScreenMethod for validation
+        Class<?> screenClass = null;
+        if (displayGuiScreenMethod != null) {
+            screenClass = displayGuiScreenMethod.getParameterTypes()[0];
+        }
+        debugLog("loadGuiClassWithFallback: screenClass="
+                + (screenClass != null ? screenClass.getName() : "null"));
+
+        // Search nearby obfuscated class names
+        Class<?> bestCandidate = null;
+        // Try shifting the last character ±1 through ±10
+        char[] chars = className.toCharArray();
+        char origLast = chars[chars.length - 1];
+        for (int delta = 1; delta <= 10; delta++) {
+            for (int sign : new int[]{1, -1}) {
+                char c = (char) (origLast + sign * delta);
+                if (!Character.isLetterOrDigit(c)) continue;
+                chars[chars.length - 1] = c;
+                String candidate = new String(chars);
+                try {
+                    Class<?> cls = Class.forName(candidate);
+                    if (!hasPlayerConstructor(cls)) continue;
+                    if (screenClass == null || screenClass.isAssignableFrom(cls)) {
+                        debugLog("loadGuiClassWithFallback: " + className + " -> " + candidate);
+                        return cls;
+                    }
+                    // hasCtor=true but screenClass mismatch — might be wrong displayGuiScreen
+                    if (bestCandidate == null && hasScreenFields(cls)) {
+                        bestCandidate = cls;
+                        debugLog("  candidate " + candidate
+                                + ": hasCtor+screenFields, deferring (screenClass mismatch)");
+                    }
+                } catch (ClassNotFoundException ignored) {}
+            }
+        }
+
+        // Try shifting the second-to-last character ±1 through ±5
+        chars = className.toCharArray();
+        char origSecondLast = chars[chars.length - 2];
+        for (int delta = 1; delta <= 5; delta++) {
+            for (int sign : new int[]{1, -1}) {
+                char c2 = (char) (origSecondLast + sign * delta);
+                if (!Character.isLetter(c2)) continue;
+                chars[chars.length - 2] = c2;
+                chars[chars.length - 1] = origLast; // reset last char
+                String candidate = new String(chars);
+                try {
+                    Class<?> cls = Class.forName(candidate);
+                    if (!hasPlayerConstructor(cls)) continue;
+                    if (screenClass == null || screenClass.isAssignableFrom(cls)) {
+                        debugLog("loadGuiClassWithFallback: " + className + " -> " + candidate);
+                        return cls;
+                    }
+                    if (bestCandidate == null && hasScreenFields(cls)) {
+                        bestCandidate = cls;
+                    }
+                } catch (ClassNotFoundException ignored) {}
+            }
+        }
+
+        // If we found a candidate with Player constructor + screen fields but
+        // the screenClass was wrong (displayGuiScreenMethod picked wrong overload),
+        // re-resolve displayGuiScreenMethod using the candidate's actual Screen superclass.
+        if (bestCandidate != null) {
+            Class<?> realScreenClass = findScreenAncestor(bestCandidate);
+            if (realScreenClass != null) {
+                debugLog("loadGuiClassWithFallback: re-resolving displayGuiScreen for "
+                        + realScreenClass.getName());
+                reResolveDisplayGuiScreenMethod(realScreenClass);
+            }
+            debugLog("loadGuiClassWithFallback: " + className + " -> " + bestCandidate.getName());
+            return bestCandidate;
+        }
+
+        // Last resort: fall back to exact class (will likely fail at constructor resolution)
+        return Class.forName(className);
+    }
+
+    private boolean hasPlayerConstructor(Class<?> cls) {
+        Object player = gameState.getPlayer();
+        if (player == null) return false;
+        for (Constructor<?> c : cls.getDeclaredConstructors()) {
+            Class<?>[] params = c.getParameterTypes();
+            if (params.length >= 1 && params[0].isAssignableFrom(player.getClass())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Check if a class or any ancestor has Screen-like fields (width/height). */
+    private boolean hasScreenFields(Class<?> cls) {
+        String wf = mappings.guiScreenWidthFieldName();
+        if (wf == null) return false;
+        Class<?> c = cls;
+        while (c != null && c != Object.class) {
+            try {
+                c.getDeclaredField(wf);
+                return true;
+            } catch (NoSuchFieldException ignored) {}
+            c = c.getSuperclass();
+        }
+        return false;
+    }
+
+    /**
+     * Walk up the class hierarchy to find the ancestor that declares Screen fields.
+     * Returns the highest ancestor (closest to Object) that has width/height fields.
+     */
+    private Class<?> findScreenAncestor(Class<?> cls) {
+        String wf = mappings.guiScreenWidthFieldName();
+        if (wf == null) return null;
+        Class<?> screenClass = null;
+        Class<?> c = cls;
+        while (c != null && c != Object.class) {
+            try {
+                c.getDeclaredField(wf);
+                screenClass = c; // keep going up to find the highest
+            } catch (NoSuchFieldException ignored) {}
+            c = c.getSuperclass();
+        }
+        return screenClass;
+    }
+
+    /**
+     * Re-resolve displayGuiScreenMethod using the correct Screen class.
+     * Called when the original resolution picked the wrong overload of the method.
+     */
+    private void reResolveDisplayGuiScreenMethod(Class<?> screenClass) {
+        String methodName = mappings.displayGuiScreenMethodName();
+        Class<?> c = gameState.getMinecraftInstance().getClass();
+        while (c != null && c != Object.class) {
+            try {
+                Method m = c.getDeclaredMethod(methodName, screenClass);
+                m.setAccessible(true);
+                displayGuiScreenMethod = m;
+                debugLog("reResolveDisplayGuiScreenMethod: found " + methodName
+                        + "(" + screenClass.getName() + ") on " + c.getName());
+                return;
+            } catch (NoSuchMethodException ignored) {}
+            c = c.getSuperclass();
+        }
+        debugLog("reResolveDisplayGuiScreenMethod: could not find " + methodName
+                + "(" + screenClass.getName() + ")");
+    }
+
+    private String getSuperChain(Class<?> cls) {
+        StringBuilder sb = new StringBuilder();
+        Class<?> c = cls;
+        while (c != null && c != Object.class) {
+            if (sb.length() > 0) sb.append(" -> ");
+            sb.append(c.getName());
+            c = c.getSuperclass();
+        }
+        return sb.toString();
     }
 
     private void openAlphaInventory(Object player) throws Exception {
@@ -1335,17 +1807,42 @@ public class InputController {
 
     private void ensureDisplayGuiScreenMethod() throws Exception {
         if (displayGuiScreenMethod != null) return;
-        // Use Class.forName("bp") for exact parameter type match to avoid ambiguity
-        Class<?> guiScreenClass = Class.forName(mappings.guiScreenClassName());
+        String methodName = mappings.displayGuiScreenMethodName();
+        // Try exact Screen class match first
+        try {
+            Class<?> guiScreenClass = Class.forName(mappings.guiScreenClassName());
+            Class<?> c = gameState.getMinecraftInstance().getClass();
+            while (c != null && c != Object.class) {
+                try {
+                    Method m = c.getDeclaredMethod(methodName, guiScreenClass);
+                    m.setAccessible(true);
+                    displayGuiScreenMethod = m;
+                    return;
+                } catch (NoSuchMethodException ignored) {}
+                c = c.getSuperclass();
+            }
+        } catch (ClassNotFoundException ignored) {}
+        // Fallback: find a single-param void method with the right name where the
+        // param type is not a primitive (handles obfuscation mismatch from auto-detect)
         Class<?> c = gameState.getMinecraftInstance().getClass();
         while (c != null && c != Object.class) {
-            try {
-                Method m = c.getDeclaredMethod(mappings.displayGuiScreenMethodName(),
-                        guiScreenClass);
-                m.setAccessible(true);
-                displayGuiScreenMethod = m;
-                return;
-            } catch (NoSuchMethodException ignored) {}
+            for (Method m : c.getDeclaredMethods()) {
+                if (m.getName().equals(methodName)
+                        && m.getReturnType() == void.class
+                        && m.getParameterCount() == 1
+                        && !m.getParameterTypes()[0].isPrimitive()) {
+                    // Verify param type looks like a Screen class (has width/height fields)
+                    Class<?> paramType = m.getParameterTypes()[0];
+                    try {
+                        paramType.getDeclaredField(mappings.guiScreenWidthFieldName());
+                        m.setAccessible(true);
+                        displayGuiScreenMethod = m;
+                        System.out.println("[McTestAgent] displayGuiScreen: resolved via fallback "
+                                + c.getName() + "." + methodName + "(" + paramType.getName() + ")");
+                        return;
+                    } catch (NoSuchFieldException ignored2) {}
+                }
+            }
             c = c.getSuperclass();
         }
         throw new RuntimeException("displayGuiScreen method not found");

@@ -112,6 +112,9 @@ public class RDServer {
         this.playerManager = new PlayerManager();
         File worldDir = (dataDir != null) ? new File(dataDir, DEFAULT_WORLD_DIR) : new File(DEFAULT_WORLD_DIR);
         this.chunkManager = new ChunkManager(worldGenerator, worldSeed, worldDir);
+        System.out.println("[RDServer] ChunkManager viewDistance="
+                + ChunkManager.DEFAULT_VIEW_DISTANCE
+                + " (e2e.viewDistance=" + System.getProperty("e2e.viewDistance") + ")");
         this.chunkManager.setServerWorld(world);
         this.tickLoop = new ServerTickLoop(playerManager, world, chunkManager);
     }

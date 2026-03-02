@@ -99,7 +99,7 @@ public class NettyReleaseV757Mappings implements FieldMappings {
     @Override public String guiInventoryClassName() { return "eel"; } // InventoryScreen
     @Override public String closeContainerMethodName() { return "w"; } // eop.w() sends ContainerClose packet + calls super
     @Override public boolean posYIsFeetLevel() { return true; } // 1.8+: posY = feet
-    @Override public String rightClickMethodName() { return "h"; } // right-click/use method
+    @Override public String rightClickMethodName() { return "aP"; } // dxo.aP() right-click/startUseItem (Mojang mapping 1.18)
     @Override public boolean isLwjgl3() { return true; }
     @Override public boolean isNettyClient() { return true; }
     @Override public String blockRenderDispatcherClassName() { return "eqc"; }

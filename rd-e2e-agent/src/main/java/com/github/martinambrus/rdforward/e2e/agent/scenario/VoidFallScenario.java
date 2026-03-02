@@ -2,6 +2,7 @@ package com.github.martinambrus.rdforward.e2e.agent.scenario;
 
 import com.github.martinambrus.rdforward.e2e.agent.GameState;
 import com.github.martinambrus.rdforward.e2e.agent.InputController;
+import com.github.martinambrus.rdforward.e2e.agent.McTestAgent;
 import com.github.martinambrus.rdforward.e2e.agent.ScreenshotCapture;
 
 import java.io.File;
@@ -64,6 +65,7 @@ public class VoidFallScenario implements Scenario {
     private class TeleportToVoidStep implements ScenarioStep {
         private int ticks;
         private double startY;
+        private java.io.PrintWriter debugOut;
 
         @Override
         public String getDescription() {
@@ -74,7 +76,18 @@ public class VoidFallScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
+            if (debugOut == null) {
+                try {
+                    debugOut = new java.io.PrintWriter(new java.io.FileWriter(
+                            new java.io.File(statusDir, "debug_teleport.log")), true);
+                } catch (Exception ignored) {}
+            }
             double[] pos = gs.getPlayerPosition();
+            if (debugOut != null && (ticks <= 10 || ticks % 20 == 0)) {
+                debugOut.printf("tick=%d pos=%s %s%n", ticks,
+                        pos != null ? String.format("%.2f,%.2f,%.2f", pos[0], pos[1], pos[2]) : "null",
+                        gs.getPositionDebug());
+            }
             if (pos == null) return false;
 
             if (ticks == 1) {
@@ -92,7 +105,10 @@ public class VoidFallScenario implements Scenario {
                     float dy = (float) (targetY - pos[1]);
                     input.movePlayerPosition(0, dy, 0);
                 } else {
-                    gs.teleportPlayer(pos[0], targetY, pos[2]);
+                    // forcePosition writes both the Vec3d position field (1.15+)
+                    // AND the legacy double fields, patches the bounding box,
+                    // and sets onGround=false. Works for all versions.
+                    gs.forcePosition(pos[0], targetY, pos[2]);
                 }
                 System.out.println("[McTestAgent] Teleported to void: Y="
                         + String.format("%.1f", targetY)
@@ -100,8 +116,22 @@ public class VoidFallScenario implements Scenario {
                 return false;
             }
 
+            // For versions where forcePosition may not persist (1.15+ Vec3d
+            // can be overwritten by tick logic), also apply a large downward
+            // velocity on ticks 2-5. The game's own physics will apply this
+            // velocity, dropping the player into the void.
+            if (ticks >= 2 && ticks <= 5 && !input.isRubyDung()) {
+                gs.setDownwardVelocity(100.0);
+            }
+
             // Wait for the teleport to register (Y should be far below startY)
             double yDrop = startY - pos[1];
+            if (ticks <= 10 || ticks % 20 == 0) {
+                System.out.println("[McTestAgent] teleport_to_void tick=" + ticks
+                        + " Y=" + String.format("%.2f", pos[1])
+                        + " startY=" + String.format("%.2f", startY)
+                        + " yDrop=" + String.format("%.2f", yDrop));
+            }
             if (yDrop > 1.0) {
                 System.out.println("[McTestAgent] In void: Y="
                         + String.format("%.1f", pos[1])
@@ -351,6 +381,9 @@ public class VoidFallScenario implements Scenario {
     // Step 6: Wait for world to render after teleport
     private class WaitSettleStep implements ScenarioStep {
         private int ticks;
+        private long lastHash;
+        private int stableCount;
+        private static final int SETTLE_TICKS_DEFAULT = 60;   // 3 seconds
 
         @Override
         public String getDescription() {
@@ -361,12 +394,29 @@ public class VoidFallScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
-            return ticks >= 60; // 3 seconds for chunks to load and render
+            boolean isLwjgl3 = McTestAgent.mappings != null && McTestAgent.mappings.isLwjgl3();
+            if (!isLwjgl3) return ticks >= SETTLE_TICKS_DEFAULT;
+
+            // Frame-stable detection: sample every 20 ticks after minimum 40
+            if (ticks >= 40 && ticks % 20 == 0) {
+                int w = gs.getDisplayWidth();
+                int h = gs.getDisplayHeight();
+                if (w > 0 && h > 0) {
+                    long hash = capture.captureFrameHash(w, h);
+                    if (hash != 0 && hash == lastHash) {
+                        stableCount++;
+                    } else {
+                        stableCount = 0;
+                    }
+                    lastHash = hash;
+                }
+            }
+            return stableCount >= 3;
         }
 
         @Override
         public int getTimeoutTicks() {
-            return 80;
+            return 1200; // 60 second safety net
         }
     }
 

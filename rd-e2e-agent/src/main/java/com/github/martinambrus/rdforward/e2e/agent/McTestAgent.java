@@ -61,6 +61,22 @@ import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV755Mapp
 import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV756Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV757Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV758Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV759Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV760Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV761Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV762Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV763Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV764Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV765Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV766Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV767Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV768Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV769Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV770Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV771Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV772Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV773Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV774Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.ReleaseV22Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.ReleaseV23Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.ReleaseV28Mappings;
@@ -138,6 +154,9 @@ public class McTestAgent {
     public static volatile String role;       // "primary" or "secondary" (null for single-client tests)
     public static volatile File syncDir;      // shared sync directory (null for single-client tests)
     public static volatile boolean runAdviceApplied;
+    /** Set to true once the world has loaded. Used by GameRendererSkipAdvice
+     *  to allow the loading overlay to render normally during startup. */
+    public static volatile boolean worldLoaded;
 
     public static void premain(String agentArgs, Instrumentation inst) {
         System.out.println("[McTestAgent] Agent loading with args: " + agentArgs);
@@ -162,23 +181,42 @@ public class McTestAgent {
         // Scans Main.class bytecode to find the actual class/method names.
         String[] detected = detectMinecraftClassFromBytecode();
         if (detected != null) {
-            if (!detected[0].equals(mappings.minecraftClassName())
-                    || !detected[1].equals(mappings.runMethodName())
-                    || !detected[2].equals(mappings.tickMethodName())) {
+            boolean classChanged = !detected[0].equals(mappings.minecraftClassName());
+            boolean runChanged = !detected[1].equals(mappings.runMethodName());
+            boolean tickChanged = !detected[2].equals(mappings.tickMethodName());
+            String detectedGR = detected.length > 3 ? detected[3] : null;
+            boolean grChanged = detectedGR != null && mappings.gameRendererClassName() != null
+                    && !detectedGR.equals(mappings.gameRendererClassName());
+            if (classChanged || runChanged || tickChanged || grChanged) {
                 System.out.println("[McTestAgent] Auto-detect override: class=" + detected[0]
                         + " run=" + detected[1] + " tick=" + detected[2]
+                        + (detectedGR != null ? " gameRenderer=" + detectedGR : "")
                         + " (was: class=" + mappings.minecraftClassName()
                         + " run=" + mappings.runMethodName()
-                        + " tick=" + mappings.tickMethodName() + ")");
-                mappings = new DelegatingFieldMappings(mappings, detected[0], detected[1], detected[2]);
+                        + " tick=" + mappings.tickMethodName()
+                        + " gameRenderer=" + mappings.gameRendererClassName() + ")");
+                mappings = new DelegatingFieldMappings(mappings, detected[0], detected[1],
+                        detected[2], grChanged ? detectedGR : null);
             }
         }
 
         // MC 1.17+ uses OpenGL Core Profile where fixed-function calls like
         // glPushMatrix/glPopMatrix are unavailable and cause a JVM FATAL abort.
         // Set a system property so RenderLoopSafetyAdvice can skip GL matrix cleanup.
-        if (version.startsWith("release117") || version.startsWith("release118")) {
+        if (version.startsWith("release117") || version.startsWith("release118")
+                || version.startsWith("release119") || version.startsWith("release120")
+                || version.startsWith("release121") || version.startsWith("release1_21")) {
             System.setProperty("mctestagent.coreprofile", "true");
+        }
+        // MC 1.20+ uses --quickPlayMultiplayer instead of --server/--port.
+        // The quickplay connection is triggered by the loading overlay's completion
+        // callback inside GameRenderer.render(). GameRendererSkipAdvice must allow
+        // render() to run during loading for these versions (skip only after worldLoaded).
+        // For 1.17-1.19.4, render() is always skipped since --server/--port doesn't
+        // depend on the overlay callback.
+        if (version.startsWith("release120") || version.startsWith("release121")
+                || version.startsWith("release1_21")) {
+            System.setProperty("mctestagent.quickplay", "true");
         }
         // Create status directory early so the orchestrator can find it
         statusDir.mkdirs();
@@ -198,7 +236,16 @@ public class McTestAgent {
         // KnotClassLoader.
         AgentBuilder builder = new AgentBuilder.Default()
                 .disableClassFormatChanges()
-                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION);
+                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+                .with(new AgentBuilder.Listener.Adapter() {
+                    @Override
+                    public void onError(String typeName, ClassLoader classLoader,
+                            JavaModule module, boolean loaded, Throwable throwable) {
+                        System.err.println("[McTestAgent] ByteBuddy transform error on "
+                                + typeName + ": " + throwable.getMessage());
+                        throwable.printStackTrace(System.err);
+                    }
+                });
 
         if (mappings.isLwjgl3()) {
             // LWJGL3 clients: patch GLFW.glfwGetWindowAttrib() to return 1
@@ -678,6 +725,71 @@ public class McTestAgent {
             case "release_1_18_2":
                 return new NettyReleaseV758Mappings();
 
+            case "release119":
+            case "release_1_19":
+                return new NettyReleaseV759Mappings();
+            case "release1191":
+            case "release1192":
+            case "release_1_19_1":
+            case "release_1_19_2":
+                return new NettyReleaseV760Mappings();
+            case "release1193":
+            case "release_1_19_3":
+                return new NettyReleaseV761Mappings();
+            case "release1194":
+            case "release_1_19_4":
+                return new NettyReleaseV762Mappings();
+            case "release120":
+            case "release1201":
+            case "release_1_20":
+            case "release_1_20_1":
+                return new NettyReleaseV763Mappings();
+            case "release1202":
+            case "release_1_20_2":
+                return new NettyReleaseV764Mappings();
+            case "release1203":
+            case "release1204":
+            case "release_1_20_3":
+            case "release_1_20_4":
+                return new NettyReleaseV765Mappings();
+            case "release1205":
+            case "release1206":
+            case "release_1_20_5":
+            case "release_1_20_6":
+                return new NettyReleaseV766Mappings();
+            case "release1_21":
+            case "release1_211":
+            case "release_1_21":
+            case "release_1_21_1":
+                return new NettyReleaseV767Mappings();
+            case "release1212":
+            case "release1213":
+            case "release_1_21_2":
+            case "release_1_21_3":
+                return new NettyReleaseV768Mappings();
+            case "release1214":
+            case "release_1_21_4":
+                return new NettyReleaseV769Mappings();
+            case "release1215":
+            case "release_1_21_5":
+                return new NettyReleaseV770Mappings();
+            case "release1216":
+            case "release1217":
+            case "release_1_21_6":
+            case "release_1_21_7":
+                return new NettyReleaseV771Mappings();
+            case "release1218":
+            case "release_1_21_8":
+                return new NettyReleaseV772Mappings();
+            case "release1219":
+            case "release12110":
+            case "release_1_21_9":
+            case "release_1_21_10":
+                return new NettyReleaseV773Mappings();
+            case "release12111":
+            case "release_1_21_11":
+                return new NettyReleaseV774Mappings();
+
             default:
                 System.out.println("[McTestAgent] Unknown version '" + version
                         + "', defaulting to Alpha 1.2.6 mappings");
@@ -736,8 +848,9 @@ public class McTestAgent {
      *   <li>Per-frame method → find tick method (()V self-call + iinc)</li>
      * </ol>
      *
-     * @return String[3] = {className, runMethodName, tickMethodName}, or null if
-     *         detection fails or Main.class doesn't exist (pre-Netty clients).
+     * @return String[4] = {className, runMethodName, tickMethodName, gameRendererClassName},
+     *         or null if detection fails or Main.class doesn't exist (pre-Netty clients).
+     *         gameRendererClassName may be null if not found.
      */
     private static String[] detectMinecraftClassFromBytecode() {
         InputStream mainStream = ClassLoader.getSystemResourceAsStream(
@@ -753,7 +866,7 @@ public class McTestAgent {
             // Phase 1: Find Minecraft class name and run method from Main.main().
             // Collect all NEW'd types, then find the first INVOKEVIRTUAL ()V call
             // whose owner was NEW'd — that's the Minecraft class and its run method.
-            final String[] result = new String[3];
+            final String[] result = new String[5];
 
             ClassReader cr = new ClassReader(mainBytes);
             cr.accept(new ClassVisitor(Opcodes.ASM9) {
@@ -810,8 +923,11 @@ public class McTestAgent {
             mcStream.close();
 
             // Phase 2: Find per-frame method from run method.
-            // The per-frame method is a ()V self-call (invokespecial or invokevirtual)
-            // followed by a backward goto (the main game loop).
+            // The per-frame method is a self-call (invokespecial or invokevirtual)
+            // inside the main game loop (delimited by a backward goto).
+            // Matches ()V self-calls (pre-1.20.5) and (Z)V self-calls (1.20.5+).
+            // Tracks the last self-call seen before each backward goto, since there
+            // may be other instructions between the self-call and the loop back-edge.
             final String runMethod = result[1];
             final String[] perFrameMethod = {null};
 
@@ -823,7 +939,7 @@ public class McTestAgent {
                     if (name.equals(runMethod) && "()V".equals(descriptor)) {
                         return new MethodVisitor(Opcodes.ASM9) {
                             final Set<Label> seenLabels = new HashSet<Label>();
-                            String pendingSelfCall = null;
+                            String lastSelfCall = null;
 
                             @Override
                             public void visitLabel(Label label) {
@@ -833,45 +949,23 @@ public class McTestAgent {
                             @Override
                             public void visitMethodInsn(int opcode, String owner, String name,
                                     String descriptor, boolean isInterface) {
-                                pendingSelfCall = null;
                                 if ((opcode == Opcodes.INVOKEVIRTUAL
                                         || opcode == Opcodes.INVOKESPECIAL)
                                         && owner.equals(mcClassInternal)
-                                        && "()V".equals(descriptor)
+                                        && ("()V".equals(descriptor) || "(Z)V".equals(descriptor))
                                         && !"<init>".equals(name)) {
-                                    pendingSelfCall = name;
+                                    lastSelfCall = name;
                                 }
                             }
 
                             @Override
                             public void visitJumpInsn(int opcode, Label label) {
-                                if (opcode == Opcodes.GOTO && pendingSelfCall != null
+                                if (perFrameMethod[0] == null
+                                        && opcode == Opcodes.GOTO && lastSelfCall != null
                                         && seenLabels.contains(label)) {
-                                    // Backward goto after self ()V call = main game loop
-                                    perFrameMethod[0] = pendingSelfCall;
+                                    // First backward goto after self-call = main game loop
+                                    perFrameMethod[0] = lastSelfCall;
                                 }
-                                pendingSelfCall = null;
-                            }
-
-                            // Reset pendingSelfCall on non-meta instructions
-                            @Override public void visitInsn(int opcode) {
-                                pendingSelfCall = null;
-                            }
-                            @Override public void visitVarInsn(int opcode, int var) {
-                                pendingSelfCall = null;
-                            }
-                            @Override public void visitTypeInsn(int opcode, String type) {
-                                pendingSelfCall = null;
-                            }
-                            @Override public void visitFieldInsn(int opcode, String owner,
-                                    String name, String descriptor) {
-                                pendingSelfCall = null;
-                            }
-                            @Override public void visitIntInsn(int opcode, int operand) {
-                                pendingSelfCall = null;
-                            }
-                            @Override public void visitLdcInsn(Object value) {
-                                pendingSelfCall = null;
                             }
                         };
                     }
@@ -888,6 +982,7 @@ public class McTestAgent {
             // Phase 3: Find tick method from per-frame method.
             // The tick method is a ()V self-call immediately followed by iinc
             // (the tick count loop: for (i=0; i<timer.ticks; i++) { tick(); }).
+            // The per-frame method may be ()V (pre-1.20.5) or (Z)V (1.20.5+).
             final String pfMethod = perFrameMethod[0];
 
             mcReader = new ClassReader(mcBytes);
@@ -895,7 +990,8 @@ public class McTestAgent {
                 @Override
                 public MethodVisitor visitMethod(int access, String name, String descriptor,
                         String signature, String[] exceptions) {
-                    if (name.equals(pfMethod) && "()V".equals(descriptor)) {
+                    if (name.equals(pfMethod)
+                            && ("()V".equals(descriptor) || "(Z)V".equals(descriptor))) {
                         return new MethodVisitor(Opcodes.ASM9) {
                             String pendingSelfCall = null;
 
@@ -954,6 +1050,39 @@ public class McTestAgent {
                         + result[0] + "." + pfMethod + "()");
                 return null;
             }
+
+            // Phase 4: Find GameRenderer class from per-frame method.
+            // The GameRenderer is the target of an INVOKEVIRTUAL with signature
+            // (FJZ)V — i.e. render(float partialTick, long nanoTime, boolean tick).
+            mcReader = new ClassReader(mcBytes);
+            mcReader.accept(new ClassVisitor(Opcodes.ASM9) {
+                @Override
+                public MethodVisitor visitMethod(int access, String name, String descriptor,
+                        String signature, String[] exceptions) {
+                    if (name.equals(pfMethod)
+                            && ("()V".equals(descriptor) || "(Z)V".equals(descriptor))) {
+                        return new MethodVisitor(Opcodes.ASM9) {
+                            @Override
+                            public void visitMethodInsn(int opcode, String owner, String name,
+                                    String descriptor, boolean isInterface) {
+                                if (result[3] == null
+                                        && opcode == Opcodes.INVOKEVIRTUAL
+                                        && "(FJZ)V".equals(descriptor)
+                                        && !owner.equals(mcClassInternal)) {
+                                    result[3] = owner.replace('/', '.');
+                                }
+                            }
+                        };
+                    }
+                    return null;
+                }
+            }, 0);
+
+            // Phase 5: Right-click method detection removed.
+            // All supported versions have explicit rightClickMethodName() in their
+            // mapping classes, making auto-detection unnecessary. The "hitResult" LDC
+            // heuristic is unreliable across versions (multiple private ()V methods
+            // may reference it, leading to false matches).
 
             return result;
 
@@ -1020,6 +1149,13 @@ public class McTestAgent {
      * requests to Any Profile. MC 1.17+ requests Core Profile where legacy GL
      * functions (glPopMatrix, etc.) are unavailable and cause FATAL JVM aborts.
      * Compatibility Profile supports both legacy and modern GL functions.
+     */
+    /**
+     * Advice inlined into GLFW.glfwWindowHint(). Overrides the OpenGL profile
+     * from Core to Any (Compatibility) so that legacy GL calls like
+     * glPopMatrix don't cause a JVM FATAL ERROR on Mesa's llvmpipe.
+     * Note: this only works with LWJGL 3.3.1 and earlier (1.17-1.20.x).
+     * For LWJGL 3.3.3+ (1.21+), the coreprofile property prevents GL calls.
      */
     public static class GlfwWindowHintAdvice {
         @Advice.OnMethodEnter
@@ -1177,8 +1313,16 @@ public class McTestAgent {
         @Advice.OnMethodEnter(skipOn = Advice.OnNonDefaultValue.class)
         public static boolean onEnter() {
             if (System.getProperty("mctestagent.coreprofile") != null) {
-                // Throttle the game loop since render (which normally paces frames)
-                // is skipped. Without this, f(boolean) would spin at maximum speed.
+                // For quickplay versions (1.20+): only skip after worldLoaded, so the
+                // loading overlay's completion callback can fire and trigger the connection.
+                // For non-quickplay (1.17-1.19.4): always skip — --server/--port doesn't
+                // depend on the overlay, and allowing render during loading crashes Mesa.
+                if (System.getProperty("mctestagent.quickplay") != null
+                        && !McTestAgent.worldLoaded) {
+                    return false; // let GameRenderer.render() run during loading
+                }
+                // Screenshots are made deterministic (black) by ScreenshotCapture
+                // clearing the framebuffer before glReadPixels.
                 try { Thread.sleep(50); } catch (InterruptedException ignored) {}
                 return true; // non-default → skip render method body
             }

@@ -4,6 +4,7 @@ import com.github.martinambrus.rdforward.e2e.agent.GameState;
 import com.github.martinambrus.rdforward.e2e.agent.InputController;
 import com.github.martinambrus.rdforward.e2e.agent.McTestAgent;
 import com.github.martinambrus.rdforward.e2e.agent.ScreenshotCapture;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.FieldMappings;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -337,6 +338,11 @@ public class EnvironmentCheckScenario implements Scenario {
 
     private static class CaptureStep implements ScenarioStep {
         private long startTimeMs;
+        private int ticks;
+        // LWJGL3 chunk mesher settle time (3 seconds) before final screenshot.
+        // Under parallel software rendering, chunks may still be meshing even
+        // after game-level chunk data checks pass.
+        private static final int LWJGL3_RENDER_SETTLE = 60;
 
         @Override
         public String getDescription() {
@@ -346,6 +352,7 @@ public class EnvironmentCheckScenario implements Scenario {
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
+            ticks++;
             if (startTimeMs == 0) {
                 startTimeMs = System.currentTimeMillis();
             }
@@ -357,6 +364,12 @@ public class EnvironmentCheckScenario implements Scenario {
                 if (elapsed < 5000) {
                     return false;
                 }
+            }
+
+            // LWJGL3 clients: wait for chunk mesh building to complete
+            boolean isLwjgl3 = McTestAgent.mappings != null && McTestAgent.mappings.isLwjgl3();
+            if (isLwjgl3 && ticks < LWJGL3_RENDER_SETTLE) {
+                return false;
             }
 
             int w = gs.getDisplayWidth();

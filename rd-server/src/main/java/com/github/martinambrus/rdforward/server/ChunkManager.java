@@ -54,8 +54,16 @@ public class ChunkManager {
 
     /** Default view distance in chunks (radius around the player's chunk).
      *  Kept moderate to avoid triggering the Alpha client's TimSort comparator
-     *  bug when too many chunks are loaded at once (Java 7+ strict contract). */
-    public static final int DEFAULT_VIEW_DISTANCE = 5;
+     *  bug when too many chunks are loaded at once (Java 7+ strict contract).
+     *  E2E tests can override via -De2e.viewDistance=N to reduce chunk load
+     *  under parallel Mesa llvmpipe software rendering. */
+    public static final int DEFAULT_VIEW_DISTANCE =
+            Integer.getInteger("e2e.viewDistance", 5);
+
+    /** View distance advertised to the client in JoinGame / SetChunkCacheRadius.
+     *  Always >= 2 so the client doesn't cap its effective render distance below
+     *  its options.txt renderDistance:2 (min(clientRender, serverView)). */
+    public static final int CLIENT_VIEW_DISTANCE = Math.max(DEFAULT_VIEW_DISTANCE, 2);
 
     /** Chunks loaded in memory, keyed by coordinate. */
     private final Map<ChunkCoord, AlphaChunk> loadedChunks = new ConcurrentHashMap<>();
@@ -576,13 +584,6 @@ public class ChunkManager {
             AlphaChunk.V573ChunkData v755Data = chunk.serializeForV755Protocol();
             long[] heightmap = buildHeightmapLongArrayNonSpanning(chunk);
 
-            player.sendPacket(new MapChunkPacketV755(
-                chunk.getXPos(), chunk.getZPos(),
-                v755Data.getPrimaryBitMask(),
-                heightmap, heightmap,
-                v755Data.getBiomes(),
-                v755Data.getRawData()));
-
             // Build UpdateLight from per-section light arrays
             int skyLightMask = 0;
             int blockLightMask = 0;
@@ -603,6 +604,7 @@ public class ChunkManager {
             int emptySkyLightMask = ~skyLightMask & 0x3FFFF;
             int emptyBlockLightMask = ~blockLightMask & 0x3FFFF;
 
+            // 1.15+: send UpdateLight BEFORE chunk data
             player.sendPacket(new UpdateLightPacketV755(
                 chunk.getXPos(), chunk.getZPos(),
                 skyLightMask, blockLightMask,
@@ -610,27 +612,17 @@ public class ChunkManager {
                 skyArrays.toArray(new byte[0][]),
                 blockArrays.toArray(new byte[0][])));
 
+            player.sendPacket(new MapChunkPacketV755(
+                chunk.getXPos(), chunk.getZPos(),
+                v755Data.getPrimaryBitMask(),
+                heightmap, heightmap,
+                v755Data.getBiomes(),
+                v755Data.getRawData()));
+
         } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_16)) {
             // v735+: 15-bit global palette with non-spanning packing, 1.16 block state IDs
             AlphaChunk.V573ChunkData v735Data = chunk.serializeForV735Protocol();
             long[] heightmap = buildHeightmapLongArrayNonSpanning(chunk);
-
-            // v751 (1.16.2): removed ignoreOldLightData, biomes use VarInt array
-            if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_16_2)) {
-                player.sendPacket(new MapChunkPacketV751(
-                    chunk.getXPos(), chunk.getZPos(), true,
-                    v735Data.getPrimaryBitMask(),
-                    heightmap, heightmap,
-                    v735Data.getBiomes(),
-                    v735Data.getRawData()));
-            } else {
-                player.sendPacket(new MapChunkPacketV735(
-                    chunk.getXPos(), chunk.getZPos(), true,
-                    v735Data.getPrimaryBitMask(),
-                    heightmap, heightmap,
-                    v735Data.getBiomes(),
-                    v735Data.getRawData()));
-            }
 
             // Build UpdateLight from per-section light arrays
             int skyLightMask = 0;
@@ -652,6 +644,7 @@ public class ChunkManager {
             int emptySkyLightMask = ~skyLightMask & 0x3FFFF;
             int emptyBlockLightMask = ~blockLightMask & 0x3FFFF;
 
+            // 1.15+: send UpdateLight BEFORE chunk data
             player.sendPacket(new UpdateLightPacketV735(
                 chunk.getXPos(), chunk.getZPos(),
                 skyLightMask, blockLightMask,
@@ -659,17 +652,27 @@ public class ChunkManager {
                 skyArrays.toArray(new byte[0][]),
                 blockArrays.toArray(new byte[0][])));
 
+            // v751 (1.16.2): removed ignoreOldLightData, biomes use VarInt array
+            if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_16_2)) {
+                player.sendPacket(new MapChunkPacketV751(
+                    chunk.getXPos(), chunk.getZPos(), true,
+                    v735Data.getPrimaryBitMask(),
+                    heightmap, heightmap,
+                    v735Data.getBiomes(),
+                    v735Data.getRawData()));
+            } else {
+                player.sendPacket(new MapChunkPacketV735(
+                    chunk.getXPos(), chunk.getZPos(), true,
+                    v735Data.getPrimaryBitMask(),
+                    heightmap, heightmap,
+                    v735Data.getBiomes(),
+                    v735Data.getRawData()));
+            }
+
         } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_15)) {
             // v573: biomes are a separate field (not inside data array), int[1024] 3D biomes
             AlphaChunk.V573ChunkData v573Data = chunk.serializeForV573Protocol();
             long[] heightmap = buildHeightmapLongArray(chunk);
-
-            player.sendPacket(new MapChunkPacketV573(
-                chunk.getXPos(), chunk.getZPos(), true,
-                v573Data.getPrimaryBitMask(),
-                heightmap, heightmap,
-                v573Data.getBiomes(),
-                v573Data.getRawData()));
 
             // Build UpdateLight from per-section light arrays
             int skyLightMask = 0;
@@ -691,12 +694,22 @@ public class ChunkManager {
             int emptySkyLightMask = ~skyLightMask & 0x3FFFF;
             int emptyBlockLightMask = ~blockLightMask & 0x3FFFF;
 
+            // 1.15+: send UpdateLight BEFORE chunk data. The 1.15 client's
+            // ChunkRenderDispatcher requires light to be present before it
+            // schedules chunk meshing; without it, the chunk is skipped.
             player.sendPacket(new UpdateLightPacketV477(
                 chunk.getXPos(), chunk.getZPos(),
                 skyLightMask, blockLightMask,
                 emptySkyLightMask, emptyBlockLightMask,
                 skyArrays.toArray(new byte[0][]),
                 blockArrays.toArray(new byte[0][])));
+
+            player.sendPacket(new MapChunkPacketV573(
+                chunk.getXPos(), chunk.getZPos(), true,
+                v573Data.getPrimaryBitMask(),
+                heightmap, heightmap,
+                v573Data.getBiomes(),
+                v573Data.getRawData()));
 
         } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_14)) {
             // v477: heightmaps NBT, no light in sections, blockCount per section

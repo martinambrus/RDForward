@@ -22,9 +22,10 @@ import java.util.zip.ZipFile;
  */
 public class ClientLauncher {
 
-    private static final String JAVA8_PATH = "/usr/lib/jvm/temurin-8-jdk-amd64/bin/java";
-    private static final String JAVA16_PATH = "/tmp/temurin-17/bin/java"; // Java 16 not installed; 17 is compatible
-    private static final String JAVA17_PATH = "/tmp/temurin-17/bin/java";
+    private static final String JAVA8_PATH = "/usr/lib/jvm/java-8-openjdk-amd64/bin/java";
+    private static final String JAVA16_PATH = "/usr/lib/jvm/java-17-openjdk-amd64/bin/java"; // Java 16 not installed; 17 is compatible
+    private static final String JAVA17_PATH = "/usr/lib/jvm/java-17-openjdk-amd64/bin/java";
+    private static final String JAVA21_PATH = "/usr/lib/jvm/java-21-openjdk-amd64/bin/java";
     private static final String LIBS_DIR = "rd-e2e/libs";
     private static final String NATIVES_DIR = LIBS_DIR + "/natives-linux";
     private static final String VERSION_MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
@@ -1609,7 +1610,8 @@ public class ClientLauncher {
                 File src = new File(sourceDir, jar);
                 File dst = new File(targetDir, jar);
                 if (!dst.exists()) {
-                    java.nio.file.Files.copy(src.toPath(), dst.toPath());
+                    java.nio.file.Files.copy(src.toPath(), dst.toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                 }
                 addedJars.add(dst.getAbsolutePath());
             }
@@ -1679,7 +1681,11 @@ public class ClientLauncher {
         // In 1.14+, the BlockModelRenderer checks ebs.a() (isAmbientOcclusion) on the
         // BakedModel at SourceFile:42 before the try/catch. If the model lookup returns
         // null (missing model resolution failure), this NPEs. Disabling AO avoids this
-        // code path. Also reduces render distance to minimize chunk load.
+        // code path.
+        // Client renderDistance=2 keeps fog close (32 blocks).  The server's
+        // e2e.viewDistance controls how many chunks are SENT; the client renders
+        // whatever it has up to its own renderDistance.  With viewDistance=1 the
+        // server sends 9 chunks; the client renders those 9 and shows sky beyond.
         File optionsFile = new File(gameDir, "options.txt");
         try (java.io.PrintWriter pw = new java.io.PrintWriter(optionsFile)) {
             pw.println("ao:0");
@@ -1717,15 +1723,22 @@ public class ClientLauncher {
         // With --assetIndex, it uses hash-based object storage which requires
         // downloading ~226MB of assets per version.
         cmd.add("--uuid");
-        cmd.add("0");
+        // MC 1.20.2+ uses UndashedUuid.fromStringLenient() which requires 32 hex chars
+        cmd.add(isVersionAtLeast(versionId, 1, 20, 2) ? "00000000000000000000000000000000" : "0");
         cmd.add("--accessToken");
         cmd.add("0");
         cmd.add("--userProperties");
         cmd.add("{}");
-        cmd.add("--server");
-        cmd.add("localhost");
-        cmd.add("--port");
-        cmd.add(String.valueOf(serverPort));
+        // MC 1.20+ replaced --server/--port with --quickPlayMultiplayer
+        if (isVersionAtLeast(versionId, 1, 20)) {
+            cmd.add("--quickPlayMultiplayer");
+            cmd.add("localhost:" + serverPort);
+        } else {
+            cmd.add("--server");
+            cmd.add("localhost");
+            cmd.add("--port");
+            cmd.add(String.valueOf(serverPort));
+        }
 
         System.out.println("[E2E] Launching " + displayName + " client: " + String.join(" ", cmd));
 
@@ -2090,6 +2103,163 @@ public class ClientLauncher {
         return launchNettyRelease("1.18.2", "release1182", "Release 1.18.2", JAVA17_PATH, a, p, s, d, sc, u, r, sy);
     }
 
+    // =====================================================================
+    // Release 1.19.x launchers (Java 17)
+    // =====================================================================
+
+    public Process launchRelease119(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease119(a,p,s,d,"world_loaded"); }
+    public Process launchRelease119(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease119(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease119(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.19", "release119", "Release 1.19", JAVA17_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    public Process launchRelease1191(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease1191(a,p,s,d,"world_loaded"); }
+    public Process launchRelease1191(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease1191(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease1191(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.19.1", "release1191", "Release 1.19.1", JAVA17_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    public Process launchRelease1192(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease1192(a,p,s,d,"world_loaded"); }
+    public Process launchRelease1192(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease1192(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease1192(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.19.2", "release1192", "Release 1.19.2", JAVA17_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    public Process launchRelease1193(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease1193(a,p,s,d,"world_loaded"); }
+    public Process launchRelease1193(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease1193(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease1193(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.19.3", "release1193", "Release 1.19.3", JAVA17_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    public Process launchRelease1194(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease1194(a,p,s,d,"world_loaded"); }
+    public Process launchRelease1194(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease1194(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease1194(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.19.4", "release1194", "Release 1.19.4", JAVA17_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    // =====================================================================
+    // Release 1.20.x launchers (Java 17 for 1.20-1.20.4, Java 21 for 1.20.5+)
+    // =====================================================================
+
+    public Process launchRelease120(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease120(a,p,s,d,"world_loaded"); }
+    public Process launchRelease120(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease120(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease120(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.20", "release120", "Release 1.20", JAVA17_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    public Process launchRelease1201(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease1201(a,p,s,d,"world_loaded"); }
+    public Process launchRelease1201(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease1201(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease1201(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.20.1", "release1201", "Release 1.20.1", JAVA17_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    public Process launchRelease1202(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease1202(a,p,s,d,"world_loaded"); }
+    public Process launchRelease1202(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease1202(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease1202(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.20.2", "release1202", "Release 1.20.2", JAVA17_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    public Process launchRelease1203(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease1203(a,p,s,d,"world_loaded"); }
+    public Process launchRelease1203(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease1203(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease1203(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.20.3", "release1203", "Release 1.20.3", JAVA17_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    public Process launchRelease1204(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease1204(a,p,s,d,"world_loaded"); }
+    public Process launchRelease1204(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease1204(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease1204(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.20.4", "release1204", "Release 1.20.4", JAVA17_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    // 1.20.5+ requires Java 21
+    public Process launchRelease1205(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease1205(a,p,s,d,"world_loaded"); }
+    public Process launchRelease1205(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease1205(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease1205(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.20.5", "release1205", "Release 1.20.5", JAVA21_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    public Process launchRelease1206(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease1206(a,p,s,d,"world_loaded"); }
+    public Process launchRelease1206(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease1206(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease1206(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.20.6", "release1206", "Release 1.20.6", JAVA21_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    // =====================================================================
+    // Release 1.21.x launchers (Java 21)
+    // =====================================================================
+
+    public Process launchRelease121(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease121(a,p,s,d,"world_loaded"); }
+    public Process launchRelease121(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease121(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease121(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.21", "release1_21", "Release 1.21", JAVA21_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    public Process launchRelease1211(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease1211(a,p,s,d,"world_loaded"); }
+    public Process launchRelease1211(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease1211(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease1211(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.21.1", "release1_211", "Release 1.21.1", JAVA21_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    public Process launchRelease1212(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease1212(a,p,s,d,"world_loaded"); }
+    public Process launchRelease1212(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease1212(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease1212(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.21.2", "release1212", "Release 1.21.2", JAVA21_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    public Process launchRelease1213(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease1213(a,p,s,d,"world_loaded"); }
+    public Process launchRelease1213(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease1213(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease1213(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.21.3", "release1213", "Release 1.21.3", JAVA21_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    public Process launchRelease1214(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease1214(a,p,s,d,"world_loaded"); }
+    public Process launchRelease1214(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease1214(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease1214(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.21.4", "release1214", "Release 1.21.4", JAVA21_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    public Process launchRelease1215(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease1215(a,p,s,d,"world_loaded"); }
+    public Process launchRelease1215(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease1215(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease1215(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.21.5", "release1215", "Release 1.21.5", JAVA21_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    public Process launchRelease1216(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease1216(a,p,s,d,"world_loaded"); }
+    public Process launchRelease1216(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease1216(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease1216(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.21.6", "release1216", "Release 1.21.6", JAVA21_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    public Process launchRelease1217(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease1217(a,p,s,d,"world_loaded"); }
+    public Process launchRelease1217(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease1217(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease1217(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.21.7", "release1217", "Release 1.21.7", JAVA21_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    public Process launchRelease1218(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease1218(a,p,s,d,"world_loaded"); }
+    public Process launchRelease1218(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease1218(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease1218(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.21.8", "release1218", "Release 1.21.8", JAVA21_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    public Process launchRelease1219(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease1219(a,p,s,d,"world_loaded"); }
+    public Process launchRelease1219(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease1219(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease1219(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.21.9", "release1219", "Release 1.21.9", JAVA21_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    public Process launchRelease12110(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease12110(a,p,s,d,"world_loaded"); }
+    public Process launchRelease12110(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease12110(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease12110(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.21.10", "release12110", "Release 1.21.10", JAVA21_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
+    public Process launchRelease12111(String a, int p, File s, String d) throws IOException, InterruptedException { return launchRelease12111(a,p,s,d,"world_loaded"); }
+    public Process launchRelease12111(String a, int p, File s, String d, String sc) throws IOException, InterruptedException { return launchRelease12111(a,p,s,d,sc,null,null,null); }
+    public Process launchRelease12111(String a, int p, File s, String d, String sc, String u, String r, File sy) throws IOException, InterruptedException {
+        return launchNettyRelease("1.21.11", "release12111", "Release 1.21.11", JAVA21_PATH, a, p, s, d, sc, u, r, sy);
+    }
+
     /**
      * Launch an RD modded client (for pre-multiplayer versions like RubyDung,
      * Classic).
@@ -2314,6 +2484,27 @@ public class ClientLauncher {
             }
         }
         return json.length() - 1;
+    }
+
+    /** Check if a Minecraft version string is at least major.minor (e.g. "1.20"). */
+    private static boolean isVersionAtLeast(String versionId, int major, int minor) {
+        return isVersionAtLeast(versionId, major, minor, 0);
+    }
+
+    /** Check if a Minecraft version string is at least major.minor.patch (e.g. "1.20.2"). */
+    private static boolean isVersionAtLeast(String versionId, int major, int minor, int patch) {
+        String[] parts = versionId.split("\\.");
+        if (parts.length < 2) return false;
+        try {
+            int vMajor = Integer.parseInt(parts[0]);
+            int vMinor = Integer.parseInt(parts[1]);
+            int vPatch = (parts.length >= 3) ? Integer.parseInt(parts[2]) : 0;
+            if (vMajor != major) return vMajor > major;
+            if (vMinor != minor) return vMinor > minor;
+            return vPatch >= patch;
+        } catch (NumberFormatException e) {
+            return false;
+        }
     }
 
     /** Check if a library entry with rules is allowed on Linux. */

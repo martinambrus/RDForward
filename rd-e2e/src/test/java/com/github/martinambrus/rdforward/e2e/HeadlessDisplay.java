@@ -54,8 +54,11 @@ public class HeadlessDisplay {
      */
     public void start() throws IOException, InterruptedException {
         // Check if Xvfb is already running (with a 1 second timeout to prevent
-        // 75s TCP SYN hanging)
+        // 75s TCP SYN hanging).
+        // Discard output: xdpyinfo can produce >64KB which overflows the pipe
+        // buffer and deadlocks if nobody reads it.
         ProcessBuilder check = new ProcessBuilder("xdpyinfo", "-display", display);
+        check.redirectOutput(ProcessBuilder.Redirect.DISCARD);
         check.redirectErrorStream(true);
         Process checkProc = check.start();
         boolean finished = checkProc.waitFor(1, java.util.concurrent.TimeUnit.SECONDS);
@@ -75,6 +78,7 @@ public class HeadlessDisplay {
         for (int i = 0; i < 50; i++) {
             Thread.sleep(100);
             ProcessBuilder poll = new ProcessBuilder("xdpyinfo", "-display", display);
+            poll.redirectOutput(ProcessBuilder.Redirect.DISCARD);
             poll.redirectErrorStream(true);
             Process pollProc = poll.start();
             if (pollProc.waitFor() == 0) {

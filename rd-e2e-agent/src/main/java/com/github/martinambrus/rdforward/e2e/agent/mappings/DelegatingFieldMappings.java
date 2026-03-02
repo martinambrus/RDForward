@@ -2,21 +2,38 @@ package com.github.martinambrus.rdforward.e2e.agent.mappings;
 
 /**
  * Wraps a base FieldMappings and overrides the Minecraft class name,
- * run method, and tick method. Used when auto-detection discovers that
- * the client's obfuscation differs from the base protocol mapping.
+ * run method, tick method, and optionally gameRendererClassName.
+ * Used when auto-detection discovers that the client's obfuscation
+ * differs from the base protocol mapping.
  */
 public class DelegatingFieldMappings implements FieldMappings {
     private final FieldMappings delegate;
     private final String minecraftClassName;
     private final String runMethodName;
     private final String tickMethodName;
+    private final String gameRendererClassName;
+    private final String rightClickMethodName;
 
     public DelegatingFieldMappings(FieldMappings delegate,
             String minecraftClassName, String runMethodName, String tickMethodName) {
+        this(delegate, minecraftClassName, runMethodName, tickMethodName, null, null);
+    }
+
+    public DelegatingFieldMappings(FieldMappings delegate,
+            String minecraftClassName, String runMethodName, String tickMethodName,
+            String gameRendererClassName) {
+        this(delegate, minecraftClassName, runMethodName, tickMethodName, gameRendererClassName, null);
+    }
+
+    public DelegatingFieldMappings(FieldMappings delegate,
+            String minecraftClassName, String runMethodName, String tickMethodName,
+            String gameRendererClassName, String rightClickMethodName) {
         this.delegate = delegate;
         this.minecraftClassName = minecraftClassName;
         this.runMethodName = runMethodName;
         this.tickMethodName = tickMethodName;
+        this.gameRendererClassName = gameRendererClassName;
+        this.rightClickMethodName = rightClickMethodName;
     }
 
     @Override public String minecraftClassName() { return minecraftClassName; }
@@ -83,8 +100,13 @@ public class DelegatingFieldMappings implements FieldMappings {
     @Override public boolean isNettyClient() { return delegate.isNettyClient(); }
     @Override public String blockRenderDispatcherClassName() { return delegate.blockRenderDispatcherClassName(); }
     @Override public String renderMethodName() { return delegate.renderMethodName(); }
-    @Override public String gameRendererClassName() { return delegate.gameRendererClassName(); }
+    @Override public String gameRendererClassName() {
+        return gameRendererClassName != null ? gameRendererClassName : delegate.gameRendererClassName();
+    }
     @Override public boolean posYIsFeetLevel() { return delegate.posYIsFeetLevel(); }
-    @Override public String rightClickMethodName() { return delegate.rightClickMethodName(); }
+    @Override public String rightClickMethodName() {
+        return rightClickMethodName != null ? rightClickMethodName : delegate.rightClickMethodName();
+    }
     @Override public String chatTextMethodName() { return delegate.chatTextMethodName(); }
+    @Override public String networkHandlerFieldName() { return delegate.networkHandlerFieldName(); }
 }

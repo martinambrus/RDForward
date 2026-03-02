@@ -90,7 +90,7 @@ public class NettyReleaseV393Mappings implements FieldMappings {
     @Override public String guiInventoryClassName() { return "cle"; } // GuiInventory
     @Override public String closeContainerMethodName() { return "dm"; } // csy.dm() sends close window packet
     @Override public boolean posYIsFeetLevel() { return true; } // 1.8+: posY = feet
-    @Override public String rightClickMethodName() { return "e"; } // right-click/use method
+    @Override public String rightClickMethodName() { return "au"; } // cfi.au() right-click/startUseItem (verified by CFR decompilation)
     @Override public boolean isLwjgl3() { return true; }
     @Override public boolean isNettyClient() { return true; }
 }

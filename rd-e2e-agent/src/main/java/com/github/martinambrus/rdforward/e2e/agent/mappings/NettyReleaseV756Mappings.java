@@ -27,7 +27,7 @@ package com.github.martinambrus.rdforward.e2e.agent.mappings;
  * - clickCooldown unchanged: w (protected int on dvp).
  * - Click method shifted: f(boolean) -> g(boolean).
  * - Entity position: xOld/yOld/zOld shifted from m/n/o to u/v/w on atg.
- * - Entity yaw/pitch shifted: p/q -> x/y on atg.
+ * - Entity yaw/pitch: ay/az on atg (same as V755; previous rotation is x/y).
  * - Entity onGround shifted: t -> z on atg.
  * - PlayerInventory shifted: bt -> co (bkd on bke). Private field.
  * - PlayerInventory main items shifted: a -> h (gs<bqq> on bkd).
@@ -65,8 +65,8 @@ public class NettyReleaseV756Mappings implements FieldMappings {
     @Override public String gameSettingsFieldName() { return "l"; } // dvt (GameSettings) on dvp
     @Override public String movementInputFieldName() { return "cy"; } // emk (MovementInput) on emm (ClientPlayerEntity)
     @Override public String pressedKeysFieldName() { return null; } // KeyBinding-based
-    @Override public String yawFieldName() { return "x"; } // float yRotO on atg (Entity)
-    @Override public String pitchFieldName() { return "y"; } // float xRotO on atg (Entity)
+    @Override public String yawFieldName() { return "ay"; } // float yRot on atg (Entity) — current rotation
+    @Override public String pitchFieldName() { return "az"; } // float xRot on atg (Entity) — current rotation
     @Override public String onGroundFieldName() { return "z"; } // boolean onGround on atg (Entity)
     @Override public String inventoryFieldName() { return "co"; } // bkd (PlayerInventory) on bke (PlayerEntity); private
     @Override public String mainInventoryFieldName() { return "h"; } // gs<bqq> (NonNullList<ItemStack>, size 36) on bkd
@@ -106,7 +106,7 @@ public class NettyReleaseV756Mappings implements FieldMappings {
     @Override public String guiInventoryClassName() { return "ecj"; } // InventoryScreen
     @Override public String closeContainerMethodName() { return "n"; } // emm.n() sends close window packet + calls r()
     @Override public boolean posYIsFeetLevel() { return true; } // 1.8+: posY = feet
-    @Override public String rightClickMethodName() { return "h"; } // right-click/use method
+    @Override public String rightClickMethodName() { return "aP"; } // dvp.aP() right-click/startUseItem (Mojang mapping 1.17.1)
     @Override public boolean isLwjgl3() { return true; }
     @Override public boolean isNettyClient() { return true; }
     @Override public String blockRenderDispatcherClassName() { return "enz"; }

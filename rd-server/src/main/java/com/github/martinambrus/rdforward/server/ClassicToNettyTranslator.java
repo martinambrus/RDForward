@@ -364,7 +364,7 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
                 return new SystemChatPacketV760(message, false);
             }
             if (isV759) {
-                return new SystemChatPacketV759(message, 1);
+                return new SystemChatPacketV759(message, 0);
             }
             if (isV735) {
                 return new NettyChatS2CPacketV735(message, (byte) 0, 0L, 0L);

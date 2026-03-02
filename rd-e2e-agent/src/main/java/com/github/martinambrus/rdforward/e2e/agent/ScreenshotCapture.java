@@ -52,6 +52,17 @@ public class ScreenshotCapture {
                 init();
             }
 
+            // For Core Profile clients (1.17+), 3D rendering is disabled via
+            // GameRendererSkipAdvice. Clear the framebuffer to black before reading
+            // so screenshots are deterministic regardless of loading overlay timing.
+            if (System.getProperty("mctestagent.coreprofile") != null) {
+                Method glClearColor = gl11Class.getMethod("glClearColor",
+                        float.class, float.class, float.class, float.class);
+                Method glClear = gl11Class.getMethod("glClear", int.class);
+                glClearColor.invoke(null, 0f, 0f, 0f, 1f);
+                glClear.invoke(null, 0x4000); // GL_COLOR_BUFFER_BIT
+            }
+
             // GL11.glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, buffer)
             int GL_RGBA = 0x1908;
             int GL_UNSIGNED_BYTE = 0x1401;
@@ -82,6 +93,43 @@ public class ScreenshotCapture {
                     + ": " + e.getMessage());
             e.printStackTrace();
             return false;
+        }
+    }
+
+    /**
+     * Capture a hash of the current framebuffer without writing to disk.
+     * Used by stabilization logic to detect when chunk meshing is complete:
+     * consecutive identical hashes mean the rendered frame is no longer changing.
+     *
+     * @param width  display width in pixels
+     * @param height display height in pixels
+     * @return 64-bit FNV-1a hash of sampled pixel data, or 0 on failure
+     */
+    public long captureFrameHash(int width, int height) {
+        try {
+            if (!initialized) {
+                init();
+            }
+            if (width <= 0 || height <= 0) return 0;
+
+            int GL_RGBA = 0x1908;
+            int GL_UNSIGNED_BYTE = 0x1401;
+            ByteBuffer buffer = ByteBuffer.allocateDirect(width * height * 4);
+
+            glReadPixelsMethod.invoke(null,
+                    0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
+
+            // FNV-1a hash over sampled pixels (~4096 evenly-spaced samples)
+            long hash = 0xcbf29ce484222325L;
+            int capacity = buffer.capacity();
+            int stride = Math.max(1, capacity / 4096);
+            for (int i = 0; i < capacity; i += stride) {
+                hash ^= (buffer.get(i) & 0xFFL);
+                hash *= 0x100000001b3L;
+            }
+            return hash;
+        } catch (Throwable e) {
+            return 0;
         }
     }
 

@@ -224,7 +224,489 @@ public class GameState {
         }
     }
 
+    /**
+     * Debug: returns "oldY=... vec3Y=..." showing both the old position field
+     * and the actual Vec3d position. For diagnosing teleport reset issues.
+     */
+    public String getPositionDebug() {
+        Object player = getPlayer();
+        if (player == null) return "no_player";
+        try {
+            if (posYField == null) getPlayerPosition();
+            double oldY = posYField.getDouble(player);
+            double posX = posXField.getDouble(player);
+            double posZ = posZField.getDouble(player);
+            // Try to find the Vec3d position field by scanning patterns
+            String vec3Info = "not_found";
+            double bestErr = Double.MAX_VALUE;
+            String[][] patterns = {{"b","c","d"}, {"c","d","e"}, {"d","e","f"}, {"g","h","i"}};
+            Class<?> c = player.getClass();
+            while (c != null && c != Object.class) {
+                for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                    if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                    if (f.getType().isPrimitive() || f.getType() == String.class) continue;
+                    if (f.getType().isArray()) continue;
+                    f.setAccessible(true);
+                    Object val = f.get(player);
+                    if (val == null) continue;
+                    for (String[] pat : patterns) {
+                        try {
+                            java.lang.reflect.Field fb = val.getClass().getDeclaredField(pat[0]);
+                            java.lang.reflect.Field fc = val.getClass().getDeclaredField(pat[1]);
+                            java.lang.reflect.Field fd = val.getClass().getDeclaredField(pat[2]);
+                            if (fb.getType() == double.class && fc.getType() == double.class
+                                    && fd.getType() == double.class) {
+                                fb.setAccessible(true); fc.setAccessible(true); fd.setAccessible(true);
+                                double[] vals = {fb.getDouble(val), fc.getDouble(val), fd.getDouble(val)};
+                                // Try all permutations to find best X/Y/Z match
+                                int[][] perms = {{0,1,2},{0,2,1},{1,0,2},{1,2,0},{2,0,1},{2,1,0}};
+                                for (int[] perm : perms) {
+                                    double err = Math.abs(vals[perm[0]] - posX)
+                                            + Math.abs(vals[perm[1]] - oldY)
+                                            + Math.abs(vals[perm[2]] - posZ);
+                                    // Count non-static double fields
+                                    int dblCount = 0;
+                                    for (java.lang.reflect.Field sf : val.getClass().getDeclaredFields()) {
+                                        if (!java.lang.reflect.Modifier.isStatic(sf.getModifiers())
+                                                && sf.getType() == double.class) dblCount++;
+                                    }
+                                    // Prefer 3-field (Vec3) over 6-field (AABB)
+                                    double adjustedErr = err + (dblCount > 3 ? 10.0 : 0.0);
+                                    if (adjustedErr < bestErr) {
+                                        bestErr = adjustedErr;
+                                        vec3Info = String.format("%.2f,%.2f,%.2f fld=%s@%s",
+                                                vals[perm[1]], vals[perm[0]], vals[perm[2]],
+                                                f.getName(), c.getSimpleName());
+                                    }
+                                }
+                            }
+                        } catch (NoSuchFieldException ignored) {}
+                    }
+                }
+                c = c.getSuperclass();
+            }
+            return String.format("oldY=%.2f vec3=%s", oldY, vec3Info);
+        } catch (Exception e) {
+            return "error:" + e.getMessage();
+        }
+    }
+
     private java.lang.reflect.Method setPositionMethod;
+    private java.lang.reflect.Field vec3PosField;
+    private java.lang.reflect.Field vec3XField;
+    private java.lang.reflect.Field vec3YField;
+    // deltaMovement Vec3 field and its Y sub-field (for velocity-based void fall)
+    private java.lang.reflect.Field deltaMovementField;
+    private java.lang.reflect.Field deltaMovementYField;
+    private java.lang.reflect.Field vec3ZField;
+    // Constructor arg order: vec3CtorOrder[0..2] = 0 for X, 1 for Y, 2 for Z
+    // Maps constructor parameter index to coordinate type
+    private int[] vec3CtorOrder;
+
+    /**
+     * Force-sets the player's position by directly writing to both the Vec3d
+     * position field AND the old position fields. This bypasses any method-level
+     * guards (like world type checks) that might prevent setPosition() from working.
+     * Also patches the bounding box and sets onGround=false.
+     *
+     * @param x eye-level X
+     * @param y eye-level Y
+     * @param z eye-level Z
+     */
+    public boolean forcePosition(double x, double y, double z) {
+        Object player = getPlayer();
+        if (player == null) return false;
+        double storageY = mappings.posYIsFeetLevel() ? y - (double) 1.62f : y;
+        debugForcePos("forcePosition x=" + x + " y=" + y + " storageY=" + storageY + " z=" + z);
+        try {
+            if (posYField == null) getPlayerPosition();
+
+            // 1. Find the Vec3d position field if not yet found
+            if (vec3PosField == null) {
+                double posX = posXField.getDouble(player);
+                double posY = posYField.getDouble(player);
+                double posZ = posZField.getDouble(player);
+                // Track best candidate: prefer lower dblCount (3-field Vec3 over 6-field extended Vec3)
+                // but accept higher counts if no better candidate exists.
+                double bestMatchErr = Double.MAX_VALUE;
+                int bestDblCount = Integer.MAX_VALUE;
+                Class<?> c = player.getClass();
+                while (c != null && c != Object.class) {
+                    for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                        if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                        if (f.getType().isPrimitive() || f.getType() == String.class) continue;
+                        if (f.getType().isArray()) continue;
+                        f.setAccessible(true);
+                        Object val = f.get(player);
+                        if (val == null) continue;
+                        // Vec3d field names vary by version:
+                        // 1.17-1.18: x=b, y=c, z=d
+                        // 1.19+:     x=c, y=d, z=e
+                        // 1.21.5+:   x=d, y=e, z=f (fgc class)
+                        String[][] vec3Patterns = {{"b","c","d"}, {"c","d","e"}, {"d","e","f"}, {"g","h","i"}};
+                        for (String[] pat : vec3Patterns) {
+                            try {
+                                java.lang.reflect.Field fb = val.getClass().getDeclaredField(pat[0]);
+                                java.lang.reflect.Field fc = val.getClass().getDeclaredField(pat[1]);
+                                java.lang.reflect.Field fd = val.getClass().getDeclaredField(pat[2]);
+                                if (fb.getType() == double.class && fc.getType() == double.class
+                                        && fd.getType() == double.class) {
+                                    fb.setAccessible(true); fc.setAccessible(true); fd.setAccessible(true);
+                                    int dblCount = 0;
+                                    for (java.lang.reflect.Field df : val.getClass().getDeclaredFields()) {
+                                        if (!java.lang.reflect.Modifier.isStatic(df.getModifiers())
+                                                && df.getType() == double.class) {
+                                            dblCount++;
+                                        }
+                                    }
+                                    java.lang.reflect.Field[] dblFields = {fb, fc, fd};
+                                    double[] vals = {fb.getDouble(val), fc.getDouble(val), fd.getDouble(val)};
+                                    // Try all 6 permutations to find best X/Y/Z assignment
+                                    int[][] perms = {{0,1,2},{0,2,1},{1,0,2},{1,2,0},{2,0,1},{2,1,0}};
+                                    double minErr = Double.MAX_VALUE;
+                                    int bestPerm = 0;
+                                    for (int p = 0; p < perms.length; p++) {
+                                        double err = Math.abs(vals[perms[p][0]] - posX)
+                                                + Math.abs(vals[perms[p][1]] - posY)
+                                                + Math.abs(vals[perms[p][2]] - posZ);
+                                        if (err < minErr) { minErr = err; bestPerm = p; }
+                                    }
+                                    debugForcePos("  candidate " + f.getName() + "@" + val.getClass().getSimpleName()
+                                            + " pat=" + pat[0] + "," + pat[1] + "," + pat[2]
+                                            + " dblCount=" + dblCount + " err=" + String.format("%.2f", minErr));
+                                    // Accept if error is reasonable AND (better dblCount OR better error)
+                                    if (minErr < 5.0
+                                            && (dblCount < bestDblCount
+                                                || (dblCount == bestDblCount && minErr < bestMatchErr))) {
+                                        bestMatchErr = minErr;
+                                        bestDblCount = dblCount;
+                                        vec3PosField = f;
+                                        vec3XField = dblFields[perms[bestPerm][0]];
+                                        vec3YField = dblFields[perms[bestPerm][1]];
+                                        vec3ZField = dblFields[perms[bestPerm][2]];
+                                        vec3CtorOrder = new int[3];
+                                        for (int i = 0; i < 3; i++) {
+                                            if (dblFields[i] == vec3XField) vec3CtorOrder[i] = 0;
+                                            else if (dblFields[i] == vec3YField) vec3CtorOrder[i] = 1;
+                                            else vec3CtorOrder[i] = 2;
+                                        }
+                                        debugForcePos("    -> accepted: X=" + vec3XField.getName()
+                                                + " Y=" + vec3YField.getName()
+                                                + " Z=" + vec3ZField.getName());
+                                    }
+                                }
+                            } catch (NoSuchFieldException ignored) {}
+                        }
+                    }
+                    if (vec3PosField != null && bestDblCount <= 4) break; // found ideal Vec3, stop searching
+                    c = c.getSuperclass();
+                }
+                if (vec3PosField != null) {
+                    debugForcePos("SELECTED: " + vec3PosField.getDeclaringClass().getSimpleName()
+                            + "." + vec3PosField.getName()
+                            + " valType=" + vec3PosField.get(player).getClass().getSimpleName()
+                            + " X=" + vec3XField.getName()
+                            + " Y=" + vec3YField.getName()
+                            + " Z=" + vec3ZField.getName()
+                            + " dblCount=" + bestDblCount);
+                }
+            }
+
+            // 2. Write to Vec3d position field
+            debugForcePos("vec3PosField=" + (vec3PosField != null ? vec3PosField.getName() : "null")
+                    + " vec3CtorOrder=" + (vec3CtorOrder != null
+                        ? vec3CtorOrder[0] + "," + vec3CtorOrder[1] + "," + vec3CtorOrder[2] : "null"));
+            if (vec3PosField != null) {
+                Object vec3 = vec3PosField.get(player);
+                if (vec3 != null) {
+                    java.lang.reflect.Field uf = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+                    uf.setAccessible(true);
+                    sun.misc.Unsafe unsafe = (sun.misc.Unsafe) uf.get(null);
+                    // Clone the Vec3 via Unsafe.allocateInstance (no constructor) and copy all fields.
+                    // Then overwrite X/Y/Z. This handles immutable Vec3 objects that get replaced each tick.
+                    Object newVec3 = unsafe.allocateInstance(vec3.getClass());
+                    for (java.lang.reflect.Field ff : vec3.getClass().getDeclaredFields()) {
+                        if (java.lang.reflect.Modifier.isStatic(ff.getModifiers())) continue;
+                        ff.setAccessible(true);
+                        long offset = unsafe.objectFieldOffset(ff);
+                        if (ff.getType() == double.class) {
+                            unsafe.putDouble(newVec3, offset, unsafe.getDouble(vec3, offset));
+                        } else if (ff.getType() == float.class) {
+                            unsafe.putFloat(newVec3, offset, unsafe.getFloat(vec3, offset));
+                        } else if (ff.getType() == int.class) {
+                            unsafe.putInt(newVec3, offset, unsafe.getInt(vec3, offset));
+                        } else if (ff.getType() == long.class) {
+                            unsafe.putLong(newVec3, offset, unsafe.getLong(vec3, offset));
+                        } else if (ff.getType() == boolean.class) {
+                            unsafe.putBoolean(newVec3, offset, unsafe.getBoolean(vec3, offset));
+                        } else if (!ff.getType().isPrimitive()) {
+                            unsafe.putObject(newVec3, offset, unsafe.getObject(vec3, offset));
+                        }
+                    }
+                    // Overwrite X/Y/Z in the clone
+                    long offX = unsafe.objectFieldOffset(vec3XField);
+                    long offY = unsafe.objectFieldOffset(vec3YField);
+                    long offZ = unsafe.objectFieldOffset(vec3ZField);
+                    debugForcePos("  offsets: X=" + offX + "(" + vec3XField.getName() + "@" + vec3XField.getDeclaringClass().getSimpleName()
+                            + ") Y=" + offY + "(" + vec3YField.getName() + "@" + vec3YField.getDeclaringClass().getSimpleName()
+                            + ") Z=" + offZ + "(" + vec3ZField.getName() + "@" + vec3ZField.getDeclaringClass().getSimpleName() + ")");
+                    debugForcePos("  before overwrite: X=" + unsafe.getDouble(newVec3, offX)
+                            + " Y=" + unsafe.getDouble(newVec3, offY)
+                            + " Z=" + unsafe.getDouble(newVec3, offZ));
+                    unsafe.putDouble(newVec3, offX, x);
+                    unsafe.putDouble(newVec3, offY, storageY);
+                    unsafe.putDouble(newVec3, offZ, z);
+                    debugForcePos("  after overwrite: X=" + unsafe.getDouble(newVec3, offX)
+                            + " Y=" + unsafe.getDouble(newVec3, offY)
+                            + " Z=" + unsafe.getDouble(newVec3, offZ));
+                    // Replace the field on the entity with the clone
+                    long posFldOff = unsafe.objectFieldOffset(vec3PosField);
+                    unsafe.putObject(player, posFldOff, newVec3);
+                    Object readBack = unsafe.getObject(player, posFldOff);
+                    debugForcePos("wrote Vec3 via clone+Unsafe: replaced=" + (readBack == newVec3));
+                }
+            }
+
+            // 3. Write to old position fields
+            debugForcePos("writing posY=" + storageY + " to " + posYField.getName()
+                    + " (was " + posYField.getDouble(player) + ")");
+            posXField.setDouble(player, x);
+            posYField.setDouble(player, storageY);
+            posZField.setDouble(player, z);
+            debugForcePos("after write, posY=" + posYField.getDouble(player));
+
+            // 4. Also try calling setPosition method (in case it does additional setup)
+            // Method name varies by version: "a" (1.17/1.18), "e" (1.19+)
+            if (setPositionMethod == null) {
+                String[] candidates = {"e", "f", "a", "o"}; // setPos (1.19+), setPos (1.19.3+), setPos (1.17/1.18), setPosRaw
+                outer:
+                for (String name : candidates) {
+                    Class<?> c = player.getClass();
+                    while (c != null && c != Object.class) {
+                        try {
+                            java.lang.reflect.Method m = c.getDeclaredMethod(name,
+                                    double.class, double.class, double.class);
+                            if (m.getReturnType() == void.class) {
+                                m.setAccessible(true);
+                                setPositionMethod = m;
+                                break outer;
+                            }
+                        } catch (NoSuchMethodException ignored) {}
+                        c = c.getSuperclass();
+                    }
+                }
+            }
+            if (setPositionMethod != null) {
+                try {
+                    setPositionMethod.invoke(player, x, storageY, z);
+                } catch (Exception ignored) {
+                    // Method may fail due to world type check — that's ok,
+                    // we already wrote the fields directly
+                }
+            }
+
+            // 5. Patch bounding box via teleportPlayer's BB logic
+            teleportPlayer(x, y, z);
+
+            // 6. Set onGround=false
+            if (onGroundField == null && mappings.onGroundFieldName() != null) {
+                onGroundField = resolveField(player.getClass(),
+                        mappings.onGroundFieldName(), boolean.class);
+            }
+            if (onGroundField != null) {
+                onGroundField.setBoolean(player, false);
+            }
+
+            debugForcePos("forcePosition complete");
+            return true;
+        } catch (Exception e) {
+            debugForcePos("forcePosition error: " + e.getMessage());
+            System.err.println("[McTestAgent] forcePosition error: " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    private void debugForcePos(String msg) {
+        System.out.println("[McTestAgent] " + msg);
+        try {
+            java.io.File dir = McTestAgent.statusDir;
+            if (dir != null) {
+                try (java.io.PrintWriter pw = new java.io.PrintWriter(
+                        new java.io.FileWriter(new java.io.File(dir, "debug_forcepos.log"), true))) {
+                    pw.println(msg);
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    /**
+     * Sets the player's vertical velocity to a large negative value, causing
+     * the game's own physics to push the player downward. This is a fallback
+     * for versions where direct position writes don't persist across ticks.
+     *
+     * @param downwardSpeed positive value for downward speed (e.g. 200.0)
+     * @return true if velocity was successfully set
+     */
+    public boolean setDownwardVelocity(double downwardSpeed) {
+        Object player = getPlayer();
+        if (player == null) return false;
+        try {
+            if (posYField == null) getPlayerPosition();
+            double posX = posXField.getDouble(player);
+            double posY = posYField.getDouble(player);
+            double posZ = posZField.getDouble(player);
+
+            // Find deltaMovement Vec3 field (if not cached)
+            if (deltaMovementField == null) {
+                // First pass: dump ALL fields on the entity hierarchy to understand structure
+                String[][] vec3Patterns = {{"b","c","d"}, {"c","d","e"}, {"d","e","f"}, {"g","h","i"}};
+                Class<?> c = player.getClass();
+                while (c != null && c != Object.class) {
+                    for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                        if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                        if (f.getType().isPrimitive() || f.getType() == String.class) continue;
+                        if (f.getType().isArray()) continue;
+                        f.setAccessible(true);
+                        Object val = f.get(player);
+                        if (val == null) continue;
+                        // Skip if this is the position field we already found
+                        if (vec3PosField != null && f.getName().equals(vec3PosField.getName())
+                                && f.getDeclaringClass() == vec3PosField.getDeclaringClass()) continue;
+                        for (String[] pat : vec3Patterns) {
+                            try {
+                                java.lang.reflect.Field fb = val.getClass().getDeclaredField(pat[0]);
+                                java.lang.reflect.Field fc = val.getClass().getDeclaredField(pat[1]);
+                                java.lang.reflect.Field fd = val.getClass().getDeclaredField(pat[2]);
+                                if (fb.getType() == double.class && fc.getType() == double.class
+                                        && fd.getType() == double.class) {
+                                    fb.setAccessible(true); fc.setAccessible(true); fd.setAccessible(true);
+                                    double vb = fb.getDouble(val);
+                                    double vc = fc.getDouble(val);
+                                    double vd = fd.getDouble(val);
+                                    // deltaMovement values should be near 0 (or small gravity)
+                                    // and NOT near the player's position
+                                    double maxAbs = Math.max(Math.abs(vb), Math.max(Math.abs(vc), Math.abs(vd)));
+                                    if (maxAbs < 5.0) {
+                                        // This looks like a velocity field (small values)
+                                        // Use the Y field from our position mapping
+                                        deltaMovementField = f;
+                                        // deltaMovement has same Vec3 structure: find Y sub-field
+                                        // Use permutation matching like forcePosition
+                                        if (vec3YField != null) {
+                                            deltaMovementYField = val.getClass().getDeclaredField(vec3YField.getName());
+                                            deltaMovementYField.setAccessible(true);
+                                        }
+                                        debugForcePos("deltaMovement found: " + c.getSimpleName()
+                                                + "." + f.getName() + "@" + val.getClass().getSimpleName()
+                                                + " values=(" + String.format("%.4f,%.4f,%.4f", vb, vc, vd) + ")"
+                                                + " Y-field=" + (deltaMovementYField != null ? deltaMovementYField.getName() : "null"));
+                                        break;
+                                    }
+                                }
+                            } catch (NoSuchFieldException ignored) {}
+                        }
+                        if (deltaMovementField != null) break;
+                    }
+                    if (deltaMovementField != null) break;
+                    c = c.getSuperclass();
+                }
+            }
+
+            if (deltaMovementField == null || deltaMovementYField == null) {
+                // Dump entity fields for diagnostics
+                StringBuilder dump = new StringBuilder("deltaMovement NOT found. Entity dump:\n");
+                Class<?> dc = player.getClass();
+                while (dc != null && dc != Object.class) {
+                    for (java.lang.reflect.Field df : dc.getDeclaredFields()) {
+                        if (java.lang.reflect.Modifier.isStatic(df.getModifiers())) continue;
+                        if (df.getType().isPrimitive() || df.getType().isArray()) continue;
+                        try {
+                            df.setAccessible(true);
+                            Object dv = df.get(player);
+                            if (dv == null) {
+                                // Log null fields that match position Vec3 type
+                                if (vec3PosField != null && df.getType().getName().equals(vec3PosField.getType().getName())) {
+                                    dump.append("  NULL ").append(dc.getSimpleName()).append(".").append(df.getName())
+                                            .append(" type=").append(df.getType().getSimpleName()).append("\n");
+                                }
+                                continue;
+                            }
+                            int dblCount = 0;
+                            StringBuilder dblInfo = new StringBuilder();
+                            for (java.lang.reflect.Field sf : dv.getClass().getDeclaredFields()) {
+                                if (!java.lang.reflect.Modifier.isStatic(sf.getModifiers())
+                                        && sf.getType() == double.class) {
+                                    sf.setAccessible(true);
+                                    dblCount++;
+                                    if (dblInfo.length() > 0) dblInfo.append(",");
+                                    dblInfo.append(sf.getName()).append("=")
+                                            .append(String.format("%.2f", sf.getDouble(dv)));
+                                }
+                            }
+                            if (dblCount >= 3) {
+                                dump.append("  ").append(dc.getSimpleName()).append(".").append(df.getName())
+                                        .append("@").append(dv.getClass().getSimpleName())
+                                        .append(" [").append(dblInfo).append("]\n");
+                            }
+                        } catch (Exception ignored) {}
+                    }
+                    dc = dc.getSuperclass();
+                }
+                debugForcePos(dump.toString());
+                return false;
+            }
+
+            // Clone deltaMovement Vec3 with large negative Y
+            Object dmVec3 = deltaMovementField.get(player);
+            if (dmVec3 == null) {
+                debugForcePos("deltaMovement value is null");
+                return false;
+            }
+            java.lang.reflect.Field uf = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+            uf.setAccessible(true);
+            sun.misc.Unsafe unsafe = (sun.misc.Unsafe) uf.get(null);
+            Object newDm = unsafe.allocateInstance(dmVec3.getClass());
+            for (java.lang.reflect.Field ff : dmVec3.getClass().getDeclaredFields()) {
+                if (java.lang.reflect.Modifier.isStatic(ff.getModifiers())) continue;
+                ff.setAccessible(true);
+                long offset = unsafe.objectFieldOffset(ff);
+                if (ff.getType() == double.class) {
+                    unsafe.putDouble(newDm, offset, unsafe.getDouble(dmVec3, offset));
+                } else if (ff.getType() == float.class) {
+                    unsafe.putFloat(newDm, offset, unsafe.getFloat(dmVec3, offset));
+                } else if (ff.getType() == int.class) {
+                    unsafe.putInt(newDm, offset, unsafe.getInt(dmVec3, offset));
+                } else if (ff.getType() == long.class) {
+                    unsafe.putLong(newDm, offset, unsafe.getLong(dmVec3, offset));
+                } else if (ff.getType() == boolean.class) {
+                    unsafe.putBoolean(newDm, offset, unsafe.getBoolean(dmVec3, offset));
+                } else if (!ff.getType().isPrimitive()) {
+                    unsafe.putObject(newDm, offset, unsafe.getObject(dmVec3, offset));
+                }
+            }
+            // Set Y to large negative
+            long yOff = unsafe.objectFieldOffset(deltaMovementYField);
+            unsafe.putDouble(newDm, yOff, -downwardSpeed);
+            // Replace the field
+            long fldOff = unsafe.objectFieldOffset(deltaMovementField);
+            unsafe.putObject(player, fldOff, newDm);
+            debugForcePos("set deltaMovement Y to -" + downwardSpeed);
+
+            // Also set onGround=false so physics applies the velocity
+            if (onGroundField == null && mappings.onGroundFieldName() != null) {
+                onGroundField = resolveField(player.getClass(),
+                        mappings.onGroundFieldName(), boolean.class);
+            }
+            if (onGroundField != null) {
+                onGroundField.setBoolean(player, false);
+            }
+            return true;
+        } catch (Exception e) {
+            debugForcePos("setDownwardVelocity error: " + e.getMessage());
+            return false;
+        }
+    }
 
     /**
      * Teleports the player by invoking the entity's setPosition(x, y, z) method,
@@ -249,13 +731,16 @@ public class GameState {
                         if (m.getReturnType() == void.class) {
                             m.setAccessible(true);
                             setPositionMethod = m;
+                            System.out.println("[McTestAgent] setPosition method: "
+                                    + c.getName() + "." + m.getName()
+                                    + "(double,double,double)");
                             break;
                         }
                     } catch (NoSuchMethodException ignored) {}
                     c = c.getSuperclass();
                 }
                 if (setPositionMethod == null) {
-                    System.err.println("[McTestAgent] setPosition method not found, falling back to field writes");
+                    System.out.println("[McTestAgent] setPosition method not found, falling back to field writes");
                     if (posYField == null) getPlayerPosition();
                     posXField.setDouble(player, x);
                     posYField.setDouble(player, storageY);
@@ -414,13 +899,19 @@ public class GameState {
                         f.setAccessible(true);
                         Object val = f.get(player);
                         if (val == null) continue;
+                        // Skip java.* classes (JPMS blocks setAccessible on them in Java 17+)
+                        if (val.getClass().getName().startsWith("java.")) continue;
                         // Collect numeric instance fields from this object's class
                         java.util.List<java.lang.reflect.Field> numericFields =
                                 new java.util.ArrayList<java.lang.reflect.Field>();
                         for (java.lang.reflect.Field sf : val.getClass().getDeclaredFields()) {
                             if (java.lang.reflect.Modifier.isStatic(sf.getModifiers())) continue;
                             if (sf.getType() == double.class || sf.getType() == float.class) {
-                                sf.setAccessible(true);
+                                try {
+                                    sf.setAccessible(true);
+                                } catch (Exception e) {
+                                    continue; // Module system blocks access
+                                }
                                 numericFields.add(sf);
                             }
                         }
@@ -500,6 +991,22 @@ public class GameState {
             return onGroundField.getBoolean(player);
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    public void setOnGround(boolean value) {
+        Object player = getPlayer();
+        if (player == null) return;
+        try {
+            if (onGroundField == null && mappings.onGroundFieldName() != null) {
+                onGroundField = resolveField(player.getClass(),
+                        mappings.onGroundFieldName(), boolean.class);
+            }
+            if (onGroundField != null) {
+                onGroundField.setBoolean(player, value);
+            }
+        } catch (Exception e) {
+            System.err.println("[McTestAgent] setOnGround error: " + e.getMessage());
         }
     }
 
@@ -734,18 +1241,25 @@ public class GameState {
         if (player == null) return null;
         try {
             if (inventoryField == null) {
-                inventoryField = resolveField(player.getClass(),
-                        mappings.inventoryFieldName(), null);
+                inventoryField = resolveInventoryField(player);
             }
             Object inventory = inventoryField.get(player);
-            if (inventory == null) return null;
+            if (inventory == null) {
+                System.out.println("[McTestAgent] inventory field '" + mappings.inventoryFieldName()
+                        + "' is null on " + player.getClass().getName());
+                return null;
+            }
 
             if (mainInventoryField == null) {
                 mainInventoryField = resolveField(inventory.getClass(),
                         mappings.mainInventoryFieldName(), null);
             }
             Object rawInv = mainInventoryField.get(inventory);
-            if (rawInv == null) return null;
+            if (rawInv == null) {
+                System.out.println("[McTestAgent] mainInventory field '" + mappings.mainInventoryFieldName()
+                        + "' is null on " + inventory.getClass().getName());
+                return null;
+            }
 
             // mainInventory is Object[] in 1.7-1.9, NonNullList (List) in 1.12+
             int len;
@@ -781,8 +1295,8 @@ public class GameState {
             }
             return result;
         } catch (Exception e) {
-            System.err.println("[McTestAgent] Failed to read inventory: " + e.getMessage());
-            e.printStackTrace();
+            System.out.println("[McTestAgent] Failed to read inventory: " + e
+                    + " (invField=" + inventoryField + " mainInvField=" + mainInventoryField + ")");
             return null;
         }
     }
@@ -821,8 +1335,7 @@ public class GameState {
         if (player == null) return -1;
         try {
             if (inventoryField == null) {
-                inventoryField = resolveField(player.getClass(),
-                        mappings.inventoryFieldName(), null);
+                inventoryField = resolveInventoryField(player);
             }
             Object inventory = inventoryField.get(player);
             if (inventory == null) return -1;
@@ -885,6 +1398,100 @@ public class GameState {
                     mappings.mouseHelperFieldName(), null);
         }
         return mouseHelperField.get(minecraftInstance);
+    }
+
+    // --- hitResult debug info ---
+
+    private Field hitResultField;
+
+    /**
+     * Returns a debug string describing the current hitResult/objectMouseOver field
+     * on the Minecraft instance. Used for debugging click() placement issues.
+     */
+    public String getHitResultInfo() {
+        try {
+            if (hitResultField == null) {
+                // hitResult field name varies: 'v' in many versions, 'aa' in older ones.
+                // Scan for a field whose type name contains "HitResult" or whose
+                // simple type is "dpm" (1.18.2) / "evr" (1.20.6) etc.
+                // We'll just scan for any field that is NOT a primitive, NOT a String,
+                // and whose type toString contains "HitResult" or matches known patterns.
+                Class<?> c = minecraftInstance.getClass();
+                while (c != null && c != Object.class) {
+                    for (Field f : c.getDeclaredFields()) {
+                        if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                        String typeName = f.getType().getName();
+                        // Try known hitResult type patterns
+                        if (typeName.contains("HitResult") || typeName.equals("dpm")
+                                || typeName.equals("evr") || typeName.equals("chn")
+                                || typeName.equals("dcf")) {
+                            f.setAccessible(true);
+                            hitResultField = f;
+                            break;
+                        }
+                    }
+                    if (hitResultField != null) break;
+                    c = c.getSuperclass();
+                }
+                if (hitResultField == null) return "field_not_found";
+            }
+            Object hr = hitResultField.get(minecraftInstance);
+            if (hr == null) return "null";
+            String type = hr.getClass().getSimpleName();
+            // Try to extract block position — BlockHitResult has getBlockPos() method
+            String posStr = "";
+            try {
+                // Find a no-arg method returning a non-primitive, non-String type
+                // with int getX()/getY()/getZ() — that's BlockPos
+                for (java.lang.reflect.Method m : hr.getClass().getMethods()) {
+                    if (m.getParameterCount() == 0 && !m.getReturnType().isPrimitive()
+                            && m.getReturnType() != String.class
+                            && m.getReturnType() != Object.class) {
+                        Object result = m.invoke(hr);
+                        if (result == null) continue;
+                        // Check if it has getX/getY/getZ
+                        try {
+                            java.lang.reflect.Method gx = result.getClass().getMethod("u");
+                            java.lang.reflect.Method gy = result.getClass().getMethod("v");
+                            java.lang.reflect.Method gz = result.getClass().getMethod("w");
+                            int x = (Integer) gx.invoke(result);
+                            int y = (Integer) gy.invoke(result);
+                            int z = (Integer) gz.invoke(result);
+                            posStr = " pos=(" + x + "," + y + "," + z + ")";
+                            break;
+                        } catch (NoSuchMethodException ignored) {
+                            // Try getX/getY/getZ
+                            try {
+                                java.lang.reflect.Method gx = result.getClass().getMethod("getX");
+                                java.lang.reflect.Method gy = result.getClass().getMethod("getY");
+                                java.lang.reflect.Method gz = result.getClass().getMethod("getZ");
+                                int x = (Integer) gx.invoke(result);
+                                int y = (Integer) gy.invoke(result);
+                                int z = (Integer) gz.invoke(result);
+                                posStr = " pos=(" + x + "," + y + "," + z + ")";
+                                break;
+                            } catch (NoSuchMethodException ignored2) {}
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+            // Get hitResult type (BLOCK, MISS, ENTITY)
+            String hitType = "";
+            try {
+                for (java.lang.reflect.Method m : hr.getClass().getMethods()) {
+                    if (m.getParameterCount() == 0 && m.getReturnType().isEnum()) {
+                        Object enumVal = m.invoke(hr);
+                        if (enumVal != null) {
+                            hitType = " type=" + enumVal.toString();
+                            break;
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+            return type + hitType + posStr;
+        } catch (Exception e) {
+            return "error:" + e.getMessage();
+        }
     }
 
     // --- Phase 3: screen, chat, cursor, cobblestone queries ---
@@ -1046,8 +1653,7 @@ public class GameState {
         if (player == null) return null;
         try {
             if (inventoryField == null) {
-                inventoryField = resolveField(player.getClass(),
-                        mappings.inventoryFieldName(), null);
+                inventoryField = resolveInventoryField(player);
             }
             Object inventory = inventoryField.get(player);
             if (inventory == null) return null;
@@ -1077,13 +1683,35 @@ public class GameState {
     /**
      * Returns total cobblestone (id=4) count across all inventory slots.
      */
+    private int cobblestoneItemId = -1;
+
+    /**
+     * Returns the cobblestone item ID as seen in the client inventory.
+     * Auto-detected from the first non-empty slot (server only gives cobblestone).
+     * Falls back to 4 (legacy) if no slot has items.
+     */
+    public int getCobblestoneItemId() {
+        if (cobblestoneItemId > 0) return cobblestoneItemId;
+        int[][] slots = getInventorySlots();
+        if (slots != null) {
+            for (int[] slot : slots) {
+                if (slot[0] != 0 && slot[1] > 0) {
+                    cobblestoneItemId = slot[0];
+                    return cobblestoneItemId;
+                }
+            }
+        }
+        return 4; // legacy fallback
+    }
+
     public int getTotalCobblestone() {
         if (mappings.inventoryFieldName() == null) return -1;
         int[][] slots = getInventorySlots();
         if (slots == null) return -1;
+        int cobbleId = getCobblestoneItemId();
         int total = 0;
         for (int[] slot : slots) {
-            if (slot[0] == 4) total += slot[1];
+            if (slot[0] == cobbleId) total += slot[1];
         }
         return total;
     }
@@ -1128,6 +1756,72 @@ public class GameState {
     }
 
     /**
+     * Resolves the inventory field on the player, handling the case where
+     * inventoryFieldName and movementInputFieldName have the same obfuscated
+     * name but live on different classes (e.g., "cp" on LocalPlayer = input,
+     * "cp" on Player = inventory). We validate by checking that the field's
+     * type contains the mainInventoryFieldName field.
+     */
+    private Field resolveInventoryField(Object player) {
+        String invName = mappings.inventoryFieldName();
+        String mainInvName = mappings.mainInventoryFieldName();
+        Class<?> c = player.getClass();
+        while (c != null && c != Object.class) {
+            try {
+                Field f = c.getDeclaredField(invName);
+                if (!Modifier.isStatic(f.getModifiers())) {
+                    f.setAccessible(true);
+                    // Validate: the field's type must contain mainInventoryFieldName
+                    // as a List/array AND currentItemFieldName as an int.
+                    // This distinguishes Inventory from unrelated types that happen
+                    // to have a similarly-named List field (e.g., ClientPacketListener.deferredPackets).
+                    if (mainInvName != null) {
+                        boolean hasMainInv = false;
+                        boolean hasSelectedSlot = false;
+                        String selSlotName = mappings.currentItemFieldName();
+                        Class<?> ft = f.getType();
+                        while (ft != null && ft != Object.class) {
+                            if (!hasMainInv) {
+                                try {
+                                    Field mainInvField = ft.getDeclaredField(mainInvName);
+                                    Class<?> mainInvType = mainInvField.getType();
+                                    if (List.class.isAssignableFrom(mainInvType)
+                                            || mainInvType.isArray()) {
+                                        hasMainInv = true;
+                                    }
+                                } catch (NoSuchFieldException ignored) {}
+                            }
+                            if (!hasSelectedSlot && selSlotName != null) {
+                                try {
+                                    Field selField = ft.getDeclaredField(selSlotName);
+                                    if (selField.getType() == int.class) {
+                                        hasSelectedSlot = true;
+                                    }
+                                } catch (NoSuchFieldException ignored) {}
+                            }
+                            ft = ft.getSuperclass();
+                        }
+                        if (!hasMainInv || (selSlotName != null && !hasSelectedSlot)) {
+                            System.out.println("[McTestAgent] resolveInventoryField: skipping "
+                                    + c.getName() + "." + invName + " (type=" + f.getType().getName()
+                                    + ") — missing items/selected fields");
+                            c = c.getSuperclass();
+                            continue;
+                        }
+                    }
+                    System.out.println("[McTestAgent] resolveInventoryField: found "
+                            + c.getName() + "." + invName + " (type=" + f.getType().getName() + ")");
+                    return f;
+                }
+            } catch (NoSuchFieldException ignored) {}
+            c = c.getSuperclass();
+        }
+        System.out.println("[McTestAgent] resolveInventoryField: fallback to resolveField");
+        // Fallback to standard resolution
+        return resolveField(player.getClass(), invName, null);
+    }
+
+    /**
      * Resolve a field by name, searching the class hierarchy.
      * If the exact name isn't found and expectedType is provided,
      * falls back to scanning all fields for one matching the expected type.
@@ -1150,14 +1844,25 @@ public class GameState {
         }
 
         // Name-only match (no type filter or typed match failed)
+        // Skip static fields to avoid shadowing (e.g. ept.co = static final int
+        // shadows boj.co = private final inventory in 1.18.2)
         Class<?> c = clazz;
+        Field staticFallback = null;
         while (c != null && c != Object.class) {
             try {
                 Field f = c.getDeclaredField(name);
-                f.setAccessible(true);
-                return f;
+                if (!java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                    f.setAccessible(true);
+                    return f;
+                }
+                if (staticFallback == null) staticFallback = f;
             } catch (NoSuchFieldException ignored) {}
             c = c.getSuperclass();
+        }
+        // If only static fields matched, return the first one as last resort
+        if (staticFallback != null) {
+            staticFallback.setAccessible(true);
+            return staticFallback;
         }
 
         // Fallback: type-based scan (for when SRG names differ between sub-versions)

@@ -84,7 +84,7 @@ public class NettyReleaseV498Mappings implements FieldMappings {
     @Override public String guiInventoryClassName() { return "deb"; } // InventoryScreen
     @Override public String closeContainerMethodName() { return "t_"; } // dmp.t_() sends close packet + calls w()
     @Override public boolean posYIsFeetLevel() { return true; } // 1.8+: posY = feet
-    @Override public String rightClickMethodName() { return "g"; } // right-click/use method
+    @Override public String rightClickMethodName() { return "aF"; } // cyc.aF() right-click/startUseItem (Mojang mapping: startUseItem -> aF)
     @Override public boolean isLwjgl3() { return true; }
     @Override public boolean isNettyClient() { return true; }
     @Override public String blockRenderDispatcherClassName() { return "dnw"; }

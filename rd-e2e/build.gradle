@@ -9,48 +9,90 @@ dependencies {
 
 // E2E tests require Xvfb + Java 8 + real client JARs. Skip during normal builds;
 // run explicitly with: ./gradlew :rd-e2e:test -Pe2e
-// Parallel execution: each test class runs in its own fork with isolated Xvfb display
-// and temp data directory. Pre-1.19 clients get high parallelism; 1.19+ get max 3.
+//
+// Test tasks are split by client generation for optimal parallelism:
+//   test          - Pre-1.13 (LWJGL2): lightweight, 6 parallel forks
+//   testLWJGL3    - 1.13-1.18.2 (LWJGL3): Mesa llvmpipe software rendering, 4 forks
+//   testModern    - 1.19+ (LWJGL3 + Core Profile): heaviest JVMs, 2 forks
+//   testAll       - Runs all three suites
+
+// Pre-1.13 clients (RubyDung, Alpha, Beta, Release 1.0-1.12, CrossVersion)
+// Lightweight LWJGL2 rendering, no software GL overhead.
 test {
     onlyIf { project.hasProperty('e2e') }
-    timeout = java.time.Duration.ofMinutes(30)
-    // Run from root project directory so relative paths (rd-e2e-agent/build/libs/,
-    // rd-client/build/libs/, rd-e2e/libs/, rd-e2e/baselines/) resolve correctly.
+    timeout = java.time.Duration.ofMinutes(120)
     workingDir = rootProject.projectDir
-    // Run test classes in parallel across forks. Each fork gets a unique
-    // org.gradle.test.worker ID used by HeadlessDisplay.forFork() for display isolation
-    // and by E2ETestServer for temp data directory isolation.
-    maxParallelForks = Math.max(Runtime.runtime.availableProcessors().intdiv(2), 4)
-    // Show stdout/stderr from tests (agent output, download progress, etc.)
+    maxParallelForks = Math.max(Runtime.runtime.availableProcessors().intdiv(2), 6)
+    forkEvery = 1
+    jvmArgs '-Xmx512m'
     testLogging {
         showStandardStreams = true
         events 'FAILED'
         exceptionFormat 'short'
     }
 
-    // Pre-1.19 test classes (RubyDung, Alpha, Beta, Release 1.0-1.18.x, CrossVersion)
     include '**/scenarios/RubyDung*Test.class'
     include '**/scenarios/Alpha*Test.class'
     include '**/scenarios/Beta*Test.class'
     include '**/scenarios/Release*Test.class'
     include '**/scenarios/CrossVersion*Test.class'
-    // Exclude 1.19+ (handled by testModern task)
+    // Exclude LWJGL3 versions (1.13+) — handled by testLWJGL3/testModern
+    exclude '**/scenarios/Release113*Test.class'
+    exclude '**/scenarios/Release114*Test.class'
+    exclude '**/scenarios/Release115*Test.class'
+    exclude '**/scenarios/Release116*Test.class'
+    exclude '**/scenarios/Release117*Test.class'
+    exclude '**/scenarios/Release118*Test.class'
     exclude '**/scenarios/Release119*Test.class'
     exclude '**/scenarios/Release120*Test.class'
     exclude '**/scenarios/Release121*Test.class'
 }
 
-// Separate task for 1.19+ clients with lower parallelism (heavier JVMs)
-tasks.register('testModern', Test) {
+// 1.13-1.18.2 clients (LWJGL3 with Mesa llvmpipe software rendering).
+// Single fork: 1.15+'s async chunk meshing under Mesa llvmpipe software rendering
+// causes unrendered chunks when multiple instances compete for CPU.
+// viewDistance=1 reduces server chunks to 9, keeping tests fast.
+tasks.register('testLWJGL3', Test) {
     useJUnitPlatform()
     onlyIf { project.hasProperty('e2e') }
-    timeout = java.time.Duration.ofMinutes(30)
+    timeout = java.time.Duration.ofMinutes(120)
     workingDir = rootProject.projectDir
-    maxParallelForks = 3
+    maxParallelForks = 2
+    forkEvery = 1
+    jvmArgs '-Xmx512m', '-De2e.viewDistance=1'
     classpath = sourceSets.test.runtimeClasspath
     testClassesDirs = sourceSets.test.output.classesDirs
     testLogging {
         showStandardStreams = true
+        events 'FAILED'
+        exceptionFormat 'short'
+    }
+
+    include '**/scenarios/Release113*Test.class'
+    include '**/scenarios/Release114*Test.class'
+    include '**/scenarios/Release115*Test.class'
+    include '**/scenarios/Release116*Test.class'
+    include '**/scenarios/Release117*Test.class'
+    include '**/scenarios/Release118*Test.class'
+}
+
+// 1.19+ clients (LWJGL3 + Core Profile, heaviest JVMs with DataFixerUpper).
+// Single fork: 1.15+'s async chunk meshing under Mesa llvmpipe software rendering
+// causes unrendered chunks when multiple instances compete for CPU.
+tasks.register('testModern', Test) {
+    useJUnitPlatform()
+    onlyIf { project.hasProperty('e2e') }
+    timeout = java.time.Duration.ofMinutes(180)
+    workingDir = rootProject.projectDir
+    maxParallelForks = 2
+    forkEvery = 1
+    jvmArgs '-Xmx512m', '-De2e.viewDistance=1'
+    classpath = sourceSets.test.runtimeClasspath
+    testClassesDirs = sourceSets.test.output.classesDirs
+    testLogging {
+        showStandardStreams = true
+        events 'FAILED'
+        exceptionFormat 'short'
     }
 
     include '**/scenarios/Release119*Test.class'
@@ -66,6 +108,8 @@ tasks.register('testPreNetty', Test) {
     timeout = java.time.Duration.ofMinutes(30)
     workingDir = rootProject.projectDir
     maxParallelForks = Math.max(Runtime.runtime.availableProcessors().intdiv(2), 4)
+    forkEvery = 1
+    jvmArgs '-Xmx512m'
     classpath = sourceSets.test.runtimeClasspath
     testClassesDirs = sourceSets.test.output.classesDirs
     testLogging {
@@ -99,13 +143,17 @@ tasks.register('testPreNetty', Test) {
     exclude '**/scenarios/Release118*Test.class'
 }
 
-// Convenience task to run both pre-1.19 and modern test suites
+// Convenience task to run all three test suites
 tasks.register('testAll') {
-    dependsOn test, tasks.named('testModern')
+    dependsOn test, tasks.named('testLWJGL3'), tasks.named('testModern')
 }
 
 // Ensure the agent fat JAR and modded client JAR are built before tests run
 tasks.named('test') {
+    dependsOn ':rd-e2e-agent:fatJar'
+    dependsOn ':rd-client:fatModdedJar'
+}
+tasks.named('testLWJGL3') {
     dependsOn ':rd-e2e-agent:fatJar'
     dependsOn ':rd-client:fatModdedJar'
 }
