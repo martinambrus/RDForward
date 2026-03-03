@@ -2,6 +2,7 @@ package com.github.martinambrus.rdforward.e2e.agent.scenario;
 
 import com.github.martinambrus.rdforward.e2e.agent.GameState;
 import com.github.martinambrus.rdforward.e2e.agent.InputController;
+import com.github.martinambrus.rdforward.e2e.agent.McTestAgent;
 import com.github.martinambrus.rdforward.e2e.agent.ScreenshotCapture;
 
 import java.io.File;
@@ -88,12 +89,7 @@ public class ColumnBuildScenario implements Scenario {
                 if (ticks == 1) {
                     input.placeBlockDirect(platformBX, platformBY, platformBZ, 1);
                 }
-                // Poll until block appears instead of fixed wait
-                if (ticks >= 2) {
-                    int blockId = gs.getBlockId(platformBX, platformBY, platformBZ);
-                    if (blockId != 0) return true;
-                }
-                return false;
+                return ticks >= 5;
             }
             if (ticks == 1) {
                 // Look at the ground block where we want to place on top
@@ -102,12 +98,7 @@ public class ColumnBuildScenario implements Scenario {
             if (ticks == 3) {
                 input.click(1); // right-click to place
             }
-            // Poll until block appears instead of fixed wait
-            if (ticks > 3) {
-                int blockId = gs.getBlockId(platformBX, platformBY, platformBZ);
-                if (blockId != 0) return true;
-            }
-            return false;
+            return ticks >= 10;
         }
 
         @Override
@@ -373,15 +364,11 @@ public class ColumnBuildScenario implements Scenario {
     // Waits for cobblestone replenishment to arrive before capturing — the
     // batched replenishment timer (1 second) may not have fired yet when
     // BuildColumnStep exits, causing varying inventory counts in the screenshot.
-    // Phase 1: inventory-stable polling (cobblestone total unchanged for 5 ticks).
-    // Phase 2: frame-stable detection for chunk mesh completion.
+    // Uses WALL TIME instead of tick count because headless clients can run
+    // much faster than 20 TPS, making tick-based waits unreliable.
     private class VerifyHeightStep implements ScenarioStep {
         private int ticks;
-        private long lastHash;
-        private int stableCount;
-        private int lastCobbleTotal = -1;
-        private int cobbleStableTicks;
-        private boolean inventoryStable;
+        private long startTimeMs;
 
         @Override
         public String getDescription() {
@@ -394,6 +381,7 @@ public class ColumnBuildScenario implements Scenario {
             ticks++;
 
             if (ticks == 1) {
+                startTimeMs = System.currentTimeMillis();
                 double[] pos = gs.getPlayerPosition();
                 if (pos == null) throw new RuntimeException("No player position");
 
@@ -405,44 +393,14 @@ public class ColumnBuildScenario implements Scenario {
                 }
             }
 
-            // Phase 1: Wait for cobblestone replenishment to stabilize.
-            // Poll inventory each tick — once the total is unchanged for 5
-            // consecutive ticks, replenishment is complete.
-            // Skip for RD (no inventory — getTotalCobblestone returns -1).
-            if (!inventoryStable) {
-                int total = gs.getTotalCobblestone();
-                if (total < 0) {
-                    // No inventory (RubyDung) — skip straight to frame-stable
-                    inventoryStable = true;
-                } else if (total == lastCobbleTotal) {
-                    cobbleStableTicks++;
-                } else {
-                    cobbleStableTicks = 0;
-                }
-                lastCobbleTotal = total;
-                if (cobbleStableTicks >= 5) {
-                    inventoryStable = true;
-                }
-                if (!inventoryStable) return false;
+            // Wait at least 3 seconds of WALL TIME for both replenishment
+            // rounds to arrive and the client to render the final inventory.
+            // The batched timer fires 1s after last placement, follow-up 1s
+            // later. 3s gives margin for slow systems under parallel load.
+            long elapsed = System.currentTimeMillis() - startTimeMs;
+            if (elapsed < 3000) {
+                return false;
             }
-
-            // Phase 2: Frame-stable detection after inventory is stable.
-            // The column build changes many chunk sections — wait for all
-            // meshes to finish rebuilding. Works on all client versions.
-            if (ticks % 20 == 0) {
-                int w = gs.getDisplayWidth();
-                int h = gs.getDisplayHeight();
-                if (w > 0 && h > 0) {
-                    long hash = capture.captureFrameHash(w, h);
-                    if (hash != 0 && hash == lastHash) {
-                        stableCount++;
-                    } else {
-                        stableCount = 0;
-                    }
-                    lastHash = hash;
-                }
-            }
-            if (stableCount < 3) return false;
 
             File file = new File(statusDir, "column_top.png");
             capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);
@@ -787,8 +745,6 @@ public class ColumnBuildScenario implements Scenario {
         private boolean rescueTeleported;
         private boolean cobbleCleaned;
         private boolean relocated;
-        private long lastHash;
-        private int stableCount;
 
         @Override
         public String getDescription() {
@@ -852,7 +808,7 @@ public class ColumnBuildScenario implements Scenario {
                     // Moving 5 blocks away ensures flat grass in the screenshot.
                     // Uses teleportPlayer which patches the BB directly to prevent
                     // the physics engine from snapping the player back.
-                    if (!relocated) {
+                    if (!relocated && !input.isRubyDung()) {
                         relocated = true;
                         double cleanX = platformBX + 0.5;
                         double cleanZ = platformBZ - 5 + 0.5;
@@ -861,28 +817,13 @@ public class ColumnBuildScenario implements Scenario {
                         settleTicks = 0;
                         return false;
                     }
-                    // Level horizon — same natural standing perspective as
-                    // environment_check, confirming the player is back on
-                    // solid ground after the column build/break sequence.
-                    input.setLookDirection(180f, 0f);
+                    // Look straight down for a deterministic screenshot.
+                    input.setLookDirection(180f, 90f);
                     // Wait for position to take effect and scene to render.
-                    // Frame-stable detection after teleport + relocation.
-                    // Sample every 20 ticks after minimum 20 ticks settle.
-                    if (settleTicks >= 20 && settleTicks % 20 == 0) {
-                        int w = gs.getDisplayWidth();
-                        int h = gs.getDisplayHeight();
-                        if (w > 0 && h > 0) {
-                            long hash = capture.captureFrameHash(w, h);
-                            if (hash != 0 && hash == lastHash) {
-                                stableCount++;
-                            } else {
-                                stableCount = 0;
-                            }
-                            lastHash = hash;
-                        }
+                    if (settleTicks < 20) {
+                        settleTicks++;
+                        return false;
                     }
-                    settleTicks++;
-                    if (stableCount < 3) return false;
                     File file = new File(statusDir, "back_on_ground.png");
                     capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);
                     screenshotTaken = true;

@@ -29,14 +29,20 @@ public class TickHook {
         ERROR
     }
 
-    // Frame-stable detection: sample framebuffer hash every
-    // FRAME_SAMPLE_INTERVAL ticks; when FRAME_STABLE_COUNT consecutive
-    // samples match, all chunk meshes are complete. MIN protects against
-    // false positives from loading screens; MAX is a safety net.
+    // Pre-LWJGL3 (Alpha through 1.12): fixed 100 ticks = 5 seconds.
+    // Alpha/Beta clients have animated textures (water) and day/night cycle
+    // that cause the framebuffer to change every frame, so frame-stable
+    // detection never converges — use a fixed tick count instead.
+    private static final int STABILIZE_TICKS_DEFAULT = 100;
+    // LWJGL3 (1.13+): frame-stable detection instead of fixed timeout.
+    // Sample framebuffer hash every FRAME_SAMPLE_INTERVAL ticks; when
+    // FRAME_STABLE_COUNT consecutive samples match, all chunk meshes are
+    // complete. MIN protects against false positives from loading screens;
+    // MAX is a safety net for pathological cases.
     private static final int FRAME_SAMPLE_INTERVAL = 20;  // 1 second between samples
     private static final int FRAME_STABLE_COUNT = 3;       // 3 consecutive matches = stable
-    private static final int STABILIZE_MIN = 100;          // 5 seconds minimum
-    private static final int STABILIZE_MAX = 1200;         // 60 seconds safety net
+    private static final int STABILIZE_MIN_LWJGL3 = 100;   // 5 seconds minimum
+    private static final int STABILIZE_MAX_LWJGL3 = 1200;  // 60 seconds safety net
 
     private final GameState gameState;
     private final StatusWriter statusWriter;
@@ -48,10 +54,11 @@ public class TickHook {
     private State state = State.INIT;
     private int tickCount;
     private int stabilizeTicks;
+    private final boolean isLwjgl3;
     private final List<String> screenshots = new ArrayList<String>();
     private String error;
 
-    // Frame-stable detection: works on all client versions (LWJGL2 and LWJGL3)
+    // Frame-stable detection for LWJGL3 clients
     private long lastFrameHash;
     private int stableFrameCount;
 
@@ -67,6 +74,7 @@ public class TickHook {
         this.inputController = inputController;
         this.scenario = scenario;
         this.statusDir = statusDir;
+        this.isLwjgl3 = McTestAgent.mappings != null && McTestAgent.mappings.isLwjgl3();
     }
 
     /**
@@ -139,17 +147,15 @@ public class TickHook {
                             double rawY = gameState.getRawPosY();
                             if (dpos != null) {
                                 debugLog.printf("STAB tick=%d/%d normalizedY=%.2f rawY=%.2f X=%.2f Z=%.2f stable=%d%n",
-                                        stabilizeTicks, STABILIZE_MAX,
+                                        stabilizeTicks, isLwjgl3 ? STABILIZE_MAX_LWJGL3 : STABILIZE_TICKS_DEFAULT,
                                         dpos[1], rawY, dpos[0], dpos[2], stableFrameCount);
                             }
                         }
                     }
 
-                    // Frame-stable detection — sample framebuffer hash and wait
-                    // for consecutive identical frames (all chunks meshed).
-                    // Works on all client versions (LWJGL2 and LWJGL3) since both
-                    // expose GL11.glReadPixels via the same API.
-                    if (stabilizeTicks >= STABILIZE_MIN
+                    // LWJGL3: frame-stable detection — sample framebuffer hash
+                    // and wait for consecutive identical frames (all chunks meshed).
+                    if (isLwjgl3 && stabilizeTicks >= STABILIZE_MIN_LWJGL3
                             && stabilizeTicks % FRAME_SAMPLE_INTERVAL == 0) {
                         int w = gameState.getDisplayWidth();
                         int h = gameState.getDisplayHeight();
@@ -168,15 +174,22 @@ public class TickHook {
                         }
                     }
 
-                    // Proceed when N consecutive frames match, or hit the safety
-                    // net timeout.
-                    boolean stabilized = stableFrameCount >= FRAME_STABLE_COUNT
-                            || stabilizeTicks >= STABILIZE_MAX;
+                    boolean stabilized;
+                    if (isLwjgl3) {
+                        // Frame-stable: proceed when N consecutive frames match,
+                        // or hit the safety net timeout
+                        stabilized = stableFrameCount >= FRAME_STABLE_COUNT
+                                || stabilizeTicks >= STABILIZE_MAX_LWJGL3;
+                    } else {
+                        stabilized = stabilizeTicks >= STABILIZE_TICKS_DEFAULT;
+                    }
 
                     if (stabilized) {
-                        String reason = stableFrameCount >= FRAME_STABLE_COUNT
-                                ? "frame-stable (" + stableFrameCount + " consecutive matches)"
-                                : "timeout (safety net)";
+                        String reason = isLwjgl3
+                                ? (stableFrameCount >= FRAME_STABLE_COUNT
+                                    ? "frame-stable (" + stableFrameCount + " consecutive matches)"
+                                    : "timeout (safety net)")
+                                : "tick count";
                         System.out.println("[McTestAgent] Stabilized after "
                                 + stabilizeTicks + " ticks (" + reason
                                 + "), starting scenario '" + scenario.getName() + "'");
@@ -186,8 +199,9 @@ public class TickHook {
                         writeStatus();
                     } else if (stabilizeTicks <= 5 || stabilizeTicks % 200 == 0) {
                         System.out.println("[McTestAgent] Stabilizing: tick "
-                                + stabilizeTicks
-                                + " (frame-stable=" + stableFrameCount + "/" + FRAME_STABLE_COUNT + ")");
+                                + stabilizeTicks + (isLwjgl3
+                                    ? " (frame-stable=" + stableFrameCount + "/" + FRAME_STABLE_COUNT + ")"
+                                    : "/" + STABILIZE_TICKS_DEFAULT));
                     }
                     break;
 

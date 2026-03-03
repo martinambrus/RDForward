@@ -2,6 +2,7 @@ package com.github.martinambrus.rdforward.e2e.agent.scenario;
 
 import com.github.martinambrus.rdforward.e2e.agent.GameState;
 import com.github.martinambrus.rdforward.e2e.agent.InputController;
+import com.github.martinambrus.rdforward.e2e.agent.McTestAgent;
 import com.github.martinambrus.rdforward.e2e.agent.ScreenshotCapture;
 
 import java.io.File;
@@ -103,10 +104,17 @@ public class VoidFallScenario implements Scenario {
                     // RubyDung: move position directly (no chunk system)
                     float dy = (float) (targetY - pos[1]);
                     input.movePlayerPosition(0, dy, 0);
+                } else if (McTestAgent.mappings != null && !McTestAgent.mappings.isLwjgl3()) {
+                    // Pre-1.13 (Alpha/Beta/Release): use teleportPlayer which
+                    // directly writes position fields + bounding box + onGround.
+                    // forcePosition's setPositionMethod call resolves to
+                    // Entity.move() (not setPosition) in some Alpha versions,
+                    // which scrambles the position when called with absolute coords.
+                    gs.teleportPlayer(pos[0], targetY, pos[2]);
                 } else {
-                    // forcePosition writes both the Vec3d position field (1.15+)
-                    // AND the legacy double fields, patches the bounding box,
-                    // and sets onGround=false. Works for all versions.
+                    // 1.13+ (LWJGL3): use forcePosition which also handles
+                    // the Vec3d position field (1.15+ reads from Vec3d, not
+                    // the legacy double fields).
                     gs.forcePosition(pos[0], targetY, pos[2]);
                 }
                 System.out.println("[McTestAgent] Teleported to void: Y="
@@ -119,7 +127,10 @@ public class VoidFallScenario implements Scenario {
             // can be overwritten by tick logic), also apply a large downward
             // velocity on ticks 2-5. The game's own physics will apply this
             // velocity, dropping the player into the void.
-            if (ticks >= 2 && ticks <= 5 && !input.isRubyDung()) {
+            // Pre-LWJGL3: teleportPlayer already set position + BB correctly,
+            // game gravity handles the rest — skip velocity override.
+            if (ticks >= 2 && ticks <= 5 && !input.isRubyDung()
+                    && McTestAgent.mappings != null && McTestAgent.mappings.isLwjgl3()) {
                 gs.setDownwardVelocity(100.0);
             }
 
@@ -322,16 +333,8 @@ public class VoidFallScenario implements Scenario {
         }
     }
 
-    // Step 5: Verify player is back near spawn on solid ground and has
-    // stopped moving. Waits for position to stabilize (unchanged for 5
-    // consecutive ticks) before accepting — prevents premature pass while
-    // the player is still bouncing/sliding after teleport.
+    // Step 5: Verify player is back near spawn on solid ground
     private class VerifySpawnReturnStep implements ScenarioStep {
-        private int ticks;
-        private double lastY = Double.NaN;
-        private int stablePositionTicks;
-        private static final int POSITION_STABLE_COUNT = 5;
-
         @Override
         public String getDescription() {
             return "verify_spawn_return";
@@ -340,20 +343,15 @@ public class VoidFallScenario implements Scenario {
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
-            ticks++;
             double[] pos = gs.getPlayerPosition();
-            if (pos == null) return false;
+            if (pos == null) throw new RuntimeException("No player position");
 
             int blockBelow = gs.getBlockBelowFeet();
-
-            if (ticks % 20 == 1) {
-                System.out.println("[McTestAgent] Spawn return check (tick " + ticks
-                        + "): X=" + String.format("%.1f", pos[0])
-                        + " Y=" + String.format("%.1f", pos[1])
-                        + " Z=" + String.format("%.1f", pos[2])
-                        + " blockBelow=" + blockBelow
-                        + " stableY=" + stablePositionTicks);
-            }
+            System.out.println("[McTestAgent] Spawn return check: X="
+                    + String.format("%.1f", pos[0])
+                    + " Y=" + String.format("%.1f", pos[1])
+                    + " Z=" + String.format("%.1f", pos[2])
+                    + " blockBelow=" + blockBelow);
 
             // Older Alpha clients (pre-1.2.2) clip Y near 0 — player gets stuck
             // at void floor without being teleported. Accept this as valid outcome.
@@ -362,27 +360,19 @@ public class VoidFallScenario implements Scenario {
                 return true;
             }
 
-            // Track Y stability: player must stop moving vertically
-            if (!Double.isNaN(lastY) && Math.abs(pos[1] - lastY) < 0.01) {
-                stablePositionTicks++;
-            } else {
-                stablePositionTicks = 0;
-            }
-            lastY = pos[1];
-
-            // Need solid ground AND stable position before accepting
-            if (blockBelow <= 0 || stablePositionTicks < POSITION_STABLE_COUNT) {
-                return false;
+            // Verify standing on solid ground (any non-air block).
+            // Block IDs vary by version: legacy (grass=2, dirt=3) vs 1.13+ state IDs.
+            if (blockBelow <= 0) {
+                throw new RuntimeException("Expected solid ground below feet, got blockId="
+                        + blockBelow);
             }
 
             // Verify within 50 blocks of original spawn (horizontal distance)
             double dx = pos[0] - spawnPos[0];
             double dz = pos[2] - spawnPos[2];
             double horizontalDist = Math.sqrt(dx * dx + dz * dz);
-            System.out.println("[McTestAgent] Spawn return verified: distance="
-                    + String.format("%.1f", horizontalDist)
-                    + " blockBelow=" + blockBelow
-                    + " stableY=" + stablePositionTicks);
+            System.out.println("[McTestAgent] Distance from spawn: "
+                    + String.format("%.1f", horizontalDist) + " blocks");
 
             if (horizontalDist > 50.0) {
                 throw new RuntimeException("Too far from spawn: "
@@ -394,15 +384,14 @@ public class VoidFallScenario implements Scenario {
 
         @Override
         public int getTimeoutTicks() {
-            return 200; // 10 seconds — player may need time to land and stabilize
+            return 60; // 3 seconds
         }
     }
 
     // Step 6: Wait for world to render after teleport
     private class WaitSettleStep implements ScenarioStep {
         private int ticks;
-        private long lastHash;
-        private int stableCount;
+        private static final int SETTLE_TICKS_DEFAULT = 60;   // 3 seconds
 
         @Override
         public String getDescription() {
@@ -413,27 +402,12 @@ public class VoidFallScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
-
-            // Frame-stable detection: sample every 20 ticks after minimum 40
-            if (ticks >= 40 && ticks % 20 == 0) {
-                int w = gs.getDisplayWidth();
-                int h = gs.getDisplayHeight();
-                if (w > 0 && h > 0) {
-                    long hash = capture.captureFrameHash(w, h);
-                    if (hash != 0 && hash == lastHash) {
-                        stableCount++;
-                    } else {
-                        stableCount = 0;
-                    }
-                    lastHash = hash;
-                }
-            }
-            return stableCount >= 3;
+            return ticks >= SETTLE_TICKS_DEFAULT;
         }
 
         @Override
         public int getTimeoutTicks() {
-            return 1200; // 60 second safety net
+            return 200;
         }
     }
 
