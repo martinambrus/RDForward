@@ -22,10 +22,10 @@ import java.util.zip.ZipFile;
  */
 public class ClientLauncher {
 
-    private static final String JAVA8_PATH = "/usr/lib/jvm/java-8-openjdk-amd64/bin/java";
-    private static final String JAVA16_PATH = "/usr/lib/jvm/java-17-openjdk-amd64/bin/java"; // Java 16 not installed; 17 is compatible
-    private static final String JAVA17_PATH = "/usr/lib/jvm/java-17-openjdk-amd64/bin/java";
-    private static final String JAVA21_PATH = "/usr/lib/jvm/java-21-openjdk-amd64/bin/java";
+    private static final String JAVA8_PATH = "/usr/lib/jvm/temurin-8-jdk-amd64/bin/java";
+    private static final String JAVA16_PATH = "/usr/lib/jvm/temurin-21-jdk-amd64/bin/java"; // Java 16 not installed; 21 is compatible
+    private static final String JAVA17_PATH = "/usr/lib/jvm/temurin-21-jdk-amd64/bin/java"; // Java 17 not installed; 21 is compatible
+    private static final String JAVA21_PATH = "/usr/lib/jvm/temurin-21-jdk-amd64/bin/java";
     private static final String LIBS_DIR = "rd-e2e/libs";
     private static final String NATIVES_DIR = LIBS_DIR + "/natives-linux";
     private static final String VERSION_MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";

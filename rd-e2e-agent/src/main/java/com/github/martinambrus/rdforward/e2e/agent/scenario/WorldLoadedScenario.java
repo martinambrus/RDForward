@@ -24,6 +24,7 @@ public class WorldLoadedScenario implements Scenario {
     public List<ScenarioStep> getSteps() {
         List<ScenarioStep> steps = new ArrayList<ScenarioStep>();
         steps.add(new WaitRenderStep());
+        steps.add(new SetCameraStep());
         steps.add(new CaptureStep());
         return steps;
     }
@@ -55,6 +56,37 @@ public class WorldLoadedScenario implements Scenario {
         @Override
         public int getTimeoutTicks() {
             return 200;
+        }
+    }
+
+    /**
+     * Set the camera to look at the horizon so terrain is visible in the screenshot.
+     * RubyDung's mouse handler can accumulate deltas under Xvfb that point the
+     * camera at the sky before suppressMouseLook() kicks in. This step explicitly
+     * resets the camera direction.
+     */
+    private static class SetCameraStep implements ScenarioStep {
+        private int ticks;
+
+        @Override
+        public String getDescription() {
+            return "set_camera";
+        }
+
+        @Override
+        public boolean tick(GameState gs, InputController input,
+                            ScreenshotCapture capture, File statusDir) {
+            // Look north (yaw=0 for RD, yaw=180 for Alpha) with a slight
+            // downward pitch (10°) to show terrain and horizon.
+            input.setLookDirection(input.isRubyDung() ? 0f : 180f, 10f);
+            ticks++;
+            // Hold for 2 ticks so the renderer picks up the new direction.
+            return ticks >= 2;
+        }
+
+        @Override
+        public int getTimeoutTicks() {
+            return 20;
         }
     }
 

@@ -131,6 +131,8 @@ public class ChatScenario implements Scenario {
     }
 
     private static class ScreenshotStep implements ScenarioStep {
+        private int ticks;
+
         @Override
         public String getDescription() {
             return "screenshot";
@@ -139,6 +141,13 @@ public class ChatScenario implements Scenario {
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
+            ticks++;
+            // Set camera to show terrain (RD's mouse handler may have pointed
+            // the camera at the sky before suppressMouseLook() kicked in).
+            input.setLookDirection(input.isRubyDung() ? 0f : 180f, 10f);
+            // Wait 2 ticks for the renderer to pick up the new direction.
+            if (ticks < 3) return false;
+
             File file = new File(statusDir, "chat_complete.png");
             capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);
             return true;

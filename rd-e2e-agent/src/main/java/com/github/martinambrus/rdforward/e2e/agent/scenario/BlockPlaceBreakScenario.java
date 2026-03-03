@@ -188,13 +188,16 @@ public class BlockPlaceBreakScenario implements Scenario {
             // 2-deep broken hole. Positioning south means the camera faces
             // north (-Z), keeping the world's NE edge out of the viewport
             // and avoiding LWJGL3 chunk rendering gaps.
-            // lookAtBlock must be called every tick — RD's game loop resets
-            // camera direction during the wait.
+            // Use explicit setLookDirection instead of lookAtBlock — targeting
+            // an underground block with lookAtBlock produces a steep downward
+            // pitch that renders as sky under RD's camera pipeline.
             if (input.isRubyDung()) {
                 if (ticks == 1) {
                     input.movePlayerPosition(1, 0, 3);
                 }
-                input.lookAtBlock(targetBX, targetBY - 1, targetBZ);
+                // Look north (toward the hole at pz) with 25° downward pitch
+                // to show the broken area in the terrain.
+                input.setLookDirection(0f, 25f);
             }
             // Wait for server to process and send block change
             if (ticks < 80) return false;

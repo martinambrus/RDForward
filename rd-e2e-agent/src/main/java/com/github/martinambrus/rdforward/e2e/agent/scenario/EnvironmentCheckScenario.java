@@ -192,6 +192,8 @@ public class EnvironmentCheckScenario implements Scenario {
     }
 
     private static class CheckPositionStep implements ScenarioStep {
+        private int ticks;
+
         @Override
         public String getDescription() {
             return "check_position";
@@ -200,16 +202,23 @@ public class EnvironmentCheckScenario implements Scenario {
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
+            ticks++;
             int blockBelow = gs.getBlockBelowFeet();
             int blockAtFeet = gs.getBlockAtFeet();
 
-            System.out.println("[McTestAgent] Environment: blockBelow=" + blockBelow
-                    + " blockAtFeet=" + blockAtFeet);
+            if (ticks == 1 || ticks % 20 == 0) {
+                System.out.println("[McTestAgent] Environment (tick " + ticks
+                        + "): blockBelow=" + blockBelow + " blockAtFeet=" + blockAtFeet);
+            }
 
             // Any solid block below feet is valid ground.
             // Block IDs vary by version: legacy (grass=2) vs 1.13+ state IDs.
+            // Retry until chunks are loaded (blockBelow may be 0 before world data arrives).
             if (blockBelow <= 0) {
-                throw new RuntimeException("Expected solid ground below feet, got blockId=" + blockBelow);
+                if (ticks >= getTimeoutTicks()) {
+                    throw new RuntimeException("Expected solid ground below feet, got blockId=" + blockBelow);
+                }
+                return false; // retry — chunks may not be loaded yet
             }
             // For RubyDung, player may spawn with feet exactly on the surface block
             // (64-height world: ground Y=42, eyes Y≈43.625, feet floor(43.625-1.62)=42)
@@ -359,7 +368,10 @@ public class EnvironmentCheckScenario implements Scenario {
 
             // RubyDung's renderer needs extra wall-time to build chunk
             // geometry before the screenshot shows a fully rendered map.
+            // Also set camera to show terrain (RD's mouse handler may have
+            // pointed the camera at the sky before suppressMouseLook() kicked in).
             if (input.isRubyDung()) {
+                input.setLookDirection(0f, 10f);
                 long elapsed = System.currentTimeMillis() - startTimeMs;
                 if (elapsed < 5000) {
                     return false;
