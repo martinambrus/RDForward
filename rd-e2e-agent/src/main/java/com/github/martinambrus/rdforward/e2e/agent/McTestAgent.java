@@ -41,6 +41,7 @@ import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV47_181M
 import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV47_182Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV47_184Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV47_188Mappings;
+import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV47_189Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV477Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV480Mappings;
 import com.github.martinambrus.rdforward.e2e.agent.mappings.NettyReleaseV485Mappings;
@@ -616,10 +617,11 @@ public class McTestAgent {
             case "release_1_8_7":
                 return new NettyReleaseV47_184Mappings();
             case "release188":
-            case "release189":
             case "release_1_8_8":
-            case "release_1_8_9":
                 return new NettyReleaseV47_188Mappings();
+            case "release189":
+            case "release_1_8_9":
+                return new NettyReleaseV47_189Mappings();
             case "release19":
             case "release_1_9":
                 return new NettyReleaseV107Mappings();
@@ -627,10 +629,11 @@ public class McTestAgent {
             case "release_1_9_1":
                 return new NettyReleaseV108Mappings();
             case "release192":
-            case "release193":
             case "release_1_9_2":
-            case "release_1_9_3":
                 return new NettyReleaseV109Mappings();
+            case "release193":
+            case "release_1_9_3":
+                return new NettyReleaseV110Mappings();
             case "release194":
             case "release_1_9_4":
                 return new NettyReleaseV110Mappings();

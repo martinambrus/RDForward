@@ -1,7 +1,7 @@
 package com.github.martinambrus.rdforward.e2e.agent.mappings;
 
 /**
- * Field mappings for Release 1.8.8/1.8.9 (protocol v47).
+ * Field mappings for Release 1.8.8 (protocol v47).
  * Verified by CFR decompilation of the 1.8.8 client JAR.
  *
  * Only difference from 1.8.4: GameSettings (avh) gained a new boolean field W
