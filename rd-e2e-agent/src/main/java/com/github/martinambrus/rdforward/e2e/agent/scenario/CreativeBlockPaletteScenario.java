@@ -476,8 +476,9 @@ public class CreativeBlockPaletteScenario implements Scenario {
     }
 
     // Wait for chunk meshes to update after block placements.
-    // LWJGL3: frame-stable detection (consecutive identical framebuffer hashes)
+    // Frame-stable detection (consecutive identical framebuffer hashes)
     // instead of a fixed timeout. Adapts to any CPU speed and parallel load.
+    // Works on all client versions (LWJGL2 and LWJGL3).
     private static class RenderSettleStep implements ScenarioStep {
         private int ticks;
         private long lastHash;
@@ -492,8 +493,6 @@ public class CreativeBlockPaletteScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
-            boolean isLwjgl3 = McTestAgent.mappings != null && McTestAgent.mappings.isLwjgl3();
-            if (!isLwjgl3) return true; // pre-LWJGL3: no extra wait needed
 
             // Sample every 20 ticks after minimum 40 ticks
             if (ticks >= 40 && ticks % 20 == 0) {

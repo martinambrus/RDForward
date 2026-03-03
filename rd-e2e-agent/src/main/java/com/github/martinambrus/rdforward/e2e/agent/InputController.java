@@ -44,6 +44,9 @@ public class InputController {
     private Field pitchField;
     private Field prevYawField;
     private Field prevPitchField;
+    private Field mouseDXField;         // RubyDung.mouseDX (double)
+    private Field mouseDYField;         // RubyDung.mouseDY (double)
+    private boolean mouseFieldsResolved;
     private Method clickMethod;
     private Method rightClickMethod;
     // 0=int param (pre-Netty), 1=no-arg, 2=boolean param
@@ -154,12 +157,51 @@ public class InputController {
             // so without setting prev fields, the camera may not match the intended angle.
             if (prevYawField != null) prevYawField.setFloat(player, yaw);
             if (prevPitchField != null) prevPitchField.setFloat(player, pitch);
+
+            // RubyDung: suppress the mouse handler in render() so it doesn't
+            // overwrite our camera direction via player.turn(mouseDX, mouseDY).
+            suppressMouseLook();
         } catch (Exception e) {
             lastLookResult = "error:" + e.getMessage();
         }
     }
 
     public String getLastLookResult() { return lastLookResult; }
+
+    /**
+     * Prevent RubyDung's mouse handler from overwriting our camera direction.
+     * RD's render() method calls player.turn(mouseDX, mouseDY) BEFORE the
+     * camera matrix is set up, but ONLY when mouseGrabbed is true.
+     * Setting mouseGrabbed=false skips turn() entirely, preserving our
+     * yRot/xRot values. Also zeroes mouseDX/DY to prevent delta accumulation.
+     * applyInputs() re-enables mouseGrabbed on the next tick if needed.
+     * No-op for non-RD clients (they handle mouse differently).
+     */
+    private void suppressMouseLook() {
+        if (!isRubyDung()) return;
+        Object mc = gameState.getMinecraftInstance();
+        if (mc == null) return;
+        try {
+            if (!mouseFieldsResolved) {
+                mouseFieldsResolved = true;
+                try {
+                    mouseDXField = mc.getClass().getDeclaredField("mouseDX");
+                    mouseDXField.setAccessible(true);
+                    mouseDYField = mc.getClass().getDeclaredField("mouseDY");
+                    mouseDYField.setAccessible(true);
+                } catch (NoSuchFieldException e) {
+                    System.out.println("[McTestAgent] mouseDX/DY fields not found: " + e.getMessage());
+                }
+            }
+            // Zero accumulated deltas
+            if (mouseDXField != null) mouseDXField.setDouble(mc, 0.0);
+            if (mouseDYField != null) mouseDYField.setDouble(mc, 0.0);
+            // Disable mouse grab so render() skips player.turn() entirely
+            gameState.setMouseGrabbed(false);
+        } catch (Exception e) {
+            // Non-critical — camera may jitter but tests still pass
+        }
+    }
 
     /**
      * Compute yaw/pitch to look at a specific block position from the player's current position.
@@ -205,8 +247,15 @@ public class InputController {
                 lastPlayer = player;
             }
 
-            // Ensure mouse is grabbed (field L on Minecraft)
-            if (mappings.mouseGrabbedFieldName() != null) {
+            // Ensure mouse is grabbed (field L on Minecraft).
+            // For RubyDung, suppress mouse look entirely — GLFW cursor
+            // callbacks generate deltas under Xvfb that overwrite camera
+            // direction set by scenario steps. This must run every tick,
+            // not just when setLookDirection() is called, because lookAtBlock()
+            // may return early (null position) without reaching suppressMouseLook().
+            if (isRubyDung()) {
+                suppressMouseLook();
+            } else if (mappings.mouseGrabbedFieldName() != null) {
                 if (!gameState.isMouseGrabbed()) {
                     gameState.setMouseGrabbed(true);
                 }

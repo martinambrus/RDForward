@@ -4,7 +4,6 @@ import com.github.martinambrus.rdforward.e2e.agent.GameState;
 import com.github.martinambrus.rdforward.e2e.agent.InputController;
 import com.github.martinambrus.rdforward.e2e.agent.McTestAgent;
 import com.github.martinambrus.rdforward.e2e.agent.ScreenshotCapture;
-import com.github.martinambrus.rdforward.e2e.agent.mappings.FieldMappings;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -339,10 +338,8 @@ public class EnvironmentCheckScenario implements Scenario {
     private static class CaptureStep implements ScenarioStep {
         private long startTimeMs;
         private int ticks;
-        // LWJGL3 chunk mesher settle time (3 seconds) before final screenshot.
-        // Under parallel software rendering, chunks may still be meshing even
-        // after game-level chunk data checks pass.
-        private static final int LWJGL3_RENDER_SETTLE = 60;
+        private long lastHash;
+        private int stableCount;
 
         @Override
         public String getDescription() {
@@ -366,9 +363,23 @@ public class EnvironmentCheckScenario implements Scenario {
                 }
             }
 
-            // LWJGL3 clients: wait for chunk mesh building to complete
-            boolean isLwjgl3 = McTestAgent.mappings != null && McTestAgent.mappings.isLwjgl3();
-            if (isLwjgl3 && ticks < LWJGL3_RENDER_SETTLE) {
+            // Frame-stable detection: wait for 3 consecutive identical
+            // framebuffer hashes, meaning all chunk meshes have finished
+            // building. Works on all client versions (LWJGL2 and LWJGL3).
+            if (ticks >= 40 && ticks % 20 == 0) {
+                int w = gs.getDisplayWidth();
+                int h = gs.getDisplayHeight();
+                if (w > 0 && h > 0) {
+                    long hash = capture.captureFrameHash(w, h);
+                    if (hash != 0 && hash == lastHash) {
+                        stableCount++;
+                    } else {
+                        stableCount = 0;
+                    }
+                    lastHash = hash;
+                }
+            }
+            if (stableCount < 3) {
                 return false;
             }
 

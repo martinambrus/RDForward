@@ -2,7 +2,6 @@ package com.github.martinambrus.rdforward.e2e.agent.scenario;
 
 import com.github.martinambrus.rdforward.e2e.agent.GameState;
 import com.github.martinambrus.rdforward.e2e.agent.InputController;
-import com.github.martinambrus.rdforward.e2e.agent.McTestAgent;
 import com.github.martinambrus.rdforward.e2e.agent.ScreenshotCapture;
 
 import java.io.File;
@@ -30,9 +29,9 @@ public class WorldLoadedScenario implements Scenario {
 
     /**
      * Wait for chunk meshes to finish building before capture.
-     * LWJGL3 clients: uses frame-stable detection (consecutive identical
-     * framebuffer hashes) instead of a fixed timeout. This adapts to
-     * any CPU speed and parallel test load.
+     * Uses frame-stable detection (consecutive identical framebuffer hashes)
+     * instead of a fixed timeout. This adapts to any CPU speed and parallel
+     * test load, and works on all client versions (LWJGL2 and LWJGL3).
      */
     private static class WaitRenderStep implements ScenarioStep {
         private int ticks;
@@ -48,8 +47,6 @@ public class WorldLoadedScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
-            boolean isLwjgl3 = McTestAgent.mappings != null && McTestAgent.mappings.isLwjgl3();
-            if (!isLwjgl3) return true; // pre-LWJGL3: no extra wait needed
 
             // Sample every 20 ticks after minimum 20 ticks
             if (ticks >= 20 && ticks % 20 == 0) {

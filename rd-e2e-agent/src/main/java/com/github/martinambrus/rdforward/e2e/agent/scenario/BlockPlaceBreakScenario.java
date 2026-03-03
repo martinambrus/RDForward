@@ -174,6 +174,10 @@ public class BlockPlaceBreakScenario implements Scenario {
     private class VerifyBrokenStep implements ScenarioStep {
         private int ticks;
         private boolean screenshotTaken;
+        private long lastHash;
+        private int stableCount;
+        // Minimum ticks for server roundtrip before checking frame stability
+        private static final int MIN_SERVER_TICKS = 40;
 
         @Override
         public String getDescription() {
@@ -184,16 +188,36 @@ public class BlockPlaceBreakScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
-            // RD: move player back for a side view of the 2-deep broken hole.
-            // A single-block hole on a uniform-texture flat world is invisible
-            // from above, so we step back for a shallower angle that shows
-            // the gray stone side faces inside the hole.
-            if (ticks == 1 && input.isRubyDung()) {
-                input.movePlayerPosition(-3, 0, 0);
+            // RD: move player south of the target for a side view of the
+            // 2-deep broken hole. Positioning south means the camera faces
+            // north (-Z), keeping the world's NE edge out of the viewport
+            // and avoiding LWJGL3 chunk rendering gaps.
+            // lookAtBlock must be called every tick — RD's game loop resets
+            // camera direction during the frame-stable wait (~100 ticks).
+            if (input.isRubyDung()) {
+                if (ticks == 1) {
+                    input.movePlayerPosition(1, 0, 3);
+                }
                 input.lookAtBlock(targetBX, targetBY - 1, targetBZ);
             }
-            // Wait for server to process and send block change
-            if (ticks < 80) return false;
+
+            // Wait for server to process and send block change, then for the
+            // client to re-mesh the affected chunk section. Frame-stable
+            // detection after minimum server roundtrip works on all versions.
+            if (ticks >= MIN_SERVER_TICKS && ticks % 20 == 0) {
+                int w = gs.getDisplayWidth();
+                int h = gs.getDisplayHeight();
+                if (w > 0 && h > 0) {
+                    long hash = capture.captureFrameHash(w, h);
+                    if (hash != 0 && hash == lastHash) {
+                        stableCount++;
+                    } else {
+                        stableCount = 0;
+                    }
+                    lastHash = hash;
+                }
+            }
+            if (stableCount < 3) return false;
 
             int blockId = gs.getBlockId(targetBX, targetBY, targetBZ);
             System.out.println("[McTestAgent] Block at target after break: " + blockId);
@@ -215,7 +239,7 @@ public class BlockPlaceBreakScenario implements Scenario {
 
         @Override
         public int getTimeoutTicks() {
-            return 200;
+            return 1200; // 60 second safety net for frame-stable detection
         }
     }
 
@@ -307,6 +331,9 @@ public class BlockPlaceBreakScenario implements Scenario {
     private class VerifyPlacedStep implements ScenarioStep {
         private int ticks;
         private boolean screenshotTaken;
+        private long lastHash;
+        private int stableCount;
+        private static final int MIN_SERVER_TICKS = 40;
 
         @Override
         public String getDescription() {
@@ -320,10 +347,28 @@ public class BlockPlaceBreakScenario implements Scenario {
             // RD: look at the 3-block pillar from the stepped-back position.
             // The top block at targetBY+2 is near eye level, showing its
             // gray side face prominently.
-            if (ticks == 1 && input.isRubyDung()) {
+            // Called every tick — RD's game loop resets camera direction.
+            if (input.isRubyDung()) {
                 input.lookAtBlock(targetBX, targetBY + 2, targetBZ);
             }
-            if (ticks < 80) return false;
+
+            // Wait for server to process placement, then for the client to
+            // re-mesh the affected chunk section. Frame-stable detection
+            // after minimum server roundtrip works on all versions.
+            if (ticks >= MIN_SERVER_TICKS && ticks % 20 == 0) {
+                int w = gs.getDisplayWidth();
+                int h = gs.getDisplayHeight();
+                if (w > 0 && h > 0) {
+                    long hash = capture.captureFrameHash(w, h);
+                    if (hash != 0 && hash == lastHash) {
+                        stableCount++;
+                    } else {
+                        stableCount = 0;
+                    }
+                    lastHash = hash;
+                }
+            }
+            if (stableCount < 3) return false;
 
             // RD placed pillar up to targetBY+2; Alpha/Beta at ground level
             int checkY = McTestAgent.inputController.isRubyDung() ? targetBY + 2 : targetBY;
@@ -351,7 +396,7 @@ public class BlockPlaceBreakScenario implements Scenario {
 
         @Override
         public int getTimeoutTicks() {
-            return 200;
+            return 1200; // 60 second safety net for frame-stable detection
         }
     }
 
@@ -473,17 +518,27 @@ public class BlockPlaceBreakScenario implements Scenario {
                     input.placeBlockDirect(target2BX, targetBY + 1, target2BZ, 1);
                     input.placeBlockDirect(target2BX, targetBY + 2, target2BZ, 1);
                 }
-                return ticks >= 4;
+                // Poll until block appears instead of fixed wait
+                if (ticks >= 2) {
+                    int blockId = gs.getBlockId(target2BX, targetBY + 2, target2BZ);
+                    if (blockId != 0) return true;
+                }
+                return false;
             }
             if (ticks == 1) {
                 input.click(1);
             }
-            return ticks >= 4;
+            // Poll until block appears instead of fixed wait
+            if (ticks >= 2) {
+                int blockId = gs.getBlockId(target2BX, targetBY, target2BZ);
+                if (blockId != 0) return true;
+            }
+            return false;
         }
 
         @Override
         public int getTimeoutTicks() {
-            return 20;
+            return 40; // safety net for slow server response
         }
     }
 
@@ -491,6 +546,9 @@ public class BlockPlaceBreakScenario implements Scenario {
     private class VerifyAdjacentStep implements ScenarioStep {
         private int ticks;
         private boolean screenshotTaken;
+        private long lastHash;
+        private int stableCount;
+        private static final int MIN_SERVER_TICKS = 40;
 
         @Override
         public String getDescription() {
@@ -501,11 +559,29 @@ public class BlockPlaceBreakScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
-            // RD: look at the adjacent pillar from the stepped-back position
-            if (ticks == 1 && input.isRubyDung()) {
+            // RD: look at the adjacent pillar from the stepped-back position.
+            // Called every tick — RD's game loop resets camera direction.
+            if (input.isRubyDung()) {
                 input.lookAtBlock(target2BX, targetBY + 2, target2BZ);
             }
-            if (ticks < 80) return false;
+
+            // Wait for server to process placement, then for the client to
+            // re-mesh the affected chunk section. Frame-stable detection
+            // after minimum server roundtrip works on all versions.
+            if (ticks >= MIN_SERVER_TICKS && ticks % 20 == 0) {
+                int w = gs.getDisplayWidth();
+                int h = gs.getDisplayHeight();
+                if (w > 0 && h > 0) {
+                    long hash = capture.captureFrameHash(w, h);
+                    if (hash != 0 && hash == lastHash) {
+                        stableCount++;
+                    } else {
+                        stableCount = 0;
+                    }
+                    lastHash = hash;
+                }
+            }
+            if (stableCount < 3) return false;
 
             int checkY = input.isRubyDung() ? targetBY + 2 : targetBY;
             int blockId = gs.getBlockId(target2BX, checkY, target2BZ);
@@ -525,7 +601,7 @@ public class BlockPlaceBreakScenario implements Scenario {
 
         @Override
         public int getTimeoutTicks() {
-            return 200;
+            return 1200; // 60 second safety net for frame-stable detection
         }
     }
 }

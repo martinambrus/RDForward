@@ -46,12 +46,12 @@ public class ChatScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
-            // Wait for world to load and player to settle on solid ground
-            if (ticks >= 40) {
-                int blockBelow = gs.getBlockBelowFeet();
-                if (blockBelow != 0 || ticks >= 80) {
-                    return true;
-                }
+            // Poll for solid ground from tick 1 instead of waiting 40 ticks.
+            // The WorldLoaded stabilization phase already ensures chunks are
+            // loaded before scenarios begin.
+            int blockBelow = gs.getBlockBelowFeet();
+            if (blockBelow != 0) {
+                return true;
             }
             return false;
         }
@@ -131,6 +131,10 @@ public class ChatScenario implements Scenario {
     }
 
     private static class ScreenshotStep implements ScenarioStep {
+        private int ticks;
+        private long lastHash;
+        private int stableCount;
+
         @Override
         public String getDescription() {
             return "screenshot";
@@ -139,6 +143,29 @@ public class ChatScenario implements Scenario {
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
+            ticks++;
+            // Look slightly below the horizon every tick for a meaningful
+            // screenshot showing sky + ground + chat overlay. Pitch=10 ensures
+            // ground is visible regardless of yaw direction (RD's 256x256 world
+            // can have the horizon at varying heights depending on direction).
+            input.setLookDirection(gs.getYaw(), 10f);
+
+            // Wait for the camera change to render via frame-stable detection.
+            if (ticks >= 5 && ticks % 5 == 0) {
+                int w = gs.getDisplayWidth();
+                int h = gs.getDisplayHeight();
+                if (w > 0 && h > 0) {
+                    long hash = capture.captureFrameHash(w, h);
+                    if (hash != 0 && hash == lastHash) {
+                        stableCount++;
+                    } else {
+                        stableCount = 0;
+                    }
+                    lastHash = hash;
+                }
+            }
+            if (stableCount < 3) return false;
+
             File file = new File(statusDir, "chat_complete.png");
             capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);
             return true;
@@ -146,7 +173,7 @@ public class ChatScenario implements Scenario {
 
         @Override
         public int getTimeoutTicks() {
-            return 20;
+            return 200;
         }
     }
 }

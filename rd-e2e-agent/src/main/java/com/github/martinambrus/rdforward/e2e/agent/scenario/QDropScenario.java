@@ -80,7 +80,8 @@ public class QDropScenario implements Scenario {
     }
 
     private static class WaitReplenishmentStep implements ScenarioStep {
-        private int ticks;
+        private int lastTotal = -1;
+        private int stableTicks;
 
         @Override
         public String getDescription() {
@@ -90,13 +91,23 @@ public class QDropScenario implements Scenario {
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
-            ticks++;
-            return ticks >= 40; // 2s covers 1s debounce + network
+            // Poll inventory each tick. Replenishment is complete when
+            // the cobblestone total stops changing for 5 consecutive ticks.
+            // If no inventory (RD), pass through immediately.
+            int total = gs.getTotalCobblestone();
+            if (total < 0) return true;
+            if (total == lastTotal) {
+                stableTicks++;
+            } else {
+                stableTicks = 0;
+            }
+            lastTotal = total;
+            return stableTicks >= 5;
         }
 
         @Override
         public int getTimeoutTicks() {
-            return 60;
+            return 200; // 10s safety net for slow replenishment
         }
     }
 

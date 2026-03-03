@@ -376,9 +376,13 @@ public class InventoryManipulationScenario implements Scenario {
 
     // Step 5: Verify split and screenshot
     // Survival: 2 stacks totaling 64. Creative with grid grab: 2. Creative without: 1.
+    // Uses frame-stable detection to wait for the inventory GUI to finish
+    // rendering (floating item animation) before capturing.
     private class VerifySplitStep implements ScenarioStep {
         private int ticks;
         private boolean verified;
+        private long lastHash;
+        private int stableCount;
 
         @Override
         public String getDescription() {
@@ -402,10 +406,22 @@ public class InventoryManipulationScenario implements Scenario {
                 return false; // wait for GUI to render the updated state
             }
 
-            // Wait for the inventory GUI to redraw before capturing.
-            // Some versions need extra ticks for the placed stack to visually
-            // settle into the slot (floating item animation).
-            if (ticks < 20) return false;
+            // Frame-stable detection: wait for the inventory GUI to finish
+            // rendering (floating item animation settles into the slot).
+            if (ticks >= 5 && ticks % 5 == 0) {
+                int w = gs.getDisplayWidth();
+                int h = gs.getDisplayHeight();
+                if (w > 0 && h > 0) {
+                    long hash = capture.captureFrameHash(w, h);
+                    if (hash != 0 && hash == lastHash) {
+                        stableCount++;
+                    } else {
+                        stableCount = 0;
+                    }
+                    lastHash = hash;
+                }
+            }
+            if (stableCount < 3) return false;
 
             File file = new File(statusDir, "inventory_split.png");
             capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);
@@ -414,7 +430,7 @@ public class InventoryManipulationScenario implements Scenario {
 
         @Override
         public int getTimeoutTicks() {
-            return 30;
+            return 1200; // 60 second safety net
         }
     }
 
@@ -474,10 +490,15 @@ public class InventoryManipulationScenario implements Scenario {
         }
     }
 
-    // Step 8: Wait for replenishment of 16 items
+    // Step 8: Wait for replenishment of 16 items.
+    // Polls inventory data instead of using a fixed timer — the server's
+    // batched replenishment timer fires 1s after last change, and headless
+    // clients can run at 200+ TPS making tick-based waits unreliable.
     // Skipped in creative mode when grid grab failed (no throw happened).
     private class WaitReplenish16Step implements ScenarioStep {
         private int ticks;
+        private int lastTotal = -1;
+        private int stableTicks;
 
         @Override
         public String getDescription() {
@@ -489,12 +510,23 @@ public class InventoryManipulationScenario implements Scenario {
                             ScreenshotCapture capture, File statusDir) {
             if (McTestAgent.isCreativeMode && !grabbedFromGrid) return true;
             ticks++;
-            return ticks >= 30;
+
+            // Poll inventory: proceed once cobblestone total is stable
+            // (unchanged for 5 ticks), meaning replenishment has arrived.
+            int total = gs.getTotalCobblestone();
+            if (total < 0) return true; // no inventory (RD)
+            if (total == lastTotal) {
+                stableTicks++;
+            } else {
+                stableTicks = 0;
+            }
+            lastTotal = total;
+            return stableTicks >= 5;
         }
 
         @Override
         public int getTimeoutTicks() {
-            return 60;
+            return 200; // 10 seconds — allows for server batched timer
         }
     }
 
@@ -633,10 +665,13 @@ public class InventoryManipulationScenario implements Scenario {
         }
     }
 
-    // Step 13: Wait for replenishment of 1 item
+    // Step 13: Wait for replenishment of 1 item.
+    // Polls inventory data instead of using a fixed timer.
     // Skipped in creative mode when grid grab failed (no throw happened).
     private class WaitReplenish1Step implements ScenarioStep {
         private int ticks;
+        private int lastTotal = -1;
+        private int stableTicks;
 
         @Override
         public String getDescription() {
@@ -648,12 +683,23 @@ public class InventoryManipulationScenario implements Scenario {
                             ScreenshotCapture capture, File statusDir) {
             if (McTestAgent.isCreativeMode && !grabbedFromGrid) return true;
             ticks++;
-            return ticks >= 30;
+
+            // Poll inventory: proceed once cobblestone total is stable
+            // (unchanged for 5 ticks), meaning replenishment has arrived.
+            int total = gs.getTotalCobblestone();
+            if (total < 0) return true; // no inventory (RD)
+            if (total == lastTotal) {
+                stableTicks++;
+            } else {
+                stableTicks = 0;
+            }
+            lastTotal = total;
+            return stableTicks >= 5;
         }
 
         @Override
         public int getTimeoutTicks() {
-            return 60;
+            return 200; // 10 seconds — allows for server batched timer
         }
     }
 
@@ -726,9 +772,17 @@ public class InventoryManipulationScenario implements Scenario {
         }
     }
 
-    // Step 16: Wait after close for any final replenishment
+    // Step 16: Wait after close for any final replenishment.
+    // Polls inventory data until cobblestone total stabilizes, then uses
+    // frame-stable detection to wait for the world to render after the
+    // inventory overlay closes.
     private class WaitAfterCloseStep implements ScenarioStep {
         private int ticks;
+        private int lastTotal = -1;
+        private int inventoryStableTicks;
+        private boolean inventorySettled;
+        private long lastHash;
+        private int frameStableCount;
 
         @Override
         public String getDescription() {
@@ -739,12 +793,45 @@ public class InventoryManipulationScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
-            return ticks >= 30;
+
+            // Phase 1: wait for inventory data to stabilize (replenishment)
+            if (!inventorySettled) {
+                int total = gs.getTotalCobblestone();
+                if (total < 0) {
+                    inventorySettled = true; // no inventory (RD) — skip to frame-stable
+                } else if (total == lastTotal) {
+                    inventoryStableTicks++;
+                } else {
+                    inventoryStableTicks = 0;
+                }
+                lastTotal = total;
+                if (inventoryStableTicks >= 5) {
+                    inventorySettled = true;
+                }
+                if (!inventorySettled) return false;
+            }
+
+            // Phase 2: frame-stable detection for world rendering after
+            // inventory overlay closes
+            if (ticks % 5 == 0) {
+                int w = gs.getDisplayWidth();
+                int h = gs.getDisplayHeight();
+                if (w > 0 && h > 0) {
+                    long hash = capture.captureFrameHash(w, h);
+                    if (hash != 0 && hash == lastHash) {
+                        frameStableCount++;
+                    } else {
+                        frameStableCount = 0;
+                    }
+                    lastHash = hash;
+                }
+            }
+            return frameStableCount >= 3;
         }
 
         @Override
         public int getTimeoutTicks() {
-            return 60;
+            return 1200; // 60 second safety net
         }
     }
 

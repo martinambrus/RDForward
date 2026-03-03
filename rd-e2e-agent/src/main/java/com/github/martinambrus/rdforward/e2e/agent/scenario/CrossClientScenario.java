@@ -303,13 +303,10 @@ public class CrossClientScenario implements Scenario {
     }
 
     private class PrimaryVerifySecondaryBlock implements ScenarioStep {
-        private int ticks;
         @Override public String getDescription() { return "verify_secondary_block"; }
         @Override public int getTimeoutTicks() { return 200; }
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
-            ticks++;
-            if (ticks < 20) return false;
             SyncBarrier barrier = getBarrier();
             String sx = barrier.readData("block_x");
             String sy = barrier.readData("block_y");
@@ -339,13 +336,10 @@ public class CrossClientScenario implements Scenario {
     }
 
     private class PrimaryVerifySecondaryBreak implements ScenarioStep {
-        private int ticks;
         @Override public String getDescription() { return "verify_secondary_break"; }
         @Override public int getTimeoutTicks() { return 200; }
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
-            ticks++;
-            if (ticks < 20) return false;
             SyncBarrier barrier = getBarrier();
             String sx = barrier.readData("block_x");
             String sy = barrier.readData("block_y");
@@ -487,13 +481,10 @@ public class CrossClientScenario implements Scenario {
     }
 
     private class SecondaryVerifyPrimaryBlock implements ScenarioStep {
-        private int ticks;
         @Override public String getDescription() { return "verify_primary_block"; }
         @Override public int getTimeoutTicks() { return 200; }
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
-            ticks++;
-            if (ticks < 20) return false;
             SyncBarrier barrier = getBarrier();
             String sx = barrier.readData("block_x");
             String sy = barrier.readData("block_y");
@@ -523,13 +514,10 @@ public class CrossClientScenario implements Scenario {
     }
 
     private class SecondaryVerifyPrimaryBreak implements ScenarioStep {
-        private int ticks;
         @Override public String getDescription() { return "verify_primary_break"; }
         @Override public int getTimeoutTicks() { return 200; }
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
-            ticks++;
-            if (ticks < 20) return false;
             SyncBarrier barrier = getBarrier();
             String sx = barrier.readData("block_x");
             String sy = barrier.readData("block_y");

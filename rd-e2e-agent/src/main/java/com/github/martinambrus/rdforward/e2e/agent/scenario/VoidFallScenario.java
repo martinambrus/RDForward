@@ -2,7 +2,6 @@ package com.github.martinambrus.rdforward.e2e.agent.scenario;
 
 import com.github.martinambrus.rdforward.e2e.agent.GameState;
 import com.github.martinambrus.rdforward.e2e.agent.InputController;
-import com.github.martinambrus.rdforward.e2e.agent.McTestAgent;
 import com.github.martinambrus.rdforward.e2e.agent.ScreenshotCapture;
 
 import java.io.File;
@@ -323,8 +322,16 @@ public class VoidFallScenario implements Scenario {
         }
     }
 
-    // Step 5: Verify player is back near spawn on solid ground
+    // Step 5: Verify player is back near spawn on solid ground and has
+    // stopped moving. Waits for position to stabilize (unchanged for 5
+    // consecutive ticks) before accepting — prevents premature pass while
+    // the player is still bouncing/sliding after teleport.
     private class VerifySpawnReturnStep implements ScenarioStep {
+        private int ticks;
+        private double lastY = Double.NaN;
+        private int stablePositionTicks;
+        private static final int POSITION_STABLE_COUNT = 5;
+
         @Override
         public String getDescription() {
             return "verify_spawn_return";
@@ -333,15 +340,20 @@ public class VoidFallScenario implements Scenario {
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
+            ticks++;
             double[] pos = gs.getPlayerPosition();
-            if (pos == null) throw new RuntimeException("No player position");
+            if (pos == null) return false;
 
             int blockBelow = gs.getBlockBelowFeet();
-            System.out.println("[McTestAgent] Spawn return check: X="
-                    + String.format("%.1f", pos[0])
-                    + " Y=" + String.format("%.1f", pos[1])
-                    + " Z=" + String.format("%.1f", pos[2])
-                    + " blockBelow=" + blockBelow);
+
+            if (ticks % 20 == 1) {
+                System.out.println("[McTestAgent] Spawn return check (tick " + ticks
+                        + "): X=" + String.format("%.1f", pos[0])
+                        + " Y=" + String.format("%.1f", pos[1])
+                        + " Z=" + String.format("%.1f", pos[2])
+                        + " blockBelow=" + blockBelow
+                        + " stableY=" + stablePositionTicks);
+            }
 
             // Older Alpha clients (pre-1.2.2) clip Y near 0 — player gets stuck
             // at void floor without being teleported. Accept this as valid outcome.
@@ -350,19 +362,27 @@ public class VoidFallScenario implements Scenario {
                 return true;
             }
 
-            // Verify standing on solid ground (any non-air block).
-            // Block IDs vary by version: legacy (grass=2, dirt=3) vs 1.13+ state IDs.
-            if (blockBelow <= 0) {
-                throw new RuntimeException("Expected solid ground below feet, got blockId="
-                        + blockBelow);
+            // Track Y stability: player must stop moving vertically
+            if (!Double.isNaN(lastY) && Math.abs(pos[1] - lastY) < 0.01) {
+                stablePositionTicks++;
+            } else {
+                stablePositionTicks = 0;
+            }
+            lastY = pos[1];
+
+            // Need solid ground AND stable position before accepting
+            if (blockBelow <= 0 || stablePositionTicks < POSITION_STABLE_COUNT) {
+                return false;
             }
 
             // Verify within 50 blocks of original spawn (horizontal distance)
             double dx = pos[0] - spawnPos[0];
             double dz = pos[2] - spawnPos[2];
             double horizontalDist = Math.sqrt(dx * dx + dz * dz);
-            System.out.println("[McTestAgent] Distance from spawn: "
-                    + String.format("%.1f", horizontalDist) + " blocks");
+            System.out.println("[McTestAgent] Spawn return verified: distance="
+                    + String.format("%.1f", horizontalDist)
+                    + " blockBelow=" + blockBelow
+                    + " stableY=" + stablePositionTicks);
 
             if (horizontalDist > 50.0) {
                 throw new RuntimeException("Too far from spawn: "
@@ -374,7 +394,7 @@ public class VoidFallScenario implements Scenario {
 
         @Override
         public int getTimeoutTicks() {
-            return 60; // 3 seconds
+            return 200; // 10 seconds — player may need time to land and stabilize
         }
     }
 
@@ -383,7 +403,6 @@ public class VoidFallScenario implements Scenario {
         private int ticks;
         private long lastHash;
         private int stableCount;
-        private static final int SETTLE_TICKS_DEFAULT = 60;   // 3 seconds
 
         @Override
         public String getDescription() {
@@ -394,8 +413,6 @@ public class VoidFallScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
-            boolean isLwjgl3 = McTestAgent.mappings != null && McTestAgent.mappings.isLwjgl3();
-            if (!isLwjgl3) return ticks >= SETTLE_TICKS_DEFAULT;
 
             // Frame-stable detection: sample every 20 ticks after minimum 40
             if (ticks >= 40 && ticks % 20 == 0) {
