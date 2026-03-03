@@ -158,7 +158,7 @@ public class InputController {
             if (prevYawField != null) prevYawField.setFloat(player, yaw);
             if (prevPitchField != null) prevPitchField.setFloat(player, pitch);
 
-            // RubyDung: suppress the mouse handler in render() so it doesn't
+            // RubyDung: also suppress the mouse handler in render() so it doesn't
             // overwrite our camera direction via player.turn(mouseDX, mouseDY).
             suppressMouseLook();
         } catch (Exception e) {
@@ -203,10 +203,46 @@ public class InputController {
         }
     }
 
+
     /**
      * Compute yaw/pitch to look at a specific block position from the player's current position.
      * Player position is eye-level.
      */
+    /**
+     * Suppress LWJGL 2 Mouse for Alpha/Beta clients.
+     * Calls Mouse.setGrabbed(false) to truly disable mouse input at the
+     * native level. This prevents player.turn() from receiving deltas
+     * even if the game checks Mouse.isGrabbed() directly.
+     * Also sets the game's mouseGrabbed field to false for consistency.
+     */
+    private Method lwjglMouseSetGrabbed;
+    private boolean lwjglMouseMethodResolved;
+
+    private void suppressLwjglMouse() {
+        try {
+            if (!lwjglMouseMethodResolved) {
+                lwjglMouseMethodResolved = true;
+                try {
+                    Class<?> mouseClass = Class.forName("org.lwjgl.input.Mouse");
+                    lwjglMouseSetGrabbed = mouseClass.getMethod("setGrabbed", boolean.class);
+                } catch (ClassNotFoundException e) {
+                    // Not LWJGL 2
+                } catch (NoSuchMethodException e) {
+                    // Unexpected
+                }
+            }
+            if (lwjglMouseSetGrabbed != null) {
+                lwjglMouseSetGrabbed.invoke(null, false);
+            }
+            // Also set the game's field for consistency
+            if (mappings.mouseGrabbedFieldName() != null) {
+                gameState.setMouseGrabbed(false);
+            }
+        } catch (Exception e) {
+            // Non-critical
+        }
+    }
+
     public void lookAtBlock(double bx, double by, double bz) {
         double[] pos = gameState.getPlayerPosition();
         if (pos == null) return;
@@ -253,13 +289,18 @@ public class InputController {
             // direction set by scenario steps. This must run every tick,
             // not just when setLookDirection() is called, because lookAtBlock()
             // may return early (null position) without reaching suppressMouseLook().
+            // Suppress mouse look for ALL clients. The render loop's mouse handler
+            // calls player.turn(Mouse.getDX(), Mouse.getDY()) every frame when
+            // mouseGrabbed is true, overwriting yaw/pitch set by setLookDirection().
+            // Under Xvfb, LWJGL Mouse generates spurious deltas that cause
+            // non-deterministic camera directions between runs.
+            // WASD movement still works (reads from Keyboard, not Mouse).
             if (isRubyDung()) {
                 suppressMouseLook();
-            } else if (mappings.mouseGrabbedFieldName() != null) {
-                if (!gameState.isMouseGrabbed()) {
-                    gameState.setMouseGrabbed(true);
-                }
+            } else {
+                suppressLwjglMouse();
             }
+
 
             // Apply movement keys to he.f[] boolean array
             applyMovement(player);

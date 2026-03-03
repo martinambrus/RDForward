@@ -443,7 +443,10 @@ public class CreativeBlockPaletteScenario implements Scenario {
                     double dz = walkZ - pos[2];
                     double dist = Math.sqrt(dx * dx + dz * dz);
 
-                    if (dist > 1.5) {
+                    // Threshold must be > Z_OFFSET (2) because placed blocks at
+                    // originZ+Z_OFFSET can physically block the player from getting
+                    // closer to the target on the Z axis.
+                    if (dist > 3.0) {
                         float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
                         input.setLookDirection(yaw, 0);
                         input.pressKey(0); // forward

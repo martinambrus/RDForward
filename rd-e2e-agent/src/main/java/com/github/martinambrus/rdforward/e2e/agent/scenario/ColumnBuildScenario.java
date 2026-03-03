@@ -393,6 +393,10 @@ public class ColumnBuildScenario implements Scenario {
                 }
             }
 
+            // Maintain camera direction every tick (looking straight down)
+            // to prevent LWJGL mouse drift from changing the angle.
+            input.setLookDirection(180f, 90f);
+
             // Wait at least 3 seconds of WALL TIME for both replenishment
             // rounds to arrive and the client to render the final inventory.
             // The batched timer fires 1s after last placement, follow-up 1s

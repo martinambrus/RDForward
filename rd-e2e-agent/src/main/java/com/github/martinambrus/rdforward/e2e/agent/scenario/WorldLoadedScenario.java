@@ -24,8 +24,7 @@ public class WorldLoadedScenario implements Scenario {
     public List<ScenarioStep> getSteps() {
         List<ScenarioStep> steps = new ArrayList<ScenarioStep>();
         steps.add(new WaitRenderStep());
-        steps.add(new SetCameraStep());
-        steps.add(new CaptureStep());
+        steps.add(new SetCameraAndCaptureStep());
         return steps;
     }
 
@@ -60,45 +59,43 @@ public class WorldLoadedScenario implements Scenario {
     }
 
     /**
-     * Set the camera to look at the horizon so terrain is visible in the screenshot.
-     * RubyDung's mouse handler can accumulate deltas under Xvfb that point the
-     * camera at the sky before suppressMouseLook() kicks in. This step explicitly
-     * resets the camera direction.
+     * Set the camera to look at the horizon and capture the screenshot.
+     * Sets camera direction every tick to ensure it sticks, then captures after
+     * enough wall time for chunk rendering and render cycles.
+     *
+     * RubyDung needs extra time for chunk mesh building after spawn.
+     * Alpha/Beta clients render chunks synchronously during stabilization,
+     * but still need a few ticks for the camera direction to take effect
+     * (the game loop runs all ticks before rendering, so the framebuffer
+     * captured by glReadPixels reflects the previous render cycle).
      */
-    private static class SetCameraStep implements ScenarioStep {
+    private static class SetCameraAndCaptureStep implements ScenarioStep {
         private int ticks;
+        private long startTimeMs;
 
         @Override
         public String getDescription() {
-            return "set_camera";
+            return "set_camera_and_capture";
         }
 
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
+            if (ticks == 0) startTimeMs = System.currentTimeMillis();
+            ticks++;
             // Look north (yaw=0 for RD, yaw=180 for Alpha) with a slight
             // downward pitch (10°) to show terrain and horizon.
             input.setLookDirection(input.isRubyDung() ? 0f : 180f, 10f);
-            ticks++;
-            // Hold for 2 ticks so the renderer picks up the new direction.
-            return ticks >= 2;
-        }
 
-        @Override
-        public int getTimeoutTicks() {
-            return 20;
-        }
-    }
+            // RubyDung needs wall-time for chunk mesh building.
+            // Alpha/Beta need at least a few ticks for render cycle.
+            if (input.isRubyDung()) {
+                long elapsed = System.currentTimeMillis() - startTimeMs;
+                if (elapsed < 3000) return false; // 3 seconds for chunk rendering
+            } else {
+                if (ticks < 10) return false;
+            }
 
-    private static class CaptureStep implements ScenarioStep {
-        @Override
-        public String getDescription() {
-            return "capture_world_loaded";
-        }
-
-        @Override
-        public boolean tick(GameState gs, InputController input,
-                            ScreenshotCapture capture, File statusDir) {
             int w = gs.getDisplayWidth();
             int h = gs.getDisplayHeight();
             File file = new File(statusDir, "world_loaded.png");
@@ -111,7 +108,7 @@ public class WorldLoadedScenario implements Scenario {
 
         @Override
         public int getTimeoutTicks() {
-            return 100; // should be instant
+            return 400; // up to ~7 seconds
         }
     }
 }

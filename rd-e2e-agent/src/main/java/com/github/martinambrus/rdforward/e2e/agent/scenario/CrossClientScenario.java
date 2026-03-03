@@ -143,17 +143,19 @@ public class CrossClientScenario implements Scenario {
             ticks++;
             if (input.isRubyDung()) {
                 // RD: move away from spawn by 2 blocks in +Z.
-                // Must match non-RD direction (+Z from walking backward)
-                // so SecondaryTurnToPrimary faces the right way.
                 if (ticks == 1) {
                     input.movePlayerPosition(0, 0, +2.0f);
                 }
                 return ticks >= 5;
             }
+            // Set deterministic facing direction before walking.
+            // Face north (180° = -Z), so BACK key walks +Z away from spawn.
+            // This avoids random walk direction from GLFW mouse deltas under Xvfb.
+            input.setLookDirection(180f, 0f);
             if (ticks == 1) {
                 input.pressKey(InputController.BACK);
             }
-            // Walk for ~40 ticks (~2 blocks backward)
+            // Walk for ~40 ticks (~2 blocks backward = +Z)
             if (ticks >= 40) {
                 input.releaseKey(InputController.BACK);
                 return true;
@@ -169,11 +171,10 @@ public class CrossClientScenario implements Scenario {
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
             ticks++;
-            float currentYaw = gs.getYaw();
-            // Both RD and Alpha/Beta primaries move in +Z (away from spawn).
-            // Spawn yaw faces North (-Z), so current yaw already points back
-            // toward spawn where the secondary stands.
-            facingOtherYaw = currentYaw;
+            // Primary walked +Z from spawn. Secondary is at spawn (-Z relative).
+            // Face north to look at secondary.
+            // Alpha/Beta: 180° = north (-Z). RubyDung: 0° = north (-Z).
+            facingOtherYaw = input.isRubyDung() ? 0f : 180f;
             input.setLookDirection(facingOtherYaw, 0f);
             return ticks >= 3;
         }
@@ -184,6 +185,8 @@ public class CrossClientScenario implements Scenario {
         @Override public int getTimeoutTicks() { return 600; } // 30 seconds
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
+            // Maintain camera direction during wait to prevent LWJGL mouse drift
+            input.setLookDirection(facingOtherYaw, 0f);
             List<String> messages = gs.getChatMessages(20);
             for (String msg : messages) {
                 if (msg.contains("HERE I AM")) {
@@ -211,6 +214,7 @@ public class CrossClientScenario implements Scenario {
         @Override public int getTimeoutTicks() { return 600; }
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
+            input.setLookDirection(facingOtherYaw, 0f);
             return getBarrier().waitFor("saw_primary_chat");
         }
     }
@@ -258,6 +262,7 @@ public class CrossClientScenario implements Scenario {
         @Override public int getTimeoutTicks() { return 600; }
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
+            input.setLookDirection(facingOtherYaw, 0f);
             return getBarrier().waitFor("saw_primary_block");
         }
     }
@@ -289,6 +294,7 @@ public class CrossClientScenario implements Scenario {
         @Override public int getTimeoutTicks() { return 600; }
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
+            input.setLookDirection(facingOtherYaw, 0f);
             return getBarrier().waitFor("saw_primary_break");
         }
     }
@@ -298,6 +304,7 @@ public class CrossClientScenario implements Scenario {
         @Override public int getTimeoutTicks() { return 600; }
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
+            input.setLookDirection(facingOtherYaw, 0f);
             return getBarrier().waitFor("secondary_block_placed");
         }
     }
@@ -331,6 +338,7 @@ public class CrossClientScenario implements Scenario {
         @Override public int getTimeoutTicks() { return 600; }
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
+            input.setLookDirection(facingOtherYaw, 0f);
             return getBarrier().waitFor("secondary_block_broken");
         }
     }
@@ -361,15 +369,23 @@ public class CrossClientScenario implements Scenario {
 
     private class PrimaryScreenshot implements ScenarioStep {
         private int ticks;
+        private long startTimeMs;
         @Override public String getDescription() { return "screenshot"; }
-        @Override public int getTimeoutTicks() { return 20; }
+        @Override public int getTimeoutTicks() { return 200; }
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
-            // Set look direction every tick to override game mouse handling,
-            // then wait for a render cycle before capturing
-            input.setLookDirection(facingOtherYaw, 0f);
+            if (ticks == 0) startTimeMs = System.currentTimeMillis();
             ticks++;
-            if (ticks < 5) return false; // wait for render cycle
+            // Set look direction every tick to override accumulated mouse drift.
+            // LWJGL mouse deltas can leak through between game's Mouse.setGrabbed(true)
+            // in tick() and our suppression in TickAdvice. Wall-time wait ensures
+            // enough render cycles for the camera direction to stabilize.
+            input.setLookDirection(facingOtherYaw, 0f);
+            if (input.isRubyDung()) {
+                if (System.currentTimeMillis() - startTimeMs < 3000) return false;
+            } else {
+                if (ticks < 20) return false;
+            }
             File file = new File(statusDir, "cross_client_primary.png");
             capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);
             return true;
@@ -433,8 +449,10 @@ public class CrossClientScenario implements Scenario {
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
             ticks++;
-            float currentYaw = gs.getYaw();
-            facingOtherYaw = currentYaw + 180f;
+            // Secondary is at spawn. Primary walked +Z from spawn.
+            // Face south to look at primary.
+            // Alpha/Beta: 0° = south (+Z). RubyDung: 180° = south (+Z).
+            facingOtherYaw = input.isRubyDung() ? 180f : 0f;
             input.setLookDirection(facingOtherYaw, 0f);
             return ticks >= 3;
         }
@@ -459,6 +477,7 @@ public class CrossClientScenario implements Scenario {
         @Override public int getTimeoutTicks() { return 600; }
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
+            input.setLookDirection(facingOtherYaw, 0f);
             List<String> messages = gs.getChatMessages(20);
             for (String msg : messages) {
                 if (msg.contains("I SEE YOU")) {
@@ -476,6 +495,7 @@ public class CrossClientScenario implements Scenario {
         @Override public int getTimeoutTicks() { return 600; }
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
+            input.setLookDirection(facingOtherYaw, 0f);
             return getBarrier().waitFor("primary_block_placed");
         }
     }
@@ -509,6 +529,7 @@ public class CrossClientScenario implements Scenario {
         @Override public int getTimeoutTicks() { return 600; }
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
+            input.setLookDirection(facingOtherYaw, 0f);
             return getBarrier().waitFor("primary_block_broken");
         }
     }
@@ -578,6 +599,7 @@ public class CrossClientScenario implements Scenario {
         @Override public int getTimeoutTicks() { return 600; }
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
+            input.setLookDirection(facingOtherYaw, 0f);
             return getBarrier().waitFor("saw_secondary_block");
         }
     }
@@ -609,21 +631,27 @@ public class CrossClientScenario implements Scenario {
         @Override public int getTimeoutTicks() { return 600; }
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
+            input.setLookDirection(facingOtherYaw, 0f);
             return getBarrier().waitFor("saw_secondary_break");
         }
     }
 
     private class SecondaryScreenshot implements ScenarioStep {
         private int ticks;
+        private long startTimeMs;
         @Override public String getDescription() { return "screenshot"; }
-        @Override public int getTimeoutTicks() { return 20; }
+        @Override public int getTimeoutTicks() { return 200; }
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
-            // Set look direction every tick to override game mouse handling,
-            // then wait for a render cycle before capturing
-            input.setLookDirection(facingOtherYaw, 0f);
+            if (ticks == 0) startTimeMs = System.currentTimeMillis();
             ticks++;
-            if (ticks < 5) return false; // wait for render cycle
+            // Set look direction every tick to override accumulated mouse drift.
+            input.setLookDirection(facingOtherYaw, 0f);
+            if (input.isRubyDung()) {
+                if (System.currentTimeMillis() - startTimeMs < 3000) return false;
+            } else {
+                if (ticks < 20) return false;
+            }
             File file = new File(statusDir, "cross_client_secondary.png");
             capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);
             return true;
