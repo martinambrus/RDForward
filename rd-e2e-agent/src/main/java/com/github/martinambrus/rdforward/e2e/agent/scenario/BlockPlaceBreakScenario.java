@@ -495,12 +495,14 @@ public class BlockPlaceBreakScenario implements Scenario {
                 }
                 return false;
             }
-            if (ticks == 1) {
+            // Keep looking at the adjacent grass block and click repeatedly
+            input.lookAtBlock(target2BX, targetBY, target2BZ);
+            if (ticks >= 3 && ticks <= 50 && ticks % 2 == 1) {
                 input.click(1);
             }
-            // Poll until block appears instead of fixed wait
-            if (ticks >= 2) {
-                int blockId = gs.getBlockId(target2BX, targetBY, target2BZ);
+            // Right-click on grass top face places at targetBY + 1
+            if (ticks > 6) {
+                int blockId = gs.getBlockId(target2BX, targetBY + 1, target2BZ);
                 if (blockId != 0) return true;
             }
             return false;
@@ -508,7 +510,7 @@ public class BlockPlaceBreakScenario implements Scenario {
 
         @Override
         public int getTimeoutTicks() {
-            return 40; // safety net for slow server response
+            return 80;
         }
     }
 
@@ -533,9 +535,11 @@ public class BlockPlaceBreakScenario implements Scenario {
             }
             if (ticks < 80) return false;
 
-            int checkY = input.isRubyDung() ? targetBY + 2 : targetBY;
+            // RD places at targetBY+2; non-RD right-clicks on grass top face → targetBY+1
+            int checkY = input.isRubyDung() ? targetBY + 2 : targetBY + 1;
             int blockId = gs.getBlockId(target2BX, checkY, target2BZ);
-            System.out.println("[McTestAgent] Block at adjacent after place: " + blockId);
+            System.out.println("[McTestAgent] Block at adjacent after place: " + blockId
+                    + " at Y=" + checkY);
 
             if (!screenshotTaken) {
                 File file = new File(statusDir, "adjacent_placed.png");
@@ -544,7 +548,8 @@ public class BlockPlaceBreakScenario implements Scenario {
             }
 
             if (blockId == 0) {
-                throw new RuntimeException("Adjacent block still air after placement");
+                throw new RuntimeException("Adjacent block still air at Y=" + checkY
+                        + " after placement");
             }
             return true;
         }
