@@ -1590,6 +1590,19 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         chunkManager.updatePlayerChunks(player);
 
+        // 1.13+ clients may discard their chunk render cache during void fall.
+        // updatePlayerChunks won't resend chunks that are still "tracked",
+        // so force-resend them. Also resend SetChunkCacheCenter for 1.14+.
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_13)) {
+            int spawnBlockX = (int) Math.floor(spawnX);
+            int spawnBlockZ = (int) Math.floor(spawnZ);
+            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_14)) {
+                ctx.writeAndFlush(new SetChunkCacheCenterPacketV477(
+                        spawnBlockX >> 4, spawnBlockZ >> 4));
+            }
+            chunkManager.resendPlayerChunks(player);
+        }
+
         short fixedX = toFixedPoint(spawnX);
         short fixedY = toFixedPoint(spawnEyeY);
         short fixedZ = toFixedPoint(spawnZ);

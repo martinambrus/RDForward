@@ -209,6 +209,26 @@ public class ChunkManager {
     }
 
     /**
+     * Force-resend all chunks the player currently has tracked.
+     * Used after void-fall teleport when the client may have discarded
+     * its chunk render cache even though the server still considers
+     * those chunks "sent".
+     */
+    public void resendPlayerChunks(ConnectedPlayer player) {
+        Set<ChunkCoord> current = playerChunks.get(player);
+        if (current == null || current.isEmpty()) return;
+        int sent = 0;
+        for (ChunkCoord coord : current) {
+            AlphaChunk chunk = getOrLoadChunk(coord);
+            if (chunk != null) {
+                sendChunkToPlayer(player, chunk);
+                sent++;
+            }
+        }
+        System.out.println("[ChunkManager] Resent " + sent + " chunks to " + player.getUsername());
+    }
+
+    /**
      * Send all chunks within view distance to a player.
      * Used during initial login for Alpha-mode clients.
      *

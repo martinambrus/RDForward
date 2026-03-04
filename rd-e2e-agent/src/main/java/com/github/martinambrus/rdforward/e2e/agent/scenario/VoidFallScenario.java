@@ -391,7 +391,8 @@ public class VoidFallScenario implements Scenario {
     // Step 6: Wait for world to render after teleport
     private class WaitSettleStep implements ScenarioStep {
         private int ticks;
-        private static final int SETTLE_TICKS_DEFAULT = 60;   // 3 seconds
+        private static final int SETTLE_TICKS_DEFAULT = 60;    // 3 seconds
+        private static final int SETTLE_TICKS_LWJGL3 = 120;    // 6 seconds — LWJGL3 chunk meshing after re-send
 
         @Override
         public String getDescription() {
@@ -402,12 +403,13 @@ public class VoidFallScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
-            return ticks >= SETTLE_TICKS_DEFAULT;
+            boolean isLwjgl3 = McTestAgent.mappings != null && McTestAgent.mappings.isLwjgl3();
+            return ticks >= (isLwjgl3 ? SETTLE_TICKS_LWJGL3 : SETTLE_TICKS_DEFAULT);
         }
 
         @Override
         public int getTimeoutTicks() {
-            return 200;
+            return 400;
         }
     }
 
