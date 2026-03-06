@@ -2,7 +2,6 @@ package com.github.martinambrus.rdforward.e2e.agent.scenario;
 
 import com.github.martinambrus.rdforward.e2e.agent.GameState;
 import com.github.martinambrus.rdforward.e2e.agent.InputController;
-import com.github.martinambrus.rdforward.e2e.agent.McTestAgent;
 import com.github.martinambrus.rdforward.e2e.agent.ScreenshotCapture;
 
 import java.io.File;
@@ -47,15 +46,10 @@ public class ChatScenario implements Scenario {
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
             ticks++;
-            // Set camera direction early so LWJGL3 async chunk meshing has
-            // time to build meshes for the visible chunks before screenshot.
-            input.setLookDirection(input.isRubyDung() ? 0f : 180f, 10f);
             // Wait for world to load and player to settle on solid ground
-            boolean isLwjgl3 = McTestAgent.mappings != null && McTestAgent.mappings.isLwjgl3();
-            int minTicks = isLwjgl3 ? 80 : 40;
-            if (ticks >= minTicks) {
+            if (ticks >= 40) {
                 int blockBelow = gs.getBlockBelowFeet();
-                if (blockBelow != 0 || ticks >= minTicks + 40) {
+                if (blockBelow != 0 || ticks >= 80) {
                     return true;
                 }
             }
@@ -64,7 +58,7 @@ public class ChatScenario implements Scenario {
 
         @Override
         public int getTimeoutTicks() {
-            return 200;
+            return 100;
         }
     }
 
