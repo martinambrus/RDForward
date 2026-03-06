@@ -155,8 +155,7 @@ public class McTestAgent {
     public static volatile String role;       // "primary" or "secondary" (null for single-client tests)
     public static volatile File syncDir;      // shared sync directory (null for single-client tests)
     public static volatile boolean runAdviceApplied;
-    /** Set to true once the world has loaded. Used by GameRendererSkipAdvice
-     *  to allow the loading overlay to render normally during startup. */
+    /** Set to true once the world has loaded. */
     public static volatile boolean worldLoaded;
 
     public static void premain(String agentArgs, Instrumentation inst) {
@@ -208,16 +207,6 @@ public class McTestAgent {
                 || version.startsWith("release119") || version.startsWith("release120")
                 || version.startsWith("release121") || version.startsWith("release1_21")) {
             System.setProperty("mctestagent.coreprofile", "true");
-        }
-        // MC 1.20+ uses --quickPlayMultiplayer instead of --server/--port.
-        // The quickplay connection is triggered by the loading overlay's completion
-        // callback inside GameRenderer.render(). GameRendererSkipAdvice must allow
-        // render() to run during loading for these versions (skip only after worldLoaded).
-        // For 1.17-1.19.4, render() is always skipped since --server/--port doesn't
-        // depend on the overlay callback.
-        if (version.startsWith("release120") || version.startsWith("release121")
-                || version.startsWith("release1_21")) {
-            System.setProperty("mctestagent.quickplay", "true");
         }
         // Create status directory early so the orchestrator can find it
         statusDir.mkdirs();
@@ -292,6 +281,27 @@ public class McTestAgent {
                     });
         }
 
+        // MC 1.17+ uses OSHI library for hardware detection (snooper/telemetry).
+        // OSHI spawns subprocess commands (lshw, dmidecode, etc.) that block the
+        // Minecraft constructor for minutes under WSL2. Patch runNative() to
+        // return empty results immediately.
+        if (System.getProperty("mctestagent.coreprofile") != null) {
+            builder = builder
+                    .type(ElementMatchers.named("oshi.util.ExecutingCommand"))
+                    .transform(new AgentBuilder.Transformer() {
+                        @Override
+                        public DynamicType.Builder<?> transform(DynamicType.Builder<?> b,
+                                TypeDescription typeDescription, ClassLoader classLoader,
+                                JavaModule module, ProtectionDomain protectionDomain) {
+                            System.out.println("[McTestAgent] Patching OSHI ExecutingCommand"
+                                    + " to skip slow subprocess calls");
+                            return b
+                                    .visit(Advice.to(OshiSkipAdvice.class)
+                                            .on(ElementMatchers.named("runNative")));
+                        }
+                    });
+        }
+
         // 1.14+ clients: suppress tessellation NPEs from BlockRenderDispatcher
         // and render-pipeline NPEs from the Minecraft class's render method.
         // The async resource reload may not finish model/texture baking before the
@@ -347,12 +357,11 @@ public class McTestAgent {
                         });
             }
 
-            // MC 1.17+ (Core Profile): skip GameRenderer's render method entirely.
-            // Mesa llvmpipe cannot execute MC 1.17+'s shader-based 3D render pipeline —
-            // the JVM dies silently on the first frame that renders world geometry.
-            // Network processing and ticks happen in f(boolean) BEFORE the GameRenderer
-            // call, so they are not affected. The world loads normally via network
-            // packets and TickHook progresses the state machine through normal ticks.
+            // MC 1.17+: catch exceptions inside GameRenderer.render() so that the
+            // caller f(boolean) continues past the render call. Without this, a
+            // render exception (e.g. missing texture atlas during resource reload)
+            // prevents the async reload completion handler from running, creating
+            // a deadlock where the atlas is never stitched.
             if (mappings.gameRendererClassName() != null) {
                 final String grClass = mappings.gameRendererClassName();
                 rebaseBuilder = rebaseBuilder
@@ -363,9 +372,9 @@ public class McTestAgent {
                                     TypeDescription typeDescription, ClassLoader classLoader,
                                     JavaModule module, ProtectionDomain protectionDomain) {
                                 System.out.println("[McTestAgent] Patching GameRenderer ("
-                                        + grClass + ") to skip 3D rendering (Core Profile / Mesa)");
+                                        + grClass + ") for render exception safety");
                                 return b
-                                        .visit(Advice.to(GameRendererSkipAdvice.class)
+                                        .visit(Advice.to(GameRendererSafetyAdvice.class)
                                                 .on(ElementMatchers.takesArguments(
                                                         float.class, long.class, boolean.class)));
                             }
@@ -1250,14 +1259,8 @@ public class McTestAgent {
     /**
      * Advice inlined into the Minecraft class render method (REBASE) to handle
      * NPEs from the texture/model/shader loading pipeline during async resource
-     * reload.
-     *
-     * For MC 1.14-1.16.x: the exit advice catches render exceptions and resets the
-     * GL modelview matrix stack to prevent GL_STACK_OVERFLOW accumulation.
-     *
-     * For MC 1.17+ (Core Profile): 3D rendering is handled by GameRendererSkipAdvice
-     * which skips GameRenderer.render() entirely, so f(boolean) runs normally for
-     * network processing and ticks but never reaches the shader-based render pipeline.
+     * reload. Catches render exceptions and resets the GL modelview matrix stack
+     * (pre-1.17 only) to prevent GL_STACK_OVERFLOW accumulation.
      */
     public static class RenderLoopSafetyAdvice {
 
@@ -1300,40 +1303,6 @@ public class McTestAgent {
     }
 
     /**
-     * Advice inlined into GameRenderer.render(float, long, boolean) on MC 1.17+
-     * Core Profile clients. Skips the entire 3D render pipeline. Mesa's llvmpipe
-     * software renderer cannot execute MC 1.17+'s shader-based render pipeline —
-     * the JVM dies silently (no crash dump, no shutdown hook, no Java exception)
-     * on the first frame that renders world geometry.
-     *
-     * This is targeted at the GameRenderer level (not the Minecraft class f(boolean))
-     * so that network packet processing and tick processing inside f() continue
-     * running normally. The world loads via JoinGame network packet, ticks fire
-     * the TickHook state machine, and the test scenario completes — all without
-     * any 3D rendering.
-     */
-    public static class GameRendererSkipAdvice {
-        @Advice.OnMethodEnter(skipOn = Advice.OnNonDefaultValue.class)
-        public static boolean onEnter() {
-            if (System.getProperty("mctestagent.coreprofile") != null) {
-                // For quickplay versions (1.20+): only skip after worldLoaded, so the
-                // loading overlay's completion callback can fire and trigger the connection.
-                // For non-quickplay (1.17-1.19.4): always skip — --server/--port doesn't
-                // depend on the overlay, and allowing render during loading crashes Mesa.
-                if (System.getProperty("mctestagent.quickplay") != null
-                        && !McTestAgent.worldLoaded) {
-                    return false; // let GameRenderer.render() run during loading
-                }
-                // Screenshots are made deterministic (black) by ScreenshotCapture
-                // clearing the framebuffer before glReadPixels.
-                try { Thread.sleep(50); } catch (InterruptedException ignored) {}
-                return true; // non-default → skip render method body
-            }
-            return false;
-        }
-    }
-
-    /**
      * Advice inlined into LevelRenderer.renderHit() — suppresses the pulsing
      * block highlight overlay. The highlight uses Math.sin() animation that
      * varies between frames, causing screenshot baseline comparison failures.
@@ -1356,6 +1325,43 @@ public class McTestAgent {
         @Advice.OnMethodExit
         public static void onExit(@Advice.Return(readOnly = false) boolean returnValue) {
             returnValue = true;
+        }
+    }
+
+    /**
+     * Advice inlined into GameRenderer.render(float, long, boolean) on MC 1.17+.
+     * Catches exceptions so that the caller f(boolean) continues past the render
+     * call, allowing async resource reload completion to run.
+     */
+    public static class GameRendererSafetyAdvice {
+        @Advice.OnMethodExit(onThrowable = Throwable.class)
+        public static void onExit(@Advice.Thrown(readOnly = false) Throwable thrown) {
+            if (thrown != null) {
+                if (System.getProperty("mctestagent.grrender.logged") == null) {
+                    System.setProperty("mctestagent.grrender.logged", "true");
+                    System.out.println("[McTestAgent] GameRenderer exception caught: "
+                            + thrown.getClass().getName() + ": " + thrown.getMessage());
+                }
+                thrown = null;
+            }
+        }
+    }
+
+    /**
+     * Advice inlined into OSHI's ExecutingCommand.runNative() — returns an
+     * empty list immediately instead of spawning slow subprocess commands
+     * (lshw, dmidecode, etc.) that block the Minecraft constructor for
+     * minutes under WSL2.
+     */
+    public static class OshiSkipAdvice {
+        @Advice.OnMethodEnter(skipOn = Advice.OnNonDefaultValue.class)
+        public static boolean onEnter() {
+            return true;
+        }
+
+        @Advice.OnMethodExit
+        public static void onExit(@Advice.Return(readOnly = false) java.util.List<String> returnValue) {
+            returnValue = java.util.Collections.emptyList();
         }
     }
 }

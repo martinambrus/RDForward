@@ -52,17 +52,6 @@ public class ScreenshotCapture {
                 init();
             }
 
-            // For Core Profile clients (1.17+), 3D rendering is disabled via
-            // GameRendererSkipAdvice. Clear the framebuffer to black before reading
-            // so screenshots are deterministic regardless of loading overlay timing.
-            if (System.getProperty("mctestagent.coreprofile") != null) {
-                Method glClearColor = gl11Class.getMethod("glClearColor",
-                        float.class, float.class, float.class, float.class);
-                Method glClear = gl11Class.getMethod("glClear", int.class);
-                glClearColor.invoke(null, 0f, 0f, 0f, 1f);
-                glClear.invoke(null, 0x4000); // GL_COLOR_BUFFER_BIT
-            }
-
             // GL11.glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, buffer)
             int GL_RGBA = 0x1908;
             int GL_UNSIGNED_BYTE = 0x1401;
