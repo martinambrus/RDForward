@@ -51,15 +51,18 @@ test {
 // 1.13-1.18.2 clients (LWJGL3 with Mesa llvmpipe software rendering).
 // Single fork: 1.15+'s async chunk meshing under Mesa llvmpipe software rendering
 // causes unrendered chunks when multiple instances compete for CPU.
-// viewDistance=1 reduces server chunks to 9, keeping tests fast.
+// viewDistance=3 sends 49 chunks. 1.17's LevelRenderer BFS checks hasAllNeighbors
+// for sections >24 blocks from camera; the ViewArea is sized to renderDistance so
+// padding chunks beyond renderDistance collide — both renderDistance AND viewDistance
+// must be >= 3 so distance-2 chunks have their distance-3 neighbors in the ViewArea.
 tasks.register('testLWJGL3', Test) {
     useJUnitPlatform()
     onlyIf { project.hasProperty('e2e') }
-    timeout = java.time.Duration.ofMinutes(120)
+    timeout = java.time.Duration.ofMinutes(300)
     workingDir = rootProject.projectDir
     maxParallelForks = 2
     forkEvery = 1
-    jvmArgs '-Xmx512m', '-De2e.viewDistance=1'
+    jvmArgs '-Xmx512m', '-De2e.viewDistance=3'
     classpath = sourceSets.test.runtimeClasspath
     testClassesDirs = sourceSets.test.output.classesDirs
     testLogging {
@@ -82,11 +85,11 @@ tasks.register('testLWJGL3', Test) {
 tasks.register('testModern', Test) {
     useJUnitPlatform()
     onlyIf { project.hasProperty('e2e') }
-    timeout = java.time.Duration.ofMinutes(180)
+    timeout = java.time.Duration.ofMinutes(300)
     workingDir = rootProject.projectDir
     maxParallelForks = 2
     forkEvery = 1
-    jvmArgs '-Xmx512m', '-De2e.viewDistance=1'
+    jvmArgs '-Xmx512m', '-De2e.viewDistance=3'
     classpath = sourceSets.test.runtimeClasspath
     testClassesDirs = sourceSets.test.output.classesDirs
     testLogging {

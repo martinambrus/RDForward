@@ -1682,14 +1682,17 @@ public class ClientLauncher {
         // BakedModel at SourceFile:42 before the try/catch. If the model lookup returns
         // null (missing model resolution failure), this NPEs. Disabling AO avoids this
         // code path.
-        // Client renderDistance=2 keeps fog close (32 blocks).  The server's
-        // e2e.viewDistance controls how many chunks are SENT; the client renders
-        // whatever it has up to its own renderDistance.  With viewDistance=1 the
-        // server sends 9 chunks; the client renders those 9 and shows sky beyond.
+        // Client renderDistance=3: the server's e2e.viewDistance controls how
+        // many chunks are SENT; the client renders what it has up to its own
+        // renderDistance.  1.17's LevelRenderer BFS checks hasAllNeighbors for
+        // sections >24 blocks from camera — chunks at distance 2 (~32 blocks)
+        // need their distance-3 neighbors in the ViewArea (sized to
+        // renderDistance*2+1).  renderDistance=3 gives a 7×7 ViewArea so
+        // distance-2 chunks have all neighbors present.
         File optionsFile = new File(gameDir, "options.txt");
         try (java.io.PrintWriter pw = new java.io.PrintWriter(optionsFile)) {
             pw.println("ao:0");
-            pw.println("renderDistance:2");
+            pw.println("renderDistance:3");
             pw.println("lang:en_us");
             pw.println("fov:0.0");
         }

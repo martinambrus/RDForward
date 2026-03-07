@@ -43,6 +43,14 @@ public class TickHook {
     private static final int FRAME_STABLE_COUNT = 3;       // 3 consecutive matches = stable
     private static final int STABILIZE_MIN_LWJGL3 = 100;   // 5 seconds minimum
     private static final int STABILIZE_MAX_LWJGL3 = 1200;  // 60 seconds safety net
+    // 1.17+ BFS walk: press FORWARD during ticks 20-25 of stabilization to move
+    // the player ~1 block. This changes Math.floor(pos) in the LevelRenderer,
+    // triggering needsFullRenderChunkUpdate which re-runs the BFS visibility
+    // traversal AFTER all chunks have been loaded from the network.
+    // Without this, the initial BFS runs before chunks arrive and marks most
+    // sections as invisible; they never get re-evaluated without movement.
+    private static final int BFS_WALK_START = 20;
+    private static final int BFS_WALK_END = 25;
 
     private final GameState gameState;
     private final StatusWriter statusWriter;
@@ -124,6 +132,23 @@ public class TickHook {
                         }
                         state = State.STABILIZING;
                         stabilizeTicks = 0;
+                        // Disable SmartCull for 1.17+ clients. SmartCull blocks
+                        // the LevelRenderer BFS from propagating through uncompiled
+                        // chunk sections (which return all-false VisGraph data).
+                        // Under Mesa llvmpipe, async compilation is too slow, causing
+                        // a diagonal rendering cutoff.
+                        if (McTestAgent.mappings != null
+                                && McTestAgent.mappings.smartCullFieldName() != null) {
+                            try {
+                                Object mc = gameState.getMinecraftInstance();
+                                java.lang.reflect.Field smartCullField = mc.getClass()
+                                        .getField(McTestAgent.mappings.smartCullFieldName());
+                                smartCullField.setBoolean(mc, false);
+                                System.out.println("[McTestAgent] SmartCull disabled");
+                            } catch (Exception e) {
+                                System.out.println("[McTestAgent] Failed to disable SmartCull: " + e);
+                            }
+                        }
                         writeStatus();
                     }
                     break;
@@ -132,7 +157,43 @@ public class TickHook {
                     // Dismiss pause menu overlay from Xvfb focus loss so the
                     // framebuffer is clean before the first scenario screenshot
                     inputController.dismissPauseScreen();
+                    // Suppress mouse deltas so setLookDirection() below isn't
+                    // overwritten by Xvfb spurious mouse movement each frame.
+                    inputController.applyInputs();
                     stabilizeTicks++;
+
+                    // LWJGL3 1.17+: set the camera to the scenario's capture
+                    // direction during stabilization. The shader-based renderer
+                    // only compiles chunk meshes within the camera frustum, so
+                    // the stabilization frustum must match the capture direction.
+                    if (isLwjgl3) {
+                        float[] cam = scenario.getStabilizationCamera();
+                        if (cam != null) {
+                            inputController.setLookDirection(cam[0], cam[1]);
+                        }
+                        // Walk forward briefly to trigger 1.17+ LevelRenderer BFS
+                        // re-evaluation after chunks have loaded from the network.
+                        if (stabilizeTicks >= BFS_WALK_START
+                                && stabilizeTicks < BFS_WALK_END) {
+                            inputController.pressKey(InputController.FORWARD);
+                        }
+                    }
+
+                    // Re-enforce SmartCull=false every tick (in case anything resets it)
+                    if (McTestAgent.mappings != null
+                            && McTestAgent.mappings.smartCullFieldName() != null) {
+                        try {
+                            Object mc = gameState.getMinecraftInstance();
+                            java.lang.reflect.Field smartCullField = mc.getClass()
+                                    .getField(McTestAgent.mappings.smartCullFieldName());
+                            boolean val = smartCullField.getBoolean(mc);
+                            if (val) {
+                                smartCullField.setBoolean(mc, false);
+                                System.out.println("[McTestAgent] SmartCull was re-enabled at tick "
+                                        + stabilizeTicks + ", forcing OFF again");
+                            }
+                        } catch (Exception ignored) {}
+                    }
 
                     // Debug: log position every 10 ticks during stabilization
                     if (stabilizeTicks == 1 || stabilizeTicks % 10 == 0) {
@@ -146,9 +207,10 @@ public class TickHook {
                             double[] dpos = gameState.getPlayerPosition();
                             double rawY = gameState.getRawPosY();
                             if (dpos != null) {
-                                debugLog.printf("STAB tick=%d/%d normalizedY=%.2f rawY=%.2f X=%.2f Z=%.2f stable=%d%n",
+                                debugLog.printf("STAB tick=%d/%d normalizedY=%.2f rawY=%.2f X=%.2f Z=%.2f stable=%d look=%s%n",
                                         stabilizeTicks, isLwjgl3 ? STABILIZE_MAX_LWJGL3 : STABILIZE_TICKS_DEFAULT,
-                                        dpos[1], rawY, dpos[0], dpos[2], stableFrameCount);
+                                        dpos[1], rawY, dpos[0], dpos[2], stableFrameCount,
+                                        inputController.getLastLookResult());
                             }
                         }
                     }

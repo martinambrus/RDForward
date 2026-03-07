@@ -832,8 +832,16 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 spawnZ = safe[2] + 0.5;
             }
         } else {
-            int cx = world.getWidth() / 2;
-            int cz = world.getDepth() / 2;
+            // Spawn at the center of the chunk containing the world midpoint.
+            // Placing the player at a chunk boundary (e.g. x=128.5 for a 256-wide
+            // world) makes edge chunks asymmetrically distant from the camera.
+            // In 1.17+, the LevelRenderer BFS checks hasAllNeighbors for sections
+            // >24 blocks from the camera — at a chunk boundary, the nearest neighbor
+            // chunk center is ~24.7 blocks away, triggering the check and failing
+            // when padding chunks don't exist.  Centering in the chunk keeps all
+            // neighbor surface sections within 24 blocks, bypassing the check.
+            int cx = ((world.getWidth() / 2) >> 4) * 16 + 8;
+            int cz = ((world.getDepth() / 2) >> 4) * 16 + 8;
             int heuristicY = world.getHeight() * 2 / 3 + 1;
             int[] safe = world.findSafePosition(cx, heuristicY, cz, 50);
             spawnX = safe[0] + 0.5;
@@ -1552,8 +1560,8 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     }
 
     private void respawnToSafePosition(ChannelHandlerContext ctx, float yaw) {
-        int cx = world.getWidth() / 2;
-        int cz = world.getDepth() / 2;
+        int cx = ((world.getWidth() / 2) >> 4) * 16 + 8;
+        int cz = ((world.getDepth() / 2) >> 4) * 16 + 8;
         int heuristicY = world.getHeight() * 2 / 3 + 1;
         int[] safe = world.findSafePosition(cx, heuristicY, cz, 50);
         double spawnX = safe[0] + 0.5;

@@ -105,4 +105,5 @@ public class NettyReleaseV757Mappings implements FieldMappings {
     @Override public String blockRenderDispatcherClassName() { return "eqc"; }
     @Override public String renderMethodName() { return "f"; } // Minecraft render method f(boolean) on dxo; called from e() game loop
     @Override public String gameRendererClassName() { return "epe"; } // GameRenderer class; render method a(float, long, boolean)
+    @Override public String smartCullFieldName() { return "D"; } // public boolean smartCull on dxo
 }

@@ -111,4 +111,5 @@ public class NettyReleaseV755Mappings implements FieldMappings {
     @Override public String blockRenderDispatcherClassName() { return "eny"; }
     @Override public String renderMethodName() { return "f"; } // Minecraft render method f(boolean) on dvo; called from e() game loop
     @Override public String gameRendererClassName() { return "ena"; } // GameRenderer class; render method a(float, long, boolean)
+    @Override public String smartCullFieldName() { return "E"; } // public boolean smartCull on dvo; used in LevelRenderer BFS
 }

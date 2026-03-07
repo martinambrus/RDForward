@@ -30,17 +30,10 @@
 - **Netty protocols (v4, v5, v47, v107-v110, v393, v477, v573, v735, v766, v767, v768, v769, v770)**: See `memory/netty-protocol.md`
 - **Bedrock protocol**: See sections below + `memory/bedrock-chunks.md`
 
-## Mapping Sources
-- **NEVER use Mojang's ProGuard mappings** (`client_mappings` from version JSON). Their license is restrictive for open-source projects.
-- Use Fabric Yarn/Intermediary mappings, Spigot mappings, or CFR decompilation instead for obfuscated name lookup.
-- Fabric Intermediary: `https://maven.fabricmc.net/net/fabricmc/intermediary/` (obf <-> intermediary)
-- Fabric Yarn: `https://maven.fabricmc.net/net/fabricmc/yarn/` (intermediary <-> named)
-- CFR decompiler can be used to directly inspect obfuscated JARs without any mapping files.
-
 ## Client JAR Sources
 - **Mojang CDN**: Primary source. URLs from `https://piston-meta.mojang.com/mc/game/version_manifest_v2.json` -> version JSON -> downloads.client.url
 - **Minecraft Wiki**: Each version page has client+server JAR download links. Example: `https://minecraft.wiki/w/Java_Edition_Beta_1.7.3`. Useful for versions not in MultiMC or for server JARs.
-- **MultiMC local cache**: (not installed on current PC; was `/mnt/c/Users/Riman/Downloads/MultiMC/libraries/com/mojang/minecraft/<version>/minecraft-<version>-client.jar` on old PC)
+- **MultiMC local cache**: `/mnt/c/Users/Riman/Downloads/MultiMC/libraries/com/mojang/minecraft/<version>/minecraft-<version>-client.jar`
 - **Decompiler**: CFR from `https://github.com/leibnitz27/cfr/releases` (download to `/tmp/cfr.jar`)
 
 ## Alpha Protocol Key Facts
@@ -148,6 +141,12 @@
 - **UpdateTags**: 3 new block tags added (`base_stone_nether`, `base_stone_overworld`, `mushroom_grow_block`; 83->86). `furnace_materials` removed, `stone_crafting_materials` added in item tags (55->55). Client shows "Incomplete set of tags" if ANY required tag name is missing.
 - **Block state/item IDs unchanged from V735** for our basic block set.
 
+## 1.17 Rendering / E2E Quirks
+- **hasAllNeighbors BFS gate**: 1.17+ LevelRenderer BFS checks `hasAllNeighbors` for sections >24 blocks from camera. If ANY horizontal neighbor chunk is missing from ClientChunkCache, the section doesn't render. This causes diagonal/missing terrain when viewDistance is too small.
+- **Spawn at chunk center**: Netty clients spawn at `((worldWidth/2) >> 4) * 16 + 8` (chunk center, not boundary). At chunk boundary (e.g. x=128.5), edge chunks are ~24.7 blocks away, triggering the neighbor check. At chunk center (x=136.5), all neighbor surface sections are within 24 blocks (bypassing the check).
+- **E2E viewDistance=2**: testLWJGL3 uses `-De2e.viewDistance=2` (25 chunks). viewDistance=1 (9 chunks) leaves too little terrain visible in 1.17's shader renderer.
+- **Mesa CPU contention**: Running 2 LWJGL3 clients simultaneously under Mesa llvmpipe can cause chunk meshes to not compile in time. May need single-fork or longer wait for reliable baselines.
+
 ## 1.17.1 Protocol Quirks
 - **SetSlot gained VarInt stateId**: Prepended before windowId. `NettySetSlotPacketV756` (stateId=0 for server-initiated updates).
 - **DestroyEntities reverted to multi-entity format**: `NettyDestroyEntitiesPacketV47` (VarInt count + VarInt[]) replaces `RemoveEntityPacketV755` (single VarInt).
@@ -250,7 +249,6 @@
 - **rd-bot** (protocol-level headless bots): See `memory/rd-bot-plan.md`
 - **rd-e2e** (visual regression with real clients): See `memory/e2e-testing.md`
 - **Client JARs**: See `memory/client-jars.md`
-- **E2E version coverage & pending versions**: See `memory/e2e-versions.md`
 - Multi-client support required: 2+ simultaneous bots for player visibility, block sync, and chat testing
 - Alpha 1.2.6 official JAR uses single-letter ProGuard obfuscation, NOT SRG names. See `memory/e2e-testing.md`.
 - Beta 1.8.1 decompiled mappings: See `memory/beta181-decompile.md`. Key diff from Alpha: no boolean[] pressedKeys (uses KeyBinding), inventory uses Container system, creative inventory class `on`.

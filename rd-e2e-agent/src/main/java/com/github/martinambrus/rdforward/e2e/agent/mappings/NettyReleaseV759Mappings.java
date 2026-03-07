@@ -68,4 +68,5 @@ public class NettyReleaseV759Mappings implements FieldMappings {
     @Override public String blockRenderDispatcherClassName() { return "eyl"; }
     @Override public String renderMethodName() { return "f"; }
     @Override public String gameRendererClassName() { return "exn"; }
+    @Override public String smartCullFieldName() { return "D"; } // public boolean smartCull on eev
 }

@@ -69,4 +69,5 @@ public class NettyReleaseV767Mappings implements FieldMappings {
     @Override public String blockRenderDispatcherClassName() { return "gft"; }
     @Override public String renderMethodName() { return "c"; }
     @Override public String gameRendererClassName() { return "ges"; }
+    @Override public String smartCullFieldName() { return "D"; } // public boolean smartCull on fgo
 }

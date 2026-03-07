@@ -243,4 +243,15 @@ public interface FieldMappings {
      * Null = no GameRenderer patching needed (pre-1.17).
      */
     default String gameRendererClassName() { return null; }
+
+    /**
+     * Field name for the SmartCull boolean on the Minecraft class (1.17+).
+     * SmartCull controls BFS visibility culling in the LevelRenderer.
+     * When true, the BFS skips propagation through uncompiled chunk sections
+     * (which return all-false VisGraph data), causing a diagonal rendering
+     * cutoff under software rendering where async compilation is slow.
+     * Disabled by the e2e agent during stabilization for correct screenshots.
+     * Null = no SmartCull field (pre-1.17 or not applicable).
+     */
+    default String smartCullFieldName() { return null; }
 }

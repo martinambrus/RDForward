@@ -1208,8 +1208,13 @@ public class AlphaChunk {
      * @return V573ChunkData (same return type — only block state IDs differ)
      */
     public V573ChunkData serializeForV755Protocol() {
+        // 1.17 (v755): must include ALL 16 sections so the client initializes
+        // air sections above the terrain. Without them, the renderer's BFS
+        // visibility traversal can't expand through the empty space above the
+        // terrain, causing a diagonal rendering cutoff.
+        int numSections = 16; // world height 256 / 16
         int primaryBitMask = 0;
-        int[] sectionBlockCounts = new int[8];
+        int[] sectionBlockCounts = new int[numSections];
         for (int section = 0; section < 8; section++) {
             int baseY = section * 16;
             int nonAirCount = 0;
@@ -1222,77 +1227,87 @@ public class AlphaChunk {
                     }
                 }
             }
-            if (nonAirCount > 0) {
-                primaryBitMask |= (1 << section);
-                sectionBlockCounts[section] = nonAirCount;
-            }
+            sectionBlockCounts[section] = nonAirCount;
         }
+        // All 16 sections are present in the bitmask
+        primaryBitMask = 0xFFFF;
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream(16384);
 
-        byte[][] skyLightSections = new byte[8][];
-        byte[][] blockLightSections = new byte[8][];
+        byte[][] skyLightSections = new byte[numSections][];
+        byte[][] blockLightSections = new byte[numSections][];
 
-        for (int section = 0; section < 8; section++) {
-            if ((primaryBitMask & (1 << section)) == 0) continue;
-            int baseY = section * 16;
+        for (int section = 0; section < numSections; section++) {
+            if (section < 8 && sectionBlockCounts[section] > 0) {
+                // Section with blocks: full 15-bit global palette encoding
+                int baseY = section * 16;
 
-            // Write blockCount (short, big-endian)
-            writeShortToStream(baos, sectionBlockCounts[section]);
+                writeShortToStream(baos, sectionBlockCounts[section]);
 
-            int bitsPerBlock = 15; // 1.17 global palette: ~20,000 states, still < 2^15
-            baos.write(bitsPerBlock);
+                int bitsPerBlock = 15;
+                baos.write(bitsPerBlock);
 
-            // 1.17 global palette: NO palette length prefix (same as 1.13-1.16)
+                int entriesPerLong = 64 / bitsPerBlock; // 4 for 15-bit
+                int longsNeeded = (4096 + entriesPerLong - 1) / entriesPerLong; // 1024
+                long[] dataArray = new long[longsNeeded];
 
-            // Non-spanning packing: entries do NOT cross long boundaries.
-            int entriesPerLong = 64 / bitsPerBlock; // 4 for 15-bit
-            int longsNeeded = (4096 + entriesPerLong - 1) / entriesPerLong; // 1024
-            long[] dataArray = new long[longsNeeded];
-
-            long mask = (1L << bitsPerBlock) - 1;
-            for (int ly = 0; ly < 16; ly++) {
-                for (int z = 0; z < DEPTH; z++) {
-                    for (int x = 0; x < WIDTH; x++) {
-                        int blockId = getBlock(x, baseY + ly, z);
-                        long stateId = com.github.martinambrus.rdforward.protocol
-                                .BlockStateMapper.toV755BlockState(blockId);
-                        int i = (ly * 16 + z) * 16 + x;
-                        int longIndex = i / entriesPerLong;
-                        int bitOffset = (i % entriesPerLong) * bitsPerBlock;
-                        dataArray[longIndex] |= (stateId & mask) << bitOffset;
+                long mask = (1L << bitsPerBlock) - 1;
+                for (int ly = 0; ly < 16; ly++) {
+                    for (int z = 0; z < DEPTH; z++) {
+                        for (int x = 0; x < WIDTH; x++) {
+                            int blockId = getBlock(x, baseY + ly, z);
+                            long stateId = com.github.martinambrus.rdforward.protocol
+                                    .BlockStateMapper.toV755BlockState(blockId);
+                            int i = (ly * 16 + z) * 16 + x;
+                            int longIndex = i / entriesPerLong;
+                            int bitOffset = (i % entriesPerLong) * bitsPerBlock;
+                            dataArray[longIndex] |= (stateId & mask) << bitOffset;
+                        }
                     }
                 }
-            }
 
-            writeVarIntToStream(baos, longsNeeded);
-            for (int i = 0; i < longsNeeded; i++) {
-                writeLongToStream(baos, dataArray[i]);
-            }
+                writeVarIntToStream(baos, longsNeeded);
+                for (int i = 0; i < longsNeeded; i++) {
+                    writeLongToStream(baos, dataArray[i]);
+                }
 
-            // NO light data in sections for 1.17+
+                // Collect light data from actual world data
+                byte[] sectionSkyLight = new byte[2048];
+                byte[] sectionBlockLight = new byte[2048];
+                int lightIdx = 0;
+                for (int ly = 0; ly < 16; ly++) {
+                    for (int z = 0; z < DEPTH; z++) {
+                        for (int x = 0; x < WIDTH; x += 2) {
+                            int skyLow = getSkyLight(x, baseY + ly, z) & 0x0F;
+                            int skyHigh = getSkyLight(x + 1, baseY + ly, z) & 0x0F;
+                            sectionSkyLight[lightIdx] = (byte) (skyLow | (skyHigh << 4));
 
-            // Collect light data for UpdateLight packet
-            byte[] sectionSkyLight = new byte[2048];
-            byte[] sectionBlockLight = new byte[2048];
-            int lightIdx = 0;
-            for (int ly = 0; ly < 16; ly++) {
-                for (int z = 0; z < DEPTH; z++) {
-                    for (int x = 0; x < WIDTH; x += 2) {
-                        int skyLow = getSkyLight(x, baseY + ly, z) & 0x0F;
-                        int skyHigh = getSkyLight(x + 1, baseY + ly, z) & 0x0F;
-                        sectionSkyLight[lightIdx] = (byte) (skyLow | (skyHigh << 4));
+                            int blkLow = getBlockLight(x, baseY + ly, z) & 0x0F;
+                            int blkHigh = getBlockLight(x + 1, baseY + ly, z) & 0x0F;
+                            sectionBlockLight[lightIdx] = (byte) (blkLow | (blkHigh << 4));
 
-                        int blkLow = getBlockLight(x, baseY + ly, z) & 0x0F;
-                        int blkHigh = getBlockLight(x + 1, baseY + ly, z) & 0x0F;
-                        sectionBlockLight[lightIdx] = (byte) (blkLow | (blkHigh << 4));
-
-                        lightIdx++;
+                            lightIdx++;
+                        }
                     }
                 }
+                skyLightSections[section] = sectionSkyLight;
+                blockLightSections[section] = sectionBlockLight;
+            } else {
+                // Empty air section: single-valued palette (air=0)
+                writeShortToStream(baos, 0);  // blockCount = 0
+                baos.write(0);                // bitsPerBlock = 0 (single-valued)
+                writeVarIntToStream(baos, 0); // palette entry = 0 (air)
+                writeVarIntToStream(baos, 0); // data array length = 0
+
+                // Sky light = 15 everywhere for air sections above terrain
+                byte[] sectionSkyLight = new byte[2048];
+                java.util.Arrays.fill(sectionSkyLight, (byte) 0xFF); // 15|15
+                skyLightSections[section] = sectionSkyLight;
+
+                // Block light = 0 everywhere
+                byte[] sectionBlockLight = new byte[2048];
+                blockLightSections[section] = sectionBlockLight;
             }
-            skyLightSections[section] = sectionSkyLight;
-            blockLightSections[section] = sectionBlockLight;
         }
 
         // Biomes: int[1024] for 3D biomes (same as 1.15-1.16)

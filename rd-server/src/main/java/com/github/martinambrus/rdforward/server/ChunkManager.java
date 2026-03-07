@@ -610,7 +610,7 @@ public class ChunkManager {
             java.util.List<byte[]> skyArrays = new java.util.ArrayList<>();
             java.util.List<byte[]> blockArrays = new java.util.ArrayList<>();
 
-            for (int section = 0; section < 8; section++) {
+            for (int section = 0; section < 16; section++) {
                 if (v755Data.getSkyLightSections()[section] != null) {
                     skyLightMask |= (1 << (section + 1));
                     skyArrays.add(v755Data.getSkyLightSections()[section]);
