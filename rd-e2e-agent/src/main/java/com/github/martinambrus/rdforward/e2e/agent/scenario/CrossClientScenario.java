@@ -283,7 +283,8 @@ public class CrossClientScenario implements Scenario {
             if (input.isRubyDung()) {
                 input.breakBlockDirect(myBlockX, myBlockY, myBlockZ);
             } else {
-                input.breakBlock(myBlockX, myBlockY, myBlockZ);
+                input.lookAtBlock(myBlockX, myBlockY, myBlockZ);
+                input.click(0);
             }
             return false;
         }
@@ -620,7 +621,8 @@ public class CrossClientScenario implements Scenario {
             if (input.isRubyDung()) {
                 input.breakBlockDirect(myBlockX, myBlockY, myBlockZ);
             } else {
-                input.breakBlock(myBlockX, myBlockY, myBlockZ);
+                input.lookAtBlock(myBlockX, myBlockY, myBlockZ);
+                input.click(0);
             }
             return false;
         }

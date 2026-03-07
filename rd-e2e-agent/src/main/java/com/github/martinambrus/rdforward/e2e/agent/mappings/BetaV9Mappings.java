@@ -13,7 +13,7 @@ package com.github.martinambrus.rdforward.e2e.agent.mappings;
  * - clickCooldownFieldName is "R" (not "T")
  * - Entity fields shifted (aI/aJ/aK, yaw aO/aP, onGround aT)
  * - inventoryFieldName is "f" (same as 1.4/1.5)
- * - sendChatMessageMethodName is "b" (not "a")
+ * - sendChatMessageMethodName is "a" (same as other Beta versions)
  * - dropOneItemMethodName is "A" (not "D")
  * - GuiScreen is cb, GuiInventory is pw
  */
@@ -151,7 +151,7 @@ public class BetaV9Mappings implements FieldMappings {
 
     @Override
     public String sendChatMessageMethodName() {
-        return "b";
+        return "a";
     }
 
     @Override

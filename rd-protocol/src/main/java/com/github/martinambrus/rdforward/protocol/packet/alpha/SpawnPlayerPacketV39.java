@@ -8,8 +8,9 @@ import io.netty.buffer.ByteBuf;
  * Release 1.3.1+ protocol 0x14 (Server -> Client): Named Entity Spawn.
  *
  * Same as pre-v39 SpawnPlayerPacket but with entity metadata appended.
- * We write a 0x7F byte (empty metadata terminator) since we have no
- * metadata to send.
+ * Must send at least one metadata entry (index 0 = entity flags byte)
+ * because the client's DataWatcher.readList() returns null for
+ * terminator-only metadata, causing NPE in SpawnPlayer.c().
  *
  * Wire format:
  *   [int]      entity ID
@@ -20,7 +21,7 @@ import io.netty.buffer.ByteBuf;
  *   [byte]     yaw
  *   [byte]     pitch
  *   [short]    current item
- *   [byte]     0x7F (entity metadata terminator)
+ *   [metadata] entity metadata (at least index 0 byte + 0x7F terminator)
  */
 public class SpawnPlayerPacketV39 implements Packet {
 
@@ -62,7 +63,11 @@ public class SpawnPlayerPacketV39 implements Packet {
         buf.writeByte(yaw);
         buf.writeByte(pitch);
         buf.writeShort(currentItem);
-        buf.writeByte(0x7F); // entity metadata terminator (empty metadata)
+        // Entity metadata: index 0 (byte) = entity flags, value 0.
+        // type=0 (byte) << 5 | index=0 → 0x00
+        buf.writeByte(0x00);
+        buf.writeByte(0);
+        buf.writeByte(0x7F); // metadata terminator
     }
 
     @Override

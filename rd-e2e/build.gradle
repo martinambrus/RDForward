@@ -35,7 +35,8 @@ test {
     include '**/scenarios/Alpha*Test.class'
     include '**/scenarios/Beta*Test.class'
     include '**/scenarios/Release*Test.class'
-    include '**/scenarios/CrossVersion*Test.class'
+    // Exclude cross-version tests — handled by testCrossVersion* tasks
+    exclude '**/scenarios/CrossVersion*Test.class'
     // Exclude LWJGL3 versions (1.13+) — handled by testLWJGL3/testModern
     exclude '**/scenarios/Release113*Test.class'
     exclude '**/scenarios/Release114*Test.class'
@@ -146,6 +147,90 @@ tasks.register('testPreNetty', Test) {
     exclude '**/scenarios/Release118*Test.class'
 }
 
+// Cross-version matrix: every client version tested against every other version.
+// Triangular matrix (6903 pairs total), split by weight for optimal parallelism:
+//   testCrossVersionLight  - Both clients LWJGL2 or lighter: 6 parallel forks (2556 pairs)
+//   testCrossVersionLwjgl3 - Heaviest client is LWJGL3: 2 forks, viewDistance=3 (1815 pairs)
+//   testCrossVersionModern - Heaviest client is Modern: 2 forks, viewDistance=3 (2532 pairs)
+//   testCrossVersion       - Runs all three + smoke test
+//
+// Run with: ./gradlew :rd-e2e:testCrossVersion -Pe2e
+// Or individual weight groups: ./gradlew :rd-e2e:testCrossVersionLight -Pe2e
+
+// Light cross-version pairs (both clients <= Netty LWJGL2).
+// 7 test classes (6 non-RD shards + 1 RD class) for full parallelism.
+tasks.register('testCrossVersionLight', Test) {
+    useJUnitPlatform()
+    onlyIf { project.hasProperty('e2e') }
+    timeout = java.time.Duration.ofHours(24)
+    workingDir = rootProject.projectDir
+    maxParallelForks = Math.max(Runtime.runtime.availableProcessors().intdiv(2), 6)
+    forkEvery = 1
+    jvmArgs '-Xmx512m'
+    classpath = sourceSets.test.runtimeClasspath
+    testClassesDirs = sourceSets.test.output.classesDirs
+    testLogging {
+        showStandardStreams = true
+        events 'FAILED'
+        exceptionFormat 'short'
+    }
+
+    include '**/scenarios/CrossVersionLightShard*Test.class'
+    include '**/scenarios/CrossVersionRdLightTest.class'
+    include '**/scenarios/CrossVersionSmokeTest.class'
+}
+
+// LWJGL3 cross-version pairs (heaviest client is 1.13-1.18.2).
+// 3 test classes (2 non-RD shards + 1 RD class).
+tasks.register('testCrossVersionLwjgl3', Test) {
+    useJUnitPlatform()
+    onlyIf { project.hasProperty('e2e') }
+    timeout = java.time.Duration.ofHours(24)
+    workingDir = rootProject.projectDir
+    maxParallelForks = 2
+    forkEvery = 1
+    jvmArgs '-Xmx512m', '-De2e.viewDistance=3'
+    classpath = sourceSets.test.runtimeClasspath
+    testClassesDirs = sourceSets.test.output.classesDirs
+    testLogging {
+        showStandardStreams = true
+        events 'FAILED'
+        exceptionFormat 'short'
+    }
+
+    include '**/scenarios/CrossVersionLwjgl3Shard*Test.class'
+    include '**/scenarios/CrossVersionRdLwjgl3Test.class'
+}
+
+// Modern cross-version pairs (heaviest client is 1.19+).
+// 3 test classes (2 non-RD shards + 1 RD class).
+tasks.register('testCrossVersionModern', Test) {
+    useJUnitPlatform()
+    onlyIf { project.hasProperty('e2e') }
+    timeout = java.time.Duration.ofHours(24)
+    workingDir = rootProject.projectDir
+    maxParallelForks = 2
+    forkEvery = 1
+    jvmArgs '-Xmx512m', '-De2e.viewDistance=3'
+    classpath = sourceSets.test.runtimeClasspath
+    testClassesDirs = sourceSets.test.output.classesDirs
+    testLogging {
+        showStandardStreams = true
+        events 'FAILED'
+        exceptionFormat 'short'
+    }
+
+    include '**/scenarios/CrossVersionModernShard*Test.class'
+    include '**/scenarios/CrossVersionRdModernTest.class'
+}
+
+// Convenience task to run all cross-version weight groups.
+tasks.register('testCrossVersion') {
+    dependsOn tasks.named('testCrossVersionLight'),
+              tasks.named('testCrossVersionLwjgl3'),
+              tasks.named('testCrossVersionModern')
+}
+
 // Convenience task to run all three test suites
 tasks.register('testAll') {
     dependsOn test, tasks.named('testLWJGL3'), tasks.named('testModern')
@@ -165,6 +250,18 @@ tasks.named('testModern') {
     dependsOn ':rd-client:fatModdedJar'
 }
 tasks.named('testPreNetty') {
+    dependsOn ':rd-e2e-agent:fatJar'
+    dependsOn ':rd-client:fatModdedJar'
+}
+tasks.named('testCrossVersionLight') {
+    dependsOn ':rd-e2e-agent:fatJar'
+    dependsOn ':rd-client:fatModdedJar'
+}
+tasks.named('testCrossVersionLwjgl3') {
+    dependsOn ':rd-e2e-agent:fatJar'
+    dependsOn ':rd-client:fatModdedJar'
+}
+tasks.named('testCrossVersionModern') {
     dependsOn ':rd-e2e-agent:fatJar'
     dependsOn ':rd-client:fatModdedJar'
 }

@@ -8,7 +8,8 @@ import io.netty.buffer.ByteBuf;
  * 1.14 Play state, S2C packet 0x05: Spawn Player.
  *
  * Same wire format as V109 (entity metadata still present; removed in 1.15).
- * We write minimal metadata: just the 0xFF terminator.
+ * Must send at least one metadata entry (index 0 = entity flags byte)
+ * because some client versions return null for terminator-only metadata.
  *
  * Wire format:
  *   [VarInt] entityId
@@ -18,7 +19,7 @@ import io.netty.buffer.ByteBuf;
  *   [double] z
  *   [byte]   yaw
  *   [byte]   pitch
- *   [metadata] entity metadata (0xFF terminator for empty)
+ *   [metadata] entity metadata (at least index 0 byte + 0xFF terminator)
  */
 public class NettySpawnPlayerPacketV477 implements Packet {
 
@@ -64,7 +65,11 @@ public class NettySpawnPlayerPacketV477 implements Packet {
         buf.writeDouble(z);
         buf.writeByte(yaw);
         buf.writeByte(pitch);
-        buf.writeByte(0xFF); // metadata terminator (empty metadata)
+        // 1.14 entity metadata (1.9+ format): index=0 (entity flags), type=0 (Byte), value=0
+        buf.writeByte(0);    // index 0
+        McDataTypes.writeVarInt(buf, 0); // type 0 = Byte
+        buf.writeByte(0);    // value: no flags set
+        buf.writeByte(0xFF); // metadata terminator
     }
 
     @Override

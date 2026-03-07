@@ -161,6 +161,44 @@ public class ClientLauncher {
     private Process clientProcess;
 
     /**
+     * Universal launcher dispatch: launches any client version by its registry key.
+     * For "rubydung", uses launchModdedClient(). For all others, uses reflection
+     * to call the matching launch method (e.g., key "Alpha126" -> launchAlpha126).
+     *
+     * @param key        version key from CrossVersionRegistry (e.g., "Alpha126", "Release172", "rubydung")
+     * @param agentJar   path to the rd-e2e-agent fat JAR
+     * @param port       server port
+     * @param statusDir  agent status output directory
+     * @param display    X display string
+     * @param scenario   scenario name (e.g., "cross_client")
+     * @param username   player username
+     * @param role       "primary" or "secondary"
+     * @param syncDir    sync barrier directory
+     * @return the launched client process
+     */
+    public Process launchByVersionKey(String key, String agentJar, int port,
+            File statusDir, String display, String scenario,
+            String username, String role, File syncDir) throws Exception {
+        if ("rubydung".equals(key)) {
+            File buildLibs = new File("rd-client/build/libs");
+            File[] jars = buildLibs.isDirectory()
+                    ? buildLibs.listFiles((dir, name) -> name.endsWith("-all.jar"))
+                    : null;
+            if (jars == null || jars.length == 0) {
+                throw new IllegalStateException(
+                        "rd-client modded JAR not found. Run ./gradlew :rd-client:fatModdedJar first.");
+            }
+            return launchModdedClient(jars[0].getAbsolutePath(), agentJar,
+                    "rubydung", port, username, statusDir, display, scenario, role, syncDir);
+        }
+        java.lang.reflect.Method m = getClass().getMethod("launch" + key,
+                String.class, int.class, File.class, String.class,
+                String.class, String.class, String.class, File.class);
+        return (Process) m.invoke(this, agentJar, port, statusDir, display,
+                scenario, username, role, syncDir);
+    }
+
+    /**
      * Launch an Alpha 1.2.6 client with the E2E agent attached.
      * Uses the default "world_loaded" scenario.
      */
