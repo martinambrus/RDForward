@@ -193,6 +193,7 @@ public class CrossClientScenario implements Scenario {
         List<ScenarioStep> steps = new ArrayList<ScenarioStep>();
         steps.add(new SecondaryWaitWorldReady());
         steps.add(new SecondaryWaitPrimaryJoined());
+        steps.add(new SecondaryWalkBackward());
         steps.add(new SecondaryTurnToPrimary());
         steps.add(new SecondarySendChat());
         steps.add(new SecondaryWaitPrimaryChat());
@@ -216,6 +217,34 @@ public class CrossClientScenario implements Scenario {
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
             return getBarrier().waitFor("world_ready");
+        }
+    }
+
+    private class SecondaryWalkBackward implements ScenarioStep {
+        private int ticks;
+        @Override public String getDescription() { return "walk_backward"; }
+        @Override public int getTimeoutTicks() { return 80; }
+        @Override public boolean tick(GameState gs, InputController input,
+                                      ScreenshotCapture capture, File statusDir) {
+            ticks++;
+            if (input.isRubyDung()) {
+                // RD: move 1 block in -Z (away from primary who went +Z).
+                if (ticks == 1) {
+                    input.movePlayerPosition(0, 0, -1.0f);
+                }
+                return ticks >= 5;
+            }
+            // Face south (0° = +Z), so BACK key walks -Z (away from primary).
+            input.setLookDirection(0f, 0f);
+            if (ticks == 1) {
+                input.pressKey(InputController.BACK);
+            }
+            // Walk for ~20 ticks (~1 block backward = -Z)
+            if (ticks >= 20) {
+                input.releaseKey(InputController.BACK);
+                return true;
+            }
+            return false;
         }
     }
 
