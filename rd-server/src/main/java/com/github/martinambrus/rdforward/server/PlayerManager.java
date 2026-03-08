@@ -200,7 +200,9 @@ public class PlayerManager {
      * @param timeOfDay current time of day (0-24000, negative = frozen)
      */
     public void broadcastTimeUpdate(long worldAge, long timeOfDay) {
-        TimeUpdatePacket preNetty = new TimeUpdatePacket(timeOfDay);
+        // Pre-1.4.2 clients don't understand negative-means-frozen convention;
+        // negative values wrap to nighttime. Use absolute value for them.
+        TimeUpdatePacket preNetty = new TimeUpdatePacket(Math.abs(timeOfDay));
         TimeUpdatePacketV47 preNettyV47 = new TimeUpdatePacketV47(worldAge, timeOfDay);
         NettyTimeUpdatePacket netty = new NettyTimeUpdatePacket(worldAge, timeOfDay);
         NettyTimeUpdatePacketV768 nettyV768 = new NettyTimeUpdatePacketV768(worldAge, timeOfDay);
@@ -210,7 +212,7 @@ public class PlayerManager {
             if (v == ProtocolVersion.BEDROCK) {
                 if (player.getBedrockSession() != null) {
                     SetTimePacket stp = new SetTimePacket();
-                    stp.setTime((int) (timeOfDay % 24000));
+                    stp.setTime((int) (Math.abs(timeOfDay) % 24000));
                     player.getBedrockSession().getSession().sendPacket(stp);
                 }
             } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
