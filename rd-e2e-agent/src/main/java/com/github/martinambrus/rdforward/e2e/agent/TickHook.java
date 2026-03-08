@@ -181,6 +181,8 @@ public class TickHook {
                         if (is117Plus && stabilizeTicks >= BFS_WALK_START
                                 && stabilizeTicks < BFS_WALK_END) {
                             inputController.pressKey(InputController.FORWARD);
+                        } else if (is117Plus && stabilizeTicks == BFS_WALK_END) {
+                            inputController.releaseKey(InputController.FORWARD);
                         }
                     }
 

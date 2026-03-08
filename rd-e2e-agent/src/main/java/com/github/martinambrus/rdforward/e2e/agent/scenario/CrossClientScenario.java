@@ -239,8 +239,9 @@ public class CrossClientScenario implements Scenario {
             if (ticks == 1) {
                 input.pressKey(InputController.BACK);
             }
-            // Walk for ~20 ticks (~1 block backward = -Z)
-            if (ticks >= 20) {
+            // Walk for ~5 ticks — creative mode is ~0.2 blocks/tick,
+            // so 5 ticks ≈ 1 block backward.
+            if (ticks >= 5) {
                 input.releaseKey(InputController.BACK);
                 return true;
             }
@@ -314,7 +315,7 @@ public class CrossClientScenario implements Scenario {
             if (input.isRubyDung()) {
                 if (System.currentTimeMillis() - startTimeMs < 3000) return false;
             } else {
-                if (ticks < 20) return false;
+                if (ticks < 60) return false;
             }
             File file = new File(statusDir, "cross_client_secondary.png");
             capture.capture(gs.getDisplayWidth(), gs.getDisplayHeight(), file);
