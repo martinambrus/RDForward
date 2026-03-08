@@ -143,6 +143,13 @@ abstract class CrossVersionMatrixTestBase {
                 primary.waitFor();
             }
             launcher1.stop();
+            // Wait for the server to fully process both disconnections.
+            // channelInactive fires asynchronously on the Netty event loop
+            // after the TCP connection closes — without this wait, the next
+            // test's preSeedPlayerPosition can be overwritten by a stale
+            // rememberPlayerPosition from this pair's disconnect.
+            server.waitForPlayerDisconnect(primaryUser, 5000);
+            server.waitForPlayerDisconnect(secondaryUser, 5000);
         }
     }
 

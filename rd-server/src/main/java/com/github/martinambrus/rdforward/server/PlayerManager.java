@@ -200,10 +200,12 @@ public class PlayerManager {
      * @param timeOfDay current time of day (0-24000, negative = frozen)
      */
     public void broadcastTimeUpdate(long worldAge, long timeOfDay) {
-        // Pre-1.4.2 clients don't understand negative-means-frozen convention;
+        // Pre-1.6.1 clients don't understand negative-means-frozen convention;
         // negative values wrap to nighttime. Use absolute value for them.
+        // The negative convention was added in 1.6.1 alongside doDaylightCycle.
         TimeUpdatePacket preNetty = new TimeUpdatePacket(Math.abs(timeOfDay));
         TimeUpdatePacketV47 preNettyV47 = new TimeUpdatePacketV47(worldAge, timeOfDay);
+        TimeUpdatePacketV47 preNettyV47Abs = new TimeUpdatePacketV47(worldAge, Math.abs(timeOfDay));
         NettyTimeUpdatePacket netty = new NettyTimeUpdatePacket(worldAge, timeOfDay);
         NettyTimeUpdatePacketV768 nettyV768 = new NettyTimeUpdatePacketV768(worldAge, timeOfDay);
 
@@ -219,8 +221,10 @@ public class PlayerManager {
                 player.sendPacket(nettyV768);
             } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_7_2)) {
                 player.sendPacket(netty);
-            } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_4_2)) {
+            } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_6_1)) {
                 player.sendPacket(preNettyV47);
+            } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_4_2)) {
+                player.sendPacket(preNettyV47Abs);
             } else if (v.isAtLeast(ProtocolVersion.ALPHA_1_2_0)) {
                 player.sendPacket(preNetty);
             }

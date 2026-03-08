@@ -82,6 +82,24 @@ public class E2ETestServer {
         }
     }
 
+    /**
+     * Wait until a player is no longer connected to the server.
+     * Used after killing client processes to ensure channelInactive has
+     * completed (and rememberPlayerPosition has run) before the next test
+     * pre-seeds a fresh position.
+     */
+    public boolean waitForPlayerDisconnect(String username, long timeoutMs) {
+        if (server == null) return true;
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            if (server.getPlayerManager().getPlayerByName(username) == null) {
+                return true;
+            }
+            try { Thread.sleep(50); } catch (InterruptedException e) { return false; }
+        }
+        return false;
+    }
+
     private void deleteDir(File dir) {
         if (!dir.exists())
             return;

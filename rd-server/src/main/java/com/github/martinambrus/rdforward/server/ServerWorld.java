@@ -263,9 +263,19 @@ public class ServerWorld {
         // truncation error. Plain (short)(y*32) always rounds down, which shifts
         // feet up to 1/32 block below the original surface — causing players to
         // respawn fractionally inside the block they were standing on.
-        short fx = (short) Math.round(player.getDoubleX() * 32);
-        short fy = (short) Math.round(player.getDoubleY() * 32);
-        short fz = (short) Math.round(player.getDoubleZ() * 32);
+        // Classic/RubyDung clients only use short fields (doubleX/Y/Z stay 0.0),
+        // so fall back to the short coordinates for those clients.
+        short fx, fy, fz;
+        if (player.getDoubleX() != 0.0 || player.getDoubleY() != 0.0
+                || player.getDoubleZ() != 0.0) {
+            fx = (short) Math.round(player.getDoubleX() * 32);
+            fy = (short) Math.round(player.getDoubleY() * 32);
+            fz = (short) Math.round(player.getDoubleZ() * 32);
+        } else {
+            fx = player.getX();
+            fy = player.getY();
+            fz = player.getZ();
+        }
         playerPositionCache.put(player.getUsername(), new short[]{
             fx, fy, fz, player.getYaw(), player.getPitch()
         });
