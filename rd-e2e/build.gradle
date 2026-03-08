@@ -177,6 +177,7 @@ tasks.register('testCrossVersionLight', Test) {
 
     include '**/scenarios/CrossVersionLightShard*Test.class'
     include '**/scenarios/CrossVersionRdLightTest.class'
+    include '**/scenarios/CrossVersionRdLightShard*Test.class'
     include '**/scenarios/CrossVersionSmokeTest.class'
 }
 

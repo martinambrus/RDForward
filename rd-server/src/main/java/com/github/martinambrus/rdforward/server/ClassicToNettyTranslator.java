@@ -115,6 +115,10 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
 
         if (packet instanceof SetBlockServerPacket) {
             SetBlockServerPacket sb = (SetBlockServerPacket) packet;
+            System.out.println("[ClassicToNettyTranslator] SetBlock at ("
+                    + sb.getX() + "," + sb.getY() + "," + sb.getZ()
+                    + ") type=" + sb.getBlockType()
+                    + " isV393=" + isV393 + " isV477=" + isV477);
             if (isV759) {
                 // V759+ share the same block state IDs (through v764)
                 return new NettyBlockChangePacketV477(sb.getX(), sb.getY(), sb.getZ(),

@@ -75,6 +75,15 @@ abstract class CrossVersionMatrixTestBase {
         String primaryUser = "P_" + primaryKey.substring(0, Math.min(14, primaryKey.length()));
         String secondaryUser = "S_" + secondaryKey.substring(0, Math.min(14, secondaryKey.length()));
 
+        // Reset saved positions to default spawn so both players start fresh.
+        // Without this, the primary's position drifts +Z across sequential test
+        // pairs (the scenario walks backward 2 blocks each time), eventually
+        // moving too far from the secondary to be visible.
+        // Using preSeed (not clear) so pre-1.2.0 Alpha clients retain their
+        // "known player" status and don't get kicked on first connect.
+        server.preSeedPlayerPosition(primaryUser);
+        server.preSeedPlayerPosition(secondaryUser);
+
         // Launch primary
         Process primary = launcher1.launchByVersionKey(primaryKey, agentJar,
                 server.getPort(), primaryStatusDir, display1.getDisplay(),

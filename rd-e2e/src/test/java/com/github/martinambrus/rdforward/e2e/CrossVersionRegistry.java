@@ -308,6 +308,20 @@ public final class CrossVersionRegistry {
     }
 
     /**
+     * Generate a shard of RubyDung pairs filtered by weight tier.
+     * Used to split large RD pair sets across multiple test classes to
+     * avoid Xvfb resource exhaustion from too many sequential client launches.
+     */
+    public static Stream<Arguments> rdPairsByWeightShard(Weight weight,
+            int shardIndex, int totalShards) {
+        List<Arguments> all = rdPairsByWeight(weight).collect(Collectors.toList());
+        int size = all.size();
+        int from = shardIndex * size / totalShards;
+        int to = (shardIndex + 1) * size / totalShards;
+        return all.subList(from, to).stream();
+    }
+
+    /**
      * Look up a version's category by its launch key.
      */
     public static Category categoryOf(String launchKey) {

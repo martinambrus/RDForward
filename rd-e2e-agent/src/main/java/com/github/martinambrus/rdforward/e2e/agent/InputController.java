@@ -59,6 +59,11 @@ public class InputController {
     private Constructor<?> digBlockPosConstructor;
     private Object enumFacingUp;
 
+    // Force pick() before right-clicks
+    private Field gameRendererField;
+    private Method pickMethod;
+    private boolean pickResolved;
+
     // KeyBinding-based movement (Beta 1.8+)
     private boolean useKeyBindingMovement;
     private boolean movementModeResolved;
@@ -320,6 +325,18 @@ public class InputController {
                 if (hasLeftClick) {
                     ensureClickCooldownField();
                     clickCooldownField.setInt(gameState.getMinecraftInstance(), 0);
+                }
+
+                // Force pick() before right-clicks to ensure hitResult is
+                // fresh with current yaw/pitch. Under low FPS (Mesa software
+                // rendering), multiple ticks batch per frame, and pick() only
+                // runs once per frame — clicks may fire with stale hitResult.
+                boolean hasRightClick = false;
+                for (int b : pendingClicks) {
+                    if (b == 1) { hasRightClick = true; break; }
+                }
+                if (hasRightClick) {
+                    forcePick();
                 }
 
                 Object mc = gameState.getMinecraftInstance();
@@ -611,6 +628,119 @@ public class InputController {
      */
     public void breakBlockDirect(int x, int y, int z) {
         placeBlockDirect(x, y, z, 0);
+    }
+
+    /**
+     * Force a pick/raycast update so hitResult reflects the current yaw/pitch.
+     * Finds gameRenderer on the Minecraft instance and calls pick(1.0f).
+     * This ensures hitResult is fresh before processing right-clicks,
+     * even when multiple ticks batch into the same frame under low FPS.
+     */
+    private void forcePick() {
+        if (isRubyDung()) return;
+        if (pickResolved && pickMethod == null) return;
+        try {
+            Object mc = gameState.getMinecraftInstance();
+            if (mc == null) return;
+            if (!pickResolved) {
+                pickResolved = true;
+                String grClassName = mappings.gameRendererClassName();
+                // Find gameRenderer field by type name
+                Class<?> mcClass = mc.getClass();
+                while (mcClass != null && mcClass != Object.class) {
+                    for (Field f : mcClass.getDeclaredFields()) {
+                        if (Modifier.isStatic(f.getModifiers())) continue;
+                        String typeName = f.getType().getName();
+                        if (grClassName != null && typeName.equals(grClassName)) {
+                            f.setAccessible(true);
+                            gameRendererField = f;
+                            break;
+                        }
+                        // Fallback for versions without explicit mapping:
+                        // scan for type containing "Renderer" (EntityRenderer/GameRenderer)
+                        if (grClassName == null
+                                && (typeName.contains("GameRenderer")
+                                    || typeName.contains("EntityRenderer"))) {
+                            f.setAccessible(true);
+                            gameRendererField = f;
+                            break;
+                        }
+                    }
+                    if (gameRendererField != null) break;
+                    mcClass = mcClass.getSuperclass();
+                }
+                if (gameRendererField == null) {
+                    // Broader scan: find field whose class has a void(float) method
+                    // and is not a primitive wrapper or common type
+                    mcClass = mc.getClass();
+                    while (mcClass != null && mcClass != Object.class) {
+                        for (Field f : mcClass.getDeclaredFields()) {
+                            if (Modifier.isStatic(f.getModifiers())) continue;
+                            Class<?> ft = f.getType();
+                            if (ft.isPrimitive() || ft == String.class
+                                    || ft.isArray() || ft.isEnum()) continue;
+                            // Check if class has a void(float) method
+                            for (Method m : ft.getDeclaredMethods()) {
+                                if (m.getReturnType() == void.class
+                                        && m.getParameterCount() == 1
+                                        && m.getParameterTypes()[0] == float.class
+                                        && !Modifier.isStatic(m.getModifiers())) {
+                                    // Candidate — but we need more filtering.
+                                    // Skip if field type name is too short (likely util)
+                                    if (ft.getName().length() >= 3) {
+                                        f.setAccessible(true);
+                                        gameRendererField = f;
+                                        m.setAccessible(true);
+                                        pickMethod = m;
+                                        System.out.println("[McTestAgent] forcePick: found "
+                                                + ft.getName() + "." + m.getName() + "(float)");
+                                        break;
+                                    }
+                                }
+                            }
+                            if (pickMethod != null) break;
+                        }
+                        if (pickMethod != null) break;
+                        mcClass = mcClass.getSuperclass();
+                    }
+                }
+                // If we found the field but not the method, find pick on it
+                if (gameRendererField != null && pickMethod == null) {
+                    Object gr = gameRendererField.get(mc);
+                    if (gr != null) {
+                        Class<?> grClass = gr.getClass();
+                        while (grClass != null && grClass != Object.class) {
+                            for (Method m : grClass.getDeclaredMethods()) {
+                                if (m.getReturnType() == void.class
+                                        && m.getParameterCount() == 1
+                                        && m.getParameterTypes()[0] == float.class
+                                        && !Modifier.isStatic(m.getModifiers())) {
+                                    m.setAccessible(true);
+                                    pickMethod = m;
+                                    System.out.println("[McTestAgent] forcePick: "
+                                            + gr.getClass().getName() + "." + m.getName()
+                                            + "(float)");
+                                    break;
+                                }
+                            }
+                            if (pickMethod != null) break;
+                            grClass = grClass.getSuperclass();
+                        }
+                    }
+                }
+                if (pickMethod == null) {
+                    System.err.println("[McTestAgent] forcePick: could not find pick method");
+                }
+            }
+            if (pickMethod != null && gameRendererField != null) {
+                Object gr = gameRendererField.get(mc);
+                if (gr != null) {
+                    pickMethod.invoke(gr, 1.0f);
+                }
+            }
+        } catch (Exception e) {
+            // Best effort — if pick fails, the natural game loop pick will catch up
+        }
     }
 
     /**

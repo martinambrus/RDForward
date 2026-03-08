@@ -10,6 +10,10 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.stream.Stream;
 
+/**
+ * Cross-RD light pairs shard 1 of 3.
+ * Split to avoid Xvfb resource exhaustion from too many sequential launches.
+ */
 class CrossVersionRdLightTest extends CrossVersionMatrixTestBase {
 
     @BeforeAll
@@ -29,6 +33,6 @@ class CrossVersionRdLightTest extends CrossVersionMatrixTestBase {
     }
 
     static Stream<Arguments> pairs() {
-        return CrossVersionRegistry.rdPairsByWeight(Weight.LIGHT);
+        return CrossVersionRegistry.rdPairsByWeightShard(Weight.LIGHT, 0, 3);
     }
 }

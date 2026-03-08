@@ -1268,7 +1268,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Without this, the client's pre-teleport position (at world spawn) would
         // update the server-side player position, causing updatePlayerChunks to
         // unload the correct chunks around the teleport destination.
-        if (awaitingTeleportConfirm) return;
+        if (awaitingTeleportConfirm) {
+            return;
+        }
 
         double eyeY = y + PLAYER_EYE_HEIGHT;
 

@@ -173,7 +173,12 @@ public class TickHook {
                         }
                         // Walk forward briefly to trigger 1.17+ LevelRenderer BFS
                         // re-evaluation after chunks have loaded from the network.
-                        if (stabilizeTicks >= BFS_WALK_START
+                        // Only for 1.17+ (smartCullFieldName != null) — on 1.13-1.16
+                        // there is no BFS gate, and leaving FORWARD pressed during
+                        // the full stabilization timeout walks the player off the world.
+                        boolean is117Plus = McTestAgent.mappings != null
+                                && McTestAgent.mappings.smartCullFieldName() != null;
+                        if (is117Plus && stabilizeTicks >= BFS_WALK_START
                                 && stabilizeTicks < BFS_WALK_END) {
                             inputController.pressKey(InputController.FORWARD);
                         }
@@ -255,6 +260,8 @@ public class TickHook {
                         System.out.println("[McTestAgent] Stabilized after "
                                 + stabilizeTicks + " ticks (" + reason
                                 + "), starting scenario '" + scenario.getName() + "'");
+                        // Release any keys left pressed by the BFS walk
+                        inputController.releaseAllKeys();
                         scenarioRunner = new ScenarioRunner(scenario, gameState,
                                 inputController, screenshotCapture, statusDir);
                         state = State.RUNNING_SCENARIO;

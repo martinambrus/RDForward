@@ -127,7 +127,10 @@ public class CrossClientScenario implements Scenario {
 
     private class PrimaryWaitSecondaryJoined implements ScenarioStep {
         @Override public String getDescription() { return "wait_secondary_joined"; }
-        @Override public int getTimeoutTicks() { return 3600; } // 3 minutes
+        // RubyDung ticks per-frame (~60 FPS), not at 20 TPS, so tick counts
+        // translate to much shorter wall time. 12000 ticks ≈ 200s at 60 FPS,
+        // enough for LWJGL3/Modern secondaries that need ~90-120s to stabilize.
+        @Override public int getTimeoutTicks() { return 12000; }
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
             return getBarrier().waitFor("world_ready");
@@ -222,7 +225,7 @@ public class CrossClientScenario implements Scenario {
     private class PrimaryPlaceBlock implements ScenarioStep {
         private int ticks;
         @Override public String getDescription() { return "place_block_right"; }
-        @Override public int getTimeoutTicks() { return 100; }
+        @Override public int getTimeoutTicks() { return 200; }
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
             ticks++;
@@ -236,11 +239,14 @@ public class CrossClientScenario implements Scenario {
             if (!input.isRubyDung()) {
                 // Look at the ground block where we want to place on top
                 input.lookAtBlock(myBlockX, myBlockY - 1, myBlockZ);
-                if (ticks >= 3 && ticks <= 10) {
-                    input.click(1); // right-click to place
+                // Right-click every other tick (matches single-version pattern).
+                // Clicking every tick triggers the client's rightClickDelay which
+                // suppresses subsequent clicks for 4 ticks.
+                if (ticks >= 3 && ticks <= 60 && ticks % 2 == 1) {
+                    input.click(1);
                 }
             }
-            if (ticks > 10 || (input.isRubyDung() && ticks > 3)) {
+            if (ticks > 6 || (input.isRubyDung() && ticks > 3)) {
                 int placed = gs.getBlockId(myBlockX, myBlockY, myBlockZ);
                 if (placed != 0) {
                     System.out.println("[McTestAgent] Primary placed block id=" + placed
@@ -562,7 +568,7 @@ public class CrossClientScenario implements Scenario {
     private class SecondaryPlaceBlock implements ScenarioStep {
         private int ticks;
         @Override public String getDescription() { return "place_block_right"; }
-        @Override public int getTimeoutTicks() { return 100; }
+        @Override public int getTimeoutTicks() { return 200; }
         @Override public boolean tick(GameState gs, InputController input,
                                       ScreenshotCapture capture, File statusDir) {
             ticks++;
@@ -574,11 +580,33 @@ public class CrossClientScenario implements Scenario {
             }
             if (!input.isRubyDung()) {
                 input.lookAtBlock(myBlockX, myBlockY - 1, myBlockZ);
-                if (ticks >= 3 && ticks <= 10) {
+                // Right-click every other tick (matches single-version pattern).
+                if (ticks >= 3 && ticks <= 60 && ticks % 2 == 1) {
                     input.click(1);
                 }
+                // Debug: log state every 10 ticks
+                if (ticks % 10 == 0 || ticks <= 5) {
+                    int belowId = gs.getBlockId(myBlockX, myBlockY - 1, myBlockZ);
+                    int targetId = gs.getBlockId(myBlockX, myBlockY, myBlockZ);
+                    int[][] slots = gs.getInventorySlots();
+                    String heldItem = "no_inv";
+                    if (slots != null && slots.length > 0) {
+                        heldItem = "slot0=[id=" + slots[0][0] + ",count=" + slots[0][1] + "]";
+                    }
+                    double[] pos = gs.getPlayerPosition();
+                    String posStr = pos != null
+                            ? String.format("pos=(%.2f,%.2f,%.2f)", pos[0], pos[1], pos[2])
+                            : "pos=null";
+                    System.out.println("[McTestAgent] PlaceDebug tick=" + ticks
+                            + " " + posStr
+                            + " below(" + myBlockX + "," + (myBlockY-1) + "," + myBlockZ + ")=" + belowId
+                            + " target(" + myBlockX + "," + myBlockY + "," + myBlockZ + ")=" + targetId
+                            + " hitResult=" + gs.getHitResultInfo()
+                            + " clickInfo=" + input.getRightClickDebug()
+                            + " held=" + heldItem);
+                }
             }
-            if (ticks > 10 || (input.isRubyDung() && ticks > 3)) {
+            if (ticks > 6 || (input.isRubyDung() && ticks > 3)) {
                 int placed = gs.getBlockId(myBlockX, myBlockY, myBlockZ);
                 if (placed != 0) {
                     System.out.println("[McTestAgent] Secondary placed block id=" + placed

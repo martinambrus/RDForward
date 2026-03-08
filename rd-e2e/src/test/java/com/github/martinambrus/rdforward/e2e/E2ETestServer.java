@@ -45,6 +45,9 @@ public class E2ETestServer {
                 new FlatWorldGenerator(), 0L, 256, worldHeight, 256, dataDir);
         server.setBedrockPort(0);
         server.start();
+        // Freeze time at noon to eliminate day/night cycle variations in screenshots
+        server.getWorld().setWorldTime(6000);
+        server.getWorld().setTimeFrozen(true);
         port = server.getActualPort();
         System.out.println("[E2E] Server started on port " + port + " (dataDir=" + dataDir + ")");
     }
@@ -70,6 +73,12 @@ public class E2ETestServer {
     public void preSeedPlayerPosition(String username) {
         if (server != null) {
             server.getWorld().savePlayerPosition(username.trim());
+        }
+    }
+
+    public void clearPlayerPosition(String username) {
+        if (server != null) {
+            server.getWorld().forgetPlayerPosition(username.trim());
         }
     }
 

@@ -157,16 +157,20 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
             spawnPitch = (byte) savedPos[4];
             System.out.println("Restored position for " + player.getUsername());
         } else {
-            // Default: center of world, on top of terrain
+            // Default: center of the chunk containing the world midpoint.
+            // Using chunk center keeps spawn consistent with Alpha/Netty handlers
+            // and avoids 1.17+ LevelRenderer BFS issues at chunk boundaries.
             // Surface is at y = height*2/3, feet at +1 block above.
             // Y is eye-level (feet + 1.62) to match the client convention.
             // Compute feet as exact fixed-point, then add ceil(1.62*32) to avoid
             // truncation placing feet inside the surface block.
-            spawnX = (short) ((world.getWidth() / 2) * 32 + 16);
+            int cx = ((world.getWidth() / 2) >> 4) * 16 + 8;
+            int cz = ((world.getDepth() / 2) >> 4) * 16 + 8;
+            spawnX = (short) (cx * 32 + 16);
             int feetFixedPoint = (world.getHeight() * 2 / 3 + 1) * 32;
             int eyeOffset = (int) Math.ceil(1.62 * 32);  // 52 (not 51)
             spawnY = (short) (feetFixedPoint + eyeOffset);
-            spawnZ = (short) ((world.getDepth() / 2) * 32 + 16);
+            spawnZ = (short) (cz * 32 + 16);
         }
         player.updatePosition(spawnX, spawnY, spawnZ, spawnYaw, spawnPitch);
 

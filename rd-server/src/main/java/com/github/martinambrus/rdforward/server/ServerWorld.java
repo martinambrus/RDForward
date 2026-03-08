@@ -243,7 +243,11 @@ public class ServerWorld {
         List<SetBlockServerPacket> applied = new ArrayList<>();
         PendingBlockChange change;
         while ((change = pendingBlockChanges.poll()) != null) {
-            if (setBlock(change.x, change.y, change.z, change.blockType)) {
+            boolean ok = setBlock(change.x, change.y, change.z, change.blockType);
+            System.out.println("[ServerWorld] processPendingBlockChange ("
+                    + change.x + "," + change.y + "," + change.z
+                    + ") type=" + change.blockType + " applied=" + ok);
+            if (ok) {
                 applied.add(new SetBlockServerPacket(change.x, change.y, change.z, change.blockType));
             }
         }
@@ -272,9 +276,13 @@ public class ServerWorld {
      * Used to mark a player as "known" without a full ConnectedPlayer object
      * (e.g., after kicking a first-time v2 client with the JVM flag message).
      */
+    public void forgetPlayerPosition(String username) {
+        playerPositionCache.remove(username);
+    }
+
     public void savePlayerPosition(String username) {
-        int cx = width / 2;
-        int cz = depth / 2;
+        int cx = ((width / 2) >> 4) * 16 + 8;
+        int cz = ((depth / 2) >> 4) * 16 + 8;
         int spawnY = height * 2 / 3 + 1;
         int[] safe = findSafePosition(cx, spawnY, cz, 50);
         short fx = (short) Math.round((safe[0] + 0.5) * 32);

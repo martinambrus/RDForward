@@ -535,10 +535,11 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 System.out.println("Restored position for " + player.getUsername());
             }
         } else {
-            // Default: center of world, find safe position on terrain.
-            // Internal Y convention is eye-level (feet + 1.62) to match Classic.
-            int cx = world.getWidth() / 2;
-            int cz = world.getDepth() / 2;
+            // Default: center of the chunk containing the world midpoint.
+            // Using chunk center keeps spawn consistent with Netty handler
+            // and avoids 1.17+ LevelRenderer BFS issues at chunk boundaries.
+            int cx = ((world.getWidth() / 2) >> 4) * 16 + 8;
+            int cz = ((world.getDepth() / 2) >> 4) * 16 + 8;
             int heuristicY = world.getHeight() * 2 / 3 + 1;
             int[] safe = world.findSafePosition(cx, heuristicY, cz, 50);
             spawnX = safe[0] + 0.5;
@@ -793,8 +794,8 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
      * respawns at (0, 0, 0) with a fresh empty inventory).
      */
     private void respawnToSafePosition(ChannelHandlerContext ctx, float yaw) {
-        int cx = world.getWidth() / 2;
-        int cz = world.getDepth() / 2;
+        int cx = ((world.getWidth() / 2) >> 4) * 16 + 8;
+        int cz = ((world.getDepth() / 2) >> 4) * 16 + 8;
         int heuristicY = world.getHeight() * 2 / 3 + 1;
         int[] safe = world.findSafePosition(cx, heuristicY, cz, 50);
         double spawnX = safe[0] + 0.5;
