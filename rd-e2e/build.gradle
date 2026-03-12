@@ -225,6 +225,137 @@ tasks.register('testCrossVersionModern', Test) {
     include '**/scenarios/CrossVersionRdModernTest.class'
 }
 
+// Per-category cross-version tasks for batched testing.
+// Each category has Light, LWJGL3, and Modern variants matching the weight tier.
+// No pair overlap: triangular matrix (j >= i) + per-category primary filtering.
+//
+// Alpha:
+//   ./gradlew :rd-e2e:testCrossVersionAlpha -Pe2e           (Light: Alpha vs Alpha/Beta/PreNetty/NettyLWJGL2)
+//   ./gradlew :rd-e2e:testCrossVersionAlphaLwjgl3 -Pe2e     (Alpha vs LWJGL3 1.13-1.18.2)
+//   ./gradlew :rd-e2e:testCrossVersionAlphaModern -Pe2e      (Alpha vs Modern 1.19+)
+// Beta:
+//   ./gradlew :rd-e2e:testCrossVersionBeta -Pe2e             (Light: Beta vs Beta/PreNetty/NettyLWJGL2)
+//   ./gradlew :rd-e2e:testCrossVersionBetaLwjgl3 -Pe2e
+//   ./gradlew :rd-e2e:testCrossVersionBetaModern -Pe2e
+// Pre-Netty Release:
+//   ./gradlew :rd-e2e:testCrossVersionPreNettyRelease -Pe2e  (Light: PreNetty vs PreNetty/NettyLWJGL2, 2 shards)
+//   ./gradlew :rd-e2e:testCrossVersionPreNettyReleaseLwjgl3 -Pe2e
+//   ./gradlew :rd-e2e:testCrossVersionPreNettyReleaseModern -Pe2e
+// Netty LWJGL2:
+//   ./gradlew :rd-e2e:testCrossVersionNettyLwjgl2 -Pe2e     (Light: NettyLWJGL2 vs NettyLWJGL2)
+//   ./gradlew :rd-e2e:testCrossVersionNettyLwjgl2Lwjgl3 -Pe2e
+//   ./gradlew :rd-e2e:testCrossVersionNettyLwjgl2Modern -Pe2e
+// LWJGL3:
+//   ./gradlew :rd-e2e:testCrossVersionLwjgl3Self -Pe2e       (LWJGL3 vs LWJGL3)
+//   ./gradlew :rd-e2e:testCrossVersionLwjgl3Modern -Pe2e     (LWJGL3 vs Modern)
+// Modern:
+//   ./gradlew :rd-e2e:testCrossVersionModernSelf -Pe2e       (Modern vs Modern)
+
+// Helper closure for common Light test task config.
+def lightCrossVersionTask = { String name, Closure config ->
+    tasks.register(name, Test) {
+        useJUnitPlatform()
+        onlyIf { project.hasProperty('e2e') }
+        timeout = java.time.Duration.ofHours(4)
+        workingDir = rootProject.projectDir
+        maxParallelForks = Math.max(Runtime.runtime.availableProcessors().intdiv(2), 6)
+        forkEvery = 1
+        jvmArgs '-Xmx512m'
+        classpath = sourceSets.test.runtimeClasspath
+        testClassesDirs = sourceSets.test.output.classesDirs
+        testLogging {
+            showStandardStreams = true
+            events 'FAILED'
+            exceptionFormat 'short'
+        }
+        config.delegate = it
+        config()
+    }
+}
+
+// Helper closure for common LWJGL3/Modern test task config.
+def heavyCrossVersionTask = { String name, Closure config ->
+    tasks.register(name, Test) {
+        useJUnitPlatform()
+        onlyIf { project.hasProperty('e2e') }
+        timeout = java.time.Duration.ofHours(12)
+        workingDir = rootProject.projectDir
+        maxParallelForks = 2
+        forkEvery = 1
+        jvmArgs '-Xmx512m', '-De2e.viewDistance=3'
+        classpath = sourceSets.test.runtimeClasspath
+        testClassesDirs = sourceSets.test.output.classesDirs
+        testLogging {
+            showStandardStreams = true
+            events 'FAILED'
+            exceptionFormat 'short'
+        }
+        config.delegate = it
+        config()
+    }
+}
+
+// --- Alpha ---
+lightCrossVersionTask('testCrossVersionAlpha') {
+    include '**/scenarios/CrossVersionAlphaTest.class'
+}
+heavyCrossVersionTask('testCrossVersionAlphaLwjgl3') {
+    include '**/scenarios/CrossVersionAlphaLwjgl3Test.class'
+}
+heavyCrossVersionTask('testCrossVersionAlphaModern') {
+    include '**/scenarios/CrossVersionAlphaModernTest.class'
+}
+
+// --- Beta ---
+lightCrossVersionTask('testCrossVersionBeta') {
+    include '**/scenarios/CrossVersionBetaTest.class'
+}
+heavyCrossVersionTask('testCrossVersionBetaLwjgl3') {
+    include '**/scenarios/CrossVersionBetaLwjgl3Test.class'
+}
+heavyCrossVersionTask('testCrossVersionBetaModern') {
+    include '**/scenarios/CrossVersionBetaModernTest.class'
+}
+
+// --- Pre-Netty Release (2 Light shards) ---
+lightCrossVersionTask('testCrossVersionPreNettyRelease') {
+    timeout = java.time.Duration.ofHours(6)
+    include '**/scenarios/CrossVersionPreNettyRelease*Test.class'
+    // Exclude LWJGL3/Modern variants picked up by the wildcard
+    exclude '**/scenarios/CrossVersionPreNettyReleaseLwjgl3Test.class'
+    exclude '**/scenarios/CrossVersionPreNettyReleaseModernTest.class'
+}
+heavyCrossVersionTask('testCrossVersionPreNettyReleaseLwjgl3') {
+    include '**/scenarios/CrossVersionPreNettyReleaseLwjgl3Test.class'
+}
+heavyCrossVersionTask('testCrossVersionPreNettyReleaseModern') {
+    include '**/scenarios/CrossVersionPreNettyReleaseModernTest.class'
+}
+
+// --- Netty LWJGL2 ---
+lightCrossVersionTask('testCrossVersionNettyLwjgl2') {
+    include '**/scenarios/CrossVersionNettyLwjgl2Test.class'
+}
+heavyCrossVersionTask('testCrossVersionNettyLwjgl2Lwjgl3') {
+    include '**/scenarios/CrossVersionNettyLwjgl2Lwjgl3Test.class'
+}
+heavyCrossVersionTask('testCrossVersionNettyLwjgl2Modern') {
+    include '**/scenarios/CrossVersionNettyLwjgl2ModernTest.class'
+}
+
+// --- LWJGL3 (self + modern) ---
+heavyCrossVersionTask('testCrossVersionLwjgl3Self') {
+    include '**/scenarios/CrossVersionLwjgl3SelfTest.class'
+}
+heavyCrossVersionTask('testCrossVersionLwjgl3Modern') {
+    include '**/scenarios/CrossVersionLwjgl3ModernTest.class'
+}
+
+// --- Modern (self) ---
+heavyCrossVersionTask('testCrossVersionModernSelf') {
+    include '**/scenarios/CrossVersionModernSelfTest.class'
+}
+
 // Convenience task to run all cross-version weight groups.
 tasks.register('testCrossVersion') {
     dependsOn tasks.named('testCrossVersionLight'),
@@ -238,31 +369,16 @@ tasks.register('testAll') {
 }
 
 // Ensure the agent fat JAR and modded client JAR are built before tests run
-tasks.named('test') {
-    dependsOn ':rd-e2e-agent:fatJar'
-    dependsOn ':rd-client:fatModdedJar'
-}
-tasks.named('testLWJGL3') {
-    dependsOn ':rd-e2e-agent:fatJar'
-    dependsOn ':rd-client:fatModdedJar'
-}
-tasks.named('testModern') {
-    dependsOn ':rd-e2e-agent:fatJar'
-    dependsOn ':rd-client:fatModdedJar'
-}
-tasks.named('testPreNetty') {
-    dependsOn ':rd-e2e-agent:fatJar'
-    dependsOn ':rd-client:fatModdedJar'
-}
-tasks.named('testCrossVersionLight') {
-    dependsOn ':rd-e2e-agent:fatJar'
-    dependsOn ':rd-client:fatModdedJar'
-}
-tasks.named('testCrossVersionLwjgl3') {
-    dependsOn ':rd-e2e-agent:fatJar'
-    dependsOn ':rd-client:fatModdedJar'
-}
-tasks.named('testCrossVersionModern') {
-    dependsOn ':rd-e2e-agent:fatJar'
-    dependsOn ':rd-client:fatModdedJar'
+['test', 'testLWJGL3', 'testModern', 'testPreNetty',
+ 'testCrossVersionLight', 'testCrossVersionLwjgl3', 'testCrossVersionModern',
+ 'testCrossVersionAlpha', 'testCrossVersionAlphaLwjgl3', 'testCrossVersionAlphaModern',
+ 'testCrossVersionBeta', 'testCrossVersionBetaLwjgl3', 'testCrossVersionBetaModern',
+ 'testCrossVersionPreNettyRelease', 'testCrossVersionPreNettyReleaseLwjgl3', 'testCrossVersionPreNettyReleaseModern',
+ 'testCrossVersionNettyLwjgl2', 'testCrossVersionNettyLwjgl2Lwjgl3', 'testCrossVersionNettyLwjgl2Modern',
+ 'testCrossVersionLwjgl3Self', 'testCrossVersionLwjgl3Modern',
+ 'testCrossVersionModernSelf'].each { taskName ->
+    tasks.named(taskName) {
+        dependsOn ':rd-e2e-agent:fatJar'
+        dependsOn ':rd-client:fatModdedJar'
+    }
 }

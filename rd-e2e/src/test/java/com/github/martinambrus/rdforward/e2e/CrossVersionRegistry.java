@@ -299,6 +299,42 @@ public final class CrossVersionRegistry {
     }
 
     /**
+     * Generate non-RD pairs where the primary belongs to a specific category,
+     * filtered to a specific weight tier. Useful for splitting the light matrix
+     * into per-category batches (Alpha, Beta, Pre-Netty Release, Netty LWJGL2).
+     */
+    public static Stream<Arguments> nonRdPairsByPrimaryCategory(
+            Category primaryCategory, Weight weight) {
+        List<Arguments> pairs = new ArrayList<>();
+        for (int i = FIRST_NON_RD; i < ALL_VERSIONS.size(); i++) {
+            Version primary = ALL_VERSIONS.get(i);
+            if (primary.category != primaryCategory) continue;
+            for (int j = i; j < ALL_VERSIONS.size(); j++) {
+                Version secondary = ALL_VERSIONS.get(j);
+                if (weightOf(primary.category, secondary.category) != weight) continue;
+                pairs.add(Arguments.of(
+                        primary.displayName, secondary.displayName,
+                        primary.launchKey, secondary.launchKey));
+            }
+        }
+        return pairs.stream();
+    }
+
+    /**
+     * Sharded variant of {@link #nonRdPairsByPrimaryCategory}.
+     */
+    public static Stream<Arguments> nonRdPairsByPrimaryCategoryShard(
+            Category primaryCategory, Weight weight,
+            int shardIndex, int totalShards) {
+        List<Arguments> all = nonRdPairsByPrimaryCategory(primaryCategory, weight)
+                .collect(Collectors.toList());
+        int size = all.size();
+        int from = shardIndex * size / totalShards;
+        int to = (shardIndex + 1) * size / totalShards;
+        return all.subList(from, to).stream();
+    }
+
+    /**
      * Generate RubyDung pairs filtered by weight tier.
      * RubyDung is always the primary (index 0), paired with versions
      * whose weight matches.
@@ -348,13 +384,13 @@ public final class CrossVersionRegistry {
     }
 
     /**
-     * Build the baseline directory path for a cross-version pair.
-     * Structure: cross-tests/{categoryFolder}/{primaryKey}_{secondaryKey}
+     * Build the baseline category path for a cross-version pair.
+     * Returns just the category folder, e.g. "cross-tests/cross-Alpha".
+     * The pair name is part of the filename, not a subdirectory.
      */
-    public static String crossBaselineId(String primaryKey, String secondaryKey) {
+    public static String crossCategoryPath(String primaryKey) {
         Category primaryCat = categoryOf(primaryKey);
-        return "cross-tests/" + categoryFolderName(primaryCat) + "/"
-                + primaryKey.toLowerCase() + "_" + secondaryKey.toLowerCase();
+        return "cross-tests/" + categoryFolderName(primaryCat);
     }
 
     private CrossVersionRegistry() {}

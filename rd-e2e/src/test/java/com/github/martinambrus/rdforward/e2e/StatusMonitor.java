@@ -27,6 +27,19 @@ public class StatusMonitor {
      * @return the final status JSON string, or null on timeout
      */
     public String waitForTerminal(long timeoutMs) throws InterruptedException {
+        return waitForTerminal(timeoutMs, null);
+    }
+
+    /**
+     * Wait for the agent to reach a terminal state (COMPLETE or ERROR).
+     * If a process is provided, returns early when the process dies without
+     * writing a terminal status (e.g. crash, X11 error).
+     *
+     * @param timeoutMs maximum wait time
+     * @param process   optional process to monitor for unexpected death
+     * @return the final status JSON string, or null on timeout/process death
+     */
+    public String waitForTerminal(long timeoutMs, Process process) throws InterruptedException {
         long deadline = System.currentTimeMillis() + timeoutMs;
         while (System.currentTimeMillis() < deadline) {
             String json = readStatus();
@@ -35,6 +48,18 @@ public class StatusMonitor {
                 if ("COMPLETE".equals(state) || "ERROR".equals(state)) {
                     return json;
                 }
+            }
+            if (process != null && !process.isAlive()) {
+                // Process died — read status one last time in case it wrote
+                // a terminal state just before exiting.
+                json = readStatus();
+                if (json != null) {
+                    String state = extractJsonField(json, "state");
+                    if ("COMPLETE".equals(state) || "ERROR".equals(state)) {
+                        return json;
+                    }
+                }
+                return null; // process dead, no terminal status
             }
             Thread.sleep(POLL_INTERVAL_MS);
         }
@@ -49,6 +74,14 @@ public class StatusMonitor {
      * @return true if state was reached, false on timeout
      */
     public boolean waitForState(String targetState, long timeoutMs) throws InterruptedException {
+        return waitForState(targetState, timeoutMs, null);
+    }
+
+    /**
+     * Wait for a specific state, with optional process liveness check.
+     */
+    public boolean waitForState(String targetState, long timeoutMs, Process process)
+            throws InterruptedException {
         long deadline = System.currentTimeMillis() + timeoutMs;
         while (System.currentTimeMillis() < deadline) {
             String json = readStatus();
@@ -58,6 +91,7 @@ public class StatusMonitor {
                 // If already past the target (ERROR/COMPLETE), don't keep waiting
                 if ("ERROR".equals(state) || "COMPLETE".equals(state)) return false;
             }
+            if (process != null && !process.isAlive()) return false;
             Thread.sleep(POLL_INTERVAL_MS);
         }
         return false;

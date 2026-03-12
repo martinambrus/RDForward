@@ -35,6 +35,13 @@ public class ScreenshotBaselineVerifier {
     }
 
     /**
+     * Constructor without scenario subdirectory (for flat baseline layouts).
+     */
+    public ScreenshotBaselineVerifier(String version, double threshold) {
+        this(version, null, threshold);
+    }
+
+    /**
      * Verify all named screenshots exist, are non-empty, and match their baselines.
      *
      * @param statusDir the directory containing screenshots from the test run
@@ -86,6 +93,47 @@ public class ScreenshotBaselineVerifier {
         if (!failures.isEmpty()) {
             fail("Screenshot baseline verification failed:\n- "
                     + String.join("\n- ", failures));
+        }
+    }
+
+    /**
+     * Verify a single screenshot against a flat baseline (no scenario subdirectory).
+     * The source file in statusDir may have a different name than the baseline.
+     *
+     * @param statusDir          directory containing the screenshot from the test run
+     * @param sourceFilename     filename of the screenshot in statusDir
+     * @param baselineCheckpoint baseline checkpoint name (without .png)
+     */
+    public void verifyCross(File statusDir, String sourceFilename,
+            String baselineCheckpoint) throws IOException {
+        File screenshot = new File(statusDir, sourceFilename);
+
+        if (!screenshot.exists()) {
+            fail("Screenshot " + sourceFilename + " not produced");
+            return;
+        }
+        if (screenshot.length() == 0) {
+            fail("Screenshot " + sourceFilename + " is empty");
+            return;
+        }
+
+        if (!baselines.hasBaseline(version, baselineCheckpoint)) {
+            baselines.recordBaseline(screenshot, version, baselineCheckpoint);
+            System.out.println("[E2E] First run -- baseline recorded for "
+                    + version + "/" + baselineCheckpoint);
+        } else {
+            File baseline = baselines.getBaselinePath(version, baselineCheckpoint);
+            File diff = baselines.getDiffPath(version, baselineCheckpoint);
+
+            ImageComparator.ComparisonResult result =
+                    comparator.compare(baseline, screenshot, diff);
+
+            if (!result.passed) {
+                fail(baselineCheckpoint + " differs from baseline by "
+                        + String.format("%.2f", result.differencePercent)
+                        + "% (threshold: " + ((1.0 - threshold) * 100.0)
+                        + "%). Diff: " + diff.getAbsolutePath());
+            }
         }
     }
 }

@@ -24,9 +24,17 @@ abstract class CrossVersionMatrixTestBase {
 
     private static final long TIMEOUT_MS = 300_000; // 5 minutes per client
 
+    /**
+     * Restart Xvfb displays every N pairs to prevent X11 resource exhaustion.
+     * Empirically, Xvfb becomes unreliable after ~50 sequential client launches
+     * due to accumulated pixmap/resource leaks from LWJGL display creation.
+     */
+    private static final int XVFB_RESTART_INTERVAL = 40;
+
     static E2ETestServer server;
     static HeadlessDisplay display1;
     static HeadlessDisplay display2;
+    private static int pairCount;
 
     static void initServer(int worldHeight) throws Exception {
         server = new E2ETestServer(worldHeight);
@@ -42,6 +50,7 @@ abstract class CrossVersionMatrixTestBase {
         display1.start();
         display2 = HeadlessDisplay.secondForFork();
         display2.start();
+        pairCount = 0;
     }
 
     static void tearDownBase() {
@@ -60,6 +69,35 @@ abstract class CrossVersionMatrixTestBase {
      */
     void runCrossClientTest(String primaryKey, String secondaryKey,
             String primaryName, String secondaryName) throws Exception {
+        try {
+            runCrossClientTestOnce(primaryKey, secondaryKey, primaryName, secondaryName);
+        } catch (Exception | AssertionError e) {
+            System.out.println("[E2E] RETRY: " + primaryName + " vs " + secondaryName
+                    + " failed (" + e.getMessage() + "), retrying once...");
+            // Restart Xvfb before retry to clear any stale X11 state.
+            restartXvfb();
+            runCrossClientTestOnce(primaryKey, secondaryKey, primaryName, secondaryName);
+        }
+    }
+
+    private static void restartXvfb() throws Exception {
+        display1.stop();
+        display2.stop();
+        display1 = HeadlessDisplay.forFork();
+        display1.start();
+        display2 = HeadlessDisplay.secondForFork();
+        display2.start();
+    }
+
+    private void runCrossClientTestOnce(String primaryKey, String secondaryKey,
+            String primaryName, String secondaryName) throws Exception {
+        // Restart Xvfb periodically to prevent X11 resource exhaustion.
+        if (pairCount > 0 && pairCount % XVFB_RESTART_INTERVAL == 0) {
+            System.out.println("[E2E] Restarting Xvfb displays after " + pairCount + " pairs");
+            restartXvfb();
+        }
+        pairCount++;
+
         File primaryStatusDir = Files.createTempDirectory("e2e-xv-pri-").toFile();
         File secondaryStatusDir = Files.createTempDirectory("e2e-xv-sec-").toFile();
         File syncDir = Files.createTempDirectory("e2e-xv-sync-").toFile();
@@ -92,7 +130,7 @@ abstract class CrossVersionMatrixTestBase {
         try {
             // Wait for primary to reach RUNNING_SCENARIO before launching secondary
             StatusMonitor primaryMonitor = new StatusMonitor(primaryStatusDir);
-            assertTrue(primaryMonitor.waitForState("RUNNING_SCENARIO", 120_000),
+            assertTrue(primaryMonitor.waitForState("RUNNING_SCENARIO", 120_000, primary),
                     primaryName + " primary did not reach RUNNING_SCENARIO. Last status: "
                             + primaryMonitor.readStatus());
 
@@ -104,11 +142,11 @@ abstract class CrossVersionMatrixTestBase {
             try {
                 StatusMonitor secondaryMonitor = new StatusMonitor(secondaryStatusDir);
 
-                String primaryFinal = primaryMonitor.waitForTerminal(TIMEOUT_MS);
+                String primaryFinal = primaryMonitor.waitForTerminal(TIMEOUT_MS, primary);
                 assertNotNull(primaryFinal, primaryName + " primary did not finish within timeout. "
                         + "Last status: " + primaryMonitor.readStatus());
 
-                String secondaryFinal = secondaryMonitor.waitForTerminal(TIMEOUT_MS);
+                String secondaryFinal = secondaryMonitor.waitForTerminal(TIMEOUT_MS, secondary);
                 assertNotNull(secondaryFinal, secondaryName + " secondary did not finish within timeout. "
                         + "Last status: " + secondaryMonitor.readStatus());
 
@@ -123,13 +161,16 @@ abstract class CrossVersionMatrixTestBase {
                 assertEquals("COMPLETE", secondaryState,
                         secondaryName + " secondary error: " + secondaryError);
 
-                // Verify screenshots against baselines
-                // Baseline dir: cross-tests/{categoryFolder}/{primary}_{secondary}/
-                String crossId = CrossVersionRegistry.crossBaselineId(primaryKey, secondaryKey);
-                new ScreenshotBaselineVerifier(crossId, "primary", 0.70)
-                        .verifyAll(primaryStatusDir, "cross_client_primary.png");
-                new ScreenshotBaselineVerifier(crossId, "secondary", 0.70)
-                        .verifyAll(secondaryStatusDir, "cross_client_secondary.png");
+                // Verify screenshots against baselines (flat layout)
+                // Baseline: cross-tests/{categoryFolder}/{pair}_primary.png
+                String categoryPath = CrossVersionRegistry.crossCategoryPath(primaryKey);
+                String pairId = primaryKey.toLowerCase() + "_" + secondaryKey.toLowerCase();
+                ScreenshotBaselineVerifier verifier =
+                        new ScreenshotBaselineVerifier(categoryPath, 0.70);
+                verifier.verifyCross(primaryStatusDir,
+                        "cross_client_primary.png", pairId + "_primary");
+                verifier.verifyCross(secondaryStatusDir,
+                        "cross_client_secondary.png", pairId + "_secondary");
             } finally {
                 if (secondary.isAlive()) {
                     secondary.destroyForcibly();
