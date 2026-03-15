@@ -70,10 +70,14 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
     /** Number of biome sections for overworld dimension (Y=-64 to Y=319, 24 sub-chunks). */
     private static final int OVERWORLD_SECTIONS = 24;
 
+    /** Minimum interval between block placements (ms). Matches vanilla Bedrock hold-to-place rate. */
+    private static final long PLACEMENT_COOLDOWN_MS = 250;
+
     private ConnectedPlayer player;
     private BedrockSessionWrapper sessionWrapper;
     private boolean chunksInitialized = false;
     private boolean disconnected = false;
+    private long lastPlacementTime = 0;
 
     public BedrockGameplayHandler(BedrockServerSession session, ServerWorld world,
                                   PlayerManager playerManager, ChunkManager chunkManager,
@@ -731,6 +735,10 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
     }
 
     private void handleBlockPlace(InventoryTransactionPacket packet) {
+        long now = System.currentTimeMillis();
+        if (now - lastPlacementTime < PLACEMENT_COOLDOWN_MS) return;
+        lastPlacementTime = now;
+
         Vector3i blockPos = packet.getBlockPosition();
         int face = packet.getBlockFace();
 
