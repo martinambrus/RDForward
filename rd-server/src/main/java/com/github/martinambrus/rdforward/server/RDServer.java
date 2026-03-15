@@ -506,27 +506,44 @@ public class RDServer {
             if (args.length == 0) {
                 long time = world.getWorldTime() % 24000;
                 String phase;
-                if (time < 6000) phase = "morning";
-                else if (time < 12000) phase = "day";
-                else if (time < 18000) phase = "evening";
-                else phase = "night";
-                ctx.reply("Time: " + world.getWorldTime() + " (" + phase + ")"
+                if (time < 1000) phase = "sunrise";
+                else if (time < 6000) phase = "day";
+                else if (time < 12000) phase = "noon";
+                else if (time < 13000) phase = "sunset";
+                else if (time < 18000) phase = "night";
+                else phase = "midnight";
+                ctx.reply("The time is " + world.getWorldTime() + " (" + phase + ")"
                         + (world.isTimeFrozen() ? " [frozen]" : ""));
                 return;
             }
             String sub = args[0].toLowerCase();
             if (sub.equals("query")) {
-                long time = world.getWorldTime() % 24000;
-                ctx.reply("World time: " + world.getWorldTime() + " (day time: " + time + ")");
+                if (args.length >= 2) {
+                    switch (args[1].toLowerCase()) {
+                        case "daytime":
+                            ctx.reply("The time is " + (world.getWorldTime() % 24000));
+                            break;
+                        case "gametime":
+                            ctx.reply("The game time is " + world.getWorldTime());
+                            break;
+                        case "day":
+                            ctx.reply("The day is " + (world.getWorldTime() / 24000));
+                            break;
+                        default:
+                            ctx.reply("Usage: /time query <daytime|gametime|day>");
+                    }
+                } else {
+                    ctx.reply("The time is " + (world.getWorldTime() % 24000));
+                }
             } else if (sub.equals("set") && args.length >= 2) {
                 long newTime;
                 switch (args[1].toLowerCase()) {
-                    case "day": newTime = 6000; break;
+                    case "day": newTime = 1000; break;
                     case "noon": newTime = 6000; break;
                     case "sunset": newTime = 12000; break;
-                    case "night": newTime = 18000; break;
+                    case "night": newTime = 13000; break;
                     case "midnight": newTime = 18000; break;
-                    case "dawn": case "sunrise": newTime = 0; break;
+                    case "sunrise": newTime = 23000; break;
                     default:
                         try {
                             newTime = Long.parseLong(args[1]);
@@ -538,7 +555,20 @@ public class RDServer {
                 world.setWorldTime(newTime);
                 long timeOfDay = world.isTimeFrozen() ? -newTime : newTime;
                 playerManager.broadcastTimeUpdate(0, timeOfDay);
-                ctx.reply("Set time to " + newTime);
+                ctx.reply("Set the time to " + newTime);
+            } else if (sub.equals("add") && args.length >= 2) {
+                long amount;
+                try {
+                    amount = Long.parseLong(args[1]);
+                } catch (NumberFormatException e) {
+                    ctx.reply("Invalid time: " + args[1]);
+                    return;
+                }
+                long newTime = world.getWorldTime() + amount;
+                world.setWorldTime(newTime);
+                long timeOfDay = world.isTimeFrozen() ? -newTime : newTime;
+                playerManager.broadcastTimeUpdate(0, timeOfDay);
+                ctx.reply("Added " + amount + " to the time (now " + newTime + ")");
             } else if (sub.equals("freeze")) {
                 world.setTimeFrozen(true);
                 playerManager.broadcastTimeUpdate(0, -world.getWorldTime());
@@ -548,7 +578,11 @@ public class RDServer {
                 playerManager.broadcastTimeUpdate(0, world.getWorldTime());
                 ctx.reply("Time unfrozen");
             } else {
-                ctx.reply("Usage: /time [query|set <value>|freeze|unfreeze]");
+                ctx.reply("Usage: /time <add|query|set> <value>");
+                ctx.reply("  /time set <day|noon|sunset|night|midnight|sunrise|ticks>");
+                ctx.reply("  /time add <ticks>");
+                ctx.reply("  /time query <daytime|gametime|day>");
+                ctx.reply("  /time freeze|unfreeze");
             }
         });
 
