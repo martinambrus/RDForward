@@ -11,6 +11,7 @@
 
 ## E2E Test Rules
 - NEVER run two Gradle test suites in parallel. They share the Gradle daemon and will conflict/kill each other. Always run sequentially.
+- Do NOT re-run already-completed cross-version tests. Only run missing/untested pairs. Use temporary test classes that check for existing baselines and skip completed pairs. Only re-run cross tests when the user explicitly asks.
 
 ## Architecture
 - Multi-module Gradle project: rd-protocol, rd-world, rd-server, rd-client, rd-game, rd-e2e-agent (Java 8), rd-e2e (Java 21)

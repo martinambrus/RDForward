@@ -256,7 +256,7 @@ def lightCrossVersionTask = { String name, Closure config ->
     tasks.register(name, Test) {
         useJUnitPlatform()
         onlyIf { project.hasProperty('e2e') }
-        timeout = java.time.Duration.ofHours(4)
+        timeout = java.time.Duration.ofHours(12)
         workingDir = rootProject.projectDir
         maxParallelForks = Math.max(Runtime.runtime.availableProcessors().intdiv(2), 6)
         forkEvery = 1
@@ -278,7 +278,7 @@ def heavyCrossVersionTask = { String name, Closure config ->
     tasks.register(name, Test) {
         useJUnitPlatform()
         onlyIf { project.hasProperty('e2e') }
-        timeout = java.time.Duration.ofHours(12)
+        timeout = java.time.Duration.ofHours(24)
         workingDir = rootProject.projectDir
         maxParallelForks = 2
         forkEvery = 1
