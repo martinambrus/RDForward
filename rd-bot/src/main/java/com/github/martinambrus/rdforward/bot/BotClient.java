@@ -3,6 +3,8 @@ package com.github.martinambrus.rdforward.bot;
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.codec.NettyPacketDecoder;
 import com.github.martinambrus.rdforward.protocol.codec.NettyPacketEncoder;
+import com.github.martinambrus.rdforward.protocol.codec.PacketDecoder;
+import com.github.martinambrus.rdforward.protocol.codec.PacketEncoder;
 import com.github.martinambrus.rdforward.protocol.codec.RawPacketDecoder;
 import com.github.martinambrus.rdforward.protocol.codec.RawPacketEncoder;
 import com.github.martinambrus.rdforward.protocol.codec.VarIntFrameDecoder;
@@ -30,7 +32,8 @@ public class BotClient {
     private final EventLoopGroup group;
 
     private Channel channel;
-    // Handler reference (pre-Netty or Netty)
+    // Handler reference (Classic, pre-Netty, or Netty)
+    private BotClassicPacketHandler classicHandler;
     private BotPacketHandler preNettyHandler;
     private BotNettyPacketHandler nettyHandler;
 
@@ -52,6 +55,7 @@ public class BotClient {
      * @throws Exception if connection or login fails
      */
     public BotSession connectSync(long timeoutMs) throws Exception {
+        boolean isClassic = !version.isAtLeast(ProtocolVersion.ALPHA_1_0_15);
         boolean isNetty = version.isAtLeast(ProtocolVersion.RELEASE_1_7_2);
 
         Bootstrap bootstrap = new Bootstrap();
@@ -60,7 +64,19 @@ public class BotClient {
                 .option(ChannelOption.TCP_NODELAY, true)
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) timeoutMs);
 
-        if (isNetty) {
+        if (isClassic) {
+            classicHandler = new BotClassicPacketHandler(version, username);
+            bootstrap.handler(new ChannelInitializer<SocketChannel>() {
+                @Override
+                protected void initChannel(SocketChannel ch) {
+                    ChannelPipeline pipeline = ch.pipeline();
+                    pipeline.addLast("decoder", new PacketDecoder(
+                            PacketDirection.SERVER_TO_CLIENT, version));
+                    pipeline.addLast("encoder", new PacketEncoder());
+                    pipeline.addLast("handler", classicHandler);
+                }
+            });
+        } else if (isNetty) {
             nettyHandler = new BotNettyPacketHandler(version, username, host, port);
             bootstrap.handler(new ChannelInitializer<SocketChannel>() {
                 @Override
@@ -105,7 +121,9 @@ public class BotClient {
 
         // Wait for channelActive to fire and create the session
         BotSession session;
-        if (isNetty) {
+        if (isClassic) {
+            session = classicHandler.awaitSession(timeoutMs);
+        } else if (isNetty) {
             session = nettyHandler.awaitSession(timeoutMs);
         } else {
             session = preNettyHandler.awaitSession(timeoutMs);
@@ -127,6 +145,7 @@ public class BotClient {
     }
 
     public BotSession getSession() {
+        if (classicHandler != null) return classicHandler.getSession();
         if (nettyHandler != null) return nettyHandler.getSession();
         if (preNettyHandler != null) return preNettyHandler.getSession();
         return null;

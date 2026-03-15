@@ -234,6 +234,15 @@ subprojects {
 
     test {
         useJUnitPlatform()
+        if (System.getProperty('test.host') != null) {
+            systemProperty 'test.host', System.getProperty('test.host')
+        }
+        if (System.getProperty('test.port') != null) {
+            systemProperty 'test.port', System.getProperty('test.port')
+        }
+        testLogging {
+            showStandardStreams = true
+        }
     }
 
     dependencies {

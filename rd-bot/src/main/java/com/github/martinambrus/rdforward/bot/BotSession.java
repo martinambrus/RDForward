@@ -3,6 +3,8 @@ package com.github.martinambrus.rdforward.bot;
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.*;
+import com.github.martinambrus.rdforward.protocol.packet.classic.MessagePacket;
+import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockClientPacket;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlacementPacket;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlacementPacketV47;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlacementPacketV109;
@@ -476,6 +478,9 @@ public class BotSession {
         }
         if (version.isAtLeast(ProtocolVersion.RELEASE_1_7_2)) {
             sendPacket(new NettyChatC2SPacket(message));
+        } else if (!version.isAtLeast(ProtocolVersion.ALPHA_1_0_15)) {
+            // Classic/RubyDung: MessagePacket (0x0D), player ID 0xFF for C2S
+            sendPacket(new MessagePacket(0xFF, message));
         } else {
             sendPacket(new ChatPacket(message));
         }
@@ -520,6 +525,21 @@ public class BotSession {
             pkt.setTriggerType(ItemUseTransaction.TriggerType.PLAYER_INPUT);
             pkt.setClientInteractPrediction(ItemUseTransaction.PredictedResult.SUCCESS);
             bedrockSession.sendPacketImmediately(pkt);
+            return;
+        }
+        if (!version.isAtLeast(ProtocolVersion.ALPHA_1_0_15)) {
+            // Classic/RubyDung: compute target block from face offset
+            int tx = x, ty = y, tz = z;
+            switch (direction) {
+                case 0: ty--; break; // bottom
+                case 1: ty++; break; // top
+                case 2: tz--; break; // north
+                case 3: tz++; break; // south
+                case 4: tx--; break; // west
+                case 5: tx++; break; // east
+            }
+            sendPacket(new SetBlockClientPacket(tx, ty, tz,
+                    SetBlockClientPacket.MODE_CREATE, itemId));
             return;
         }
         if (version.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
@@ -596,6 +616,14 @@ public class BotSession {
             pkt.setTriggerType(ItemUseTransaction.TriggerType.PLAYER_INPUT);
             pkt.setClientInteractPrediction(ItemUseTransaction.PredictedResult.SUCCESS);
             bedrockSession.sendPacketImmediately(pkt);
+            return;
+        }
+        if (!version.isAtLeast(ProtocolVersion.ALPHA_1_0_15)) {
+            // Classic/RubyDung: SetBlockClient with MODE_DESTROY
+            if (status == 0 || status == 2) {
+                sendPacket(new SetBlockClientPacket(x, y, z,
+                        SetBlockClientPacket.MODE_DESTROY, 0));
+            }
             return;
         }
         if (version.isAtLeast(ProtocolVersion.RELEASE_1_19_1)) {
