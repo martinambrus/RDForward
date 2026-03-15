@@ -91,18 +91,27 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
             String response;
             if (newPing) {
                 // Mirror the client's protocol version so it sees "compatible".
-                // For 1.4.2-1.5.2 (no MC|PingHost), report the latest pre-1.6
-                // version we support so the newest client in that range matches.
-                int reportProtocol = clientProtocol > 0 ? clientProtocol : 61;
+                // 1.6+ sends MC|PingHost with the client's version.
+                // 1.4.2-1.5.2 sends no MC|PingHost — we can't detect the exact
+                // version, so default to 51 (1.4.7), the highest 1.4.x protocol.
+                // Non-matching versions will show incompatible but can use
+                // Direct Connect.
+                int reportProtocol = clientProtocol > 0 ? clientProtocol : 51;
                 String reportVersion = clientProtocol > 0
-                        ? pingVersionString(clientProtocol) : "1.5.2";
+                        ? pingVersionString(clientProtocol) : "1.4.7";
+                // For 1.4.2-1.5.2 (no MC|PingHost), show hint about Direct Connect
+                // since some versions in this range will see "incompatible".
+                String motd = clientProtocol > 0
+                        ? "RDForward Server"
+                        : "Incompatible? Use Direct Connect";
                 response = "\u00A71\u0000"
                         + reportProtocol + "\u0000"
                         + reportVersion + "\u0000"
-                        + "RDForward Server\u0000"
+                        + motd + "\u0000"
                         + playerManager.getPlayerCount() + "\u0000"
                         + PlayerManager.MAX_PLAYERS;
             } else {
+                // Old ping (Beta 1.8 - 1.3.2): no version field.
                 response = "RDForward Server\u00A7"
                         + playerManager.getPlayerCount() + "\u00A7"
                         + PlayerManager.MAX_PLAYERS;

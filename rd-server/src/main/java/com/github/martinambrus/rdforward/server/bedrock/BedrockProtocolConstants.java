@@ -45,6 +45,9 @@ public final class BedrockProtocolConstants {
     /** Vanilla item definitions loaded from runtime_item_states.json. */
     private static DefinitionRegistry<ItemDefinition> itemDefinitions;
 
+    /** Vanilla item definitions as a list (for StartGamePacket). */
+    private static java.util.List<ItemDefinition> itemDefinitionList;
+
     /** Vanilla block states list (for block mapper lookups). */
     private static List<NbtMap> vanillaBlockStates;
 
@@ -57,6 +60,16 @@ public final class BedrockProtocolConstants {
             loadItemDefinitions();
         }
         return itemDefinitions;
+    }
+
+    /**
+     * Get the vanilla item definitions as a list for StartGamePacket.
+     */
+    public static synchronized java.util.List<ItemDefinition> getItemDefinitionList() {
+        if (itemDefinitionList == null) {
+            loadItemDefinitions();
+        }
+        return itemDefinitionList;
     }
 
     /**
@@ -144,6 +157,7 @@ public final class BedrockProtocolConstants {
             // Simple JSON array parser — each entry is {"name":"...","id":N,...,"componentBased":bool}
             SimpleDefinitionRegistry.Builder<ItemDefinition> builder =
                     SimpleDefinitionRegistry.builder();
+            java.util.List<ItemDefinition> list = new java.util.ArrayList<>();
             int count = 0;
 
             // Strip outer brackets
@@ -162,18 +176,23 @@ public final class BedrockProtocolConstants {
                 boolean componentBased = extractJsonBoolean(entry, "componentBased");
 
                 if (name != null) {
-                    builder.add(new SimpleItemDefinition(name, id, componentBased));
+                    SimpleItemDefinition def = new SimpleItemDefinition(name, id, componentBased);
+                    builder.add(def);
+                    list.add(def);
                     count++;
                 }
             }
 
             itemDefinitions = builder.build();
+            itemDefinitionList = java.util.Collections.unmodifiableList(list);
         } catch (IOException e) {
             System.err.println("[Bedrock] Failed to load runtime_item_states.json: " + e.getMessage());
             // Fallback: empty registry
+            SimpleItemDefinition airDef = new SimpleItemDefinition("minecraft:air", 0, false);
             itemDefinitions = SimpleDefinitionRegistry.<ItemDefinition>builder()
-                    .add(new SimpleItemDefinition("minecraft:air", 0, false))
+                    .add(airDef)
                     .build();
+            itemDefinitionList = java.util.Collections.singletonList(airDef);
         }
     }
 

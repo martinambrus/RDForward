@@ -185,7 +185,7 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         //    Sending feet Y causes the client to subtract eye height again, sinking into ground.
         sendStartGame(entityId, (float) spawnX, (float) spawnY, (float) spawnZ, bedrockYaw, spawnPitch);
 
-        // 2. ItemComponentPacket (empty)
+        // 2. ItemComponentPacket (empty — only needed for custom data-driven items)
         ItemComponentPacket itemComponentPkt = new ItemComponentPacket();
         session.sendPacket(itemComponentPkt);
 
@@ -332,6 +332,9 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         sgp.setWorldId("");
         sgp.setScenarioId("");
         sgp.setOwnerId("");
+
+        // Item definitions — required so the client knows all valid item types
+        sgp.setItemDefinitions(BedrockProtocolConstants.getItemDefinitionList());
 
         // Experiments (matching GeyserMC)
         sgp.getExperiments().add(new ExperimentData("data_driven_items", true));
