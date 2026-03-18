@@ -17,6 +17,8 @@ import com.github.martinambrus.rdforward.server.bedrock.BedrockChunkConverter;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockLoginHandler;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockProtocolConstants;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockRegistryData;
+import com.github.martinambrus.rdforward.server.mcpe.LegacyRakNetServer;
+import com.github.martinambrus.rdforward.server.mcpe.MCPEConstants;
 import com.github.martinambrus.rdforward.server.event.ServerEvents;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
@@ -65,7 +67,7 @@ public class RDServer {
     private static final String DEFAULT_WORLD_DIR = "world";
 
     private final int port;
-    private int bedrockPort = BedrockProtocolConstants.DEFAULT_PORT;
+    private int bedrockPort = BedrockProtocolConstants.DEFAULT_PORT; // 19132
     private final ProtocolVersion protocolVersion;
     private final WorldGenerator worldGenerator;
     private final long worldSeed;
@@ -78,6 +80,8 @@ public class RDServer {
     private EventLoopGroup workerGroup;
     private Channel serverChannel;
     private Channel bedrockChannel;
+    private Channel mcpeChannel;
+    private LegacyRakNetServer mcpeServer;
     private BedrockBlockMapper bedrockBlockMapper;
     private BedrockChunkConverter bedrockChunkConverter;
     private BedrockRegistryData bedrockRegistryData;
@@ -176,6 +180,9 @@ public class RDServer {
 
         // Start Bedrock Edition server (UDP/RakNet on port 19132)
         startBedrockServer();
+
+        // Start Legacy MCPE server (UDP/RakNet on port 19133)
+        startLegacyMCPEServer();
     }
 
     /**
@@ -266,6 +273,33 @@ public class RDServer {
     }
 
     /**
+     * Start the Legacy MCPE server (UDP, custom RakNet v6 for MCPE 0.7.x clients).
+     */
+    private void startLegacyMCPEServer() {
+        int mcpePort = MCPEConstants.DEFAULT_PORT;
+        long mcpeGuid = System.currentTimeMillis() + 1; // distinct from Bedrock GUID
+
+        Runnable mcpePongUpdater = () -> {
+            // Pong data is regenerated per-ping in LegacyRakNetServer, so nothing to update here.
+            // This callback exists for consistency with the Bedrock pattern.
+        };
+
+        mcpeServer = new LegacyRakNetServer(
+                mcpeGuid, "RDForward Server", world, playerManager, chunkManager, mcpePongUpdater);
+
+        try {
+            mcpeChannel = mcpeServer.start(workerGroup, mcpePort);
+            System.out.println("Legacy MCPE server started on port " + mcpePort
+                    + " (protocol: " + MCPEConstants.MCPE_VERSION_STRING
+                    + ", version " + MCPEConstants.MCPE_PROTOCOL_VERSION + ")");
+        } catch (Exception e) {
+            System.err.println("Failed to start Legacy MCPE server on port " + mcpePort
+                    + ": " + e.getMessage());
+            System.err.println("Legacy MCPE support disabled. Other servers still running.");
+        }
+    }
+
+    /**
      * Stop the server and release all resources.
      */
     public void stop() {
@@ -280,6 +314,9 @@ public class RDServer {
         world.savePlayers(playerManager.getAllPlayers());
         chunkManager.saveAllDirty();
 
+        if (mcpeChannel != null) {
+            mcpeChannel.close();
+        }
         if (bedrockChannel != null) {
             bedrockChannel.close();
         }

@@ -3,6 +3,7 @@ package com.github.martinambrus.rdforward.server;
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockSessionWrapper;
+import com.github.martinambrus.rdforward.server.mcpe.MCPESessionWrapper;
 import io.netty.channel.Channel;
 
 /**
@@ -30,6 +31,9 @@ public class ConnectedPlayer {
     // Bedrock session wrapper (null for non-Bedrock clients)
     private volatile BedrockSessionWrapper bedrockSession;
 
+    // Legacy MCPE session wrapper (null for non-MCPE clients)
+    private volatile MCPESessionWrapper mcpeSession;
+
     // Double-precision position for Alpha clients (block coordinates)
     private volatile double doubleX;
     private volatile double doubleY;
@@ -47,6 +51,10 @@ public class ConnectedPlayer {
     public void sendPacket(Packet packet) {
         if (bedrockSession != null) {
             bedrockSession.translateAndSend(packet);
+            return;
+        }
+        if (mcpeSession != null) {
+            mcpeSession.translateAndSend(packet);
             return;
         }
         if (channel != null && channel.isActive()) {
@@ -85,6 +93,10 @@ public class ConnectedPlayer {
             bedrockSession.disconnect("Disconnected");
             return;
         }
+        if (mcpeSession != null) {
+            mcpeSession.disconnect("Disconnected");
+            return;
+        }
         if (channel != null && channel.isActive()) {
             channel.close();
         }
@@ -96,6 +108,14 @@ public class ConnectedPlayer {
 
     public BedrockSessionWrapper getBedrockSession() {
         return bedrockSession;
+    }
+
+    public void setMcpeSession(MCPESessionWrapper session) {
+        this.mcpeSession = session;
+    }
+
+    public MCPESessionWrapper getMcpeSession() {
+        return mcpeSession;
     }
 
     public byte getPlayerId() { return playerId; }
