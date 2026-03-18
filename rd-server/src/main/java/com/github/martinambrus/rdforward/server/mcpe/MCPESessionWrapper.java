@@ -131,9 +131,12 @@ public class MCPESessionWrapper {
     }
 
     private void translateMessage(MessagePacket pkt) {
-        // Protocol 11 MessagePacket has only message (no source field)
         MCPEPacketBuffer buf = new MCPEPacketBuffer();
         buf.writeByte(MCPEConstants.MESSAGE);
+        // Protocol 12+: string source + string message; Protocol 11: message only
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_12) {
+            buf.writeString(""); // source (system message = empty)
+        }
         buf.writeString(pkt.getMessage());
         server.sendGamePacket(session, buf.getBuf());
     }

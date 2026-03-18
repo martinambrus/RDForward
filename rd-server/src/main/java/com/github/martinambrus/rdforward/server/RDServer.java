@@ -291,7 +291,8 @@ public class RDServer {
             mcpeChannel = mcpeServer.start(workerGroup, mcpePort);
             System.out.println("Legacy MCPE server started on port " + mcpePort
                     + " (protocol: " + MCPEConstants.MCPE_VERSION_STRING
-                    + ", version " + MCPEConstants.MCPE_PROTOCOL_VERSION + ")");
+                    + ", version " + MCPEConstants.MCPE_PROTOCOL_VERSION_11
+                    + "-" + MCPEConstants.MCPE_PROTOCOL_VERSION_MAX + ")");
         } catch (Exception e) {
             System.err.println("Failed to start Legacy MCPE server on port " + mcpePort
                     + ": " + e.getMessage());

@@ -198,7 +198,10 @@ public class MCPEGameplayHandler {
 
     private void handleMessage(ByteBuf payload) {
         MCPEPacketBuffer buf = new MCPEPacketBuffer(payload);
-        // Protocol 11: message only (no source field)
+        // Protocol 12+: string player + string message; Protocol 11: message only
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_12) {
+            buf.readString(); // player name (already known from login)
+        }
         String message = buf.readString();
 
         // MCPE 0.7.0 client pre-formats chat as "<Username> text" — strip the prefix

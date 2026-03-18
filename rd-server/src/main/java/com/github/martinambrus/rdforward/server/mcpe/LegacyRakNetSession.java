@@ -50,6 +50,9 @@ public class LegacyRakNetSession {
     // Split packet reassembly: splitId -> (splitIndex -> data)
     private final Map<Integer, SplitAssembly> splitAssemblies = new HashMap<>();
 
+    // MCPE protocol version (11 = 0.7.0-0.7.3, 12 = 0.7.4-0.7.6)
+    private int mcpeProtocolVersion = MCPEConstants.MCPE_PROTOCOL_VERSION_11;
+
     // Game handler (set after connected handshake)
     private MCPELoginHandler loginHandler;
     private MCPEGameplayHandler gameplayHandler;
@@ -82,6 +85,9 @@ public class LegacyRakNetSession {
 
     public MCPEGameplayHandler getGameplayHandler() { return gameplayHandler; }
     public void setGameplayHandler(MCPEGameplayHandler handler) { this.gameplayHandler = handler; }
+
+    public int getMcpeProtocolVersion() { return mcpeProtocolVersion; }
+    public void setMcpeProtocolVersion(int version) { this.mcpeProtocolVersion = version; }
 
     /** Allocate the next send sequence number. */
     public int nextSendSequenceNumber() {

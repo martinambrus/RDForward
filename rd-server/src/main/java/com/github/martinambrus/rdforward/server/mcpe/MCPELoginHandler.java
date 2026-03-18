@@ -67,14 +67,16 @@ public class MCPELoginHandler {
         System.out.println("[MCPE] Login from " + username
                 + " (protocol=" + protocol1 + ", clientId=" + clientId + ")");
 
-        // Protocol version check
-        if (protocol1 != MCPEConstants.MCPE_PROTOCOL_VERSION) {
-            int status = (protocol1 > MCPEConstants.MCPE_PROTOCOL_VERSION)
+        // Protocol version check — accept protocol 11 (0.7.0-0.7.3) and 12 (0.7.4-0.7.6)
+        if (protocol1 < MCPEConstants.MCPE_PROTOCOL_VERSION_11
+                || protocol1 > MCPEConstants.MCPE_PROTOCOL_VERSION_MAX) {
+            int status = (protocol1 > MCPEConstants.MCPE_PROTOCOL_VERSION_MAX)
                     ? MCPEConstants.LOGIN_SERVER_OUTDATED
                     : MCPEConstants.LOGIN_CLIENT_OUTDATED;
             sendLoginStatus(status);
             return;
         }
+        session.setMcpeProtocolVersion(protocol1);
 
         // Check for duplicate username
         if (username != null && !username.trim().isEmpty()) {
@@ -296,7 +298,9 @@ public class MCPELoginHandler {
 
     private void sendAdventureSettings(int flags) {
         MCPEPacketBuffer pkt = new MCPEPacketBuffer();
-        pkt.writeByte(MCPEConstants.ADVENTURE_SETTINGS);
+        pkt.writeByte(session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_12
+                ? MCPEConstants.ADVENTURE_SETTINGS_V12
+                : MCPEConstants.ADVENTURE_SETTINGS_V11);
         pkt.writeInt(flags);
         server.sendGamePacket(session, pkt.getBuf());
     }

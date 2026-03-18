@@ -9,8 +9,11 @@ public final class MCPEConstants {
     private MCPEConstants() {}
 
     // --- Protocol ---
-    public static final int MCPE_PROTOCOL_VERSION = 11;
-    public static final String MCPE_VERSION_STRING = "0.7.0";
+    public static final int MCPE_PROTOCOL_VERSION_11 = 11; // 0.7.0-0.7.3
+    public static final int MCPE_PROTOCOL_VERSION_12 = 12; // 0.7.4-0.7.6
+    /** Highest supported protocol version (for pong advertisement). */
+    public static final int MCPE_PROTOCOL_VERSION_MAX = MCPE_PROTOCOL_VERSION_12;
+    public static final String MCPE_VERSION_STRING = "0.7.6";
     public static final int DEFAULT_PORT = 19133;
 
     // --- RakNet ---
@@ -105,8 +108,12 @@ public final class MCPEConstants {
     public static final byte CONTAINER_SET_CONTENT = (byte) 0xB3;
     // 0xB4 unused
     public static final byte CHAT                = (byte) 0xB5;
-    public static final byte SIGN_UPDATE         = (byte) 0xB6;
-    public static final byte ADVENTURE_SETTINGS  = (byte) 0xB7;
+    // Protocol 11: 0xB6 = SIGN_UPDATE, 0xB7 = ADVENTURE_SETTINGS
+    // Protocol 12: 0xB6 = ADVENTURE_SETTINGS, 0xB7 = ENTITY_DATA (SIGN_UPDATE removed)
+    public static final byte SIGN_UPDATE         = (byte) 0xB6; // protocol 11 only
+    public static final byte ADVENTURE_SETTINGS_V11 = (byte) 0xB7; // protocol 11
+    public static final byte ADVENTURE_SETTINGS_V12 = (byte) 0xB6; // protocol 12+
+    public static final byte ENTITY_DATA_V12     = (byte) 0xB7; // protocol 12+ (tile entity NBT)
     // 0xB8 unused
     public static final byte PLAYER_INPUT        = (byte) 0xB9;
     public static final byte ROTATE_HEAD         = (byte) 0xFF;
