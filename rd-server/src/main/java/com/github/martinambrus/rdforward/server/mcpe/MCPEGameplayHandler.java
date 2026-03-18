@@ -42,10 +42,23 @@ public class MCPEGameplayHandler {
         this.pongUpdater = pongUpdater;
     }
 
+    /** Convert canonical v12 ID to wire ID for this session. */
+    private int wireId(int canonicalId) {
+        return MCPEConstants.toWireId(canonicalId, session.getMcpeProtocolVersion());
+    }
+
     public void handlePacket(ChannelHandlerContext ctx, int packetId, ByteBuf payload) {
         if (disconnected) return;
 
-        switch (packetId) {
+        // Normalize v14 wire IDs to v12 canonical (RotateHead at 0x94 handled separately)
+        int pv = session.getMcpeProtocolVersion();
+        if (pv >= MCPEConstants.MCPE_PROTOCOL_VERSION_14 && packetId == (MCPEConstants.ROTATE_HEAD_V14 & 0xFF)) {
+            // RotateHeadPacket — ignore (entity head rotation, cosmetic only)
+            return;
+        }
+        int id = MCPEConstants.toCanonicalId(packetId, pv);
+
+        switch (id) {
             case 0x94: // MOVE_PLAYER
                 handleMovePlayer(payload);
                 break;
@@ -81,7 +94,8 @@ public class MCPEGameplayHandler {
                 break;
             default:
                 System.out.println("[MCPE] Unknown packet 0x" + Integer.toHexString(packetId)
-                        + " (" + payload.readableBytes() + " bytes)");
+                        + " (canonical 0x" + Integer.toHexString(id)
+                        + ", " + payload.readableBytes() + " bytes)");
                 break;
         }
     }
@@ -94,8 +108,16 @@ public class MCPEGameplayHandler {
         float x = buf.readFloat();
         float y = buf.readFloat(); // feet-level Y (MCPE C2S convention)
         float z = buf.readFloat();
-        float yaw = buf.readFloat();
-        float pitch = buf.readFloat();
+        float yaw, pitch;
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_14) {
+            // v14: bodyYaw, pitch, headYaw — use headYaw as the primary yaw
+            float bodyYaw = buf.readFloat();
+            pitch = buf.readFloat();
+            yaw = buf.readFloat(); // headYaw
+        } else {
+            yaw = buf.readFloat();
+            pitch = buf.readFloat();
+        }
 
         // Log first few position updates from client
         if (moveLogCount < 5) {
@@ -136,7 +158,7 @@ public class MCPEGameplayHandler {
 
         // Confirm to placer
         MCPEPacketBuffer confirm = new MCPEPacketBuffer();
-        confirm.writeByte(MCPEConstants.UPDATE_BLOCK);
+        confirm.writeByte(wireId(MCPEConstants.UPDATE_BLOCK));
         confirm.writeInt(x);
         confirm.writeInt(z);
         confirm.writeByte(y);
@@ -187,7 +209,7 @@ public class MCPEGameplayHandler {
 
         // Confirm to placer
         MCPEPacketBuffer confirm = new MCPEPacketBuffer();
-        confirm.writeByte(MCPEConstants.UPDATE_BLOCK);
+        confirm.writeByte(wireId(MCPEConstants.UPDATE_BLOCK));
         confirm.writeInt(targetX);
         confirm.writeInt(targetZ);
         confirm.writeByte(targetY);
@@ -273,7 +295,7 @@ public class MCPEGameplayHandler {
                 if (other.getGameplayHandler() == null) continue;
 
                 MCPEPacketBuffer pkt = new MCPEPacketBuffer();
-                pkt.writeByte(MCPEConstants.UPDATE_BLOCK);
+                pkt.writeByte(wireId(MCPEConstants.UPDATE_BLOCK));
                 pkt.writeInt(x);
                 pkt.writeInt(z);
                 pkt.writeByte(y);
@@ -290,7 +312,7 @@ public class MCPEGameplayHandler {
 
             // Confirm back to the breaking player
             MCPEPacketBuffer confirm = new MCPEPacketBuffer();
-            confirm.writeByte(MCPEConstants.UPDATE_BLOCK);
+            confirm.writeByte(wireId(MCPEConstants.UPDATE_BLOCK));
             confirm.writeInt(x);
             confirm.writeInt(z);
             confirm.writeByte(y);
@@ -344,7 +366,7 @@ public class MCPEGameplayHandler {
                 if (other.getGameplayHandler() == null) continue;
 
                 MCPEPacketBuffer pkt = new MCPEPacketBuffer();
-                pkt.writeByte(MCPEConstants.UPDATE_BLOCK);
+                pkt.writeByte(wireId(MCPEConstants.UPDATE_BLOCK));
                 pkt.writeInt(bx);
                 pkt.writeInt(bz);
                 pkt.writeByte(by);
@@ -361,7 +383,7 @@ public class MCPEGameplayHandler {
 
             // Confirm back to the breaking player
             MCPEPacketBuffer confirm = new MCPEPacketBuffer();
-            confirm.writeByte(MCPEConstants.UPDATE_BLOCK);
+            confirm.writeByte(wireId(MCPEConstants.UPDATE_BLOCK));
             confirm.writeInt(bx);
             confirm.writeInt(bz);
             confirm.writeByte(by);
@@ -419,15 +441,22 @@ public class MCPEGameplayHandler {
             LegacyRakNetSession other = entry.getValue();
             if (other == session || other.getState() == LegacyRakNetSession.State.DISCONNECTED) continue;
             if (other.getGameplayHandler() == null) continue;
+            int pv = other.getMcpeProtocolVersion();
 
             MCPEPacketBuffer pkt = new MCPEPacketBuffer();
-            pkt.writeByte(MCPEConstants.MOVE_PLAYER);
+            pkt.writeByte(MCPEConstants.toWireId(MCPEConstants.MOVE_PLAYER, pv));
             pkt.writeInt(entityId);
             pkt.writeFloat(x);
             pkt.writeFloat(y);
             pkt.writeFloat(z);
-            pkt.writeFloat(yaw);
-            pkt.writeFloat(pitch);
+            if (pv >= MCPEConstants.MCPE_PROTOCOL_VERSION_14) {
+                pkt.writeFloat(yaw);  // bodyYaw
+                pkt.writeFloat(pitch);
+                pkt.writeFloat(yaw);  // headYaw (same as bodyYaw)
+            } else {
+                pkt.writeFloat(yaw);
+                pkt.writeFloat(pitch);
+            }
             server.sendGamePacket(other, pkt.getBuf());
         }
     }
@@ -440,7 +469,7 @@ public class MCPEGameplayHandler {
             if (other.getGameplayHandler() == null) continue;
 
             MCPEPacketBuffer pkt = new MCPEPacketBuffer();
-            pkt.writeByte(MCPEConstants.UPDATE_BLOCK);
+            pkt.writeByte(MCPEConstants.toWireId(MCPEConstants.UPDATE_BLOCK, other.getMcpeProtocolVersion()));
             pkt.writeInt(x);
             pkt.writeInt(z);
             pkt.writeByte(y);
@@ -464,7 +493,7 @@ public class MCPEGameplayHandler {
             if (other.getGameplayHandler() == null) continue;
 
             MCPEPacketBuffer pkt = new MCPEPacketBuffer();
-            pkt.writeByte(MCPEConstants.ANIMATE);
+            pkt.writeByte(MCPEConstants.toWireId(MCPEConstants.ANIMATE, other.getMcpeProtocolVersion()));
             pkt.writeByte(action);
             pkt.writeInt(entityId);
             server.sendGamePacket(other, pkt.getBuf());
@@ -480,7 +509,7 @@ public class MCPEGameplayHandler {
         // One packet per Y-section (PocketMine Alpha_1.3 style)
         for (int section = 0; section < 8; section++) {
             MCPEPacketBuffer pkt = new MCPEPacketBuffer();
-            pkt.writeByte(MCPEConstants.CHUNK_DATA);
+            pkt.writeByte(wireId(MCPEConstants.CHUNK_DATA));
             pkt.writeInt(chunkX);
             pkt.writeInt(chunkZ);
 

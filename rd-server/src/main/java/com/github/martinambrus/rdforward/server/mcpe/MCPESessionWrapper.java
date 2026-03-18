@@ -24,6 +24,11 @@ public class MCPESessionWrapper {
     private final LegacyRakNetSession session;
     private final LegacyRakNetServer server;
 
+    /** Convert canonical v12 ID to wire ID for this session. */
+    private int wireId(int canonicalId) {
+        return MCPEConstants.toWireId(canonicalId, session.getMcpeProtocolVersion());
+    }
+
     public MCPESessionWrapper(LegacyRakNetSession session, LegacyRakNetServer server) {
         this.session = session;
         this.server = server;
@@ -52,7 +57,7 @@ public class MCPESessionWrapper {
 
     private void translateSetBlock(SetBlockServerPacket pkt) {
         MCPEPacketBuffer buf = new MCPEPacketBuffer();
-        buf.writeByte(MCPEConstants.UPDATE_BLOCK);
+        buf.writeByte(wireId(MCPEConstants.UPDATE_BLOCK));
         buf.writeInt(pkt.getX());
         buf.writeInt(pkt.getZ());
         buf.writeByte(pkt.getY());
@@ -90,7 +95,7 @@ public class MCPESessionWrapper {
 
         // Send SET_ENTITY_DATA with nametag (some clients only read metadata from this packet)
         MCPEPacketBuffer meta = new MCPEPacketBuffer();
-        meta.writeByte(MCPEConstants.SET_ENTITY_DATA);
+        meta.writeByte(wireId(MCPEConstants.SET_ENTITY_DATA));
         meta.writeInt(entityId);
         meta.writeMetaByte(MCPEConstants.META_FLAGS, (byte) 0);
         meta.writeMetaShort(MCPEConstants.META_AIR, (short) 300);
@@ -120,13 +125,19 @@ public class MCPESessionWrapper {
         float pitch = (pkt.getPitch() & 0xFF) * 360.0f / 256.0f;
 
         MCPEPacketBuffer buf = new MCPEPacketBuffer();
-        buf.writeByte(MCPEConstants.MOVE_PLAYER);
+        buf.writeByte(wireId(MCPEConstants.MOVE_PLAYER));
         buf.writeInt(entityId);
         buf.writeFloat(x);
         buf.writeFloat(y);
         buf.writeFloat(z);
-        buf.writeFloat(yaw);
-        buf.writeFloat(pitch);
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_14) {
+            buf.writeFloat(yaw);  // bodyYaw
+            buf.writeFloat(pitch);
+            buf.writeFloat(yaw);  // headYaw
+        } else {
+            buf.writeFloat(yaw);
+            buf.writeFloat(pitch);
+        }
         server.sendGamePacket(session, buf.getBuf());
     }
 

@@ -36,6 +36,11 @@ public class MCPELoginHandler {
     private ConnectedPlayer player;
     private MCPESessionWrapper sessionWrapper;
 
+    /** Convert canonical v12 ID to wire ID for this session. */
+    private int wireId(int canonicalId) {
+        return MCPEConstants.toWireId(canonicalId, session.getMcpeProtocolVersion());
+    }
+
     public MCPELoginHandler(LegacyRakNetSession session, ServerWorld world,
                             PlayerManager playerManager, ChunkManager chunkManager,
                             LegacyRakNetServer server, Runnable pongUpdater) {
@@ -67,9 +72,11 @@ public class MCPELoginHandler {
         System.out.println("[MCPE] Login from " + username
                 + " (protocol=" + protocol1 + ", clientId=" + clientId + ")");
 
-        // Protocol version check — accept protocol 11 (0.7.0-0.7.3) and 12 (0.7.4-0.7.6)
+        // Protocol version check — accept 11 (0.7.0-0.7.3), 12 (0.7.4-0.7.6), 14 (0.8.0)
+        // Note: protocol 13 was dev-only, skip it
         if (protocol1 < MCPEConstants.MCPE_PROTOCOL_VERSION_11
-                || protocol1 > MCPEConstants.MCPE_PROTOCOL_VERSION_MAX) {
+                || protocol1 > MCPEConstants.MCPE_PROTOCOL_VERSION_MAX
+                || protocol1 == 13) {
             int status = (protocol1 > MCPEConstants.MCPE_PROTOCOL_VERSION_MAX)
                     ? MCPEConstants.LOGIN_SERVER_OUTDATED
                     : MCPEConstants.LOGIN_CLIENT_OUTDATED;
@@ -219,7 +226,7 @@ public class MCPELoginHandler {
 
                 // Also send SET_ENTITY_DATA with nametag
                 MCPEPacketBuffer meta = new MCPEPacketBuffer();
-                meta.writeByte(MCPEConstants.SET_ENTITY_DATA);
+                meta.writeByte(wireId(MCPEConstants.SET_ENTITY_DATA));
                 meta.writeInt(oeid);
                 meta.writeMetaByte(MCPEConstants.META_FLAGS, (byte) 0);
                 meta.writeMetaShort(MCPEConstants.META_AIR, (short) 300);
@@ -277,7 +284,7 @@ public class MCPELoginHandler {
 
     private void sendSetSpawnPosition(int x, int z, int y) {
         MCPEPacketBuffer pkt = new MCPEPacketBuffer();
-        pkt.writeByte(MCPEConstants.SET_SPAWN_POSITION);
+        pkt.writeByte(wireId(MCPEConstants.SET_SPAWN_POSITION));
         pkt.writeInt(x);
         pkt.writeInt(z);
         pkt.writeByte(y);
@@ -286,21 +293,32 @@ public class MCPELoginHandler {
 
     private void sendMovePlayer(int entityId, float x, float y, float z, float yaw, float pitch) {
         MCPEPacketBuffer pkt = new MCPEPacketBuffer();
-        pkt.writeByte(MCPEConstants.MOVE_PLAYER);
+        pkt.writeByte(wireId(MCPEConstants.MOVE_PLAYER));
         pkt.writeInt(entityId);
         pkt.writeFloat(x);
         pkt.writeFloat(y);
         pkt.writeFloat(z);
-        pkt.writeFloat(yaw);
-        pkt.writeFloat(pitch);
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_14) {
+            pkt.writeFloat(yaw);  // bodyYaw
+            pkt.writeFloat(pitch);
+            pkt.writeFloat(yaw);  // headYaw
+        } else {
+            pkt.writeFloat(yaw);
+            pkt.writeFloat(pitch);
+        }
         server.sendGamePacket(session, pkt.getBuf());
     }
 
     private void sendAdventureSettings(int flags) {
         MCPEPacketBuffer pkt = new MCPEPacketBuffer();
-        pkt.writeByte(session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_12
-                ? MCPEConstants.ADVENTURE_SETTINGS_V12
-                : MCPEConstants.ADVENTURE_SETTINGS_V11);
+        int pv = session.getMcpeProtocolVersion();
+        if (pv >= MCPEConstants.MCPE_PROTOCOL_VERSION_14) {
+            pkt.writeByte(MCPEConstants.toWireId(MCPEConstants.ADVENTURE_SETTINGS_V12, pv));
+        } else if (pv >= MCPEConstants.MCPE_PROTOCOL_VERSION_12) {
+            pkt.writeByte(MCPEConstants.ADVENTURE_SETTINGS_V12);
+        } else {
+            pkt.writeByte(MCPEConstants.ADVENTURE_SETTINGS_V11);
+        }
         pkt.writeInt(flags);
         server.sendGamePacket(session, pkt.getBuf());
     }
@@ -308,7 +326,7 @@ public class MCPELoginHandler {
     private void sendInventory() {
         // Send empty player inventory (windowId=0)
         MCPEPacketBuffer pkt = new MCPEPacketBuffer();
-        pkt.writeByte(MCPEConstants.SEND_INVENTORY);
+        pkt.writeByte(wireId(MCPEConstants.SEND_INVENTORY));
         pkt.writeInt(player.getPlayerId() + 1); // entity ID
         pkt.writeByte(0); // windowId = player inventory
         pkt.writeShort(36); // 36 slots
@@ -321,7 +339,7 @@ public class MCPELoginHandler {
 
         // Send empty armor (windowId=1)
         pkt = new MCPEPacketBuffer();
-        pkt.writeByte(MCPEConstants.SEND_INVENTORY);
+        pkt.writeByte(wireId(MCPEConstants.SEND_INVENTORY));
         pkt.writeInt(player.getPlayerId() + 1);
         pkt.writeByte(1); // windowId = armor
         pkt.writeShort(4); // 4 armor slots
@@ -346,7 +364,7 @@ public class MCPELoginHandler {
         // Send one packet per Y-section (0-7), matching PocketMine's approach
         for (int section = 0; section < 8; section++) {
             MCPEPacketBuffer pkt = new MCPEPacketBuffer();
-            pkt.writeByte(MCPEConstants.CHUNK_DATA);
+            pkt.writeByte(wireId(MCPEConstants.CHUNK_DATA));
             pkt.writeInt(chunkX);
             pkt.writeInt(chunkZ);
 

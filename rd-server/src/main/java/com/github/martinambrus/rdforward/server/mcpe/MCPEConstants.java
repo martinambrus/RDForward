@@ -11,9 +11,10 @@ public final class MCPEConstants {
     // --- Protocol ---
     public static final int MCPE_PROTOCOL_VERSION_11 = 11; // 0.7.0-0.7.3
     public static final int MCPE_PROTOCOL_VERSION_12 = 12; // 0.7.4-0.7.6
+    public static final int MCPE_PROTOCOL_VERSION_14 = 14; // 0.8.0 (13 was dev-only)
     /** Highest supported protocol version (for pong advertisement). */
-    public static final int MCPE_PROTOCOL_VERSION_MAX = MCPE_PROTOCOL_VERSION_12;
-    public static final String MCPE_VERSION_STRING = "0.7.6";
+    public static final int MCPE_PROTOCOL_VERSION_MAX = MCPE_PROTOCOL_VERSION_14;
+    public static final String MCPE_VERSION_STRING = "0.8.0";
     public static final int DEFAULT_PORT = 19133;
 
     // --- RakNet ---
@@ -74,6 +75,9 @@ public final class MCPEConstants {
     public static final byte MOVE_ENTITY         = (byte) 0x90; // batch header / empty
     // 0x91, 0x92 unused
     public static final byte MOVE_ENTITY_POSROT  = (byte) 0x93;
+    /** v14 only: RotateHeadPacket inserted at 0x94 (int eid, byte headYaw). */
+    public static final byte ROTATE_HEAD_V14     = (byte) 0x94;
+    // All packet IDs below are v12 canonical. In v14, IDs >= 0x94 shift +1 on the wire.
     public static final byte MOVE_PLAYER         = (byte) 0x94;
     // 0x95 unused
     public static final byte REMOVE_BLOCK        = (byte) 0x96;
@@ -167,4 +171,31 @@ public final class MCPEConstants {
     // MCPE 0.7.x client checks for "MCCPP;Demo;" prefix (with fallback to "MCCPP;MINECON;").
     // Format: "MCCPP;Demo;server name"
     public static final String PONG_PREFIX = "MCCPP;Demo;";
+
+    // --- Protocol version helpers ---
+
+    /**
+     * Convert a v12-canonical packet ID to the wire ID for the given protocol version.
+     * In v14+, RotateHeadPacket was inserted at 0x94, shifting all IDs >= 0x94 by +1.
+     * For v11/v12, returns the ID unchanged (except ADVENTURE_SETTINGS which differs).
+     */
+    public static int toWireId(int canonicalId, int protocolVersion) {
+        // v14+: all canonical IDs >= 0x94 shift +1
+        if (protocolVersion >= MCPE_PROTOCOL_VERSION_14 && (canonicalId & 0xFF) >= 0x94) {
+            return (canonicalId + 1) & 0xFF;
+        }
+        return canonicalId & 0xFF;
+    }
+
+    /**
+     * Convert an incoming wire packet ID to the v12-canonical ID.
+     * Returns -1 for v14-only packets (RotateHead at 0x94).
+     */
+    public static int toCanonicalId(int wireId, int protocolVersion) {
+        if (protocolVersion >= MCPE_PROTOCOL_VERSION_14) {
+            if (wireId == (ROTATE_HEAD_V14 & 0xFF)) return -1; // v14-only
+            if (wireId > (ROTATE_HEAD_V14 & 0xFF)) return wireId - 1;
+        }
+        return wireId;
+    }
 }

@@ -300,8 +300,9 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
             return;
         }
 
-        // Log game packets at RakNet level for debugging
-        if (gamePacketId != 0x94) { // skip frequent MovePlayer
+        // Log game packets at RakNet level for debugging (skip frequent MovePlayer)
+        int canonicalId = MCPEConstants.toCanonicalId(gamePacketId, session.getMcpeProtocolVersion());
+        if (canonicalId != 0x94) { // skip MovePlayer
             System.out.println("[MCPE RakNet] Game packet 0x" + Integer.toHexString(gamePacketId)
                     + " (" + payload.readableBytes() + " bytes)");
         }

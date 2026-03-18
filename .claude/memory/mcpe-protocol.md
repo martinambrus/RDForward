@@ -34,7 +34,7 @@ type: project
 
 ### Known 0.7.0 Client Limitations
 - **Block breaking does NOT send network packets**: Client sends only AnimatePacket (0xab) arm swings. Zero PlayerAction (0xa3) or RemoveBlock (0x96) packets. Creative mode destroys blocks client-side only. **Workaround**: Server-side raycast on arm swing — raycasts from player eye position along look direction, breaks first non-air block within 5-block reach. 300ms cooldown between breaks. Uses Classic yaw convention (0=North) from `floatYaw`.
-- **Nametags do not render**: Tried AddPlayer metadata (flags, air, nametag string, show_nametag), SET_ENTITY_DATA follow-up packet, minimal metadata, full metadata. None work. The username field in AddPlayer also doesn't trigger nametag rendering. Likely a client or Ninecraft limitation.
+- **Nametags do not render**: 0.7.0 client limitation (or Ninecraft 0.7.0 build). Nametags work correctly on 0.7.4+ (protocol 12) with AddPlayer metadata + SET_ENTITY_DATA follow-up.
 - **UseItem face=255 spam**: Client sends UseItem with garbage coordinates and face=255 when tapping air. Handler correctly ignores these (face switch default case).
 
 ### What Works in 0.7.0
@@ -45,6 +45,15 @@ type: project
 - Player spawn/despawn (both directions)
 - Disconnect detection (timeout-based)
 - Block conversion (cobble/grass) for MCPE-placed blocks
+
+### Protocol 12 (0.7.4-0.7.6) Changes from Protocol 11
+- ChatPacket (0x85): gained `string player` field before message (both C2S and S2C)
+- SignUpdatePacket (0xb6): removed
+- AdventureSettings: moved from 0xb7 to 0xb6
+- EntityDataPacket (0xb7): added (tile entity NBT: short x, byte y, short z, namedtag)
+- Nametags: work correctly (0.7.0 limitation resolved)
+- Block breaking: still uses raycast workaround (same as 0.7.0)
+- Per-session protocol version stored in LegacyRakNetSession
 
 ### Ninecraft Client Source
 - Located at ~/Ninecraft
