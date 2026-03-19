@@ -31,7 +31,11 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
     /** Active sessions keyed by client address. */
     private final Map<InetSocketAddress, LegacyRakNetSession> sessions = new ConcurrentHashMap<>();
 
+    /** Own channel when running in standalone mode (null in front-end mode). */
     private Channel channel;
+
+    /** Front-end channel when running behind UdpFrontEndHandler (null in standalone mode). */
+    private Channel frontEndChannel;
 
     public LegacyRakNetServer(long serverGuid, String serverName,
                               ServerWorld world, PlayerManager playerManager,
@@ -62,7 +66,32 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
         return channel;
     }
 
+    /**
+     * Configure this server to run behind a UdpFrontEndHandler.
+     * In this mode, the server does not bind its own socket; all I/O
+     * goes through the front-end channel.
+     */
+    public void setFrontEndChannel(Channel frontEnd) {
+        this.frontEndChannel = frontEnd;
+        // Schedule timeout check on the front-end's event loop
+        frontEnd.eventLoop().scheduleAtFixedRate(this::checkTimeouts,
+                5, 5, java.util.concurrent.TimeUnit.SECONDS);
+    }
+
+    /**
+     * Handle an incoming datagram forwarded by the UdpFrontEndHandler.
+     * Delegates to the same logic as channelRead0.
+     */
+    public void handleDatagram(ChannelHandlerContext ctx, DatagramPacket packet) {
+        try {
+            channelRead0(ctx, packet);
+        } finally {
+            packet.release();
+        }
+    }
+
     public Channel getChannel() { return channel; }
+    public Channel getSendChannel() { return (frontEndChannel != null) ? frontEndChannel : channel; }
     public Map<InetSocketAddress, LegacyRakNetSession> getSessions() { return sessions; }
 
     @Override
@@ -76,6 +105,8 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
         // Unconnected packets (no session required)
         if (packetId == (MCPEConstants.UNCONNECTED_PING & 0xFF)
                 || packetId == (MCPEConstants.UNCONNECTED_PING_OPEN & 0xFF)) {
+            System.out.println("[MCPE] Ping from " + sender + " (id=0x" + Integer.toHexString(packetId)
+                    + ", remaining=" + buf.readableBytes() + " bytes)");
             handleUnconnectedPing(ctx, sender, buf);
             return;
         }
@@ -138,11 +169,30 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
         long pingTime = buf.readLong();
         // Skip magic (16 bytes)
         buf.skipBytes(MCPEConstants.RAKNET_MAGIC_LENGTH);
-        // Client GUID (optional, might not be present in all versions)
 
-        // Build pong response
-        // MCPE 0.7.x expects: "MCCPP;Demo;server name"
-        String pongData = MCPEConstants.PONG_PREFIX + serverName;
+        // Detect client version: 0.9.0+ sends 8-byte clientGUID after magic, 0.7.x doesn't
+        boolean isV17Plus = buf.readableBytes() >= 8;
+        if (isV17Plus) {
+            buf.readLong(); // clientGUID — consume but don't use
+        }
+
+        // Build pong data based on detected client version
+        String pongData;
+        if (isV17Plus) {
+            // 0.9.0+ format: MCPE;motd;protocol;version;players;maxPlayers;serverGuid;
+            int playerCount = playerManager.getPlayerCount();
+            int maxPlayers = com.github.martinambrus.rdforward.server.PlayerManager.MAX_PLAYERS;
+            pongData = "MCPE;" + serverName + ";"
+                    + MCPEConstants.MCPE_PROTOCOL_VERSION_MAX + ";"
+                    + MCPEConstants.MCPE_VERSION_STRING + ";"
+                    + playerCount + ";" + maxPlayers + ";"
+                    + serverGuid + ";";
+        } else {
+            // 0.7.x format: MCCPP;Demo;server name
+            pongData = MCPEConstants.PONG_PREFIX + serverName;
+        }
+
+        System.out.println("[MCPE] Pong to " + sender + " (v17+=" + isV17Plus + "): " + pongData);
 
         ByteBuf pong = Unpooled.buffer();
         pong.writeByte(MCPEConstants.UNCONNECTED_PONG);
@@ -377,8 +427,9 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
      * this method wraps it in the RakNet reliability layer.
      */
     public void sendGamePacket(LegacyRakNetSession session, ByteBuf gamePayload) {
-        if (channel == null || !channel.isActive()) return;
-        sendEncapsulated(channel.pipeline().firstContext(), session, gamePayload,
+        Channel sendCh = (frontEndChannel != null) ? frontEndChannel : channel;
+        if (sendCh == null || !sendCh.isActive()) return;
+        sendEncapsulated(sendCh.pipeline().firstContext(), session, gamePayload,
                 MCPEConstants.RELIABLE_ORDERED);
     }
 

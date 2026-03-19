@@ -17,9 +17,12 @@ import com.github.martinambrus.rdforward.server.bedrock.BedrockChunkConverter;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockLoginHandler;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockProtocolConstants;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockRegistryData;
+import com.github.martinambrus.rdforward.server.mcpe.BedrockOutboundRedirector;
 import com.github.martinambrus.rdforward.server.mcpe.LegacyRakNetServer;
 import com.github.martinambrus.rdforward.server.mcpe.MCPEConstants;
+import com.github.martinambrus.rdforward.server.mcpe.UdpFrontEndHandler;
 import com.github.martinambrus.rdforward.server.event.ServerEvents;
+import io.netty.bootstrap.Bootstrap;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -80,8 +83,9 @@ public class RDServer {
     private EventLoopGroup workerGroup;
     private Channel serverChannel;
     private Channel bedrockChannel;
-    private Channel mcpeChannel;
+    private Channel udpFrontEndChannel;
     private LegacyRakNetServer mcpeServer;
+    private UdpFrontEndHandler udpFrontEndHandler;
     private BedrockBlockMapper bedrockBlockMapper;
     private BedrockChunkConverter bedrockChunkConverter;
     private BedrockRegistryData bedrockRegistryData;
@@ -178,29 +182,33 @@ public class RDServer {
                 + " (protocol: " + protocolVersion.getDisplayName()
                 + ", version " + protocolVersion.getVersionNumber() + ")");
 
-        // Start Bedrock Edition server (UDP/RakNet on port 19132)
-        startBedrockServer();
-
-        // Start Legacy MCPE server (UDP/RakNet on port 19133)
-        startLegacyMCPEServer();
+        // Start unified UDP server (legacy MCPE + modern Bedrock on port 19132)
+        startUnifiedUdpServer();
     }
 
     /**
-     * Start the Bedrock Edition UDP/RakNet server.
+     * Start the unified UDP server that multiplexes legacy MCPE (RakNet v6)
+     * and modern Bedrock (RakNet v10/v11) on a single port (19132).
+     *
+     * Architecture:
+     * 1. Front-end NioDatagramChannel on 0.0.0.0:19132 receives all UDP traffic
+     * 2. UdpFrontEndHandler detects client type from RakNet protocol version
+     * 3. Legacy MCPE packets → LegacyRakNetServer (direct method dispatch)
+     * 4. Bedrock packets → injected into CloudburstMC's internal pipeline
+     * 5. CloudburstMC's outbound responses → redirected through front-end channel
      */
-    private void startBedrockServer() {
+    private void startUnifiedUdpServer() {
+        int udpPort = bedrockPort; // default 19132, overridable via setBedrockPort()
 
-        // Initialize block mapper, chunk converter, and registry data
+        // --- Initialize Bedrock support ---
         bedrockBlockMapper = new BedrockBlockMapper(BedrockProtocolConstants.getVanillaBlockStates());
         bedrockChunkConverter = new BedrockChunkConverter(bedrockBlockMapper);
         bedrockRegistryData = new BedrockRegistryData();
 
-        // Configure BedrockPong for server list advertisement
-        final long serverGuid = System.currentTimeMillis();
-        final int bPort = bedrockPort;
+        final long bedrockGuid = System.currentTimeMillis();
 
-        // Runnable that rebuilds and updates the pong advertisement (player count etc.)
-        Runnable pongUpdater = () -> {
+        // Pong updater — updates CloudburstMC's advertisement when player count changes
+        Runnable bedrockPongUpdater = () -> {
             if (bedrockChannel == null) return;
             BedrockPong p = new BedrockPong()
                     .edition("MCPE")
@@ -211,14 +219,41 @@ public class RDServer {
                     .gameType("Creative")
                     .protocolVersion(BedrockProtocolConstants.CODEC.getProtocolVersion())
                     .version(BedrockProtocolConstants.CODEC.getMinecraftVersion())
-                    .ipv4Port(bPort)
-                    .ipv6Port(bPort)
-                    .serverId(serverGuid)
+                    .ipv4Port(udpPort)
+                    .ipv6Port(udpPort)
+                    .serverId(bedrockGuid)
                     .nintendoLimited(false);
             bedrockChannel.config().setOption(RakChannelOption.RAK_ADVERTISEMENT, p.toByteBuf());
         };
 
-        BedrockPong pong = new BedrockPong()
+        // --- Initialize Legacy MCPE support ---
+        long mcpeGuid = System.currentTimeMillis() + 1; // distinct from Bedrock GUID
+        Runnable mcpePongUpdater = () -> {
+            // Pong data is regenerated per-ping in LegacyRakNetServer
+        };
+        mcpeServer = new LegacyRakNetServer(
+                mcpeGuid, "RDForward Server", world, playerManager, chunkManager, mcpePongUpdater);
+
+        // --- Create front-end handler ---
+        udpFrontEndHandler = new UdpFrontEndHandler(mcpeServer);
+
+        // --- Start front-end UDP channel on port 19132 ---
+        try {
+            Bootstrap frontEndBootstrap = new Bootstrap()
+                    .group(workerGroup)
+                    .channel(NioDatagramChannel.class)
+                    .handler(udpFrontEndHandler);
+
+            udpFrontEndChannel = frontEndBootstrap.bind(udpPort).sync().channel();
+        } catch (Exception e) {
+            System.err.println("Failed to start UDP front-end on port " + udpPort
+                    + ": " + e.getMessage());
+            System.err.println("Legacy MCPE and Bedrock support disabled. TCP server still running.");
+            return;
+        }
+
+        // --- Start CloudburstMC internally on loopback (no external port) ---
+        BedrockPong initialPong = new BedrockPong()
                 .edition("MCPE")
                 .motd("RDForward Server")
                 .subMotd("RDForward")
@@ -227,20 +262,18 @@ public class RDServer {
                 .gameType("Creative")
                 .protocolVersion(BedrockProtocolConstants.CODEC.getProtocolVersion())
                 .version(BedrockProtocolConstants.CODEC.getMinecraftVersion())
-                .ipv4Port(bedrockPort)
-                .ipv6Port(bedrockPort)
-                .serverId(serverGuid)
+                .ipv4Port(udpPort)
+                .ipv6Port(udpPort)
+                .serverId(bedrockGuid)
                 .nintendoLimited(false);
-
-        io.netty.buffer.ByteBuf pongBuf = pong.toByteBuf();
 
         ServerBootstrap bedrockBootstrap = new ServerBootstrap()
                 .channelFactory(RakChannelFactory.server(NioDatagramChannel.class))
                 .group(workerGroup)
                 .option(RakChannelOption.RAK_HANDLE_PING, false)
-                .option(RakChannelOption.RAK_GUID, serverGuid)
+                .option(RakChannelOption.RAK_GUID, bedrockGuid)
                 .option(RakChannelOption.RAK_SUPPORTED_PROTOCOLS, new int[]{11})
-                .option(RakChannelOption.RAK_ADVERTISEMENT, pongBuf)
+                .option(RakChannelOption.RAK_ADVERTISEMENT, initialPong.toByteBuf())
                 .childHandler(new BedrockServerInitializer() {
                     @Override
                     protected void initSession(BedrockServerSession session) {
@@ -248,56 +281,42 @@ public class RDServer {
                         session.setPacketHandler(new BedrockLoginHandler(
                                 session, world, playerManager, chunkManager,
                                 bedrockBlockMapper, bedrockChunkConverter,
-                                bedrockRegistryData, pongUpdater));
+                                bedrockRegistryData, bedrockPongUpdater));
                     }
                 });
 
         try {
-            bedrockChannel = bedrockBootstrap.bind(bedrockPort).sync().channel();
-            System.out.println("Bedrock server started on port " + getActualBedrockPort()
+            // Bind to loopback:0 — CloudburstMC doesn't receive traffic directly;
+            // all packets are injected via pipeline from the front-end handler.
+            bedrockChannel = bedrockBootstrap.bind(new InetSocketAddress("127.0.0.1", 0))
+                    .sync().channel();
+
+            // Wire up the front-end → CloudburstMC pipeline injection.
+            // bedrockChannel.parent() is the internal NioDatagramChannel (via ProxyChannel).
+            Channel bedrockInternalChannel = bedrockChannel.parent();
+            udpFrontEndHandler.setBedrockInternalChannel(bedrockInternalChannel);
+
+            // Add outbound redirector so CloudburstMC's responses go through the front-end
+            bedrockInternalChannel.pipeline().addFirst("outboundRedirector",
+                    new BedrockOutboundRedirector(udpFrontEndChannel));
+
+            // Update pong advertisement on player join/leave
+            ServerEvents.PLAYER_JOIN.register((name, version) -> bedrockPongUpdater.run());
+            ServerEvents.PLAYER_LEAVE.register(name ->
+                    bedrockChannel.eventLoop().execute(bedrockPongUpdater));
+
+            System.out.println("Bedrock server started on port " + udpPort
                     + " (protocol: " + BedrockProtocolConstants.CODEC.getMinecraftVersion()
                     + ", version " + BedrockProtocolConstants.CODEC.getProtocolVersion() + ")");
-
-            // Update pong advertisement when ANY player (TCP or Bedrock) joins or leaves.
-            // PLAYER_JOIN fires after addPlayer, so the count is already correct.
-            ServerEvents.PLAYER_JOIN.register((name, version) -> pongUpdater.run());
-            // PLAYER_LEAVE fires before removePlayer, so defer the update to run
-            // after the current handler method completes (removePlayer included).
-            ServerEvents.PLAYER_LEAVE.register(name ->
-                    bedrockChannel.eventLoop().execute(pongUpdater));
         } catch (Exception e) {
-            System.err.println("Failed to start Bedrock server on port " + bedrockPort
-                    + ": " + e.getMessage());
-            System.err.println("Bedrock Edition support disabled. TCP server still running.");
+            System.err.println("Failed to start Bedrock server: " + e.getMessage());
+            System.err.println("Bedrock Edition support disabled. Legacy MCPE still active.");
         }
-    }
 
-    /**
-     * Start the Legacy MCPE server (UDP, custom RakNet v6 for MCPE 0.7.x clients).
-     */
-    private void startLegacyMCPEServer() {
-        int mcpePort = MCPEConstants.DEFAULT_PORT;
-        long mcpeGuid = System.currentTimeMillis() + 1; // distinct from Bedrock GUID
-
-        Runnable mcpePongUpdater = () -> {
-            // Pong data is regenerated per-ping in LegacyRakNetServer, so nothing to update here.
-            // This callback exists for consistency with the Bedrock pattern.
-        };
-
-        mcpeServer = new LegacyRakNetServer(
-                mcpeGuid, "RDForward Server", world, playerManager, chunkManager, mcpePongUpdater);
-
-        try {
-            mcpeChannel = mcpeServer.start(workerGroup, mcpePort);
-            System.out.println("Legacy MCPE server started on port " + mcpePort
-                    + " (protocol: " + MCPEConstants.MCPE_VERSION_STRING
-                    + ", version " + MCPEConstants.MCPE_PROTOCOL_VERSION_11
-                    + "-" + MCPEConstants.MCPE_PROTOCOL_VERSION_MAX + ")");
-        } catch (Exception e) {
-            System.err.println("Failed to start Legacy MCPE server on port " + mcpePort
-                    + ": " + e.getMessage());
-            System.err.println("Legacy MCPE support disabled. Other servers still running.");
-        }
+        System.out.println("Legacy MCPE server started on port " + udpPort
+                + " (protocol: " + MCPEConstants.MCPE_VERSION_STRING
+                + ", version " + MCPEConstants.MCPE_PROTOCOL_VERSION_11
+                + "-" + MCPEConstants.MCPE_PROTOCOL_VERSION_MAX + ")");
     }
 
     /**
@@ -315,8 +334,8 @@ public class RDServer {
         world.savePlayers(playerManager.getAllPlayers());
         chunkManager.saveAllDirty();
 
-        if (mcpeChannel != null) {
-            mcpeChannel.close();
+        if (udpFrontEndChannel != null) {
+            udpFrontEndChannel.close();
         }
         if (bedrockChannel != null) {
             bedrockChannel.close();
@@ -357,8 +376,8 @@ public class RDServer {
     }
     public void setBedrockPort(int bedrockPort) { this.bedrockPort = bedrockPort; }
     public int getActualBedrockPort() {
-        if (bedrockChannel != null) {
-            return ((InetSocketAddress) bedrockChannel.localAddress()).getPort();
+        if (udpFrontEndChannel != null) {
+            return ((InetSocketAddress) udpFrontEndChannel.localAddress()).getPort();
         }
         return bedrockPort;
     }

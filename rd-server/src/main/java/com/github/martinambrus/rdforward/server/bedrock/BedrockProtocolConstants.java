@@ -33,7 +33,7 @@ public final class BedrockProtocolConstants {
      */
     public static final BedrockCodec CODEC = Bedrock_v924.CODEC;
 
-    /** Default Bedrock Edition port (UDP/RakNet). */
+    /** Default Bedrock Edition port (UDP/RakNet). Shared with legacy MCPE via UdpFrontEndHandler. */
     public static final int DEFAULT_PORT = 19132;
 
     /** Compression threshold in bytes. Packets smaller than this are not compressed. */

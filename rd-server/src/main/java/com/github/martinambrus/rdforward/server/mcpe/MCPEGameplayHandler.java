@@ -9,6 +9,10 @@ import com.github.martinambrus.rdforward.world.BlockRegistry;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 
+import java.io.ByteArrayOutputStream;
+import java.util.zip.Deflater;
+import java.util.zip.DeflaterOutputStream;
+
 /**
  * Handles MCPE 0.7.0 gameplay packets after login.
  * Movement, block breaking/placement, chat, inventory, etc.
@@ -174,7 +178,13 @@ public class MCPEGameplayHandler {
         int blockZ = buf.readInt();
         int face = buf.readInt();
         int itemId = buf.readShort();
-        int meta = buf.readUnsignedByte();
+        // v17+: item aux/meta is short; v11-v14: byte
+        int meta;
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_17) {
+            meta = buf.readShort();
+        } else {
+            meta = buf.readUnsignedByte();
+        }
         int entityId = buf.readInt();
         // float fx, fy, fz, posX, posY, posZ — skip for now
 
@@ -287,28 +297,8 @@ public class MCPEGameplayHandler {
 
             world.setBlock(x, y, z, (byte) 0);
 
-            // Broadcast to other MCPE sessions
-            for (java.util.Map.Entry<java.net.InetSocketAddress, LegacyRakNetSession> entry
-                    : server.getSessions().entrySet()) {
-                LegacyRakNetSession other = entry.getValue();
-                if (other == session || other.getState() == LegacyRakNetSession.State.DISCONNECTED) continue;
-                if (other.getGameplayHandler() == null) continue;
-
-                MCPEPacketBuffer pkt = new MCPEPacketBuffer();
-                pkt.writeByte(wireId(MCPEConstants.UPDATE_BLOCK));
-                pkt.writeInt(x);
-                pkt.writeInt(z);
-                pkt.writeByte(y);
-                pkt.writeByte(0); // air
-                pkt.writeByte(0); // meta
-                server.sendGamePacket(other, pkt.getBuf());
-            }
-
-            // Broadcast as Classic packet for Java clients
-            com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket classicPkt =
-                    new com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket(
-                            (short) x, (short) y, (short) z, (byte) 0);
-            playerManager.broadcastPacketExcept(classicPkt, player);
+            // Broadcast block removal
+            broadcastUpdateBlock(x, y, z, 0, 0);
 
             // Confirm back to the breaking player
             MCPEPacketBuffer confirm = new MCPEPacketBuffer();
@@ -358,28 +348,8 @@ public class MCPEGameplayHandler {
 
             world.setBlock(bx, by, bz, (byte) 0);
 
-            // Broadcast to other MCPE sessions
-            for (java.util.Map.Entry<java.net.InetSocketAddress, LegacyRakNetSession> entry
-                    : server.getSessions().entrySet()) {
-                LegacyRakNetSession other = entry.getValue();
-                if (other == session || other.getState() == LegacyRakNetSession.State.DISCONNECTED) continue;
-                if (other.getGameplayHandler() == null) continue;
-
-                MCPEPacketBuffer pkt = new MCPEPacketBuffer();
-                pkt.writeByte(wireId(MCPEConstants.UPDATE_BLOCK));
-                pkt.writeInt(bx);
-                pkt.writeInt(bz);
-                pkt.writeByte(by);
-                pkt.writeByte(0); // air
-                pkt.writeByte(0); // meta
-                server.sendGamePacket(other, pkt.getBuf());
-            }
-
-            // Broadcast as Classic packet for Java clients
-            com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket classicPkt =
-                    new com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket(
-                            (short) bx, (short) by, (short) bz, (byte) 0);
-            playerManager.broadcastPacketExcept(classicPkt, player);
+            // Broadcast block removal
+            broadcastUpdateBlock(bx, by, bz, 0, 0);
 
             // Confirm back to the breaking player
             MCPEPacketBuffer confirm = new MCPEPacketBuffer();
@@ -503,6 +473,11 @@ public class MCPEGameplayHandler {
     // ========== Chunk Sending ==========
 
     private void sendChunkData(int chunkX, int chunkZ) {
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_17) {
+            sendFullChunkDataV17(chunkX, chunkZ);
+            return;
+        }
+
         int baseX = chunkX * 16;
         int baseZ = chunkZ * 16;
 
@@ -542,6 +517,107 @@ public class MCPEGameplayHandler {
 
             server.sendGamePacket(session, pkt.getBuf());
         }
+    }
+
+    /** v17 FullChunkDataPacket — same format as in MCPELoginHandler. */
+    private void sendFullChunkDataV17(int chunkX, int chunkZ) {
+        int baseX = chunkX * 16;
+        int baseZ = chunkZ * 16;
+        int height = 128;
+
+        byte[] blockIds = new byte[32768];
+        byte[] heightMap = new byte[256];
+
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                int worldX = baseX + x;
+                int worldZ = baseZ + z;
+                int topY = 0;
+
+                for (int y = 0; y < height; y++) {
+                    int idx = (x << 11) | (z << 7) | y;
+                    if (worldX >= 0 && worldX < world.getWidth()
+                            && worldZ >= 0 && worldZ < world.getDepth()
+                            && y < world.getHeight()) {
+                        int block = mapBlockId(world.getBlock(worldX, y, worldZ));
+                        blockIds[idx] = (byte) block;
+                        if (block != 0) topY = y + 1;
+                    }
+                }
+                heightMap[(z << 4) | x] = (byte) topY;
+            }
+        }
+
+        byte[] metadata = new byte[16384];
+
+        byte[] skyLight = new byte[16384];
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                int top = heightMap[(z << 4) | x] & 0xFF;
+                for (int y = 0; y < height; y++) {
+                    int idx = (x << 11) | (z << 7) | y;
+                    int nibbleIdx = idx >> 1;
+                    int light = (y >= top) ? 15 : 0;
+                    if ((idx & 1) == 0) {
+                        skyLight[nibbleIdx] |= (byte) (light & 0x0F);
+                    } else {
+                        skyLight[nibbleIdx] |= (byte) ((light << 4) & 0xF0);
+                    }
+                }
+            }
+        }
+
+        byte[] blockLight = new byte[16384];
+
+        byte[] biomeIds = new byte[256];
+        java.util.Arrays.fill(biomeIds, (byte) 1);
+
+        byte[] biomeColors = new byte[1024];
+        for (int i = 0; i < 256; i++) {
+            int offset = i * 4;
+            biomeColors[offset] = 0x01;
+            biomeColors[offset + 1] = 0x7A;
+            biomeColors[offset + 2] = (byte) 0xBD;
+            biomeColors[offset + 3] = 0x6B;
+        }
+
+        // Assemble: chunkX + chunkZ + terrain data (all inside compressed payload)
+        // No heightmap — client recalculates it.
+        int totalSize = 4 + 4 + blockIds.length + metadata.length + skyLight.length
+                + blockLight.length + biomeIds.length + biomeColors.length;
+        byte[] uncompressed = new byte[totalSize];
+        int pos = 0;
+        uncompressed[pos++] = (byte) (chunkX >> 24);
+        uncompressed[pos++] = (byte) (chunkX >> 16);
+        uncompressed[pos++] = (byte) (chunkX >> 8);
+        uncompressed[pos++] = (byte) chunkX;
+        uncompressed[pos++] = (byte) (chunkZ >> 24);
+        uncompressed[pos++] = (byte) (chunkZ >> 16);
+        uncompressed[pos++] = (byte) (chunkZ >> 8);
+        uncompressed[pos++] = (byte) chunkZ;
+        System.arraycopy(blockIds, 0, uncompressed, pos, blockIds.length); pos += blockIds.length;
+        System.arraycopy(metadata, 0, uncompressed, pos, metadata.length); pos += metadata.length;
+        System.arraycopy(skyLight, 0, uncompressed, pos, skyLight.length); pos += skyLight.length;
+        System.arraycopy(blockLight, 0, uncompressed, pos, blockLight.length); pos += blockLight.length;
+        System.arraycopy(biomeIds, 0, uncompressed, pos, biomeIds.length); pos += biomeIds.length;
+        System.arraycopy(biomeColors, 0, uncompressed, pos, biomeColors.length);
+
+        byte[] compressed;
+        try {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            DeflaterOutputStream dos = new DeflaterOutputStream(baos);
+            dos.write(uncompressed);
+            dos.finish();
+            dos.close();
+            compressed = baos.toByteArray();
+        } catch (java.io.IOException e) {
+            throw new RuntimeException("zlib compress failed", e);
+        }
+
+        MCPEPacketBuffer pkt = new MCPEPacketBuffer();
+        pkt.writeByte(MCPEConstants.FULL_CHUNK_DATA_V17);
+        pkt.writeBytes(compressed);
+        server.sendGamePacket(session, pkt.getBuf());
     }
 
     private int mapBlockId(int internalId) {

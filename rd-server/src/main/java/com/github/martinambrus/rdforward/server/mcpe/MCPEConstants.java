@@ -12,10 +12,11 @@ public final class MCPEConstants {
     public static final int MCPE_PROTOCOL_VERSION_11 = 11; // 0.7.0-0.7.3
     public static final int MCPE_PROTOCOL_VERSION_12 = 12; // 0.7.4-0.7.6
     public static final int MCPE_PROTOCOL_VERSION_14 = 14; // 0.8.0 (13 was dev-only)
+    public static final int MCPE_PROTOCOL_VERSION_17 = 17; // 0.9.0 (15-16 were dev-only)
     /** Highest supported protocol version (for pong advertisement). */
-    public static final int MCPE_PROTOCOL_VERSION_MAX = MCPE_PROTOCOL_VERSION_14;
-    public static final String MCPE_VERSION_STRING = "0.8.0";
-    public static final int DEFAULT_PORT = 19133;
+    public static final int MCPE_PROTOCOL_VERSION_MAX = MCPE_PROTOCOL_VERSION_17;
+    public static final String MCPE_VERSION_STRING = "0.9.0";
+    public static final int DEFAULT_PORT = 19132;
 
     // --- RakNet ---
     public static final byte[] RAKNET_MAGIC = {
@@ -120,6 +121,10 @@ public final class MCPEConstants {
     public static final byte ENTITY_DATA_V12     = (byte) 0xB7; // protocol 12+ (tile entity NBT)
     // 0xB8 unused
     public static final byte PLAYER_INPUT        = (byte) 0xB9;
+    /** v17+: Full column chunk data (zlib compressed). Wire ID not shifted — v17-specific. */
+    public static final byte FULL_CHUNK_DATA_V17 = (byte) 0xBA;
+    /** v17+: Server tells client to unload a chunk. */
+    public static final byte UNLOAD_CHUNK_V17    = (byte) 0xBB;
     public static final byte ROTATE_HEAD         = (byte) 0xFF;
 
     // --- Login status codes ---
