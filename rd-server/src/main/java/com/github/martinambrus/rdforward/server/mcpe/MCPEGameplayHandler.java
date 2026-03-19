@@ -176,7 +176,13 @@ public class MCPEGameplayHandler {
         int blockX = buf.readInt();
         int blockY = buf.readInt();
         int blockZ = buf.readInt();
-        int face = buf.readInt();
+        // v17+: face is byte (UseItemPacket format changed at 0.9.0); v11-v14: int
+        int face;
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_17) {
+            face = buf.readUnsignedByte();
+        } else {
+            face = buf.readInt();
+        }
         int itemId = buf.readShort();
         // v17+: item aux/meta is short; v11-v14: byte
         int meta;
@@ -640,6 +646,7 @@ public class MCPEGameplayHandler {
         System.out.println("[MCPE] " + player.getUsername() + " disconnected");
 
         ServerEvents.PLAYER_LEAVE.invoker().onPlayerLeave(player.getUsername());
+        world.rememberPlayerPosition(player);
         playerManager.broadcastPlayerDespawn(player);
         playerManager.removePlayerById(player.getPlayerId());
         pongUpdater.run();

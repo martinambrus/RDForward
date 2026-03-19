@@ -302,9 +302,8 @@ public class MCPELoginHandler {
         pkt.writeInt(MCPEConstants.GAMEMODE_CREATIVE); // gamemode
         pkt.writeInt(player.getPlayerId() + 1);   // entity ID (1-based)
         if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_17) {
-            // v17+: world spawn position (ints) after eid, before player position
+            // v17+: world spawn position (2D, no Y) after eid, before player position
             pkt.writeInt((int) x);
-            pkt.writeInt((int) y);
             pkt.writeInt((int) z);
         }
         pkt.writeFloat(x);                        // player X
