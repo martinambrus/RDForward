@@ -83,6 +83,9 @@ public class MCPEGameplayHandler {
             case 0x9F: // PLAYER_EQUIPMENT
                 handlePlayerEquipment(payload);
                 break;
+            case 0x97: // UPDATE_BLOCK (C2S) — v17-v20 uses this for creative block breaking
+                handleUpdateBlock(payload);
+                break;
             case 0xA3: // PLAYER_ACTION
                 handlePlayerAction(payload);
                 break;
@@ -191,14 +194,41 @@ public class MCPEGameplayHandler {
         }
     }
 
+    /**
+     * Handle C2S UpdateBlock — v17-v20 clients send this as client-side prediction.
+     * Breaking is handled server-side by arm-swing raycast (handleAnimate),
+     * placement by handleUseItem. If the client predicted a block removal that we
+     * didn't authorize, send a correction back with the actual block state.
+     * Format: x(int) + z(int) + y(byte) + blockId(byte) + meta(byte).
+     */
+    private void handleUpdateBlock(ByteBuf payload) {
+        MCPEPacketBuffer buf = new MCPEPacketBuffer(payload);
+        int x = buf.readInt();
+        int z = buf.readInt();
+        int y = buf.readUnsignedByte();
+        int blockId = buf.readUnsignedByte();
+        int meta = buf.readUnsignedByte();
+
+        if (!world.inBounds(x, y, z)) return;
+
+        // Client predicted a block removal — correct it if the block is still there
+        if (blockId == 0) {
+            int actual = world.getBlock(x, y, z);
+            if (actual != 0) {
+                // Block is still there on the server — send correction
+                sendUpdateBlockConfirm(x, y, z, actual, 0);
+            }
+        }
+    }
+
     private void handleUseItem(ByteBuf payload) {
         MCPEPacketBuffer buf = new MCPEPacketBuffer(payload);
         int blockX = buf.readInt();
         int blockY = buf.readInt();
         int blockZ = buf.readInt();
-        // v17+: face is byte; v11-v14: face is int
+        // v20+: face is byte; v11-v18: face is int
         int face;
-        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_17) {
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_20) {
             face = buf.readUnsignedByte();
         } else {
             face = buf.readInt();
@@ -267,6 +297,10 @@ public class MCPEGameplayHandler {
                 : BlockRegistry.COBBLESTONE;
 
         world.setBlock(targetX, targetY, targetZ, (byte) blockId);
+
+        // Suppress arm-swing raycast that accompanies placement (v17-v20 sends
+        // both UseItem and Animate for the same tap)
+        lastBreakTime = System.currentTimeMillis();
 
         System.out.println("[MCPE] Placed block " + blockId + " at " + targetX + "," + targetY + "," + targetZ);
 
@@ -407,7 +441,7 @@ public class MCPEGameplayHandler {
     }
 
     /** Minimum interval between creative block breaks via arm swing (ms). */
-    private static final long BREAK_COOLDOWN_MS = 300;
+    private static final long BREAK_COOLDOWN_MS = 500;
     /** Creative mode reach distance (blocks). */
     private static final double CREATIVE_REACH = 5.0;
 
@@ -427,10 +461,16 @@ public class MCPEGameplayHandler {
         // Broadcast arm swing to other players
         broadcastAnimate(entityId, action);
 
-        // Action 1 = arm swing — attempt server-side creative block break via raycast
-        // (MCPE 0.7.0 client doesn't send RemoveBlock/PlayerAction for creative breaks)
-        // v14+ clients send PlayerAction for block breaks, so skip raycast to avoid double-break
-        if (action == 1 && session.getMcpeProtocolVersion() < MCPEConstants.MCPE_PROTOCOL_VERSION_14) {
+        // Action 1 = arm swing — attempt server-side creative block break via raycast.
+        // v11-v13: only mechanism for block breaking (no RemoveBlock/PlayerAction).
+        // v14: sends RemoveBlock, so skip raycast.
+        // v17-v18: uses arm swing for breaking.
+        // v20: sends RemoveBlock (0x01=WORLD_IMMUTABLE in v20, not set), so skip raycast.
+        // v27+: sends RemoveBlock or PlayerAction, so skip raycast.
+        if (action == 1
+                && session.getMcpeProtocolVersion() < MCPEConstants.MCPE_PROTOCOL_VERSION_27
+                && session.getMcpeProtocolVersion() != MCPEConstants.MCPE_PROTOCOL_VERSION_14
+                && session.getMcpeProtocolVersion() != MCPEConstants.MCPE_PROTOCOL_VERSION_20) {
             long now = System.currentTimeMillis();
             if (now - lastBreakTime < BREAK_COOLDOWN_MS) return;
 
@@ -518,7 +558,10 @@ public class MCPEGameplayHandler {
                 pkt.writeInt(entityId);
             }
             pkt.writeFloat(x);
-            pkt.writeFloat(y);
+            // v17+ S2C MovePlayer uses eye-level Y; v11-v13 use feet-level
+            float sendY = (pv >= MCPEConstants.MCPE_PROTOCOL_VERSION_17)
+                    ? y : y - (float) PLAYER_EYE_HEIGHT;
+            pkt.writeFloat(sendY);
             pkt.writeFloat(z);
             if (pv >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
                 pkt.writeFloat(yaw);
@@ -865,6 +908,7 @@ public class MCPEGameplayHandler {
 
         System.out.println("[MCPE] " + player.getUsername() + " disconnected");
 
+        playerManager.broadcastChat((byte) 0, player.getUsername() + " left the game");
         ServerEvents.PLAYER_LEAVE.invoker().onPlayerLeave(player.getUsername());
         world.rememberPlayerPosition(player);
         playerManager.broadcastPlayerDespawn(player);

@@ -17,9 +17,10 @@ public final class MCPEConstants {
     public static final int MCPE_PROTOCOL_VERSION_20 = 20; // 0.10.0 (19 was pre-release)
     public static final int MCPE_PROTOCOL_VERSION_27 = 27; // 0.11.0 (21-26 were dev-only)
     public static final int MCPE_PROTOCOL_VERSION_34 = 34; // 0.12.1 (28-33 were dev-only)
+    public static final int MCPE_PROTOCOL_VERSION_38 = 38; // 0.13.0 (35-37 were dev-only)
     /** Highest supported protocol version (for pong advertisement). */
-    public static final int MCPE_PROTOCOL_VERSION_MAX = MCPE_PROTOCOL_VERSION_34;
-    public static final String MCPE_VERSION_STRING = "0.12.1";
+    public static final int MCPE_PROTOCOL_VERSION_MAX = MCPE_PROTOCOL_VERSION_38;
+    public static final String MCPE_VERSION_STRING = "0.13.0";
     public static final int DEFAULT_PORT = 19132;
 
     // --- RakNet ---

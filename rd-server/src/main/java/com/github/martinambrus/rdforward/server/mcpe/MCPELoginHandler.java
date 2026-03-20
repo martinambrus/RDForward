@@ -125,7 +125,7 @@ public class MCPELoginHandler {
         // Accept known protocol versions only (skip dev-only 13, 15-16, 19, 21-26, 28-33)
         boolean validProtocol = protocol1 == 11 || protocol1 == 12 || protocol1 == 14
                 || protocol1 == 17 || protocol1 == 18 || protocol1 == 20
-                || protocol1 == 27 || protocol1 == 34;
+                || protocol1 == 27 || protocol1 == 34 || protocol1 == 38;
         if (!validProtocol) {
             int status = (protocol1 > MCPEConstants.MCPE_PROTOCOL_VERSION_MAX)
                     ? MCPEConstants.LOGIN_SERVER_OUTDATED
@@ -321,10 +321,12 @@ public class MCPELoginHandler {
 
             sendPlayerListAddForOther(other, oeid);
 
+            java.util.UUID otherUuid = java.util.UUID.nameUUIDFromBytes(
+                    other.getUsername().getBytes(java.nio.charset.StandardCharsets.UTF_8));
             MCPEPacketBuffer addPkt = new MCPEPacketBuffer();
             addPkt.writeByte(wireId(MCPEConstants.ADD_PLAYER));
-            addPkt.writeLong(0);    // UUID most significant
-            addPkt.writeLong(oeid); // UUID least significant
+            addPkt.writeLong(otherUuid.getMostSignificantBits());
+            addPkt.writeLong(otherUuid.getLeastSignificantBits());
             addPkt.writeString(other.getUsername());
             addPkt.writeLong(oeid);
             addPkt.writeFloat(ox);
@@ -376,15 +378,25 @@ public class MCPELoginHandler {
         double y = player.getDoubleY(); // eye-level (internal)
         double z = player.getDoubleZ();
 
-        // v27+ MovePlayer Y = eye-level; v11-v20 MovePlayer Y = feet-level
-        float moveY = (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27)
+        // v17+ MovePlayer Y = eye-level (PocketMine Alpha_1.4dev confirms); v11-v13 = feet-level
+        float moveY = (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_17)
                 ? (float) y : (float) (y - PLAYER_EYE_HEIGHT);
         sendMovePlayer(player.getPlayerId() + 1, (float) x, moveY, (float) z, 0, 0, 2);
-        // v27+: 0x01=WORLD_IMMUTABLE (bad!), 0x20=AUTO_JUMP, 0x40=ALLOW_FLIGHT
-        // v11-v20: 0x01 was creative/fly flag (different meaning)
-        int advFlags = (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27)
-                ? 0x20 | 0x40  // AUTO_JUMP + ALLOW_FLIGHT
-                : 0x01 | 0x40; // v11-v20 flags
+        // v27+: 0x01=WORLD_IMMUTABLE (prevents block breaking!), 0x20=AUTO_JUMP, 0x40=ALLOW_FLIGHT
+        // v14: 0x01=WORLD_IMMUTABLE (same as v27 — prevents RemoveBlock), use 0x20|0x40 instead
+        // 0x01 meaning differs per version:
+        // v11-v13: creative/fly flag (needed)
+        // v14, v20: WORLD_IMMUTABLE (prevents block breaking — skip it)
+        // v17-v18: needed for proper behavior (v17 confirmed working with it)
+        // v27+: WORLD_IMMUTABLE (skip it)
+        int advFlags;
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27
+                || session.getMcpeProtocolVersion() == MCPEConstants.MCPE_PROTOCOL_VERSION_14
+                || session.getMcpeProtocolVersion() == MCPEConstants.MCPE_PROTOCOL_VERSION_20) {
+            advFlags = 0x20 | 0x40; // AUTO_JUMP + ALLOW_FLIGHT, no WORLD_IMMUTABLE
+        } else {
+            advFlags = 0x01 | 0x40; // v11-v13, v17-v18
+        }
         sendAdventureSettings(advFlags);
         sendInventory();
 
@@ -525,10 +537,11 @@ public class MCPELoginHandler {
         pkt.writeByte(wireId(MCPEConstants.START_GAME));
         pkt.writeInt(0);                          // seed
         if (isV34) {
-            pkt.writeByte(0);                     // v34: dimension (byte, not int!)
-        } else if (isV17) {
-            pkt.writeInt(0);                      // v17-v27: dimension (int)
+            pkt.writeByte(0);                     // v34: dimension (byte)
+        } else if (isV27) {
+            pkt.writeInt(0);                      // v27: dimension (int)
         }
+        // v11-v20: NO dimension field (PocketMine Alpha_1.4dev confirms)
         pkt.writeInt(MCPEConstants.GENERATOR_FLAT); // generator type
         if (!isV27 || isV34) {
             pkt.writeInt(MCPEConstants.GAMEMODE_CREATIVE); // gamemode (removed in v27, restored in v34)
@@ -544,8 +557,9 @@ public class MCPELoginHandler {
             pkt.writeInt((int) y);
             pkt.writeInt((int) z);
         } else if (isV17) {
-            // v17-v20: 2D world spawn position (spawnX, spawnZ)
+            // v17-v20: 3D world spawn (PocketMine Alpha_1.4dev confirms)
             pkt.writeInt((int) x);
+            pkt.writeInt((int) y);
             pkt.writeInt((int) z);
         }
         pkt.writeFloat(x);                        // player X
@@ -629,14 +643,16 @@ public class MCPELoginHandler {
      * Must be sent before AddPlayer so the client knows the skin.
      */
     private void sendPlayerListAdd(ConnectedPlayer p) {
+        java.util.UUID uuid = java.util.UUID.nameUUIDFromBytes(
+                p.getUsername().getBytes(java.nio.charset.StandardCharsets.UTF_8));
         MCPEPacketBuffer pkt = new MCPEPacketBuffer();
         pkt.writeByte(MCPEConstants.V34_PLAYER_LIST); // 0xC3 (direct wire ID)
         pkt.writeByte(0); // TYPE_ADD
         pkt.writeInt(1);  // entry count
-        // Entry: uuid(2 longs), entityId(long), playerName(string), slim(byte), skinData(putString)
+        // Entry: uuid(2 longs), entityId(long), playerName(string), slim(byte), [v38: skinTransparent(byte)], skinData(short+bytes)
         long eid = p.getPlayerId() + 1;
-        pkt.writeLong(0);   // UUID most significant bits
-        pkt.writeLong(eid); // UUID least significant bits
+        pkt.writeLong(uuid.getMostSignificantBits());
+        pkt.writeLong(uuid.getLeastSignificantBits());
         pkt.writeLong(eid); // entityId
         pkt.writeString(p.getUsername());
         byte[] skinData = p.getMcpeSkinData();
@@ -644,6 +660,9 @@ public class MCPELoginHandler {
             skinData = MCPEConstants.DEFAULT_SKIN_64x64;
         }
         pkt.writeByte(0); // slim = 0 (Steve model)
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_38) {
+            pkt.writeByte(0); // v38+: skinTransparent
+        }
         pkt.writeShort(skinData.length);
         pkt.writeBytes(skinData);
         server.sendGamePacket(session, pkt.getBuf());
@@ -651,12 +670,14 @@ public class MCPELoginHandler {
 
     /** Send a v34 PlayerListAdd for another player (used in doSpawn loop). */
     private void sendPlayerListAddForOther(ConnectedPlayer p, int entityId) {
+        java.util.UUID uuid = java.util.UUID.nameUUIDFromBytes(
+                p.getUsername().getBytes(java.nio.charset.StandardCharsets.UTF_8));
         MCPEPacketBuffer pkt = new MCPEPacketBuffer();
         pkt.writeByte(MCPEConstants.V34_PLAYER_LIST);
         pkt.writeByte(0); // TYPE_ADD
         pkt.writeInt(1);  // entry count
-        pkt.writeLong(0);         // UUID most significant
-        pkt.writeLong(entityId);  // UUID least significant
+        pkt.writeLong(uuid.getMostSignificantBits());
+        pkt.writeLong(uuid.getLeastSignificantBits());
         pkt.writeLong(entityId);  // entityId
         pkt.writeString(p.getUsername());
         byte[] skinData = p.getMcpeSkinData();
@@ -664,6 +685,9 @@ public class MCPELoginHandler {
             skinData = MCPEConstants.DEFAULT_SKIN_64x64;
         }
         pkt.writeByte(0); // slim = 0 (Steve model)
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_38) {
+            pkt.writeByte(0); // v38+: skinTransparent
+        }
         pkt.writeShort(skinData.length);
         pkt.writeBytes(skinData);
         server.sendGamePacket(session, pkt.getBuf());

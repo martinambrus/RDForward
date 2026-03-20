@@ -215,15 +215,15 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
         int maxPlayers = com.github.martinambrus.rdforward.server.PlayerManager.MAX_PLAYERS;
 
         if (hasClientGuid) {
-            // 0.9.0+ client — send MCPE format pong only
+            // 0.9.0+ client — advertise latest supported version.
+            // Older clients show "Outdated Client" but can still connect.
             String mcpePong = "MCPE;" + serverName + ";"
                     + MCPEConstants.MCPE_PROTOCOL_VERSION_MAX + ";"
                     + MCPEConstants.MCPE_VERSION_STRING + ";"
                     + playerCount + ";" + maxPlayers;
             sendPong(ctx, sender, pingTime, mcpePong);
         } else {
-            // Could be 0.7.x or 0.11.0+ — send both formats.
-            // MCPE format first (processed by 0.11.0+), MCCPP format second (processed by 0.7.x).
+            // Could be 0.7.x or 0.11.0+ — send MCPE + MCCPP formats.
             String mcpePong = "MCPE;" + serverName + ";"
                     + MCPEConstants.MCPE_PROTOCOL_VERSION_MAX + ";"
                     + MCPEConstants.MCPE_VERSION_STRING + ";"
@@ -441,11 +441,17 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
         }
 
         // BatchPacket — decompress and dispatch inner packets.
-        // v27: 0xB1, v34: 0x92. Both safe to handle before protocol version is known.
-        if (gamePacketId == (MCPEConstants.V27_BATCH & 0xFF)
-                || gamePacketId == (MCPEConstants.V34_BATCH & 0xFF)) {
-            handleBatchPacket(ctx, session, payload);
-            return;
+        // v27: 0xB1, v34: 0x92. Skip for v11-v20 sessions where 0xB1 collides with
+        // ContainerClose wire ID (v14+ shift). Allow for unknown (0, pre-login) since
+        // v34 sends Login inside a batch.
+        {
+            int pv = session.getMcpeProtocolVersion();
+            boolean couldBeBatch = pv == 0 || pv >= MCPEConstants.MCPE_PROTOCOL_VERSION_27;
+            if (couldBeBatch && (gamePacketId == (MCPEConstants.V27_BATCH & 0xFF)
+                    || gamePacketId == (MCPEConstants.V34_BATCH & 0xFF))) {
+                handleBatchPacket(ctx, session, payload);
+                return;
+            }
         }
 
         // Log game packets at RakNet level for debugging (skip frequent MovePlayer)

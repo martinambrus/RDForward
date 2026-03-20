@@ -86,4 +86,46 @@ Face remains byte. entityId now 64-bit.
 Wire: [byte 0x30] [int payloadLength] [zlib-compressed payload]
 Decompressed: concatenated serialized packets (each starts with ID byte, no per-packet length prefix).
 
+### AddPlayerPacket (0x07) — CONFIRMED format (Ninecraft client)
+Wire: clientId(long), username(string), entityId(long), x(float), y(float), z(float), speedX(float), speedY(float), speedZ(float), yaw(float), headYaw(float), pitch(float), itemId(short), itemDamage(short), slim(byte), skin(string), metadata
+- Speed fields ARE required (omitting them shifts all subsequent fields by 12 bytes)
+- Skin: putString format (BE short length + raw RGBA bytes). 16384 bytes = 64x64, 8192 = 64x32. Length 0 = no skin.
+- Y coordinate is feet-level (not eye-level)
+- Without speed fields, client reads metadata as skin/item fields. Nametag still works via SET_ENTITY_DATA override, but skin is garbled.
+
+### RemovePlayerPacket (0x08)
+Wire: entityId(long), clientId(long)
+
+### SetEntityDataPacket (0x1D)
+Wire: entityId(long), metadata
+- entityId upgraded from int32 to int64
+
+### TextPacket (0x04)
+Wire: type(byte), source(string), message(string)
+- type 1 = CHAT
+
+### UpdateBlockPacket (0x10) — SILENTLY IGNORED by Ninecraft client
+Wire: x(int), z(int), y(byte), blockId(byte), flagsAndMeta(byte)
+- Upper nibble of flagsAndMeta = flags (NEIGHBORS|NETWORK|PRIORITY = 0x0B)
+- Workaround: resend entire chunk via FullChunkData after block changes
+
+### Metadata encoding
+- Header byte: (type << 5) | (index & 0x1F)
+- String values: type=4, LE short length + UTF-8 bytes
+- Short values: type=1, LE short
+- Byte values: type=0, byte
+- Terminator: 0x7F
+
+### Skin data
+- Login sends: slim(byte) + putString(skinData) where putString = BE short length + raw bytes
+- Client skin is 16384 bytes (64x64 RGBA) for 0.11.0
+- Skin stored on ConnectedPlayer for forwarding between MCPE clients
+- Cross-protocol players (Alpha/Classic) use Steve skin from MC 1.8 JAR (resource: mcpe/steve_skin_64x64.raw)
+
+### Creative block breaking
+- START_BREAK (action=0) triggers instant destroy for v14+
+- STOP_BREAK should be ignored (prevents double-break)
+- 300ms cooldown between breaks
+- Raycast (Animate handler) disabled for v14+ (they send PlayerAction)
+
 ## All multi-byte fields use big-endian wire encoding.

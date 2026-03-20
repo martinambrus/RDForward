@@ -96,22 +96,27 @@ public class MCPESessionWrapper {
         float yaw = ((pkt.getYaw() + 128) & 0xFF) * 360.0f / 256.0f;
         float pitch = (pkt.getPitch() & 0xFF) * 360.0f / 256.0f;
 
-        // v34: send PlayerListAdd before AddPlayer (registers skin)
+        // v34+: send PlayerListAdd before AddPlayer (registers skin)
         if (isV34) {
             ConnectedPlayer spawnedPlayer = playerManager.getPlayer((byte) pkt.getPlayerId());
             byte[] skinData = (spawnedPlayer != null) ? spawnedPlayer.getMcpeSkinData() : null;
             if (skinData == null || skinData.length == 0) {
                 skinData = MCPEConstants.DEFAULT_SKIN_64x64;
             }
+            // Generate a proper UUID from player name (v38+ clients validate UUIDs)
+            java.util.UUID uuid = java.util.UUID.nameUUIDFromBytes(name.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             MCPEPacketBuffer plPkt = new MCPEPacketBuffer();
             plPkt.writeByte(MCPEConstants.V34_PLAYER_LIST);
             plPkt.writeByte(0); // TYPE_ADD
             plPkt.writeInt(1);  // entry count
-            plPkt.writeLong(0);         // UUID most significant
-            plPkt.writeLong(entityId);  // UUID least significant
+            plPkt.writeLong(uuid.getMostSignificantBits());
+            plPkt.writeLong(uuid.getLeastSignificantBits());
             plPkt.writeLong(entityId);  // entityId
             plPkt.writeString(name);
             plPkt.writeByte(0); // slim = 0 (Steve model)
+            if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_38) {
+                plPkt.writeByte(0); // v38+: skinTransparent
+            }
             plPkt.writeShort(skinData.length);
             plPkt.writeBytes(skinData);
             server.sendGamePacket(session, plPkt.getBuf());
@@ -123,8 +128,9 @@ public class MCPESessionWrapper {
             // v34: uuid(2 longs), username, entityId(long), x, y, z,
             //       speedX, speedY, speedZ, yaw, headYaw, pitch,
             //       slot(compound — air), metadata
-            buf.writeLong(0);         // UUID most significant
-            buf.writeLong(entityId);  // UUID least significant
+            java.util.UUID addUuid = java.util.UUID.nameUUIDFromBytes(name.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            buf.writeLong(addUuid.getMostSignificantBits());
+            buf.writeLong(addUuid.getLeastSignificantBits());
             buf.writeString(name);
             buf.writeLong(entityId);
             buf.writeFloat(x);
@@ -215,8 +221,12 @@ public class MCPESessionWrapper {
         }
         if (isV34) {
             // v34: UUID (2 longs) instead of clientId
-            buf.writeLong(0);         // UUID most significant
-            buf.writeLong(entityId);  // UUID least significant
+            ConnectedPlayer despawned = playerManager.getPlayer((byte) pkt.getPlayerId());
+            java.util.UUID despawnUuid = (despawned != null)
+                    ? java.util.UUID.nameUUIDFromBytes(despawned.getUsername().getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                    : new java.util.UUID(0, entityId);
+            buf.writeLong(despawnUuid.getMostSignificantBits());
+            buf.writeLong(despawnUuid.getLeastSignificantBits());
         } else {
             buf.writeLong(entityId); // clientID (always long)
         }
@@ -224,22 +234,30 @@ public class MCPESessionWrapper {
 
         // v34: also send PlayerList TYPE_REMOVE
         if (isV34) {
+            ConnectedPlayer despawned = playerManager.getPlayer((byte) pkt.getPlayerId());
+            java.util.UUID despawnUuid = (despawned != null)
+                    ? java.util.UUID.nameUUIDFromBytes(despawned.getUsername().getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                    : new java.util.UUID(0, entityId);
             MCPEPacketBuffer plPkt = new MCPEPacketBuffer();
             plPkt.writeByte(MCPEConstants.V34_PLAYER_LIST);
             plPkt.writeByte(1); // TYPE_REMOVE
             plPkt.writeInt(1);  // entry count
-            plPkt.writeLong(0);         // UUID most significant
-            plPkt.writeLong(entityId);  // UUID least significant
+            plPkt.writeLong(despawnUuid.getMostSignificantBits());
+            plPkt.writeLong(despawnUuid.getLeastSignificantBits());
             server.sendGamePacket(session, plPkt.getBuf());
         }
     }
 
     private void translatePlayerTeleport(PlayerTeleportPacket pkt) {
         float x = pkt.getX() / 32.0f;
-        // v27 MovePlayer uses eye-level Y; older versions use feet-level
-        float y = (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27)
-                ? pkt.getY() / 32.0f  // eye-level (internal convention matches)
-                : pkt.getY() / 32.0f - (float) PLAYER_EYE_HEIGHT; // feet-level
+        // v17+ MovePlayer S2C uses eye-level Y (PocketMine Alpha_1.4dev confirms);
+        // v11-v13 use feet-level. Internal Y is already eye-level.
+        float y;
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_17) {
+            y = pkt.getY() / 32.0f;  // eye-level (internal convention matches v17+)
+        } else {
+            y = pkt.getY() / 32.0f - (float) PLAYER_EYE_HEIGHT; // feet-level for v11-v13
+        }
         float z = pkt.getZ() / 32.0f;
         int entityId = (pkt.getPlayerId() & 0xFF) + 1;
         // Classic yaw 0=North, MCPE yaw 0=South → add 180°

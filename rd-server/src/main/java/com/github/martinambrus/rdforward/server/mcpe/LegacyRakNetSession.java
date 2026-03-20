@@ -50,8 +50,8 @@ public class LegacyRakNetSession {
     // Split packet reassembly: splitId -> (splitIndex -> data)
     private final Map<Integer, SplitAssembly> splitAssemblies = new HashMap<>();
 
-    // MCPE protocol version (11 = 0.7.0-0.7.3, 12 = 0.7.4-0.7.6)
-    private int mcpeProtocolVersion = MCPEConstants.MCPE_PROTOCOL_VERSION_11;
+    // MCPE protocol version (0 = unknown/pre-login, set to actual version during login)
+    private int mcpeProtocolVersion = 0;
 
     // Game handler (set after connected handshake)
     private MCPELoginHandler loginHandler;
