@@ -37,6 +37,8 @@ public class MCPELoginHandler {
     private final Runnable pongUpdater;
 
     private String username;
+    private int clientSlim;
+    private byte[] clientSkinData;
     private ConnectedPlayer player;
     private MCPESessionWrapper sessionWrapper;
 
@@ -57,7 +59,8 @@ public class MCPELoginHandler {
     }
 
     public void handlePacket(ChannelHandlerContext ctx, int packetId, ByteBuf payload) {
-        if (packetId == (MCPEConstants.LOGIN & 0xFF)) {
+        // Accept both v11-v20 LOGIN (0x82) and v27 LOGIN (0x01) — protocol version unknown until parsed
+        if (packetId == (MCPEConstants.LOGIN & 0xFF) || packetId == (MCPEConstants.V27_LOGIN & 0xFF)) {
             handleLogin(ctx, payload);
         } else if (packetId == (MCPEConstants.READY & 0xFF)) {
             handleReady(ctx, payload);
@@ -74,16 +77,27 @@ public class MCPELoginHandler {
         int protocol1 = buf.readInt();
         int protocol2 = buf.readInt();
         int clientId = buf.readInt();
-        // loginData (skin etc.) — skip for now
-        // String loginData = buf.readString();
+
+        // Read skin data from login packet (v21+: slim byte + skin string)
+        if (buf.readableBytes() > 0) {
+            clientSlim = buf.readUnsignedByte();
+            if (buf.readableBytes() >= 2) {
+                int skinLen = buf.readUnsignedShort();
+                if (skinLen > 0 && skinLen <= buf.readableBytes()) {
+                    clientSkinData = new byte[skinLen];
+                    buf.getBuf().readBytes(clientSkinData);
+                    System.out.println("[MCPE] Client skin: " + skinLen + " bytes, slim=" + clientSlim);
+                }
+            }
+        }
 
         System.out.println("[MCPE] Login from " + username
                 + " (protocol=" + protocol1 + ", clientId=" + clientId + ")");
 
-        // Accept protocol 11-12, 14, 17 (skip dev-only 13, 15, 16)
-        if (protocol1 < MCPEConstants.MCPE_PROTOCOL_VERSION_11
-                || protocol1 > MCPEConstants.MCPE_PROTOCOL_VERSION_MAX
-                || protocol1 == 13 || protocol1 == 15 || protocol1 == 16) {
+        // Accept known protocol versions only (skip dev-only 13, 15-16, 19, 21-26)
+        boolean validProtocol = protocol1 == 11 || protocol1 == 12 || protocol1 == 14
+                || protocol1 == 17 || protocol1 == 18 || protocol1 == 20 || protocol1 == 27;
+        if (!validProtocol) {
             int status = (protocol1 > MCPEConstants.MCPE_PROTOCOL_VERSION_MAX)
                     ? MCPEConstants.LOGIN_SERVER_OUTDATED
                     : MCPEConstants.LOGIN_CLIENT_OUTDATED;
@@ -172,7 +186,11 @@ public class MCPELoginHandler {
         if (isV17) {
             MCPEPacketBuffer hp = new MCPEPacketBuffer();
             hp.writeByte(wireId(MCPEConstants.SET_HEALTH));
-            hp.writeByte(20);
+            if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
+                hp.writeInt(20); // v27: int health
+            } else {
+                hp.writeByte(20); // v11-v20: byte health
+            }
             server.sendGamePacket(session, hp.getBuf());
         }
 
@@ -195,14 +213,19 @@ public class MCPELoginHandler {
             double x = player.getDoubleX();
             double y = player.getDoubleY();
             double z = player.getDoubleZ();
-            MCPEPacketBuffer resp = new MCPEPacketBuffer();
-            resp.writeByte(wireId(MCPEConstants.RESPAWN));
-            resp.writeInt(player.getPlayerId() + 1);
-            resp.writeFloat((float) x);
-            resp.writeFloat((float) (y - PLAYER_EYE_HEIGHT));
-            resp.writeFloat((float) z);
-            server.sendGamePacket(session, resp.getBuf());
-            // v17 client doesn't send Ready — it starts sending MovePlayer immediately
+            if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
+                // v27: send PlayStatus(PLAYER_SPAWN=3) to trigger terrain building
+                sendLoginStatus(3); // PLAYER_SPAWN
+            } else {
+                MCPEPacketBuffer resp = new MCPEPacketBuffer();
+                resp.writeByte(wireId(MCPEConstants.RESPAWN));
+                resp.writeInt(player.getPlayerId() + 1); // v17-v20: entityId (int)
+                resp.writeFloat((float) x);
+                resp.writeFloat((float) (y - PLAYER_EYE_HEIGHT));
+                resp.writeFloat((float) z);
+                server.sendGamePacket(session, resp.getBuf());
+            }
+            // v17+ client doesn't send Ready — it starts sending MovePlayer immediately
             doSpawn();
         }
     }
@@ -218,11 +241,12 @@ public class MCPELoginHandler {
 
     /** Complete the spawn sequence — called from handleReady for all versions. */
     private void doSpawn() {
+        boolean isV27 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27;
         double x = player.getDoubleX();
         double y = player.getDoubleY(); // eye-level (internal)
         double z = player.getDoubleZ();
 
-        sendMovePlayer(player.getPlayerId() + 1, (float) x, (float) (y - PLAYER_EYE_HEIGHT), (float) z, 0, 0);
+        sendMovePlayer(player.getPlayerId() + 1, (float) x, (float) (y - PLAYER_EYE_HEIGHT), (float) z, 0, 0, 2);
         sendAdventureSettings(0x01 | 0x40); // allowFlight + creativeMode
         sendInventory();
 
@@ -231,6 +255,7 @@ public class MCPELoginHandler {
                 session, world, playerManager, chunkManager, server,
                 player, sessionWrapper, pongUpdater);
         session.setGameplayHandler(gameplayHandler);
+        sessionWrapper.setGameplayHandler(gameplayHandler);
 
         // Send existing players to MCPE client
         for (ConnectedPlayer other : playerManager.getAllPlayers()) {
@@ -239,19 +264,43 @@ public class MCPELoginHandler {
             float oy = other.getY() / 32.0f - (float) PLAYER_EYE_HEIGHT;
             float oz = other.getZ() / 32.0f;
             int oeid = (other.getPlayerId() & 0xFF) + 1;
+            float yaw = ((other.getYaw() + 128) & 0xFF) * 360.0f / 256.0f;
+            float pitch = (other.getPitch() & 0xFF) * 360.0f / 256.0f;
 
             MCPEPacketBuffer addPkt = new MCPEPacketBuffer();
-            addPkt.writeByte(MCPEConstants.ADD_PLAYER);
-            addPkt.writeLong(oeid);
-            addPkt.writeString(other.getUsername());
-            addPkt.writeInt(oeid);
-            addPkt.writeFloat(ox);
-            addPkt.writeFloat(oy);
-            addPkt.writeFloat(oz);
-            addPkt.writeByte((other.getYaw() + 128) & 0xFF);
-            addPkt.writeByte(other.getPitch());
-            addPkt.writeShort(0);
-            addPkt.writeShort(0);
+            addPkt.writeByte(wireId(MCPEConstants.ADD_PLAYER));
+            if (isV27) {
+                // v27: clientId(long), username, entityId(long), x, y, z,
+                //       speedX, speedY, speedZ, yaw, headYaw, pitch,
+                //       itemId(short), itemDamage(short), slim(byte), skin(string), metadata
+                addPkt.writeLong(oeid);
+                addPkt.writeString(other.getUsername());
+                addPkt.writeLong(oeid);
+                addPkt.writeFloat(ox);
+                addPkt.writeFloat(oy);
+                addPkt.writeFloat(oz);
+                // NOTE: speed fields removed — testing if client expects them
+                addPkt.writeFloat(yaw);
+                addPkt.writeFloat(yaw);  // headYaw
+                addPkt.writeFloat(pitch);
+                addPkt.writeShort(0); // item ID (air)
+                addPkt.writeShort(0); // item damage
+                addPkt.writeByte(0);  // slim (0 = steve)
+                addPkt.writeShort(0); // empty skin (non-empty causes client crash — needs investigation)
+            } else {
+                // v11-v20: clientId(long), username, entityId(int), x, y, z,
+                //          yaw(byte), pitch(byte), itemId(short), itemAux(short)
+                addPkt.writeLong(oeid);
+                addPkt.writeString(other.getUsername());
+                addPkt.writeInt(oeid);
+                addPkt.writeFloat(ox);
+                addPkt.writeFloat(oy);
+                addPkt.writeFloat(oz);
+                addPkt.writeByte((other.getYaw() + 128) & 0xFF);
+                addPkt.writeByte(other.getPitch());
+                addPkt.writeShort(0);
+                addPkt.writeShort(0);
+            }
             addPkt.writeMetaByte(MCPEConstants.META_FLAGS, (byte) 0);
             addPkt.writeMetaShort(MCPEConstants.META_AIR, (short) 300);
             addPkt.writeMetaString(MCPEConstants.META_NAMETAG, other.getUsername());
@@ -261,7 +310,11 @@ public class MCPELoginHandler {
 
             MCPEPacketBuffer meta = new MCPEPacketBuffer();
             meta.writeByte(wireId(MCPEConstants.SET_ENTITY_DATA));
-            meta.writeInt(oeid);
+            if (isV27) {
+                meta.writeLong(oeid); // v27: long entity ID
+            } else {
+                meta.writeInt(oeid);
+            }
             meta.writeMetaByte(MCPEConstants.META_FLAGS, (byte) 0);
             meta.writeMetaShort(MCPEConstants.META_AIR, (short) 300);
             meta.writeMetaString(MCPEConstants.META_NAMETAG, other.getUsername());
@@ -286,23 +339,37 @@ public class MCPELoginHandler {
 
     private void sendLoginStatus(int status) {
         MCPEPacketBuffer pkt = new MCPEPacketBuffer();
-        pkt.writeByte(MCPEConstants.LOGIN_STATUS);
+        pkt.writeByte(wireId(MCPEConstants.LOGIN_STATUS));
         pkt.writeInt(status);
         server.sendGamePacket(session, pkt.getBuf());
     }
 
     private void sendStartGame(float x, float y, float z) {
+        boolean isV27 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27;
+        boolean isV17 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_17;
+
         MCPEPacketBuffer pkt = new MCPEPacketBuffer();
-        pkt.writeByte(MCPEConstants.START_GAME);
+        pkt.writeByte(wireId(MCPEConstants.START_GAME));
         pkt.writeInt(0);                          // seed
-        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_17) {
-            pkt.writeInt(0);                      // dimension (0 = overworld) — new in v17
+        if (isV17) {
+            pkt.writeInt(0);                      // dimension (0 = overworld)
         }
-        pkt.writeInt(MCPEConstants.GENERATOR_FLAT); // generator type — Flat gen reaches state 4
-        pkt.writeInt(MCPEConstants.GAMEMODE_CREATIVE); // gamemode
-        pkt.writeInt(player.getPlayerId() + 1);   // entity ID (1-based)
-        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_17) {
-            // v17+: world spawn position (2D, no Y) after eid, before player position
+        pkt.writeInt(MCPEConstants.GENERATOR_FLAT); // generator type
+        if (!isV27) {
+            pkt.writeInt(MCPEConstants.GAMEMODE_CREATIVE); // gamemode (removed in v27)
+        }
+        if (isV27) {
+            pkt.writeLong(player.getPlayerId() + 1); // entity ID (64-bit in v27)
+        } else {
+            pkt.writeInt(player.getPlayerId() + 1);  // entity ID (32-bit)
+        }
+        if (isV27) {
+            // v27: 3D world spawn position (spawnX, spawnY, spawnZ)
+            pkt.writeInt((int) x);
+            pkt.writeInt((int) y);
+            pkt.writeInt((int) z);
+        } else if (isV17) {
+            // v17-v20: 2D world spawn position (spawnX, spawnZ)
             pkt.writeInt((int) x);
             pkt.writeInt((int) z);
         }
@@ -314,7 +381,7 @@ public class MCPELoginHandler {
 
     private void sendSetTime(int time) {
         MCPEPacketBuffer pkt = new MCPEPacketBuffer();
-        pkt.writeByte(MCPEConstants.SET_TIME);
+        pkt.writeByte(wireId(MCPEConstants.SET_TIME));
         pkt.writeInt(time);
         pkt.writeByte(0x80); // time flowing
         server.sendGamePacket(session, pkt.getBuf());
@@ -323,23 +390,40 @@ public class MCPELoginHandler {
     private void sendSetSpawnPosition(int x, int z, int y) {
         MCPEPacketBuffer pkt = new MCPEPacketBuffer();
         pkt.writeByte(wireId(MCPEConstants.SET_SPAWN_POSITION));
-        pkt.writeInt(x);
-        pkt.writeInt(z);
-        pkt.writeByte(y);
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
+            // v27: int x, int y, int z (all ints)
+            pkt.writeInt(x);
+            pkt.writeInt(y);
+            pkt.writeInt(z);
+        } else {
+            pkt.writeInt(x);
+            pkt.writeInt(z);
+            pkt.writeByte(y);
+        }
         server.sendGamePacket(session, pkt.getBuf());
     }
 
-    private void sendMovePlayer(int entityId, float x, float y, float z, float yaw, float pitch) {
+    private void sendMovePlayer(int entityId, float x, float y, float z, float yaw, float pitch, int mode) {
         MCPEPacketBuffer pkt = new MCPEPacketBuffer();
         pkt.writeByte(wireId(MCPEConstants.MOVE_PLAYER));
-        pkt.writeInt(entityId);
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
+            pkt.writeLong(entityId);  // 64-bit entity ID
+        } else {
+            pkt.writeInt(entityId);
+        }
         pkt.writeFloat(x);
         pkt.writeFloat(y);
         pkt.writeFloat(z);
-        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_14) {
-            pkt.writeFloat(yaw);  // bodyYaw
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
+            pkt.writeFloat(yaw);   // yaw
+            pkt.writeFloat(pitch); // pitch
+            pkt.writeFloat(yaw);   // headYaw
+            pkt.writeByte(mode);   // mode: 0=normal, 1=reset, 2=teleport
+            pkt.writeByte(0);      // onGround
+        } else if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_14) {
+            pkt.writeFloat(yaw);   // bodyYaw
             pkt.writeFloat(pitch);
-            pkt.writeFloat(yaw);  // headYaw
+            pkt.writeFloat(yaw);   // headYaw
         } else {
             pkt.writeFloat(yaw);
             pkt.writeFloat(pitch);
@@ -362,24 +446,37 @@ public class MCPELoginHandler {
     }
 
     private void sendInventory() {
-        // Send empty player inventory (windowId=0)
+        boolean isV27 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27;
+
+        // Send empty player inventory
         MCPEPacketBuffer pkt = new MCPEPacketBuffer();
         pkt.writeByte(wireId(MCPEConstants.SEND_INVENTORY));
-        pkt.writeInt(player.getPlayerId() + 1); // entity ID
+        if (!isV27) {
+            pkt.writeInt(player.getPlayerId() + 1); // v11-v20: entity ID
+        }
         pkt.writeByte(0); // windowId = player inventory
         pkt.writeShort(36); // 36 slots
         for (int i = 0; i < 36; i++) {
             pkt.writeShort(0);  // itemId = air
             pkt.writeByte(0);   // count
-            pkt.writeShort(0);  // metadata
+            pkt.writeShort(0);  // damage/metadata
+        }
+        if (isV27) {
+            // v27: hotbar slot indices for player inventory window
+            pkt.writeShort(9);
+            for (int i = 0; i < 9; i++) {
+                pkt.writeInt(-1); // -1 = empty hotbar slot
+            }
         }
         server.sendGamePacket(session, pkt.getBuf());
 
-        // Send empty armor (windowId=1)
+        // Send empty armor
         pkt = new MCPEPacketBuffer();
         pkt.writeByte(wireId(MCPEConstants.SEND_INVENTORY));
-        pkt.writeInt(player.getPlayerId() + 1);
-        pkt.writeByte(1); // windowId = armor
+        if (!isV27) {
+            pkt.writeInt(player.getPlayerId() + 1);
+        }
+        pkt.writeByte(isV27 ? 0x78 : 1); // v27: 0x78 (armor container), v11-v20: 1
         pkt.writeShort(4); // 4 armor slots
         for (int i = 0; i < 4; i++) {
             pkt.writeShort(0);
@@ -396,6 +493,10 @@ public class MCPELoginHandler {
      * Flag = (1 << Y) indicating which section this packet represents.
      */
     private void sendChunkData(int chunkX, int chunkZ) {
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
+            sendFullChunkDataV27(chunkX, chunkZ);
+            return;
+        }
         if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_17) {
             sendFullChunkDataV17(chunkX, chunkZ);
             return;
@@ -560,10 +661,187 @@ public class MCPELoginHandler {
         }
 
         // Send FullChunkDataPacket: 0xBA + compressed(chunkX + chunkZ + terrainData)
+        // Note: FULL_CHUNK_DATA_V17 is already a v17 wire ID, not v12 canonical — don't use wireId()
         MCPEPacketBuffer pkt = new MCPEPacketBuffer();
         pkt.writeByte(MCPEConstants.FULL_CHUNK_DATA_V17);
         pkt.writeBytes(compressed);
         server.sendGamePacket(session, pkt.getBuf());
+    }
+
+    /**
+     * Send a v27 (0.11.0) FullChunkDataPacket using v27 packet ID 0x2E.
+     * PocketMine format: [0x2E][chunkX BE][chunkZ BE][dataLen BE][raw terrain].
+     * Terrain: blockIds + metadata + skyLight + blockLight + heightMap + biomeColors + extraData.
+     * Batch-wrapped by sendGamePacket().
+     */
+    private void sendFullChunkDataV27(int chunkX, int chunkZ) {
+        byte[] terrain = buildV27Terrain(chunkX, chunkZ);
+
+        MCPEPacketBuffer pkt = new MCPEPacketBuffer();
+        pkt.writeByte(0xAF); // v27 FullChunkData wire ID: (0x2E + 0x81) & 0xFF
+        pkt.writeInt(chunkX);
+        pkt.writeInt(chunkZ);
+        pkt.writeInt(terrain.length);
+        pkt.writeBytes(terrain);
+        server.sendGamePacket(session, pkt.getBuf());
+    }
+
+    /** Build raw terrain for v27 format: blockIds + meta + skyLight + blockLight + heightMap + biomeColors. */
+    private byte[] buildV27Terrain(int chunkX, int chunkZ) {
+        int baseX = chunkX * 16;
+        int baseZ = chunkZ * 16;
+        int height = 128;
+
+        byte[] blockIds = new byte[32768];
+        byte[] heightMap = new byte[256];
+
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                int worldX = baseX + x;
+                int worldZ = baseZ + z;
+                int topY = 0;
+                for (int y = 0; y < height; y++) {
+                    int idx = (x << 11) | (z << 7) | y;
+                    if (worldX >= 0 && worldX < world.getWidth()
+                            && worldZ >= 0 && worldZ < world.getDepth()
+                            && y < world.getHeight()) {
+                        int block = mapBlockId(world.getBlock(worldX, y, worldZ));
+                        blockIds[idx] = (byte) block;
+                        if (block != 0) topY = y + 1;
+                    }
+                }
+                heightMap[(z << 4) | x] = (byte) topY;
+            }
+        }
+
+        byte[] metadata = new byte[16384];
+        byte[] skyLight = new byte[16384];
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                int top = heightMap[(z << 4) | x] & 0xFF;
+                for (int y = 0; y < height; y++) {
+                    int idx = (x << 11) | (z << 7) | y;
+                    int nibbleIdx = idx >> 1;
+                    int light = (y >= top) ? 15 : 0;
+                    if ((idx & 1) == 0) {
+                        skyLight[nibbleIdx] |= (byte) (light & 0x0F);
+                    } else {
+                        skyLight[nibbleIdx] |= (byte) ((light << 4) & 0xF0);
+                    }
+                }
+            }
+        }
+
+        byte[] blockLight = new byte[16384];
+        byte[] biomeColors = new byte[1024];
+        for (int i = 0; i < 256; i++) {
+            int offset = i * 4;
+            biomeColors[offset] = 0x01;
+            biomeColors[offset + 1] = 0x7A;
+            biomeColors[offset + 2] = (byte) 0xBD;
+            biomeColors[offset + 3] = 0x6B;
+        }
+
+        int terrainSize = blockIds.length + metadata.length + skyLight.length
+                + blockLight.length + heightMap.length + biomeColors.length;
+        byte[] terrain = new byte[terrainSize];
+        int pos = 0;
+        System.arraycopy(blockIds, 0, terrain, pos, blockIds.length); pos += blockIds.length;
+        System.arraycopy(metadata, 0, terrain, pos, metadata.length); pos += metadata.length;
+        System.arraycopy(skyLight, 0, terrain, pos, skyLight.length); pos += skyLight.length;
+        System.arraycopy(blockLight, 0, terrain, pos, blockLight.length); pos += blockLight.length;
+        System.arraycopy(heightMap, 0, terrain, pos, heightMap.length); pos += heightMap.length;
+        System.arraycopy(biomeColors, 0, terrain, pos, biomeColors.length);
+        return terrain;
+    }
+
+    /** Build raw terrain byte array for a chunk (uncompressed). */
+    private byte[] buildRawTerrain(int chunkX, int chunkZ) {
+        int baseX = chunkX * 16;
+        int baseZ = chunkZ * 16;
+        int height = 128;
+
+        byte[] blockIds = new byte[32768];
+        byte[] heightMap = new byte[256];
+
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                int worldX = baseX + x;
+                int worldZ = baseZ + z;
+                int topY = 0;
+                for (int y = 0; y < height; y++) {
+                    int idx = (x << 11) | (z << 7) | y;
+                    if (worldX >= 0 && worldX < world.getWidth()
+                            && worldZ >= 0 && worldZ < world.getDepth()
+                            && y < world.getHeight()) {
+                        int block = mapBlockId(world.getBlock(worldX, y, worldZ));
+                        blockIds[idx] = (byte) block;
+                        if (block != 0) topY = y + 1;
+                    }
+                }
+                heightMap[(z << 4) | x] = (byte) topY;
+            }
+        }
+
+        byte[] metadata = new byte[16384];
+
+        byte[] skyLight = new byte[16384];
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                int top = heightMap[(z << 4) | x] & 0xFF;
+                for (int y = 0; y < height; y++) {
+                    int idx = (x << 11) | (z << 7) | y;
+                    int nibbleIdx = idx >> 1;
+                    int light = (y >= top) ? 15 : 0;
+                    if ((idx & 1) == 0) {
+                        skyLight[nibbleIdx] |= (byte) (light & 0x0F);
+                    } else {
+                        skyLight[nibbleIdx] |= (byte) ((light << 4) & 0xF0);
+                    }
+                }
+            }
+        }
+
+        byte[] blockLight = new byte[16384];
+        byte[] biomeIds = new byte[256];
+        java.util.Arrays.fill(biomeIds, (byte) 1);
+
+        byte[] biomeColors = new byte[1024];
+        for (int i = 0; i < 256; i++) {
+            int offset = i * 4;
+            biomeColors[offset] = 0x01;
+            biomeColors[offset + 1] = 0x7A;
+            biomeColors[offset + 2] = (byte) 0xBD;
+            biomeColors[offset + 3] = 0x6B;
+        }
+
+        int totalSize = blockIds.length + metadata.length + skyLight.length
+                + blockLight.length + biomeIds.length + biomeColors.length;
+        byte[] terrain = new byte[totalSize];
+        int pos = 0;
+        System.arraycopy(blockIds, 0, terrain, pos, blockIds.length); pos += blockIds.length;
+        System.arraycopy(metadata, 0, terrain, pos, metadata.length); pos += metadata.length;
+        System.arraycopy(skyLight, 0, terrain, pos, skyLight.length); pos += skyLight.length;
+        System.arraycopy(blockLight, 0, terrain, pos, blockLight.length); pos += blockLight.length;
+        System.arraycopy(biomeIds, 0, terrain, pos, biomeIds.length); pos += biomeIds.length;
+        System.arraycopy(biomeColors, 0, terrain, pos, biomeColors.length);
+        return terrain;
+    }
+
+    /** Build zlib-compressed terrain data for a chunk (used by v17). */
+    private byte[] buildCompressedTerrain(int chunkX, int chunkZ) {
+        byte[] raw = buildRawTerrain(chunkX, chunkZ);
+        try {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            DeflaterOutputStream dos = new DeflaterOutputStream(baos,
+                    new Deflater(Deflater.DEFAULT_COMPRESSION));
+            dos.write(raw);
+            dos.finish();
+            dos.close();
+            return baos.toByteArray();
+        } catch (java.io.IOException e) {
+            throw new RuntimeException("zlib compress failed", e);
+        }
     }
 
     /**

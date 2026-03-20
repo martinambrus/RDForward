@@ -141,7 +141,7 @@ public class MCPEPacketBuffer {
     public MCPEPacketBuffer writeMetaString(int index, String value) {
         buf.writeByte((MCPEConstants.META_TYPE_STRING << 5) | (index & 0x1F));
         byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
-        buf.writeShort(bytes.length); // Big-Endian (PocketMine uses pack("n"))
+        buf.writeShortLE(bytes.length); // Little-Endian (metadata values are LE per PocketMine Binary::writeMetadata)
         buf.writeBytes(bytes);
         return this;
     }

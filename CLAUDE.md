@@ -8,6 +8,11 @@ This ensures memories are portable with the repository. When a developer pulls n
 
 The full project memory lives in `.claude/memory/MEMORY.md` and its referenced sub-files — not duplicated here in CLAUDE.md to avoid doubling the context window (since auto-memory is loaded automatically by Claude Code).
 
+## Data File Protection
+
+- NEVER delete or reset world save files (server-world.dat, server-players.dat, or similar) without explicit user permission. These contain accumulated test data built up over many sessions.
+- Before ANY destructive file operation (rm, overwrite, reset) on non-code data files in the project root, ALWAYS ask the user first.
+
 ## E2E Test Rules
 
 - NEVER run two Gradle test suites in parallel. They share the Gradle daemon and will conflict/kill each other. Always run test tasks sequentially — wait for one to complete before starting the next.

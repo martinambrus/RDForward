@@ -15,9 +15,10 @@ public final class MCPEConstants {
     public static final int MCPE_PROTOCOL_VERSION_17 = 17; // 0.9.0 (15-16 were dev-only)
     public static final int MCPE_PROTOCOL_VERSION_18 = 18; // 0.9.5
     public static final int MCPE_PROTOCOL_VERSION_20 = 20; // 0.10.0 (19 was pre-release)
+    public static final int MCPE_PROTOCOL_VERSION_27 = 27; // 0.11.0 (21-26 were dev-only)
     /** Highest supported protocol version (for pong advertisement). */
-    public static final int MCPE_PROTOCOL_VERSION_MAX = MCPE_PROTOCOL_VERSION_20;
-    public static final String MCPE_VERSION_STRING = "0.10.0";
+    public static final int MCPE_PROTOCOL_VERSION_MAX = MCPE_PROTOCOL_VERSION_27;
+    public static final String MCPE_VERSION_STRING = "0.11.0";
     public static final int DEFAULT_PORT = 19132;
 
     // --- RakNet ---
@@ -129,6 +130,57 @@ public final class MCPEConstants {
     public static final byte UNLOAD_CHUNK_V17    = (byte) 0xBB;
     public static final byte ROTATE_HEAD         = (byte) 0xFF;
 
+    // --- v27 Game Packets (0x01-0x30) — completely renumbered from v11-v20 ---
+    public static final byte V27_LOGIN               = 0x01;
+    public static final byte V27_PLAY_STATUS         = 0x02;
+    public static final byte V27_DISCONNECT          = 0x03;
+    public static final byte V27_TEXT                = 0x04;
+    public static final byte V27_SET_TIME            = 0x05;
+    public static final byte V27_START_GAME          = 0x06;
+    public static final byte V27_ADD_PLAYER          = 0x07;
+    public static final byte V27_REMOVE_PLAYER       = 0x08;
+    public static final byte V27_ADD_ENTITY          = 0x09;
+    public static final byte V27_REMOVE_ENTITY       = 0x0A;
+    public static final byte V27_ADD_ITEM_ENTITY     = 0x0B;
+    public static final byte V27_TAKE_ITEM_ENTITY    = 0x0C;
+    public static final byte V27_MOVE_ENTITY         = 0x0D;
+    public static final byte V27_MOVE_PLAYER         = 0x0E;
+    public static final byte V27_REMOVE_BLOCK        = 0x0F;
+    public static final byte V27_UPDATE_BLOCK        = 0x10;
+    public static final byte V27_ADD_PAINTING        = 0x11;
+    public static final byte V27_EXPLODE             = 0x12;
+    public static final byte V27_LEVEL_EVENT         = 0x13;
+    public static final byte V27_TILE_EVENT          = 0x14;
+    public static final byte V27_ENTITY_EVENT        = 0x15;
+    public static final byte V27_MOB_EFFECT          = 0x16;
+    public static final byte V27_PLAYER_EQUIPMENT    = 0x17;
+    public static final byte V27_PLAYER_ARMOR        = 0x18;
+    public static final byte V27_INTERACT            = 0x19;
+    public static final byte V27_USE_ITEM            = 0x1A;
+    public static final byte V27_PLAYER_ACTION       = 0x1B;
+    public static final byte V27_HURT_ARMOR          = 0x1C;
+    public static final byte V27_SET_ENTITY_DATA     = 0x1D;
+    public static final byte V27_SET_ENTITY_MOTION   = 0x1E;
+    public static final byte V27_SET_ENTITY_LINK     = 0x1F;
+    public static final byte V27_SET_HEALTH          = 0x20;
+    public static final byte V27_SET_SPAWN_POSITION  = 0x21;
+    public static final byte V27_ANIMATE             = 0x22;
+    public static final byte V27_RESPAWN             = 0x23;
+    public static final byte V27_DROP_ITEM           = 0x24;
+    public static final byte V27_CONTAINER_OPEN      = 0x25;
+    public static final byte V27_CONTAINER_CLOSE     = 0x26;
+    public static final byte V27_CONTAINER_SET_SLOT  = 0x27;
+    public static final byte V27_CONTAINER_SET_DATA  = 0x28;
+    public static final byte V27_CONTAINER_SET_CONTENT = 0x29;
+    public static final byte V27_CONTAINER_ACK       = 0x2A;
+    public static final byte V27_ADVENTURE_SETTINGS  = 0x2B;
+    public static final byte V27_TILE_ENTITY_DATA    = 0x2C;
+    public static final byte V27_PLAYER_INPUT        = 0x2D;
+    public static final byte V27_FULL_CHUNK_DATA     = 0x2E;
+    public static final byte V27_SET_DIFFICULTY      = 0x2F;
+    /** BatchPacket — NOT renumbered with v27, stays at 0xB1 (same ID space as v11-v20). */
+    public static final byte V27_BATCH               = (byte) 0xB1;
+
     // --- Login status codes ---
     public static final int LOGIN_SUCCESS         = 0;
     public static final int LOGIN_CLIENT_OUTDATED = 1;
@@ -174,6 +226,69 @@ public final class MCPEConstants {
     public static final int META_NAMETAG        = 2;  // string
     public static final int META_SHOW_NAMETAG   = 3;  // byte
 
+    // --- Default skin for cross-protocol players (64x64 RGBA = 16384 bytes) ---
+    // MCPE 0.11.0 requires 64x64. Simple Steve: brown body, dark hair, transparent unused areas.
+    public static final byte[] DEFAULT_SKIN_64x64 = generateDefaultSkin();
+
+    private static byte[] generateDefaultSkin() {
+        byte[] skin = new byte[16384]; // 64x64 RGBA
+        // Fill with transparent (unused regions should be transparent)
+        // Then paint the skin regions with opaque colors
+
+        // Head top (rows 0-7, cols 8-15): dark brown hair
+        for (int row = 0; row < 8; row++) {
+            for (int col = 8; col < 16; col++) {
+                int idx = (row * 64 + col) * 4;
+                skin[idx]     = (byte) 0x46; // R
+                skin[idx + 1] = (byte) 0x32; // G
+                skin[idx + 2] = (byte) 0x14; // B
+                skin[idx + 3] = (byte) 0xFF; // A
+            }
+        }
+        // Head front (rows 8-15, cols 8-15): skin color face
+        for (int row = 8; row < 16; row++) {
+            for (int col = 8; col < 16; col++) {
+                int idx = (row * 64 + col) * 4;
+                skin[idx]     = (byte) 0xC4; // R
+                skin[idx + 1] = (byte) 0xA0; // G
+                skin[idx + 2] = (byte) 0x6C; // B
+                skin[idx + 3] = (byte) 0xFF; // A
+            }
+        }
+        // Body front (rows 20-31, cols 20-27): skin color
+        for (int row = 20; row < 32; row++) {
+            for (int col = 20; col < 28; col++) {
+                int idx = (row * 64 + col) * 4;
+                skin[idx]     = (byte) 0xC4;
+                skin[idx + 1] = (byte) 0xA0;
+                skin[idx + 2] = (byte) 0x6C;
+                skin[idx + 3] = (byte) 0xFF;
+            }
+        }
+        // Arms and legs: fill remaining standard Steve regions with brown
+        // Right leg front (rows 20-31, cols 4-7)
+        for (int row = 20; row < 32; row++) {
+            for (int col = 4; col < 8; col++) {
+                int idx = (row * 64 + col) * 4;
+                skin[idx]     = (byte) 0xC4;
+                skin[idx + 1] = (byte) 0xA0;
+                skin[idx + 2] = (byte) 0x6C;
+                skin[idx + 3] = (byte) 0xFF;
+            }
+        }
+        // Right arm front (rows 20-31, cols 44-47)
+        for (int row = 20; row < 32; row++) {
+            for (int col = 44; col < 48; col++) {
+                int idx = (row * 64 + col) * 4;
+                skin[idx]     = (byte) 0xC4;
+                skin[idx + 1] = (byte) 0xA0;
+                skin[idx + 2] = (byte) 0x6C;
+                skin[idx + 3] = (byte) 0xFF;
+            }
+        }
+        return skin;
+    }
+
     // --- Pong advertisement format ---
     // MCPE 0.7.x client checks for "MCCPP;Demo;" prefix (with fallback to "MCCPP;MINECON;").
     // Format: "MCCPP;Demo;server name"
@@ -183,26 +298,97 @@ public final class MCPEConstants {
 
     /**
      * Convert a v12-canonical packet ID to the wire ID for the given protocol version.
-     * In v14+, RotateHeadPacket was inserted at 0x94, shifting all IDs >= 0x94 by +1.
-     * For v11/v12, returns the ID unchanged (except ADVENTURE_SETTINGS which differs).
+     * v27: map to v27 canonical via toV27Id(), then apply wire encoding (+0x81).
+     * v14-v20: RotateHeadPacket inserted at 0x94, shifting IDs >= 0x94 by +1.
+     * v11/v12: returns the ID unchanged.
      */
     public static int toWireId(int canonicalId, int protocolVersion) {
-        // v14+: all canonical IDs >= 0x94 shift +1
+        if (protocolVersion >= MCPE_PROTOCOL_VERSION_27) {
+            return (toV27Id(canonicalId) + 0x81) & 0xFF;
+        }
+        // v14-v20: RotateHeadPacket inserted at 0x94, shifting IDs >= 0x94 by +1.
         if (protocolVersion >= MCPE_PROTOCOL_VERSION_14 && (canonicalId & 0xFF) >= 0x94) {
             return (canonicalId + 1) & 0xFF;
         }
         return canonicalId & 0xFF;
     }
 
+    /** Map v12-canonical packet ID to v27 wire ID. */
+    private static int toV27Id(int canonicalId) {
+        switch (canonicalId & 0xFF) {
+            case 0x82: return V27_LOGIN & 0xFF;
+            case 0x83: return V27_PLAY_STATUS & 0xFF;
+            case 0x85: return V27_TEXT & 0xFF;
+            case 0x86: return V27_SET_TIME & 0xFF;
+            case 0x87: return V27_START_GAME & 0xFF;
+            case 0x89: return V27_ADD_PLAYER & 0xFF;
+            case 0x8A: return V27_REMOVE_PLAYER & 0xFF;
+            case 0x8D: return V27_REMOVE_ENTITY & 0xFF;
+            case 0x90: return V27_MOVE_ENTITY & 0xFF;
+            case 0x93: return V27_MOVE_ENTITY & 0xFF;
+            case 0x94: return V27_MOVE_PLAYER & 0xFF;
+            case 0x96: return V27_REMOVE_BLOCK & 0xFF;
+            case 0x97: return V27_UPDATE_BLOCK & 0xFF;
+            case 0x9C: return V27_ENTITY_EVENT & 0xFF;
+            case 0x9E: return V27_FULL_CHUNK_DATA & 0xFF;
+            case 0x9F: return V27_PLAYER_EQUIPMENT & 0xFF;
+            case 0xA0: return V27_PLAYER_ARMOR & 0xFF;
+            case 0xA1: return V27_INTERACT & 0xFF;
+            case 0xA2: return V27_USE_ITEM & 0xFF;
+            case 0xA3: return V27_PLAYER_ACTION & 0xFF;
+            case 0xA6: return V27_SET_ENTITY_DATA & 0xFF;
+            case 0xA7: return V27_SET_ENTITY_MOTION & 0xFF;
+            case 0xA9: return V27_SET_HEALTH & 0xFF;
+            case 0xAA: return V27_SET_SPAWN_POSITION & 0xFF;
+            case 0xAB: return V27_ANIMATE & 0xFF;
+            case 0xAC: return V27_RESPAWN & 0xFF;
+            case 0xAD: return V27_CONTAINER_SET_CONTENT & 0xFF;
+            case 0xB0: return V27_CONTAINER_CLOSE & 0xFF;
+            case 0xB3: return V27_CONTAINER_SET_CONTENT & 0xFF;
+            case 0xB5: return V27_TEXT & 0xFF;
+            case 0xB6: return V27_ADVENTURE_SETTINGS & 0xFF;
+            case 0xB7: return V27_ADVENTURE_SETTINGS & 0xFF;
+            case 0xB9: return V27_PLAYER_INPUT & 0xFF;
+            case 0xBA: return V27_FULL_CHUNK_DATA & 0xFF;
+            default: return canonicalId & 0xFF;
+        }
+    }
+
     /**
      * Convert an incoming wire packet ID to the v12-canonical ID.
-     * Returns -1 for v14-only packets (RotateHead at 0x94).
+     * v27: apply wire decode (+0x7F) to get v27 canonical, then map via fromV27Id().
+     * v14-v20: returns -1 for v14-only packets (RotateHead at 0x94).
+     * v11/v12: returns the ID unchanged.
      */
     public static int toCanonicalId(int wireId, int protocolVersion) {
+        if (protocolVersion >= MCPE_PROTOCOL_VERSION_27) {
+            int v27Canonical = (wireId + 0x7F) & 0xFF;
+            return fromV27Id(v27Canonical);
+        }
+        // v14-v20: RotateHead inserted at 0x94
         if (protocolVersion >= MCPE_PROTOCOL_VERSION_14) {
             if (wireId == (ROTATE_HEAD_V14 & 0xFF)) return -1; // v14-only
             if (wireId > (ROTATE_HEAD_V14 & 0xFF)) return wireId - 1;
         }
         return wireId;
+    }
+
+    /** Map v27 wire ID to v12-canonical packet ID. */
+    private static int fromV27Id(int wireId) {
+        switch (wireId) {
+            case 0x01: return 0x82; // LOGIN
+            case 0x04: return 0x85; // TEXT → MESSAGE
+            case 0x0E: return 0x94; // MOVE_PLAYER
+            case 0x0F: return 0x96; // REMOVE_BLOCK
+            case 0x15: return 0x9C; // ENTITY_EVENT
+            case 0x17: return 0x9F; // PLAYER_EQUIPMENT
+            case 0x19: return 0xA1; // INTERACT
+            case 0x1A: return 0xA2; // USE_ITEM
+            case 0x1B: return 0xA3; // PLAYER_ACTION
+            case 0x22: return 0xAB; // ANIMATE
+            case 0x26: return 0xB0; // CONTAINER_CLOSE
+            case 0x2D: return 0xB9; // PLAYER_INPUT
+            default: return wireId;
+        }
     }
 }

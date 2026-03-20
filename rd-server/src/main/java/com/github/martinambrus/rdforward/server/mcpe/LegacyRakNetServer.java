@@ -10,9 +10,15 @@ import io.netty.channel.*;
 import io.netty.channel.socket.DatagramPacket;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.zip.Deflater;
+import java.util.zip.DeflaterOutputStream;
+import java.util.zip.InflaterInputStream;
 
 /**
  * Lightweight RakNet v6 server for legacy MCPE 0.7.x clients.
@@ -170,30 +176,30 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
         // Skip magic (16 bytes)
         buf.skipBytes(MCPEConstants.RAKNET_MAGIC_LENGTH);
 
-        // Detect client version: 0.9.0+ sends 8-byte clientGUID after magic, 0.7.x doesn't
-        boolean isV17Plus = buf.readableBytes() >= 8;
-        if (isV17Plus) {
-            buf.readLong(); // clientGUID — consume but don't use
+        // Consume clientGUID if present (0.9.0-0.10.0 send it; 0.7.x and 0.11.0 don't)
+        if (buf.readableBytes() >= 8) {
+            buf.readLong();
         }
 
-        // Build pong data based on detected client version
-        String pongData;
-        if (isV17Plus) {
-            // 0.9.0+ format: MCPE;motd;protocol;version;players;maxPlayers;serverGuid;
-            int playerCount = playerManager.getPlayerCount();
-            int maxPlayers = com.github.martinambrus.rdforward.server.PlayerManager.MAX_PLAYERS;
-            pongData = "MCPE;" + serverName + ";"
-                    + MCPEConstants.MCPE_PROTOCOL_VERSION_MAX + ";"
-                    + MCPEConstants.MCPE_VERSION_STRING + ";"
-                    + playerCount + ";" + maxPlayers + ";"
-                    + serverGuid + ";";
-        } else {
-            // 0.7.x format: MCCPP;Demo;server name
-            pongData = MCPEConstants.PONG_PREFIX + serverName;
-        }
+        // We can't distinguish 0.7.x from 0.11.0 by ping format (both lack clientGUID).
+        // Send both pong formats — each client parses the one it understands.
+        int playerCount = playerManager.getPlayerCount();
+        int maxPlayers = com.github.martinambrus.rdforward.server.PlayerManager.MAX_PLAYERS;
 
-        System.out.println("[MCPE] Pong to " + sender + " (v17+=" + isV17Plus + "): " + pongData);
+        // Pong 1: MCPE format (for 0.9.0+ including 0.11.0)
+        String mcpePong = "MCPE;" + serverName + ";"
+                + MCPEConstants.MCPE_PROTOCOL_VERSION_MAX + ";"
+                + MCPEConstants.MCPE_VERSION_STRING + ";"
+                + playerCount + ";" + maxPlayers + ";"
+                + serverGuid + ";";
+        sendPong(ctx, sender, pingTime, mcpePong);
 
+        // Pong 2: MCCPP format (for 0.7.x)
+        String mccppPong = MCPEConstants.PONG_PREFIX + serverName;
+        sendPong(ctx, sender, pingTime, mccppPong);
+    }
+
+    private void sendPong(ChannelHandlerContext ctx, InetSocketAddress sender, long pingTime, String pongData) {
         ByteBuf pong = Unpooled.buffer();
         pong.writeByte(MCPEConstants.UNCONNECTED_PONG);
         pong.writeLong(pingTime);
@@ -202,7 +208,6 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
         byte[] pongBytes = pongData.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         pong.writeShort(pongBytes.length);
         pong.writeBytes(pongBytes);
-
         ctx.writeAndFlush(new DatagramPacket(pong, sender));
     }
 
@@ -305,13 +310,40 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
             splitIndex = buf.readInt();
         }
 
-        if (buf.readableBytes() < byteLength) return;
+        if (buf.readableBytes() < byteLength) {
+            System.err.println("[MCPE RakNet] Encapsulated underflow: need " + byteLength
+                    + " but have " + buf.readableBytes()
+                    + " (reliability=" + reliability + " split=" + hasSplit + ")");
+            return;
+        }
         ByteBuf payload = buf.readSlice(byteLength).retain();
+
+        // Debug: log first bytes of encapsulated payload
+        if (session.getState() == LegacyRakNetSession.State.CONNECTED
+                && session.getGameplayHandler() == null) {
+            int idx = payload.readerIndex();
+            StringBuilder hex = new StringBuilder();
+            for (int i = 0; i < Math.min(16, payload.readableBytes()); i++) {
+                hex.append(String.format("%02x ", payload.getByte(idx + i)));
+            }
+            System.out.println("[MCPE RakNet DEBUG] Encap payload (" + byteLength + " bytes,"
+                    + " split=" + hasSplit + " splitId=" + splitId
+                    + " splitIdx=" + splitIndex + "/" + splitCount
+                    + "): " + hex);
+        }
 
         try {
             if (hasSplit) {
                 ByteBuf reassembled = session.handleSplitPacket(splitId, splitIndex, splitCount, payload);
                 if (reassembled != null) {
+                    // Debug: log first bytes of reassembled packet
+                    int ridx = reassembled.readerIndex();
+                    StringBuilder rhex = new StringBuilder();
+                    for (int i = 0; i < Math.min(16, reassembled.readableBytes()); i++) {
+                        rhex.append(String.format("%02x ", reassembled.getByte(ridx + i)));
+                    }
+                    System.out.println("[MCPE RakNet DEBUG] Reassembled (" + reassembled.readableBytes()
+                            + " bytes): " + rhex);
                     try {
                         handleGamePacket(ctx, session, reassembled);
                     } finally {
@@ -332,21 +364,43 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
         if (!payload.isReadable()) return;
         int gamePacketId = payload.readUnsignedByte();
 
-        // Connected handshake packets
-        if (gamePacketId == 0x00) { // Connected Ping
+        // Connected Ping — handled for all versions and states
+        if (gamePacketId == 0x00) {
             handleConnectedPing(ctx, session, payload);
             return;
         }
-        if (gamePacketId == (MCPEConstants.CLIENT_CONNECT & 0xFF)) {
-            handleClientConnect(ctx, session, payload);
-            return;
+
+        // RakNet connected handshake packets — only during CONNECTING state
+        if (session.getState() == LegacyRakNetSession.State.CONNECTING) {
+            if (gamePacketId == (MCPEConstants.CLIENT_CONNECT & 0xFF)) {
+                handleClientConnect(ctx, session, payload);
+                return;
+            }
+            if (gamePacketId == (MCPEConstants.CLIENT_HANDSHAKE & 0xFF)) {
+                handleClientHandshake(ctx, session);
+                return;
+            }
         }
-        if (gamePacketId == (MCPEConstants.CLIENT_HANDSHAKE & 0xFF)) {
-            handleClientHandshake(ctx, session);
-            return;
-        }
+
+        // CLIENT_DISCONNECT (0x15) — always a RakNet disconnect signal.
+        // In v27, EntityEvent wire ID is 0x96 (internal 0x15 + 0x81), not 0x15.
         if (gamePacketId == (MCPEConstants.CLIENT_DISCONNECT & 0xFF)) {
             handleDisconnect(session);
+            return;
+        }
+
+        // v27 DisconnectPacket (0x03)
+        if (gamePacketId == (MCPEConstants.V27_DISCONNECT & 0xFF)
+                && session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
+            handleDisconnect(session);
+            return;
+        }
+
+        // BatchPacket (0xB1) — decompress and dispatch inner packets.
+        // Used by v27 (0.11.0) clients; sent during login before protocol version is known.
+        // Safe to handle for all versions: 0xB1 in v11-v20 is CONTAINER_SET_SLOT (never sent during login).
+        if (gamePacketId == (MCPEConstants.V27_BATCH & 0xFF)) {
+            handleBatchPacket(ctx, session, payload);
             return;
         }
 
@@ -362,6 +416,58 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
             session.getGameplayHandler().handlePacket(ctx, gamePacketId, payload);
         } else if (session.getLoginHandler() != null) {
             session.getLoginHandler().handlePacket(ctx, gamePacketId, payload);
+        }
+    }
+
+    /** Decompress a v27 BatchPacket and dispatch each inner game packet. */
+    private void handleBatchPacket(ChannelHandlerContext ctx, LegacyRakNetSession session, ByteBuf payload) {
+        int compressedLength = payload.readInt();
+        if (compressedLength <= 0 || compressedLength > payload.readableBytes()) {
+            System.err.println("[MCPE] BatchPacket invalid length: " + compressedLength);
+            return;
+        }
+        byte[] compressed = new byte[compressedLength];
+        payload.readBytes(compressed);
+
+        byte[] decompressed;
+        try {
+            ByteArrayInputStream bais = new ByteArrayInputStream(compressed);
+            InflaterInputStream iis = new InflaterInputStream(bais);
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            byte[] tmp = new byte[4096];
+            int n;
+            while ((n = iis.read(tmp)) != -1) {
+                baos.write(tmp, 0, n);
+            }
+            decompressed = baos.toByteArray();
+        } catch (IOException e) {
+            System.err.println("[MCPE] BatchPacket decompression failed: " + e.getMessage());
+            return;
+        }
+
+        ByteBuf decompBuf = Unpooled.wrappedBuffer(decompressed);
+        try {
+            // Detect framing: if first 4 bytes form a valid length that fits,
+            // use int-length-prefixed framing; otherwise treat as a raw single packet.
+            boolean hasIntFraming = false;
+            if (decompBuf.readableBytes() >= 5) { // at least 4 (len) + 1 (packet id)
+                int possibleLen = decompBuf.getInt(decompBuf.readerIndex());
+                hasIntFraming = possibleLen > 0 && possibleLen <= decompBuf.readableBytes() - 4;
+            }
+
+            if (hasIntFraming) {
+                while (decompBuf.readableBytes() >= 4) {
+                    int pktLen = decompBuf.readInt();
+                    if (pktLen <= 0 || pktLen > decompBuf.readableBytes()) break;
+                    ByteBuf innerPayload = decompBuf.readSlice(pktLen);
+                    handleGamePacket(ctx, session, innerPayload);
+                }
+            } else {
+                // No framing — entire decompressed content is a single game packet
+                handleGamePacket(ctx, session, decompBuf);
+            }
+        } finally {
+            decompBuf.release();
         }
     }
 
@@ -428,9 +534,52 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
      */
     public void sendGamePacket(LegacyRakNetSession session, ByteBuf gamePayload) {
         Channel sendCh = (frontEndChannel != null) ? frontEndChannel : channel;
-        if (sendCh == null || !sendCh.isActive()) return;
+        if (sendCh == null || !sendCh.isActive()) {
+            System.err.println("[MCPE] sendGamePacket: channel null or inactive!");
+            return;
+        }
+
+        int origId = gamePayload.getUnsignedByte(gamePayload.readerIndex());
+
+        // v27 clients require all game packets to be batch-wrapped (except batch itself).
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
+            if (origId != (MCPEConstants.V27_BATCH & 0xFF)) {
+                gamePayload = wrapInBatch(gamePayload);
+            }
+        }
+
         sendEncapsulated(sendCh.pipeline().firstContext(), session, gamePayload,
                 MCPEConstants.RELIABLE_ORDERED);
+    }
+
+    /**
+     * Wrap a game packet in a BatchPacket (0xB1) for v27 clients.
+     * Format: [0xB1][int compressedLength][zlib(raw packet bytes)]
+     */
+    private ByteBuf wrapInBatch(ByteBuf gamePayload) {
+        byte[] raw = new byte[gamePayload.readableBytes()];
+        gamePayload.readBytes(raw);
+
+        // Inner format: raw packet bytes (no length prefix).
+
+        byte[] compressed;
+        try {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            DeflaterOutputStream dos = new DeflaterOutputStream(baos,
+                    new Deflater(Deflater.DEFAULT_COMPRESSION));
+            dos.write(raw);
+            dos.finish();
+            dos.close();
+            compressed = baos.toByteArray();
+        } catch (IOException e) {
+            throw new RuntimeException("batch compress failed", e);
+        }
+
+        ByteBuf batch = Unpooled.buffer();
+        batch.writeByte(MCPEConstants.V27_BATCH);
+        batch.writeInt(compressed.length);
+        batch.writeBytes(compressed);
+        return batch;
     }
 
     /**

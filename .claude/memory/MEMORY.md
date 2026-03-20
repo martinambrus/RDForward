@@ -9,6 +9,9 @@
   5. **UpdateTags**: EVERY new version can add/rename/remove required tags. Client shows "Incomplete set of tags" if ANY required tag name is missing. ALWAYS check tag changes (block, item, fluid, entity_type, game_event) when adding a new protocol version. Use ViaVersion's TagRewriter + Minecraft wiki changelog as sources.
   6. **Built-in registry cross-references**: When sending registries as built-in (hasData=false), the client's built-in data may reference entries in OTHER registries. ALL referenced entries must exist. E.g., wolf_variant built-in data references biomes — those biomes must be in the biome registry or the client errors "Unbound values in registry". Check MC client logs (`latest.log`) for "Unbound values" errors.
 
+## Data File Protection
+- [feedback_no_delete_world.md](feedback_no_delete_world.md): NEVER delete world/player save files without explicit permission
+
 ## E2E Test Rules
 - NEVER run two Gradle test suites in parallel. They share the Gradle daemon and will conflict/kill each other. Always run sequentially.
 - Do NOT re-run already-completed cross-version tests. Only run missing/untested pairs. Use temporary test classes that check for existing baselines and skip completed pairs. Only re-run cross tests when the user explicitly asks.
