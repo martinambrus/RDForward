@@ -119,8 +119,13 @@ public class MCPELoginHandler {
             return;
         }
 
+        // Store skin data on player for forwarding to other MCPE clients
+        if (clientSkinData != null && clientSkinData.length > 0) {
+            player.setMcpeSkin(clientSlim, clientSkinData);
+        }
+
         // Set up session wrapper for Classic packet translation
-        sessionWrapper = new MCPESessionWrapper(session, server);
+        sessionWrapper = new MCPESessionWrapper(session, server, playerManager);
         player.setMcpeSession(sessionWrapper);
 
         // Send login success
@@ -279,14 +284,25 @@ public class MCPELoginHandler {
                 addPkt.writeFloat(ox);
                 addPkt.writeFloat(oy);
                 addPkt.writeFloat(oz);
-                // NOTE: speed fields removed — testing if client expects them
+                addPkt.writeFloat(0); // speedX
+                addPkt.writeFloat(0); // speedY
+                addPkt.writeFloat(0); // speedZ
                 addPkt.writeFloat(yaw);
                 addPkt.writeFloat(yaw);  // headYaw
                 addPkt.writeFloat(pitch);
                 addPkt.writeShort(0); // item ID (air)
                 addPkt.writeShort(0); // item damage
-                addPkt.writeByte(0);  // slim (0 = steve)
-                addPkt.writeShort(0); // empty skin (non-empty causes client crash — needs investigation)
+                // Use other player's MCPE skin if available, else default Steve
+                byte[] otherSkin = other.getMcpeSkinData();
+                if (otherSkin != null && otherSkin.length > 0) {
+                    addPkt.writeByte(other.getMcpeSkinSlim());
+                    addPkt.writeShort(otherSkin.length);
+                    addPkt.writeBytes(otherSkin);
+                } else {
+                    addPkt.writeByte(0); // slim (0 = steve)
+                    addPkt.writeShort(MCPEConstants.DEFAULT_SKIN_64x64.length);
+                    addPkt.writeBytes(MCPEConstants.DEFAULT_SKIN_64x64);
+                }
             } else {
                 // v11-v20: clientId(long), username, entityId(int), x, y, z,
                 //          yaw(byte), pitch(byte), itemId(short), itemAux(short)

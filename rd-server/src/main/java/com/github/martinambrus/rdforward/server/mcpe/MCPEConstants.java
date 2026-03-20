@@ -227,66 +227,28 @@ public final class MCPEConstants {
     public static final int META_SHOW_NAMETAG   = 3;  // byte
 
     // --- Default skin for cross-protocol players (64x64 RGBA = 16384 bytes) ---
-    // MCPE 0.11.0 requires 64x64. Simple Steve: brown body, dark hair, transparent unused areas.
-    public static final byte[] DEFAULT_SKIN_64x64 = generateDefaultSkin();
+    // Real Steve skin extracted from Minecraft 1.8 client JAR (assets/minecraft/textures/entity/steve.png).
+    public static final byte[] DEFAULT_SKIN_64x64 = loadSteveSkin();
 
-    private static byte[] generateDefaultSkin() {
-        byte[] skin = new byte[16384]; // 64x64 RGBA
-        // Fill with transparent (unused regions should be transparent)
-        // Then paint the skin regions with opaque colors
-
-        // Head top (rows 0-7, cols 8-15): dark brown hair
-        for (int row = 0; row < 8; row++) {
-            for (int col = 8; col < 16; col++) {
-                int idx = (row * 64 + col) * 4;
-                skin[idx]     = (byte) 0x46; // R
-                skin[idx + 1] = (byte) 0x32; // G
-                skin[idx + 2] = (byte) 0x14; // B
-                skin[idx + 3] = (byte) 0xFF; // A
+    private static byte[] loadSteveSkin() {
+        try (java.io.InputStream is = MCPEConstants.class.getResourceAsStream("/mcpe/steve_skin_64x64.raw")) {
+            if (is == null) {
+                System.err.println("[MCPE] WARNING: steve_skin_64x64.raw not found in resources, using blank skin");
+                return new byte[16384];
             }
-        }
-        // Head front (rows 8-15, cols 8-15): skin color face
-        for (int row = 8; row < 16; row++) {
-            for (int col = 8; col < 16; col++) {
-                int idx = (row * 64 + col) * 4;
-                skin[idx]     = (byte) 0xC4; // R
-                skin[idx + 1] = (byte) 0xA0; // G
-                skin[idx + 2] = (byte) 0x6C; // B
-                skin[idx + 3] = (byte) 0xFF; // A
+            byte[] data = new byte[16384];
+            int offset = 0;
+            while (offset < data.length) {
+                int read = is.read(data, offset, data.length - offset);
+                if (read == -1) break;
+                offset += read;
             }
+            System.out.println("[MCPE] Loaded Steve skin: " + offset + " bytes");
+            return data;
+        } catch (java.io.IOException e) {
+            System.err.println("[MCPE] WARNING: Failed to load Steve skin: " + e.getMessage());
+            return new byte[16384];
         }
-        // Body front (rows 20-31, cols 20-27): skin color
-        for (int row = 20; row < 32; row++) {
-            for (int col = 20; col < 28; col++) {
-                int idx = (row * 64 + col) * 4;
-                skin[idx]     = (byte) 0xC4;
-                skin[idx + 1] = (byte) 0xA0;
-                skin[idx + 2] = (byte) 0x6C;
-                skin[idx + 3] = (byte) 0xFF;
-            }
-        }
-        // Arms and legs: fill remaining standard Steve regions with brown
-        // Right leg front (rows 20-31, cols 4-7)
-        for (int row = 20; row < 32; row++) {
-            for (int col = 4; col < 8; col++) {
-                int idx = (row * 64 + col) * 4;
-                skin[idx]     = (byte) 0xC4;
-                skin[idx + 1] = (byte) 0xA0;
-                skin[idx + 2] = (byte) 0x6C;
-                skin[idx + 3] = (byte) 0xFF;
-            }
-        }
-        // Right arm front (rows 20-31, cols 44-47)
-        for (int row = 20; row < 32; row++) {
-            for (int col = 44; col < 48; col++) {
-                int idx = (row * 64 + col) * 4;
-                skin[idx]     = (byte) 0xC4;
-                skin[idx + 1] = (byte) 0xA0;
-                skin[idx + 2] = (byte) 0x6C;
-                skin[idx + 3] = (byte) 0xFF;
-            }
-        }
-        return skin;
     }
 
     // --- Pong advertisement format ---

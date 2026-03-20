@@ -6,6 +6,8 @@ import com.github.martinambrus.rdforward.protocol.packet.classic.MessagePacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.PlayerTeleportPacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.SpawnPlayerPacket;
+import com.github.martinambrus.rdforward.server.ConnectedPlayer;
+import com.github.martinambrus.rdforward.server.PlayerManager;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockSessionWrapper;
 import io.netty.buffer.ByteBuf;
 
@@ -23,6 +25,7 @@ public class MCPESessionWrapper {
 
     private final LegacyRakNetSession session;
     private final LegacyRakNetServer server;
+    private final PlayerManager playerManager;
     private MCPEGameplayHandler gameplayHandler;
 
     /** Convert canonical v12 ID to wire ID for this session. */
@@ -30,9 +33,11 @@ public class MCPESessionWrapper {
         return MCPEConstants.toWireId(canonicalId, session.getMcpeProtocolVersion());
     }
 
-    public MCPESessionWrapper(LegacyRakNetSession session, LegacyRakNetServer server) {
+    public MCPESessionWrapper(LegacyRakNetSession session, LegacyRakNetServer server,
+                              PlayerManager playerManager) {
         this.session = session;
         this.server = server;
+        this.playerManager = playerManager;
     }
 
     public void setGameplayHandler(MCPEGameplayHandler handler) {
@@ -102,14 +107,26 @@ public class MCPESessionWrapper {
             buf.writeFloat(x);
             buf.writeFloat(y);
             buf.writeFloat(z);
-            // NOTE: speed fields removed — testing if Ninecraft v27 client expects them
+            buf.writeFloat(0); // speedX
+            buf.writeFloat(0); // speedY
+            buf.writeFloat(0); // speedZ
             buf.writeFloat(yaw);
             buf.writeFloat(yaw);  // headYaw
             buf.writeFloat(pitch);
             buf.writeShort(0); // item ID (air)
             buf.writeShort(0); // item damage
-            buf.writeByte(0);  // slim (0 = steve)
-            buf.writeShort(0); // empty skin (non-empty causes client crash — needs investigation)
+            // Use spawned player's MCPE skin if available, else default Steve
+            ConnectedPlayer spawnedPlayer = playerManager.getPlayer((byte) pkt.getPlayerId());
+            byte[] skinData = (spawnedPlayer != null) ? spawnedPlayer.getMcpeSkinData() : null;
+            if (skinData != null && skinData.length > 0) {
+                buf.writeByte(spawnedPlayer.getMcpeSkinSlim());
+                buf.writeShort(skinData.length);
+                buf.writeBytes(skinData);
+            } else {
+                buf.writeByte(0); // slim (0 = steve)
+                buf.writeShort(MCPEConstants.DEFAULT_SKIN_64x64.length);
+                buf.writeBytes(MCPEConstants.DEFAULT_SKIN_64x64);
+            }
         } else {
             buf.writeLong(entityId);      // clientID
             buf.writeString(name);

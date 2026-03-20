@@ -34,6 +34,10 @@ public class ConnectedPlayer {
     // Legacy MCPE session wrapper (null for non-MCPE clients)
     private volatile MCPESessionWrapper mcpeSession;
 
+    // MCPE skin data (null for non-MCPE clients; raw RGBA bytes, 64x64 or 64x32)
+    private volatile byte[] mcpeSkinData;
+    private volatile int mcpeSkinSlim;
+
     // Double-precision position for Alpha clients (block coordinates)
     private volatile double doubleX;
     private volatile double doubleY;
@@ -117,6 +121,14 @@ public class ConnectedPlayer {
     public MCPESessionWrapper getMcpeSession() {
         return mcpeSession;
     }
+
+    public void setMcpeSkin(int slim, byte[] skinData) {
+        this.mcpeSkinSlim = slim;
+        this.mcpeSkinData = skinData;
+    }
+
+    public byte[] getMcpeSkinData() { return mcpeSkinData; }
+    public int getMcpeSkinSlim() { return mcpeSkinSlim; }
 
     public byte getPlayerId() { return playerId; }
     public String getUsername() { return username; }
