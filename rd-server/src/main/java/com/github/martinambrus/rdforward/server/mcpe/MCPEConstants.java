@@ -16,9 +16,10 @@ public final class MCPEConstants {
     public static final int MCPE_PROTOCOL_VERSION_18 = 18; // 0.9.5
     public static final int MCPE_PROTOCOL_VERSION_20 = 20; // 0.10.0 (19 was pre-release)
     public static final int MCPE_PROTOCOL_VERSION_27 = 27; // 0.11.0 (21-26 were dev-only)
+    public static final int MCPE_PROTOCOL_VERSION_34 = 34; // 0.12.1 (28-33 were dev-only)
     /** Highest supported protocol version (for pong advertisement). */
-    public static final int MCPE_PROTOCOL_VERSION_MAX = MCPE_PROTOCOL_VERSION_27;
-    public static final String MCPE_VERSION_STRING = "0.11.0";
+    public static final int MCPE_PROTOCOL_VERSION_MAX = MCPE_PROTOCOL_VERSION_34;
+    public static final String MCPE_VERSION_STRING = "0.12.1";
     public static final int DEFAULT_PORT = 19132;
 
     // --- RakNet ---
@@ -181,6 +182,61 @@ public final class MCPEConstants {
     /** BatchPacket — NOT renumbered with v27, stays at 0xB1 (same ID space as v11-v20). */
     public static final byte V27_BATCH               = (byte) 0xB1;
 
+    // --- v34 Game Packets (0x8F-0xC4) — renumbered again from v27 ---
+    public static final byte V34_LOGIN               = (byte) 0x8F;
+    public static final byte V34_PLAY_STATUS         = (byte) 0x90;
+    public static final byte V34_DISCONNECT          = (byte) 0x91;
+    public static final byte V34_BATCH               = (byte) 0x92;
+    public static final byte V34_TEXT                = (byte) 0x93;
+    public static final byte V34_SET_TIME            = (byte) 0x94;
+    public static final byte V34_START_GAME          = (byte) 0x95;
+    public static final byte V34_ADD_PLAYER          = (byte) 0x96;
+    public static final byte V34_REMOVE_PLAYER       = (byte) 0x97;
+    public static final byte V34_ADD_ENTITY          = (byte) 0x98;
+    public static final byte V34_REMOVE_ENTITY       = (byte) 0x99;
+    public static final byte V34_ADD_ITEM_ENTITY     = (byte) 0x9A;
+    public static final byte V34_TAKE_ITEM_ENTITY    = (byte) 0x9B;
+    public static final byte V34_MOVE_ENTITY         = (byte) 0x9C;
+    public static final byte V34_MOVE_PLAYER         = (byte) 0x9D;
+    public static final byte V34_REMOVE_BLOCK        = (byte) 0x9E;
+    public static final byte V34_UPDATE_BLOCK        = (byte) 0x9F;
+    public static final byte V34_ADD_PAINTING        = (byte) 0xA0;
+    public static final byte V34_EXPLODE             = (byte) 0xA1;
+    public static final byte V34_LEVEL_EVENT         = (byte) 0xA2;
+    public static final byte V34_TILE_EVENT          = (byte) 0xA3;
+    public static final byte V34_ENTITY_EVENT        = (byte) 0xA4;
+    public static final byte V34_MOB_EFFECT          = (byte) 0xA5;
+    public static final byte V34_UPDATE_ATTRIBUTES   = (byte) 0xA6; // NEW in v34
+    public static final byte V34_MOB_EQUIPMENT       = (byte) 0xA7;
+    public static final byte V34_MOB_ARMOR           = (byte) 0xA8;
+    public static final byte V34_INTERACT            = (byte) 0xA9;
+    public static final byte V34_USE_ITEM            = (byte) 0xAA;
+    public static final byte V34_PLAYER_ACTION       = (byte) 0xAB;
+    public static final byte V34_HURT_ARMOR          = (byte) 0xAC;
+    public static final byte V34_SET_ENTITY_DATA     = (byte) 0xAD;
+    public static final byte V34_SET_ENTITY_MOTION   = (byte) 0xAE;
+    public static final byte V34_SET_ENTITY_LINK     = (byte) 0xAF;
+    public static final byte V34_SET_HEALTH          = (byte) 0xB0;
+    public static final byte V34_SET_SPAWN_POSITION  = (byte) 0xB1;
+    public static final byte V34_ANIMATE             = (byte) 0xB2;
+    public static final byte V34_RESPAWN             = (byte) 0xB3;
+    public static final byte V34_DROP_ITEM           = (byte) 0xB4;
+    public static final byte V34_CONTAINER_OPEN      = (byte) 0xB5;
+    public static final byte V34_CONTAINER_CLOSE     = (byte) 0xB6;
+    public static final byte V34_CONTAINER_SET_SLOT  = (byte) 0xB7;
+    public static final byte V34_CONTAINER_SET_DATA  = (byte) 0xB8;
+    public static final byte V34_CONTAINER_SET_CONTENT = (byte) 0xB9;
+    public static final byte V34_CRAFTING_DATA       = (byte) 0xBA; // NEW in v34
+    public static final byte V34_CRAFTING_EVENT      = (byte) 0xBB; // NEW in v34
+    public static final byte V34_ADVENTURE_SETTINGS  = (byte) 0xBC;
+    public static final byte V34_TILE_ENTITY_DATA    = (byte) 0xBD;
+    public static final byte V34_PLAYER_INPUT        = (byte) 0xBE;
+    public static final byte V34_FULL_CHUNK_DATA     = (byte) 0xBF;
+    public static final byte V34_SET_DIFFICULTY      = (byte) 0xC0;
+    public static final byte V34_CHANGE_DIMENSION    = (byte) 0xC1; // NEW in v34
+    public static final byte V34_SET_PLAYER_GAMETYPE = (byte) 0xC2; // NEW in v34
+    public static final byte V34_PLAYER_LIST         = (byte) 0xC3; // NEW in v34
+
     // --- Login status codes ---
     public static final int LOGIN_SUCCESS         = 0;
     public static final int LOGIN_CLIENT_OUTDATED = 1;
@@ -200,6 +256,9 @@ public final class MCPEConstants {
     public static final int ACTION_JUMP           = 8;
     public static final int ACTION_START_SPRINT   = 9;
     public static final int ACTION_STOP_SPRINT    = 10;
+    public static final int ACTION_START_SNEAK    = 11;
+    public static final int ACTION_STOP_SNEAK     = 12;
+    public static final int ACTION_CREATIVE_DESTROY = 13; // v34+: creative mode instant block destroy
 
     // --- World generator types ---
     public static final int GENERATOR_OLD      = 0;
@@ -265,6 +324,9 @@ public final class MCPEConstants {
      * v11/v12: returns the ID unchanged.
      */
     public static int toWireId(int canonicalId, int protocolVersion) {
+        if (protocolVersion >= MCPE_PROTOCOL_VERSION_34) {
+            return toV34WireId(canonicalId);
+        }
         if (protocolVersion >= MCPE_PROTOCOL_VERSION_27) {
             return (toV27Id(canonicalId) + 0x81) & 0xFF;
         }
@@ -323,6 +385,9 @@ public final class MCPEConstants {
      * v11/v12: returns the ID unchanged.
      */
     public static int toCanonicalId(int wireId, int protocolVersion) {
+        if (protocolVersion >= MCPE_PROTOCOL_VERSION_34) {
+            return fromV34WireId(wireId);
+        }
         if (protocolVersion >= MCPE_PROTOCOL_VERSION_27) {
             int v27Canonical = (wireId + 0x7F) & 0xFF;
             return fromV27Id(v27Canonical);
@@ -350,6 +415,66 @@ public final class MCPEConstants {
             case 0x22: return 0xAB; // ANIMATE
             case 0x26: return 0xB0; // CONTAINER_CLOSE
             case 0x2D: return 0xB9; // PLAYER_INPUT
+            default: return wireId;
+        }
+    }
+
+    /** Map v12-canonical packet ID to v34 wire ID (no offset — IDs are direct). */
+    private static int toV34WireId(int canonicalId) {
+        switch (canonicalId & 0xFF) {
+            case 0x82: return V34_LOGIN & 0xFF;
+            case 0x83: return V34_PLAY_STATUS & 0xFF;
+            case 0x85: return V34_TEXT & 0xFF;
+            case 0x86: return V34_SET_TIME & 0xFF;
+            case 0x87: return V34_START_GAME & 0xFF;
+            case 0x89: return V34_ADD_PLAYER & 0xFF;
+            case 0x8A: return V34_REMOVE_PLAYER & 0xFF;
+            case 0x8D: return V34_REMOVE_ENTITY & 0xFF;
+            case 0x90: return V34_MOVE_ENTITY & 0xFF;
+            case 0x93: return V34_MOVE_ENTITY & 0xFF;
+            case 0x94: return V34_MOVE_PLAYER & 0xFF;
+            case 0x96: return V34_REMOVE_BLOCK & 0xFF;
+            case 0x97: return V34_UPDATE_BLOCK & 0xFF;
+            case 0x9C: return V34_ENTITY_EVENT & 0xFF;
+            case 0x9E: return V34_FULL_CHUNK_DATA & 0xFF;
+            case 0x9F: return V34_MOB_EQUIPMENT & 0xFF;
+            case 0xA0: return V34_MOB_ARMOR & 0xFF;
+            case 0xA1: return V34_INTERACT & 0xFF;
+            case 0xA2: return V34_USE_ITEM & 0xFF;
+            case 0xA3: return V34_PLAYER_ACTION & 0xFF;
+            case 0xA6: return V34_SET_ENTITY_DATA & 0xFF;
+            case 0xA7: return V34_SET_ENTITY_MOTION & 0xFF;
+            case 0xA9: return V34_SET_HEALTH & 0xFF;
+            case 0xAA: return V34_SET_SPAWN_POSITION & 0xFF;
+            case 0xAB: return V34_ANIMATE & 0xFF;
+            case 0xAC: return V34_RESPAWN & 0xFF;
+            case 0xAD: return V34_CONTAINER_SET_CONTENT & 0xFF;
+            case 0xB0: return V34_CONTAINER_CLOSE & 0xFF;
+            case 0xB3: return V34_CONTAINER_SET_CONTENT & 0xFF;
+            case 0xB5: return V34_TEXT & 0xFF;
+            case 0xB6: return V34_ADVENTURE_SETTINGS & 0xFF;
+            case 0xB7: return V34_ADVENTURE_SETTINGS & 0xFF;
+            case 0xB9: return V34_PLAYER_INPUT & 0xFF;
+            case 0xBA: return V34_FULL_CHUNK_DATA & 0xFF;
+            default: return canonicalId & 0xFF;
+        }
+    }
+
+    /** Map v34 wire ID to v12-canonical packet ID. */
+    private static int fromV34WireId(int wireId) {
+        switch (wireId & 0xFF) {
+            case 0x8F: return 0x82; // LOGIN
+            case 0x93: return 0x85; // TEXT → MESSAGE
+            case 0x9D: return 0x94; // MOVE_PLAYER
+            case 0x9E: return 0x96; // REMOVE_BLOCK
+            case 0xA4: return 0x9C; // ENTITY_EVENT
+            case 0xA7: return 0x9F; // MOB_EQUIPMENT
+            case 0xA9: return 0xA1; // INTERACT
+            case 0xAA: return 0xA2; // USE_ITEM
+            case 0xAB: return 0xA3; // PLAYER_ACTION
+            case 0xB2: return 0xAB; // ANIMATE
+            case 0xB6: return 0xB0; // CONTAINER_CLOSE
+            case 0xBE: return 0xB9; // PLAYER_INPUT
             default: return wireId;
         }
     }

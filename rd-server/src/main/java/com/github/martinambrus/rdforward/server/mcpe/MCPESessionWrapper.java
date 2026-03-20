@@ -77,7 +77,7 @@ public class MCPESessionWrapper {
         buf.writeByte((flags << 4));
         server.sendGamePacket(session, buf.getBuf());
 
-        // v27: UpdateBlock is silently ignored — resend chunk as workaround
+        // v27+: UpdateBlock is silently ignored — resend chunk as workaround
         if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27
                 && gameplayHandler != null) {
             gameplayHandler.sendChunkData(pkt.getX() >> 4, pkt.getZ() >> 4);
@@ -85,6 +85,7 @@ public class MCPESessionWrapper {
     }
 
     private void translateSpawnPlayer(SpawnPlayerPacket pkt) {
+        boolean isV34 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34;
         boolean isV27 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27;
         // Classic uses fixed-point (x32), MCPE uses float
         float x = pkt.getX() / 32.0f;
@@ -95,9 +96,48 @@ public class MCPESessionWrapper {
         float yaw = ((pkt.getYaw() + 128) & 0xFF) * 360.0f / 256.0f;
         float pitch = (pkt.getPitch() & 0xFF) * 360.0f / 256.0f;
 
+        // v34: send PlayerListAdd before AddPlayer (registers skin)
+        if (isV34) {
+            ConnectedPlayer spawnedPlayer = playerManager.getPlayer((byte) pkt.getPlayerId());
+            byte[] skinData = (spawnedPlayer != null) ? spawnedPlayer.getMcpeSkinData() : null;
+            if (skinData == null || skinData.length == 0) {
+                skinData = MCPEConstants.DEFAULT_SKIN_64x64;
+            }
+            MCPEPacketBuffer plPkt = new MCPEPacketBuffer();
+            plPkt.writeByte(MCPEConstants.V34_PLAYER_LIST);
+            plPkt.writeByte(0); // TYPE_ADD
+            plPkt.writeInt(1);  // entry count
+            plPkt.writeLong(0);         // UUID most significant
+            plPkt.writeLong(entityId);  // UUID least significant
+            plPkt.writeLong(entityId);  // entityId
+            plPkt.writeString(name);
+            plPkt.writeByte(0); // slim = 0 (Steve model)
+            plPkt.writeShort(skinData.length);
+            plPkt.writeBytes(skinData);
+            server.sendGamePacket(session, plPkt.getBuf());
+        }
+
         MCPEPacketBuffer buf = new MCPEPacketBuffer();
         buf.writeByte(wireId(MCPEConstants.ADD_PLAYER));
-        if (isV27) {
+        if (isV34) {
+            // v34: uuid(2 longs), username, entityId(long), x, y, z,
+            //       speedX, speedY, speedZ, yaw, headYaw, pitch,
+            //       slot(compound — air), metadata
+            buf.writeLong(0);         // UUID most significant
+            buf.writeLong(entityId);  // UUID least significant
+            buf.writeString(name);
+            buf.writeLong(entityId);
+            buf.writeFloat(x);
+            buf.writeFloat(y);
+            buf.writeFloat(z);
+            buf.writeFloat(0); // speedX
+            buf.writeFloat(0); // speedY
+            buf.writeFloat(0); // speedZ
+            buf.writeFloat(yaw);
+            buf.writeFloat(yaw);  // headYaw
+            buf.writeFloat(pitch);
+            buf.writeShort(0); // held item (air = slot compound)
+        } else if (isV27) {
             // v27: clientId(long), username, entityId(long), x, y, z,
             //       speedX, speedY, speedZ, yaw, headYaw, pitch,
             //       itemId(short), itemDamage(short), slim(byte), skin(string), metadata
@@ -150,7 +190,7 @@ public class MCPESessionWrapper {
         MCPEPacketBuffer meta = new MCPEPacketBuffer();
         meta.writeByte(wireId(MCPEConstants.SET_ENTITY_DATA));
         if (isV27) {
-            meta.writeLong(entityId); // v27: 64-bit entity ID
+            meta.writeLong(entityId); // v27+: 64-bit entity ID
         } else {
             meta.writeInt(entityId);
         }
@@ -164,16 +204,34 @@ public class MCPESessionWrapper {
 
     private void translateDespawnPlayer(DespawnPlayerPacket pkt) {
         int entityId = (pkt.getPlayerId() & 0xFF) + 1;
+        boolean isV34 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34;
 
         MCPEPacketBuffer buf = new MCPEPacketBuffer();
         buf.writeByte(wireId(MCPEConstants.REMOVE_PLAYER));
         if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
-            buf.writeLong(entityId); // v27: 64-bit entity ID
+            buf.writeLong(entityId); // v27+: 64-bit entity ID
         } else {
             buf.writeInt(entityId);
         }
-        buf.writeLong(entityId); // clientID (always long)
+        if (isV34) {
+            // v34: UUID (2 longs) instead of clientId
+            buf.writeLong(0);         // UUID most significant
+            buf.writeLong(entityId);  // UUID least significant
+        } else {
+            buf.writeLong(entityId); // clientID (always long)
+        }
         server.sendGamePacket(session, buf.getBuf());
+
+        // v34: also send PlayerList TYPE_REMOVE
+        if (isV34) {
+            MCPEPacketBuffer plPkt = new MCPEPacketBuffer();
+            plPkt.writeByte(MCPEConstants.V34_PLAYER_LIST);
+            plPkt.writeByte(1); // TYPE_REMOVE
+            plPkt.writeInt(1);  // entry count
+            plPkt.writeLong(0);         // UUID most significant
+            plPkt.writeLong(entityId);  // UUID least significant
+            server.sendGamePacket(session, plPkt.getBuf());
+        }
     }
 
     private void translatePlayerTeleport(PlayerTeleportPacket pkt) {
@@ -191,7 +249,7 @@ public class MCPESessionWrapper {
         MCPEPacketBuffer buf = new MCPEPacketBuffer();
         buf.writeByte(wireId(MCPEConstants.MOVE_PLAYER));
         if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
-            buf.writeLong(entityId); // v27: 64-bit entity ID
+            buf.writeLong(entityId); // v27+: 64-bit entity ID
         } else {
             buf.writeInt(entityId);
         }
@@ -219,7 +277,7 @@ public class MCPESessionWrapper {
         MCPEPacketBuffer buf = new MCPEPacketBuffer();
         buf.writeByte(wireId(MCPEConstants.MESSAGE));
         if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
-            // v27 TextPacket: type(byte) + source(string) + message(string)
+            // v27+ TextPacket: type(byte) + source(string) + message(string)
             buf.writeByte(1); // type = CHAT
             buf.writeString(""); // source
         } else if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_12) {

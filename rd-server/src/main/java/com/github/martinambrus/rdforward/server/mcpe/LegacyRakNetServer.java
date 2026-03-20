@@ -113,7 +113,7 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
                 || packetId == (MCPEConstants.UNCONNECTED_PING_OPEN & 0xFF)) {
             System.out.println("[MCPE] Ping from " + sender + " (id=0x" + Integer.toHexString(packetId)
                     + ", remaining=" + buf.readableBytes() + " bytes)");
-            handleUnconnectedPing(ctx, sender, buf);
+            handleUnconnectedPing(ctx, sender, buf, packetId);
             return;
         }
         if (packetId == (MCPEConstants.OPEN_CONNECTION_REQUEST_1 & 0xFF)) {
@@ -133,11 +133,37 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
         session.touch();
 
         if (packetId == (MCPEConstants.ACK & 0xFF)) {
-            // Client ACKing our packets — we don't retransmit yet, so ignore
+            int ackCount = buf.readUnsignedShort();
+            StringBuilder ackSeqs = new StringBuilder();
+            for (int i = 0; i < ackCount && buf.isReadable(); i++) {
+                boolean single = buf.readBoolean();
+                int start = buf.readUnsignedByte() | (buf.readUnsignedByte() << 8) | (buf.readUnsignedByte() << 16);
+                if (single) {
+                    ackSeqs.append(start).append(" ");
+                } else {
+                    int end = buf.readUnsignedByte() | (buf.readUnsignedByte() << 8) | (buf.readUnsignedByte() << 16);
+                    ackSeqs.append(start).append("-").append(end).append(" ");
+                }
+            }
+            System.out.println("[MCPE ACK] from " + sender + ": " + ackSeqs);
             return;
         }
         if (packetId == (MCPEConstants.NACK & 0xFF)) {
-            // Client NACKing — TODO: retransmission
+            if (buf.readableBytes() >= 2) {
+                int nackCount = buf.readUnsignedShort();
+                StringBuilder nackSeqs = new StringBuilder();
+                for (int i = 0; i < nackCount && buf.isReadable(); i++) {
+                    boolean single = buf.readBoolean();
+                    int start = buf.readUnsignedByte() | (buf.readUnsignedByte() << 8) | (buf.readUnsignedByte() << 16);
+                    if (single) {
+                        nackSeqs.append(start).append(" ");
+                    } else {
+                        int end = buf.readUnsignedByte() | (buf.readUnsignedByte() << 8) | (buf.readUnsignedByte() << 16);
+                        nackSeqs.append(start).append("-").append(end).append(" ");
+                    }
+                }
+                System.out.println("[MCPE NACK] from " + sender + ": " + nackSeqs);
+            }
             return;
         }
 
@@ -171,32 +197,42 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
 
     // ========== Unconnected Packet Handlers ==========
 
-    private void handleUnconnectedPing(ChannelHandlerContext ctx, InetSocketAddress sender, ByteBuf buf) {
+    private void handleUnconnectedPing(ChannelHandlerContext ctx, InetSocketAddress sender,
+                                       ByteBuf buf, int pingId) {
         long pingTime = buf.readLong();
         // Skip magic (16 bytes)
         buf.skipBytes(MCPEConstants.RAKNET_MAGIC_LENGTH);
 
-        // Consume clientGUID if present (0.9.0-0.10.0 send it; 0.7.x and 0.11.0 don't)
-        if (buf.readableBytes() >= 8) {
-            buf.readLong();
+        // Detect client era from remaining bytes:
+        // 0.7.x pings have NO clientGUID (0 bytes remaining after magic).
+        // 0.9.0+ pings have clientGUID (8 bytes remaining).
+        boolean hasClientGuid = buf.readableBytes() >= 8;
+        if (hasClientGuid) {
+            buf.readLong(); // consume clientGUID
         }
 
-        // We can't distinguish 0.7.x from 0.11.0 by ping format (both lack clientGUID).
-        // Send both pong formats — each client parses the one it understands.
         int playerCount = playerManager.getPlayerCount();
         int maxPlayers = com.github.martinambrus.rdforward.server.PlayerManager.MAX_PLAYERS;
 
-        // Pong 1: MCPE format (for 0.9.0+ including 0.11.0)
-        String mcpePong = "MCPE;" + serverName + ";"
-                + MCPEConstants.MCPE_PROTOCOL_VERSION_MAX + ";"
-                + MCPEConstants.MCPE_VERSION_STRING + ";"
-                + playerCount + ";" + maxPlayers + ";"
-                + serverGuid + ";";
-        sendPong(ctx, sender, pingTime, mcpePong);
+        if (hasClientGuid) {
+            // 0.9.0+ client — send MCPE format pong only
+            String mcpePong = "MCPE;" + serverName + ";"
+                    + MCPEConstants.MCPE_PROTOCOL_VERSION_MAX + ";"
+                    + MCPEConstants.MCPE_VERSION_STRING + ";"
+                    + playerCount + ";" + maxPlayers;
+            sendPong(ctx, sender, pingTime, mcpePong);
+        } else {
+            // Could be 0.7.x or 0.11.0+ — send both formats.
+            // MCPE format first (processed by 0.11.0+), MCCPP format second (processed by 0.7.x).
+            String mcpePong = "MCPE;" + serverName + ";"
+                    + MCPEConstants.MCPE_PROTOCOL_VERSION_MAX + ";"
+                    + MCPEConstants.MCPE_VERSION_STRING + ";"
+                    + playerCount + ";" + maxPlayers;
+            sendPong(ctx, sender, pingTime, mcpePong);
 
-        // Pong 2: MCCPP format (for 0.7.x)
-        String mccppPong = MCPEConstants.PONG_PREFIX + serverName;
-        sendPong(ctx, sender, pingTime, mccppPong);
+            String mccppPong = MCPEConstants.PONG_PREFIX + serverName;
+            sendPong(ctx, sender, pingTime, mccppPong);
+        }
     }
 
     private void sendPong(ChannelHandlerContext ctx, InetSocketAddress sender, long pingTime, String pongData) {
@@ -262,6 +298,9 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
     // ========== Data Packet Handling ==========
 
     private void handleDataPacket(ChannelHandlerContext ctx, LegacyRakNetSession session, ByteBuf buf) {
+        // Cache ctx for outgoing writes (ensures same write path as handshake)
+        session.setCachedCtx(ctx);
+
         // Read sequence number (3 bytes LE)
         int seqNum = buf.readUnsignedByte()
                    | (buf.readUnsignedByte() << 8)
@@ -319,8 +358,7 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
         ByteBuf payload = buf.readSlice(byteLength).retain();
 
         // Debug: log first bytes of encapsulated payload
-        if (session.getState() == LegacyRakNetSession.State.CONNECTED
-                && session.getGameplayHandler() == null) {
+        if (session.getGameplayHandler() == null) {
             int idx = payload.readerIndex();
             StringBuilder hex = new StringBuilder();
             for (int i = 0; i < Math.min(16, payload.readableBytes()); i++) {
@@ -389,17 +427,23 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
             return;
         }
 
-        // v27 DisconnectPacket (0x03)
+        // v27 DisconnectPacket (0x03) / v34 DisconnectPacket (0x91)
         if (gamePacketId == (MCPEConstants.V27_DISCONNECT & 0xFF)
-                && session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
+                && session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27
+                && session.getMcpeProtocolVersion() < MCPEConstants.MCPE_PROTOCOL_VERSION_34) {
+            handleDisconnect(session);
+            return;
+        }
+        if (gamePacketId == (MCPEConstants.V34_DISCONNECT & 0xFF)
+                && session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34) {
             handleDisconnect(session);
             return;
         }
 
-        // BatchPacket (0xB1) — decompress and dispatch inner packets.
-        // Used by v27 (0.11.0) clients; sent during login before protocol version is known.
-        // Safe to handle for all versions: 0xB1 in v11-v20 is CONTAINER_SET_SLOT (never sent during login).
-        if (gamePacketId == (MCPEConstants.V27_BATCH & 0xFF)) {
+        // BatchPacket — decompress and dispatch inner packets.
+        // v27: 0xB1, v34: 0x92. Both safe to handle before protocol version is known.
+        if (gamePacketId == (MCPEConstants.V27_BATCH & 0xFF)
+                || gamePacketId == (MCPEConstants.V34_BATCH & 0xFF)) {
             handleBatchPacket(ctx, session, payload);
             return;
         }
@@ -503,6 +547,9 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
     private void handleConnectedPing(ChannelHandlerContext ctx, LegacyRakNetSession session, ByteBuf payload) {
         if (payload.readableBytes() < 8) return;
         long pingTime = payload.readLong();
+        if (session.getGameplayHandler() == null) {
+            System.out.println("[MCPE PING] from " + session.getAddress() + " pingTime=" + pingTime);
+        }
 
         // Respond with Connected Pong (0x03)
         MCPEPacketBuffer pkt = new MCPEPacketBuffer();
@@ -533,7 +580,14 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
      * this method wraps it in the RakNet reliability layer.
      */
     public void sendGamePacket(LegacyRakNetSession session, ByteBuf gamePayload) {
-        Channel sendCh = (frontEndChannel != null) ? frontEndChannel : channel;
+        // Use cached ctx from incoming data packets (same write path as handshake)
+        ChannelHandlerContext cachedCtx = session.getCachedCtx();
+        Channel sendCh;
+        if (cachedCtx != null) {
+            sendCh = cachedCtx.channel();
+        } else {
+            sendCh = (frontEndChannel != null) ? frontEndChannel : channel;
+        }
         if (sendCh == null || !sendCh.isActive()) {
             System.err.println("[MCPE] sendGamePacket: channel null or inactive!");
             return;
@@ -541,33 +595,66 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
 
         int origId = gamePayload.getUnsignedByte(gamePayload.readerIndex());
 
-        // v27 clients require all game packets to be batch-wrapped (except batch itself).
+        // Debug: log outgoing game packet IDs during login (before gameplay handler assigned)
+        if (session.getGameplayHandler() == null && session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34) {
+            System.out.println("[MCPE OUT] Sending packet 0x" + Integer.toHexString(origId)
+                    + " (" + gamePayload.readableBytes() + " bytes)"
+                    + " to v" + session.getMcpeProtocolVersion());
+        }
+
+        // v27+ clients require all game packets to be batch-wrapped (except batch itself).
         if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
-            if (origId != (MCPEConstants.V27_BATCH & 0xFF)) {
-                gamePayload = wrapInBatch(gamePayload);
+            int batchId = (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34)
+                    ? (MCPEConstants.V34_BATCH & 0xFF)
+                    : (MCPEConstants.V27_BATCH & 0xFF);
+            if (origId != batchId) {
+                gamePayload = wrapInBatch(session, gamePayload);
             }
         }
 
-        sendEncapsulated(sendCh.pipeline().firstContext(), session, gamePayload,
+        // Debug: log batch-wrapped size and MTU for v34 login
+        if (session.getGameplayHandler() == null
+                && session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34) {
+            System.out.println("[MCPE OUT BATCH] wrapped=" + gamePayload.readableBytes()
+                    + " bytes, MTU=" + session.getMtu()
+                    + ", maxPayload=" + (session.getMtu() - 60));
+        }
+
+        ChannelHandlerContext useCtx = (cachedCtx != null) ? cachedCtx : sendCh.pipeline().firstContext();
+        sendEncapsulated(useCtx, session, gamePayload,
                 MCPEConstants.RELIABLE_ORDERED);
     }
 
     /**
-     * Wrap a game packet in a BatchPacket (0xB1) for v27 clients.
-     * Format: [0xB1][int compressedLength][zlib(raw packet bytes)]
+     * Wrap a game packet in a BatchPacket for v27+ clients.
+     * v27: [0xB1][int compLen][zlib(raw packet bytes)]
+     * v34: [0x92][int compLen][zlib(raw packet bytes)] — same as v27 but different batch ID
      */
-    private ByteBuf wrapInBatch(ByteBuf gamePayload) {
+    private ByteBuf wrapInBatch(LegacyRakNetSession session, ByteBuf gamePayload) {
         byte[] raw = new byte[gamePayload.readableBytes()];
         gamePayload.readBytes(raw);
 
-        // Inner format: raw packet bytes (no length prefix).
+        boolean isV34 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34;
+
+        // v34: inner packets are int-length-prefixed inside the compressed data
+        byte[] toCompress;
+        if (isV34) {
+            toCompress = new byte[4 + raw.length];
+            toCompress[0] = (byte) ((raw.length >> 24) & 0xFF);
+            toCompress[1] = (byte) ((raw.length >> 16) & 0xFF);
+            toCompress[2] = (byte) ((raw.length >> 8) & 0xFF);
+            toCompress[3] = (byte) (raw.length & 0xFF);
+            System.arraycopy(raw, 0, toCompress, 4, raw.length);
+        } else {
+            toCompress = raw;
+        }
 
         byte[] compressed;
         try {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             DeflaterOutputStream dos = new DeflaterOutputStream(baos,
                     new Deflater(Deflater.DEFAULT_COMPRESSION));
-            dos.write(raw);
+            dos.write(toCompress);
             dos.finish();
             dos.close();
             compressed = baos.toByteArray();
@@ -575,8 +662,9 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
             throw new RuntimeException("batch compress failed", e);
         }
 
+        byte batchId = isV34 ? MCPEConstants.V34_BATCH : MCPEConstants.V27_BATCH;
         ByteBuf batch = Unpooled.buffer();
-        batch.writeByte(MCPEConstants.V27_BATCH);
+        batch.writeByte(batchId);
         batch.writeInt(compressed.length);
         batch.writeBytes(compressed);
         return batch;
@@ -635,7 +723,28 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
 
         frame.writeBytes(payload);
 
-        ctx.writeAndFlush(new DatagramPacket(frame, session.getAddress()));
+        // Debug: hex dump first few outgoing data packets during login
+        if (session.getGameplayHandler() == null
+                && session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34) {
+            int ridx = frame.readerIndex();
+            StringBuilder hex = new StringBuilder();
+            for (int i = 0; i < Math.min(32, frame.readableBytes()); i++) {
+                hex.append(String.format("%02x ", frame.getByte(ridx + i)));
+            }
+            System.out.println("[MCPE OUT FRAME] " + frame.readableBytes() + " bytes → "
+                    + session.getAddress() + ": " + hex);
+        }
+
+        io.netty.channel.ChannelFuture future = ctx.writeAndFlush(new DatagramPacket(frame, session.getAddress()));
+        if (session.getGameplayHandler() == null) {
+            final int sn = seqNum;
+            future.addListener(f -> {
+                if (!f.isSuccess()) {
+                    System.err.println("[MCPE WRITE FAIL] seq=" + sn + " to " + session.getAddress()
+                            + ": " + f.cause());
+                }
+            });
+        }
     }
 
     /**

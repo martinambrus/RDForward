@@ -57,6 +57,9 @@ public class LegacyRakNetSession {
     private MCPELoginHandler loginHandler;
     private MCPEGameplayHandler gameplayHandler;
 
+    // Cached ChannelHandlerContext from incoming data packets (for outgoing writes)
+    private io.netty.channel.ChannelHandlerContext cachedCtx;
+
     public LegacyRakNetSession(InetSocketAddress address, long clientGuid, int mtu, long serverGuid) {
         this.address = address;
         this.clientGuid = clientGuid;
@@ -88,6 +91,9 @@ public class LegacyRakNetSession {
 
     public int getMcpeProtocolVersion() { return mcpeProtocolVersion; }
     public void setMcpeProtocolVersion(int version) { this.mcpeProtocolVersion = version; }
+
+    public io.netty.channel.ChannelHandlerContext getCachedCtx() { return cachedCtx; }
+    public void setCachedCtx(io.netty.channel.ChannelHandlerContext ctx) { this.cachedCtx = ctx; }
 
     /** Allocate the next send sequence number. */
     public int nextSendSequenceNumber() {

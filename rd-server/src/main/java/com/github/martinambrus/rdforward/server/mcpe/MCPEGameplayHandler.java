@@ -162,8 +162,9 @@ public class MCPEGameplayHandler {
 
     private void handleRemoveBlock(ByteBuf payload) {
         MCPEPacketBuffer buf = new MCPEPacketBuffer(payload);
+        // v27+: 64-bit entityId; v11-v20: 32-bit entityId
         if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
-            buf.readLong(); // v27: 64-bit entity ID
+            buf.readLong(); // v27+: 64-bit entity ID (v34 DOES have this)
         } else {
             buf.readInt();  // v11-v20: 32-bit entity ID
         }
@@ -195,27 +196,44 @@ public class MCPEGameplayHandler {
         int blockX = buf.readInt();
         int blockY = buf.readInt();
         int blockZ = buf.readInt();
-        // v17+: face is byte (UseItemPacket format changed at 0.9.0); v11-v14: int
+        // v17+: face is byte; v11-v14: face is int
         int face;
         if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_17) {
             face = buf.readUnsignedByte();
         } else {
             face = buf.readInt();
         }
-        int itemId = buf.readShort();
-        // v17+: item aux/meta is short; v11-v14: byte
+        int itemId;
         int meta;
-        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_17) {
-            meta = buf.readShort();
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34) {
+            // v34: 6 floats (fx, fy, fz, posX, posY, posZ) then slot
+            buf.skipBytes(24); // 6 × 4 bytes
+            // v34 slot: short id, [byte count, short damage, short nbtLen, [nbt]]
+            itemId = buf.readShort();
+            if (itemId != 0) {
+                buf.readUnsignedByte(); // count
+                meta = buf.readShort(); // damage
+                int nbtLen = buf.readShort();
+                if (nbtLen > 0 && nbtLen <= buf.readableBytes()) {
+                    buf.skipBytes(nbtLen); // skip NBT
+                }
+            } else {
+                meta = 0;
+            }
         } else {
-            meta = buf.readUnsignedByte();
+            itemId = buf.readShort();
+            // v17+: item aux/meta is short; v11-v14: byte
+            if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_17) {
+                meta = buf.readShort();
+            } else {
+                meta = buf.readUnsignedByte();
+            }
+            if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
+                buf.readLong(); // v27: 64-bit entity ID
+            } else {
+                buf.readInt();  // v11-v20: 32-bit entity ID
+            }
         }
-        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
-            buf.readLong(); // v27: 64-bit entity ID
-        } else {
-            buf.readInt();  // v11-v20: 32-bit entity ID
-        }
-        // float fx, fy, fz, posX, posY, posZ — skip for now
 
         System.out.println("[MCPE] UseItem block=" + blockX + "," + blockY + "," + blockZ
                 + " face=" + face + " item=" + itemId + " meta=" + meta);
@@ -310,15 +328,30 @@ public class MCPEGameplayHandler {
         // Read but don't process for now — creative mode doesn't need equipment tracking
         MCPEPacketBuffer buf = new MCPEPacketBuffer(payload);
         if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
-            buf.readLong(); // v27: 64-bit entity ID
+            buf.readLong(); // v27+: 64-bit entity ID
         } else {
             buf.readInt();
         }
-        int itemId = buf.readShort();
-        int itemMeta = buf.readShort();
-        int slot = buf.readByte();
-        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
-            buf.readByte(); // v27: selectedSlot
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34) {
+            // v34: slot compound — short id, [byte count, short damage, short nbtLen, [nbt]]
+            int itemId = buf.readShort();
+            if (itemId != 0 && buf.readableBytes() >= 5) {
+                buf.readUnsignedByte(); // count
+                buf.readShort(); // damage
+                int nbtLen = buf.readShort();
+                if (nbtLen > 0 && nbtLen <= buf.readableBytes()) {
+                    buf.skipBytes(nbtLen);
+                }
+            }
+            buf.readByte(); // slot
+            buf.readByte(); // selectedSlot
+        } else {
+            int itemId = buf.readShort();
+            int itemMeta = buf.readShort();
+            int slot = buf.readByte();
+            if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
+                buf.readByte(); // v27: selectedSlot
+            }
         }
     }
 
@@ -338,11 +371,17 @@ public class MCPEGameplayHandler {
         System.out.println("[MCPE] PlayerAction action=" + action + " at " + x + "," + y + "," + z + " face=" + face);
 
         // Creative mode instant block destroy
-        // v14+: only START_BREAK triggers destroy (STOP_BREAK arrives for same block, ignore it)
+        // v34: ACTION_CREATIVE_DESTROY (13) is used for creative block breaking
+        // v14-v27: only START_BREAK triggers destroy (STOP_BREAK arrives for same block, ignore it)
         // v11-v13: only STOP_BREAK triggers destroy
-        boolean shouldBreak = (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_14)
-                ? action == MCPEConstants.ACTION_START_BREAK
-                : action == MCPEConstants.ACTION_STOP_BREAK;
+        boolean shouldBreak;
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34) {
+            shouldBreak = action == MCPEConstants.ACTION_CREATIVE_DESTROY;
+        } else if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_14) {
+            shouldBreak = action == MCPEConstants.ACTION_START_BREAK;
+        } else {
+            shouldBreak = action == MCPEConstants.ACTION_STOP_BREAK;
+        }
         if (shouldBreak) {
             long now = System.currentTimeMillis();
             if (now - lastBreakTime < BREAK_COOLDOWN_MS) return;
@@ -376,10 +415,11 @@ public class MCPEGameplayHandler {
 
     private void handleAnimate(ByteBuf payload) {
         MCPEPacketBuffer buf = new MCPEPacketBuffer(payload);
+        // All versions: action is byte
         int action = buf.readUnsignedByte();
         int entityId;
         if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
-            entityId = (int) buf.readLong(); // v27: 64-bit entity ID (truncate for broadcast)
+            entityId = (int) buf.readLong(); // v27+: 64-bit entity ID (truncate for broadcast)
         } else {
             entityId = buf.readInt();
         }
@@ -772,8 +812,12 @@ public class MCPEGameplayHandler {
             biomeColors[offset + 3] = 0x6B;
         }
 
+        // v34: extra data count (int 0 = no extra data) appended after biomeColors
+        boolean isV34 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34;
+        int extraDataSize = isV34 ? 4 : 0;
+
         int terrainSize = blockIds.length + metadata.length + skyLight.length
-                + blockLight.length + heightMap.length + biomeColors.length;
+                + blockLight.length + heightMap.length + biomeColors.length + extraDataSize;
         byte[] terrain = new byte[terrainSize];
         int pos = 0;
         System.arraycopy(blockIds, 0, terrain, pos, blockIds.length); pos += blockIds.length;
@@ -781,14 +825,24 @@ public class MCPEGameplayHandler {
         System.arraycopy(skyLight, 0, terrain, pos, skyLight.length); pos += skyLight.length;
         System.arraycopy(blockLight, 0, terrain, pos, blockLight.length); pos += blockLight.length;
         System.arraycopy(heightMap, 0, terrain, pos, heightMap.length); pos += heightMap.length;
-        System.arraycopy(biomeColors, 0, terrain, pos, biomeColors.length);
+        System.arraycopy(biomeColors, 0, terrain, pos, biomeColors.length); pos += biomeColors.length;
+        // v34: write extraData count = 0 (big-endian int, already zeroed in array)
 
         MCPEPacketBuffer pkt = new MCPEPacketBuffer();
-        pkt.writeByte(0xAF); // v27 FullChunkData wire ID: (0x2E + 0x81) & 0xFF
-        pkt.writeInt(chunkX);
-        pkt.writeInt(chunkZ);
-        pkt.writeInt(terrain.length);
-        pkt.writeBytes(terrain);
+        if (isV34) {
+            pkt.writeByte(MCPEConstants.V34_FULL_CHUNK_DATA); // v34: 0xBF (direct wire ID)
+            pkt.writeInt(chunkX);
+            pkt.writeInt(chunkZ);
+            pkt.writeByte(0); // v34: order byte (0 = ORDER_COLUMNS)
+            pkt.writeInt(terrain.length);
+            pkt.writeBytes(terrain);
+        } else {
+            pkt.writeByte(0xAF); // v27 FullChunkData wire ID: (0x2E + 0x81) & 0xFF
+            pkt.writeInt(chunkX);
+            pkt.writeInt(chunkZ);
+            pkt.writeInt(terrain.length);
+            pkt.writeBytes(terrain);
+        }
         server.sendGamePacket(session, pkt.getBuf());
     }
 
