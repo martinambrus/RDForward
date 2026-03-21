@@ -46,6 +46,40 @@ jobs:
           echo "SHORT_SHA=${SHORT_SHA}" >> "$GITHUB_ENV"
           echo "JAR_NAME=rdforward-server-dev-${SHORT_SHA}.jar" >> "$GITHUB_ENV"
 
+      - name: Generate release body
+        run: |
+          # Get the commit the dev tag currently points to (if it exists)
+          git fetch --tags --force
+          PREV_SHA=$(git rev-list -n 1 dev 2>/dev/null || echo "")
+          if [ -n "$PREV_SHA" ] && [ "$PREV_SHA" != "${{ github.sha }}" ]; then
+            CHANGELOG=$(git log --pretty=format:'- %s (`%h`)' "${PREV_SHA}..${{ github.sha }}")
+          else
+            CHANGELOG=$(git log --pretty=format:'- %s (`%h`)' -10)
+          fi
+
+          cat > /tmp/release-body.md <<BODY
+          Automated development build from \`main\` branch.
+
+          **Commit:** ${{ github.sha }}
+          **Built:** ${{ github.event.head_commit.timestamp }}
+
+          ## Changes since last dev build
+
+          ${CHANGELOG}
+
+          ## Download
+
+          **\`${JAR_NAME}\`** — Standalone server JAR (Java 8+). Run with:
+          \`\`\`bash
+          java -jar ${JAR_NAME}
+          \`\`\`
+          Ports: TCP 25565 (Java Edition), UDP 19132 (Bedrock Edition)
+
+          > This is an unstable development build. For stable releases, see the [latest release](../../releases/latest).
+          BODY
+          # Strip leading whitespace from heredoc indentation
+          sed -i 's/^          //' /tmp/release-body.md
+
       - name: Update dev release
         uses: softprops/action-gh-release@v2
         with:
@@ -54,18 +88,4 @@ jobs:
           prerelease: true
           make_latest: false
           files: rd-server/build/libs/${{ env.JAR_NAME }}
-          body: |
-            Automated development build from `main` branch.
-
-            **Commit:** ${{ github.sha }}
-            **Built:** ${{ github.event.head_commit.timestamp }}
-
-            ## Download
-
-            **`${{ env.JAR_NAME }}`** — Standalone server JAR (Java 8+). Run with:
-            ```bash
-            java -jar ${{ env.JAR_NAME }}
-            ```
-            Ports: TCP 25565 (Java Edition), UDP 19132 (Bedrock Edition)
-
-            > This is an unstable development build. For stable releases, see the [latest release](../../releases/latest).
+          body_path: /tmp/release-body.md
