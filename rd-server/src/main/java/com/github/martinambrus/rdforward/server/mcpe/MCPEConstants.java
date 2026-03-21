@@ -9,6 +9,7 @@ public final class MCPEConstants {
     private MCPEConstants() {}
 
     // --- Protocol ---
+    public static final int MCPE_PROTOCOL_VERSION_9 = 9;   // 0.6.1
     public static final int MCPE_PROTOCOL_VERSION_11 = 11; // 0.7.0-0.7.3
     public static final int MCPE_PROTOCOL_VERSION_12 = 12; // 0.7.4-0.7.6
     public static final int MCPE_PROTOCOL_VERSION_14 = 14; // 0.8.0 (13 was dev-only)
@@ -34,7 +35,7 @@ public final class MCPEConstants {
     };
     public static final int RAKNET_MAGIC_LENGTH = 16;
 
-    /** RakNet protocol version used by MCPE 0.7.x. */
+    /** RakNet protocol version used by MCPE 0.7.x (6) and 0.6.x (5). Both accepted. */
     public static final byte RAKNET_PROTOCOL_VERSION = 6;
 
     // RakNet unconnected packet IDs
@@ -64,6 +65,12 @@ public final class MCPEConstants {
     public static final byte RELIABLE              = 2;
     public static final byte RELIABLE_ORDERED      = 3;
     public static final byte RELIABLE_SEQUENCED    = 4;
+
+    // --- v9 unique packets (0.6.1 — no SetEntityLink, IDs 0xA8+ shift -1 from v11) ---
+    /** v9: C2S block placement packet (removed in v11, replaced by UseItem). */
+    public static final byte V9_PLACE_BLOCK      = (byte) 0x95;
+    /** v9: C2S chat message (separate from S2C MESSAGE at 0x85; merged in v11). */
+    public static final byte V9_CLIENT_MESSAGE    = (byte) 0xB4;
 
     // --- MCPE Game Packets (0x82-0xB9 + 0xFF) ---
     public static final byte LOGIN               = (byte) 0x82;
@@ -396,6 +403,10 @@ public final class MCPEConstants {
         if (protocolVersion >= MCPE_PROTOCOL_VERSION_14 && (canonicalId & 0xFF) >= 0x94) {
             return (canonicalId + 1) & 0xFF;
         }
+        // v9: no SetEntityLink (canonical 0xA8) — IDs >= 0xA9 shift -1.
+        if (protocolVersion < MCPE_PROTOCOL_VERSION_11 && (canonicalId & 0xFF) >= 0xA9) {
+            return (canonicalId - 1) & 0xFF;
+        }
         return canonicalId & 0xFF;
     }
 
@@ -461,6 +472,11 @@ public final class MCPEConstants {
         if (protocolVersion >= MCPE_PROTOCOL_VERSION_14) {
             if (wireId == (ROTATE_HEAD_V14 & 0xFF)) return -1; // v14-only
             if (wireId > (ROTATE_HEAD_V14 & 0xFF)) return wireId - 1;
+        }
+        // v9: no SetEntityLink — IDs >= 0xA8 shift +1 to get v12-canonical.
+        // PlaceBlock (0x95) stays as-is — handled specially in gameplay handler.
+        if (protocolVersion < MCPE_PROTOCOL_VERSION_11 && wireId >= 0xA8) {
+            return wireId + 1;
         }
         return wireId;
     }

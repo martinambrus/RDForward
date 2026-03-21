@@ -184,7 +184,7 @@ public class MCPESessionWrapper {
                 buf.writeShort(MCPEConstants.DEFAULT_SKIN_64x64.length);
                 buf.writeBytes(MCPEConstants.DEFAULT_SKIN_64x64);
             }
-        } else {
+        } else if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_11) {
             buf.writeLong(entityId);      // clientID
             buf.writeString(name);
             buf.writeInt(entityId);       // entity ID
@@ -195,28 +195,58 @@ public class MCPESessionWrapper {
             buf.writeByte(pkt.getPitch()); // pitch
             buf.writeShort(0);            // held item ID
             buf.writeShort(0);            // held item aux value
+        } else {
+            // v9: clientId(long), username, entityId(int), x, y, z, metadata
+            // No yaw/pitch/held item fields
+            buf.writeLong(entityId);
+            buf.writeString(name);
+            buf.writeInt(entityId);
+            buf.writeFloat(x);
+            buf.writeFloat(y);
+            buf.writeFloat(z);
         }
-        buf.writeMetaByte(MCPEConstants.META_FLAGS, (byte) 0);
-        buf.writeMetaShort(MCPEConstants.META_AIR, (short) 300);
-        buf.writeMetaString(MCPEConstants.META_NAMETAG, name);
-        buf.writeMetaByte(MCPEConstants.META_SHOW_NAMETAG, (byte) 1);
-        buf.writeMetaEnd();
+
+        boolean isV9 = session.getMcpeProtocolVersion() < MCPEConstants.MCPE_PROTOCOL_VERSION_11;
+        if (isV9) {
+            // v9: PocketMine sends metadata indices 0,1,16,17 (no nametag/showNametag)
+            buf.writeMetaByte(MCPEConstants.META_FLAGS, (byte) 0);
+            buf.writeMetaShort(MCPEConstants.META_AIR, (short) 300);
+            buf.writeMetaByte(16, (byte) 0);
+            buf.writeMetaPosition(17, 0, 0, 0);
+            buf.writeMetaEnd();
+        } else {
+            buf.writeMetaByte(MCPEConstants.META_FLAGS, (byte) 0);
+            buf.writeMetaShort(MCPEConstants.META_AIR, (short) 300);
+            buf.writeMetaString(MCPEConstants.META_NAMETAG, name);
+            buf.writeMetaByte(MCPEConstants.META_SHOW_NAMETAG, (byte) 1);
+            buf.writeMetaEnd();
+        }
         server.sendGamePacket(session, buf.getBuf());
 
-        // Send SET_ENTITY_DATA with nametag (some clients only read metadata from this packet)
-        MCPEPacketBuffer meta = new MCPEPacketBuffer();
-        meta.writeByte(wireId(MCPEConstants.SET_ENTITY_DATA));
-        if (isV27) {
-            meta.writeLong(entityId); // v27+: 64-bit entity ID
+        if (isV9) {
+            // v9: PocketMine sends PLAYER_EQUIPMENT after AddPlayer (not SET_ENTITY_DATA)
+            MCPEPacketBuffer eqPkt = new MCPEPacketBuffer();
+            eqPkt.writeByte(wireId(MCPEConstants.PLAYER_EQUIPMENT));
+            eqPkt.writeInt(entityId);
+            eqPkt.writeShort(0); // block = air
+            eqPkt.writeShort(0); // meta = 0
+            server.sendGamePacket(session, eqPkt.getBuf());
         } else {
-            meta.writeInt(entityId);
+            // v11+: Send SET_ENTITY_DATA with nametag (some clients only read metadata from this packet)
+            MCPEPacketBuffer meta = new MCPEPacketBuffer();
+            meta.writeByte(wireId(MCPEConstants.SET_ENTITY_DATA));
+            if (isV27) {
+                meta.writeLong(entityId); // v27+: 64-bit entity ID
+            } else {
+                meta.writeInt(entityId);
+            }
+            meta.writeMetaByte(MCPEConstants.META_FLAGS, (byte) 0);
+            meta.writeMetaShort(MCPEConstants.META_AIR, (short) 300);
+            meta.writeMetaString(MCPEConstants.META_NAMETAG, name);
+            meta.writeMetaByte(MCPEConstants.META_SHOW_NAMETAG, (byte) 1);
+            meta.writeMetaEnd();
+            server.sendGamePacket(session, meta.getBuf());
         }
-        meta.writeMetaByte(MCPEConstants.META_FLAGS, (byte) 0);
-        meta.writeMetaShort(MCPEConstants.META_AIR, (short) 300);
-        meta.writeMetaString(MCPEConstants.META_NAMETAG, name);
-        meta.writeMetaByte(MCPEConstants.META_SHOW_NAMETAG, (byte) 1);
-        meta.writeMetaEnd();
-        server.sendGamePacket(session, meta.getBuf());
     }
 
     private void translateDespawnPlayer(DespawnPlayerPacket pkt) {

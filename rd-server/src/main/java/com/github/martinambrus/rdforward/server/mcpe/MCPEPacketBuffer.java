@@ -156,6 +156,14 @@ public class MCPEPacketBuffer {
         return this;
     }
 
+    public MCPEPacketBuffer writeMetaPosition(int index, int x, int y, int z) {
+        buf.writeByte((MCPEConstants.META_TYPE_POSITION << 5) | (index & 0x1F));
+        buf.writeIntLE(x);
+        buf.writeIntLE(y);
+        buf.writeIntLE(z);
+        return this;
+    }
+
     public MCPEPacketBuffer writeMetaEnd() {
         buf.writeByte(MCPEConstants.META_TERMINATOR);
         return this;

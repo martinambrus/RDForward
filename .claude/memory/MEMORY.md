@@ -42,8 +42,10 @@
 - **Pre-Netty Release protocols (v21-v78)**: See `memory/pre-netty-release-protocol.md`
 - **Netty protocols (v4, v5, v47, v107-v110, v393, v477, v573, v735, v766, v767, v768, v769, v770)**: See `memory/netty-protocol.md`
 - **Bedrock protocol**: See sections below + `memory/bedrock-chunks.md`
+- **MCPE 0.6.1 (protocol 9)**: See `memory/mcpe-v9-protocol.md`
 - **MCPE 0.7.x (protocol 11)**: See `memory/mcpe-protocol.md`
 - **MCPE 0.14.0 (protocol 45)**: See `memory/mcpe-v45-protocol.md`
+- **MCPE 0.15.0 (protocol 81)**: See `memory/mcpe-v81-protocol.md`
 
 ## Client JAR Sources
 - **Mojang CDN**: Primary source. URLs from `https://piston-meta.mojang.com/mc/game/version_manifest_v2.json` -> version JSON -> downloads.client.url

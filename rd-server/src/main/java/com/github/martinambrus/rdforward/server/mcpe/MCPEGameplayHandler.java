@@ -95,6 +95,12 @@ public class MCPEGameplayHandler {
             case 0xA1: // INTERACT
                 handleInteract(payload);
                 break;
+            case 0x95: // v9 PLACE_BLOCK (C2S block placement)
+                handlePlaceBlock(payload);
+                break;
+            case 0xB5: // v9 CLIENT_MESSAGE (C2S chat — canonical 0xB5 via +1 shift from wire 0xB4)
+                handleMessage(payload);
+                break;
             case 0x84: // READY (status=2 = chunk loaded)
                 // Ignore — already spawned
                 break;
@@ -315,6 +321,60 @@ public class MCPEGameplayHandler {
         }
     }
 
+    /**
+     * Handle v9 PlaceBlock (0x95): eid(int), x(int), z(int), y(byte), block(byte), meta(byte), face(byte).
+     * Direct block placement — v11+ uses UseItem instead.
+     */
+    private void handlePlaceBlock(ByteBuf payload) {
+        MCPEPacketBuffer buf = new MCPEPacketBuffer(payload);
+        int eid = buf.readInt();
+        int blockX = buf.readInt();
+        int blockZ = buf.readInt();
+        int blockY = buf.readUnsignedByte();
+        int block = buf.readUnsignedByte();
+        int meta = buf.readUnsignedByte();
+        int face = buf.readUnsignedByte();
+
+        System.out.println("[MCPE] PlaceBlock at " + blockX + "," + blockY + "," + blockZ
+                + " face=" + face + " block=" + block + " meta=" + meta);
+
+        // Calculate target position based on face
+        int targetX = blockX, targetY = blockY, targetZ = blockZ;
+        switch (face) {
+            case 0: targetY--; break;
+            case 1: targetY++; break;
+            case 2: targetZ--; break;
+            case 3: targetZ++; break;
+            case 4: targetX--; break;
+            case 5: targetX++; break;
+            default: return;
+        }
+
+        if (!world.inBounds(targetX, targetY, targetZ)) return;
+        if (world.getBlock(targetX, targetY, targetZ) != 0) return;
+
+        // Body overlap check
+        int playerFeetY = (int) Math.floor(player.getDoubleY() - PLAYER_EYE_HEIGHT);
+        int playerBlockX = (int) Math.floor(player.getDoubleX());
+        int playerBlockZ = (int) Math.floor(player.getDoubleZ());
+        if (targetX == playerBlockX && targetZ == playerBlockZ
+                && (targetY == playerFeetY || targetY == playerFeetY + 1)) {
+            return;
+        }
+
+        // Use the block ID from the packet if valid, else fallback
+        int blockId = (block >= 1 && block <= 255) ? block : BlockRegistry.COBBLESTONE;
+
+        world.setBlock(targetX, targetY, targetZ, (byte) blockId);
+
+        lastBreakTime = System.currentTimeMillis();
+
+        System.out.println("[MCPE] Placed block " + blockId + " at " + targetX + "," + targetY + "," + targetZ);
+
+        broadcastUpdateBlock(targetX, targetY, targetZ, blockId, 0);
+        sendUpdateBlockConfirm(targetX, targetY, targetZ, blockId, 0);
+    }
+
     private void handleMessage(ByteBuf payload) {
         MCPEPacketBuffer buf = new MCPEPacketBuffer(payload);
         // v27: type(byte) + source(string) + message(string)
@@ -462,12 +522,14 @@ public class MCPEGameplayHandler {
         broadcastAnimate(entityId, action);
 
         // Action 1 = arm swing — attempt server-side creative block break via raycast.
+        // v9: sends RemoveBlock natively, so skip raycast.
         // v11-v13: only mechanism for block breaking (no RemoveBlock/PlayerAction).
         // v14: sends RemoveBlock, so skip raycast.
         // v17-v18: uses arm swing for breaking.
         // v20: sends RemoveBlock (0x01=WORLD_IMMUTABLE in v20, not set), so skip raycast.
         // v27+: sends RemoveBlock or PlayerAction, so skip raycast.
         if (action == 1
+                && session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_11
                 && session.getMcpeProtocolVersion() < MCPEConstants.MCPE_PROTOCOL_VERSION_27
                 && session.getMcpeProtocolVersion() != MCPEConstants.MCPE_PROTOCOL_VERSION_14
                 && session.getMcpeProtocolVersion() != MCPEConstants.MCPE_PROTOCOL_VERSION_20) {
