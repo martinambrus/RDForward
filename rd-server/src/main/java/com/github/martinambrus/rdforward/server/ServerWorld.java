@@ -244,9 +244,6 @@ public class ServerWorld {
         PendingBlockChange change;
         while ((change = pendingBlockChanges.poll()) != null) {
             boolean ok = setBlock(change.x, change.y, change.z, change.blockType);
-            System.out.println("[ServerWorld] processPendingBlockChange ("
-                    + change.x + "," + change.y + "," + change.z
-                    + ") type=" + change.blockType + " applied=" + ok);
             if (ok) {
                 applied.add(new SetBlockServerPacket(change.x, change.y, change.z, change.blockType));
             }

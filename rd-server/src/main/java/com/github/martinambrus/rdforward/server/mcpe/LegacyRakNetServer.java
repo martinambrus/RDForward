@@ -111,8 +111,6 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
         // Unconnected packets (no session required)
         if (packetId == (MCPEConstants.UNCONNECTED_PING & 0xFF)
                 || packetId == (MCPEConstants.UNCONNECTED_PING_OPEN & 0xFF)) {
-            System.out.println("[MCPE] Ping from " + sender + " (id=0x" + Integer.toHexString(packetId)
-                    + ", remaining=" + buf.readableBytes() + " bytes)");
             handleUnconnectedPing(ctx, sender, buf, packetId);
             return;
         }
@@ -133,36 +131,28 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
         session.touch();
 
         if (packetId == (MCPEConstants.ACK & 0xFF)) {
+            // ACK — just consume the bytes (sequence numbers parsed but not used yet)
             int ackCount = buf.readUnsignedShort();
-            StringBuilder ackSeqs = new StringBuilder();
             for (int i = 0; i < ackCount && buf.isReadable(); i++) {
                 boolean single = buf.readBoolean();
-                int start = buf.readUnsignedByte() | (buf.readUnsignedByte() << 8) | (buf.readUnsignedByte() << 16);
-                if (single) {
-                    ackSeqs.append(start).append(" ");
-                } else {
-                    int end = buf.readUnsignedByte() | (buf.readUnsignedByte() << 8) | (buf.readUnsignedByte() << 16);
-                    ackSeqs.append(start).append("-").append(end).append(" ");
+                buf.skipBytes(3); // start sequence (3-byte LE)
+                if (!single) {
+                    buf.skipBytes(3); // end sequence (3-byte LE)
                 }
             }
-            System.out.println("[MCPE ACK] from " + sender + ": " + ackSeqs);
             return;
         }
         if (packetId == (MCPEConstants.NACK & 0xFF)) {
+            // NACK — consume bytes (retransmission not implemented yet)
             if (buf.readableBytes() >= 2) {
                 int nackCount = buf.readUnsignedShort();
-                StringBuilder nackSeqs = new StringBuilder();
                 for (int i = 0; i < nackCount && buf.isReadable(); i++) {
                     boolean single = buf.readBoolean();
-                    int start = buf.readUnsignedByte() | (buf.readUnsignedByte() << 8) | (buf.readUnsignedByte() << 16);
-                    if (single) {
-                        nackSeqs.append(start).append(" ");
-                    } else {
-                        int end = buf.readUnsignedByte() | (buf.readUnsignedByte() << 8) | (buf.readUnsignedByte() << 16);
-                        nackSeqs.append(start).append("-").append(end).append(" ");
+                    buf.skipBytes(3); // start sequence
+                    if (!single) {
+                        buf.skipBytes(3); // end sequence
                     }
                 }
-                System.out.println("[MCPE NACK] from " + sender + ": " + nackSeqs);
             }
             return;
         }
@@ -357,31 +347,10 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
         }
         ByteBuf payload = buf.readSlice(byteLength).retain();
 
-        // Debug: log first bytes of encapsulated payload
-        if (session.getGameplayHandler() == null) {
-            int idx = payload.readerIndex();
-            StringBuilder hex = new StringBuilder();
-            for (int i = 0; i < Math.min(16, payload.readableBytes()); i++) {
-                hex.append(String.format("%02x ", payload.getByte(idx + i)));
-            }
-            System.out.println("[MCPE RakNet DEBUG] Encap payload (" + byteLength + " bytes,"
-                    + " split=" + hasSplit + " splitId=" + splitId
-                    + " splitIdx=" + splitIndex + "/" + splitCount
-                    + "): " + hex);
-        }
-
         try {
             if (hasSplit) {
                 ByteBuf reassembled = session.handleSplitPacket(splitId, splitIndex, splitCount, payload);
                 if (reassembled != null) {
-                    // Debug: log first bytes of reassembled packet
-                    int ridx = reassembled.readerIndex();
-                    StringBuilder rhex = new StringBuilder();
-                    for (int i = 0; i < Math.min(16, reassembled.readableBytes()); i++) {
-                        rhex.append(String.format("%02x ", reassembled.getByte(ridx + i)));
-                    }
-                    System.out.println("[MCPE RakNet DEBUG] Reassembled (" + reassembled.readableBytes()
-                            + " bytes): " + rhex);
                     try {
                         handleGamePacket(ctx, session, reassembled);
                     } finally {
@@ -466,13 +435,6 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
                 handleBatchPacket(ctx, session, payload);
                 return;
             }
-        }
-
-        // Log game packets at RakNet level for debugging (skip frequent MovePlayer)
-        int canonicalId = MCPEConstants.toCanonicalId(gamePacketId, session.getMcpeProtocolVersion());
-        if (canonicalId != 0x94) { // skip MovePlayer
-            System.out.println("[MCPE RakNet] Game packet 0x" + Integer.toHexString(gamePacketId)
-                    + " (" + payload.readableBytes() + " bytes)");
         }
 
         // Game packets — delegate to login or gameplay handler
@@ -585,10 +547,6 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
     private void handleConnectedPing(ChannelHandlerContext ctx, LegacyRakNetSession session, ByteBuf payload) {
         if (payload.readableBytes() < 8) return;
         long pingTime = payload.readLong();
-        if (session.getGameplayHandler() == null) {
-            System.out.println("[MCPE PING] from " + session.getAddress() + " pingTime=" + pingTime);
-        }
-
         // Respond with Connected Pong (0x03)
         MCPEPacketBuffer pkt = new MCPEPacketBuffer();
         pkt.writeByte(0x03); // Connected Pong

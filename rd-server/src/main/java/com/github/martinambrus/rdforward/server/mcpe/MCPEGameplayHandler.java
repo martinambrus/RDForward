@@ -115,7 +115,7 @@ public class MCPEGameplayHandler {
         }
     }
 
-    private int moveLogCount = 0;
+
 
     private void handleMovePlayer(ByteBuf payload) {
         MCPEPacketBuffer buf = new MCPEPacketBuffer(payload);
@@ -159,13 +159,6 @@ public class MCPEGameplayHandler {
             }
         }
 
-        // Log first few position updates from client
-        if (moveLogCount < 5) {
-            System.out.println("[MCPE] MovePlayer from client: x=" + x
-                    + " y(" + (isV27 ? "eye" : "feet") + ")=" + y + " z=" + z);
-            moveLogCount++;
-        }
-
         // MCPE yaw 0=South, internal/Classic yaw 0=North → add 180°
         // v27+ MovePlayer Y is eye-level (matches internal convention);
         // older versions send feet-level (need to add eye height)
@@ -199,9 +192,6 @@ public class MCPEGameplayHandler {
             z = buf.readInt();
             y = buf.readUnsignedByte();
         }
-
-        System.out.println("[MCPE] RemoveBlock at " + x + "," + y + "," + z
-                + " (block=" + (world.inBounds(x, y, z) ? world.getBlock(x, y, z) : "OOB") + ")");
 
         if (!world.inBounds(x, y, z)) return;
 
@@ -313,9 +303,6 @@ public class MCPEGameplayHandler {
         }
         }
 
-        System.out.println("[MCPE] UseItem block=" + blockX + "," + blockY + "," + blockZ
-                + " face=" + face + " item=" + itemId + " meta=" + meta);
-
         // Calculate target position based on face
         int targetX = blockX, targetY = blockY, targetZ = blockZ;
         switch (face) {
@@ -328,15 +315,8 @@ public class MCPEGameplayHandler {
             default: return;
         }
 
-        if (!world.inBounds(targetX, targetY, targetZ)) {
-            System.out.println("[MCPE] UseItem target OOB: " + targetX + "," + targetY + "," + targetZ);
-            return;
-        }
-        if (world.getBlock(targetX, targetY, targetZ) != 0) {
-            System.out.println("[MCPE] UseItem target occupied: " + targetX + "," + targetY + "," + targetZ
-                    + " block=" + world.getBlock(targetX, targetY, targetZ));
-            return;
-        }
+        if (!world.inBounds(targetX, targetY, targetZ)) return;
+        if (world.getBlock(targetX, targetY, targetZ) != 0) return;
 
         // RubyDung palette: grass at the surface layer, cobblestone everywhere else
         int surfaceY = world.getHeight() * 2 / 3;
@@ -350,7 +330,6 @@ public class MCPEGameplayHandler {
         // both UseItem and Animate for the same tap)
         lastBreakTime = System.currentTimeMillis();
 
-        System.out.println("[MCPE] Placed block " + blockId + " at " + targetX + "," + targetY + "," + targetZ);
 
         // Broadcast
         broadcastUpdateBlock(targetX, targetY, targetZ, blockId, 0);
@@ -376,9 +355,6 @@ public class MCPEGameplayHandler {
         int block = buf.readUnsignedByte();
         int meta = buf.readUnsignedByte();
         int face = buf.readUnsignedByte();
-
-        System.out.println("[MCPE] PlaceBlock at " + blockX + "," + blockY + "," + blockZ
-                + " face=" + face + " block=" + block + " meta=" + meta);
 
         // Calculate target position based on face
         int targetX = blockX, targetY = blockY, targetZ = blockZ;
@@ -411,7 +387,6 @@ public class MCPEGameplayHandler {
 
         lastBreakTime = System.currentTimeMillis();
 
-        System.out.println("[MCPE] Placed block " + blockId + " at " + targetX + "," + targetY + "," + targetZ);
 
         broadcastUpdateBlock(targetX, targetY, targetZ, blockId, 0);
         sendUpdateBlockConfirm(targetX, targetY, targetZ, blockId, 0);
@@ -561,8 +536,6 @@ public class MCPEGameplayHandler {
         face = buf.readInt();
         }
 
-        System.out.println("[MCPE] PlayerAction action=" + action + " at " + x + "," + y + "," + z + " face=" + face);
-
         // Creative mode instant block destroy
         // v91: uses RemoveBlock, not PlayerAction — action 13 is SPAWN_OVERWORLD
         // v34-v81: ACTION_CREATIVE_DESTROY (13) is used for creative block breaking
@@ -585,8 +558,6 @@ public class MCPEGameplayHandler {
             int oldBlock = world.getBlock(x, y, z);
             if (oldBlock == 0) return; // already air
             lastBreakTime = now;
-
-            System.out.println("[MCPE] Creative destroy at " + x + "," + y + "," + z + " (was " + oldBlock + ")");
 
             world.setBlock(x, y, z, (byte) 0);
 
@@ -650,8 +621,6 @@ public class MCPEGameplayHandler {
             if (oldBlock == 0) return;
 
             lastBreakTime = now;
-
-            System.out.println("[MCPE] Raycast break at " + bx + "," + by + "," + bz + " (was " + oldBlock + ")");
 
             world.setBlock(bx, by, bz, (byte) 0);
 

@@ -248,17 +248,6 @@ public class MCPELoginHandler {
 
         player.updatePositionDouble(spawnX, spawnY, spawnZ, 0, 0);
 
-        // Debug: print blocks at spawn column
-        int sx = (int) Math.floor(spawnX);
-        int sz = (int) Math.floor(spawnZ);
-        StringBuilder blockDebug = new StringBuilder("[MCPE] Blocks at spawn column (" + sx + "," + sz + "):");
-        for (int by = Math.max(0, (int)(spawnY - PLAYER_EYE_HEIGHT) - 3);
-             by <= Math.min(world.getHeight() - 1, (int)(spawnY + 3)); by++) {
-            blockDebug.append(" y=").append(by).append("=").append(world.getBlock(sx, by, sz));
-        }
-        System.out.println(blockDebug);
-        System.out.println("[MCPE] spawnY(eye)=" + spawnY + " feetY=" + (spawnY - PLAYER_EYE_HEIGHT));
-
         // Send StartGame — v34: Y is eye-level; older: Y is feet-level
         boolean isV34 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34;
         float startGameY = isV34 ? (float) spawnY : (float) (spawnY - PLAYER_EYE_HEIGHT);
