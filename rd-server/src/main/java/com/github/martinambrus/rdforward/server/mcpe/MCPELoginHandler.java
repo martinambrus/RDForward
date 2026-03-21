@@ -9,9 +9,14 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.util.Base64;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
+import java.util.zip.InflaterInputStream;
 
 /**
  * Handles the MCPE 0.7.0 login sequence:
@@ -39,6 +44,7 @@ public class MCPELoginHandler {
     private String username;
     private int clientSlim;
     private byte[] clientSkinData;
+    private String clientSkinId = "";
     private ConnectedPlayer player;
     private MCPESessionWrapper sessionWrapper;
 
@@ -59,10 +65,11 @@ public class MCPELoginHandler {
     }
 
     public void handlePacket(ChannelHandlerContext ctx, int packetId, ByteBuf payload) {
-        // Accept LOGIN from all versions: v11-v20 (0x82), v27 (0x01), v34 (0x8F)
+        // Accept LOGIN from all versions: v11-v20 (0x82), v27 (0x01), v34 (0x8F), v81 (0x01)
         if (packetId == (MCPEConstants.LOGIN & 0xFF)
                 || packetId == (MCPEConstants.V27_LOGIN & 0xFF)
-                || packetId == (MCPEConstants.V34_LOGIN & 0xFF)) {
+                || packetId == (MCPEConstants.V34_LOGIN & 0xFF)
+                || packetId == (MCPEConstants.V81_LOGIN & 0xFF)) {
             handleLogin(ctx, payload);
         } else if (packetId == (MCPEConstants.READY & 0xFF)) {
             handleReady(ctx, payload);
@@ -75,6 +82,26 @@ public class MCPELoginHandler {
 
     private void handleLogin(ChannelHandlerContext ctx, ByteBuf payload) {
         MCPEPacketBuffer buf = new MCPEPacketBuffer(payload);
+
+        // v81 (0.15.0): JWT-based login format.
+        // Wire format: [int protocol][int compressedLen][zlib(LInt chainLen + JSON chain + LInt skinTokenLen + JWT skin)]
+        // We detect v81 by peeking: v81 sends a single int protocol (81+), while older versions
+        // send string username first (which starts with a short length prefix, never looking like 81).
+        // Actually, the simplest detection: the first field in pre-v81 is a String (2-byte length prefix).
+        // In v81, it's an int (4 bytes). Since username strings are short, the first 2 bytes will be
+        // a small number. But for v81, the int 81 = 0x00000051. The first 2 bytes are 0x0000 which
+        // would mean an empty string in older format — usernames are never empty.
+        // So: peek at first 4 bytes as int. If it's a known v81+ protocol number, use JWT path.
+        int savedReaderIdx = buf.readerIndex();
+        int firstInt = buf.readInt();
+        if (firstInt >= 81 && firstInt <= 200) {
+            // v81+ JWT login
+            handleLoginV81(ctx, buf, firstInt);
+            return;
+        }
+        // Not v81 — rewind and parse as older format (string username first)
+        buf.readerIndex(savedReaderIdx);
+
         username = buf.readString();
         int protocol1 = buf.readInt();
         int protocol2 = buf.readInt();
@@ -141,7 +168,11 @@ public class MCPELoginHandler {
             return;
         }
         session.setMcpeProtocolVersion(protocol1);
+        continueAfterLogin(ctx);
+    }
 
+    /** Common post-login sequence shared by all protocol versions. */
+    private void continueAfterLogin(ChannelHandlerContext ctx) {
         // Check for duplicate username
         if (username != null && !username.trim().isEmpty()) {
             playerManager.kickDuplicatePlayer(username.trim(), world);
@@ -240,7 +271,10 @@ public class MCPELoginHandler {
         // v34+: send SetDifficulty before chunks (PocketMine does this)
         if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34) {
             MCPEPacketBuffer diff = new MCPEPacketBuffer();
-            diff.writeByte(MCPEConstants.V34_SET_DIFFICULTY); // 0xC0
+            int diffId = (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_81)
+                    ? (MCPEConstants.V81_SET_DIFFICULTY & 0xFF)
+                    : (MCPEConstants.V34_SET_DIFFICULTY & 0xFF);
+            diff.writeByte(diffId);
             diff.writeInt(1); // PEACEFUL=0, EASY=1, NORMAL=2, HARD=3
             server.sendGamePacket(session, diff.getBuf());
         }
@@ -265,18 +299,22 @@ public class MCPELoginHandler {
             double y = player.getDoubleY();
             double z = player.getDoubleZ();
             if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34) {
-                // v34: match PocketMine doFirstSpawn order:
+                // v34+: match PocketMine doFirstSpawn order:
                 // AdventureSettings → SetTime → Respawn → PlayStatus(PLAYER_SPAWN)
-                sendAdventureSettings(0x20 | 0x40); // v34: AUTO_JUMP(0x20) + ALLOW_FLIGHT(0x40). NOT 0x01 which is WORLD_IMMUTABLE!
+                // v81: flags shifted — AUTO_JUMP=0x40, ALLOW_FLIGHT=0x80 (PocketMine v81 Player.php)
+                // v34-v45: AUTO_JUMP=0x20, ALLOW_FLIGHT=0x40
+                int advSettingsFlags = (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_81)
+                        ? (0x40 | 0x80) : (0x20 | 0x40);
+                sendAdventureSettings(advSettingsFlags);
                 sendSetTime((int) (world.getWorldTime() % 24000)); // resend time
                 MCPEPacketBuffer resp = new MCPEPacketBuffer();
-                resp.writeByte(MCPEConstants.V34_RESPAWN); // 0xB3 direct wire ID
+                resp.writeByte(wireId(MCPEConstants.RESPAWN));
                 resp.writeFloat((float) x);
-                resp.writeFloat((float) y); // v34: eye-level Y
+                resp.writeFloat((float) y); // v34+: eye-level Y
                 resp.writeFloat((float) z);
                 server.sendGamePacket(session, resp.getBuf());
                 sendLoginStatus(3); // PLAYER_SPAWN
-                // v34: PocketMine does NOT send MovePlayer in doFirstSpawn
+                // v34+: PocketMine does NOT send MovePlayer in doFirstSpawn
                 doSpawnV34();
                 return; // skip doSpawn() below
             } else if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
@@ -294,6 +332,189 @@ public class MCPELoginHandler {
             // v17+ client doesn't send Ready — it starts sending MovePlayer immediately
             doSpawn();
         }
+    }
+
+    /**
+     * Handle v81 (0.15.0) JWT-based login.
+     * Wire format after packet ID: [int protocol][int compressedLen][zlib payload]
+     * Decompressed payload: [LInt chainLen][chain JSON][LInt skinTokenLen][skin JWT]
+     * Chain JSON: {"chain":["jwt1","jwt2",...]} — extract displayName + identity from extraData.
+     * Skin JWT payload: contains SkinId, SkinData (base64), ClientRandomId.
+     */
+    private void handleLoginV81(ChannelHandlerContext ctx, MCPEPacketBuffer buf, int protocol) {
+        System.out.println("[MCPE] v81 JWT login, protocol=" + protocol);
+
+        // Validate protocol
+        if (protocol != 81) {
+            int status = (protocol > MCPEConstants.MCPE_PROTOCOL_VERSION_MAX)
+                    ? MCPEConstants.LOGIN_SERVER_OUTDATED
+                    : MCPEConstants.LOGIN_CLIENT_OUTDATED;
+            session.setMcpeProtocolVersion(protocol);
+            sendLoginStatus(status);
+            return;
+        }
+        session.setMcpeProtocolVersion(protocol);
+
+        // Read compressed payload
+        int compressedLen = buf.readInt();
+        byte[] compressed = new byte[Math.min(compressedLen, buf.readableBytes())];
+        buf.getBuf().readBytes(compressed);
+
+        // Decompress
+        byte[] decompressed;
+        try {
+            ByteArrayInputStream bais = new ByteArrayInputStream(compressed);
+            InflaterInputStream iis = new InflaterInputStream(bais);
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            byte[] tmp = new byte[4096];
+            int read;
+            while ((read = iis.read(tmp)) != -1) {
+                baos.write(tmp, 0, read);
+            }
+            decompressed = baos.toByteArray();
+        } catch (Exception e) {
+            System.err.println("[MCPE] v81 login decompress failed: " + e.getMessage());
+            sendLoginStatus(MCPEConstants.LOGIN_CLIENT_OUTDATED);
+            return;
+        }
+
+        ByteBuffer bb = ByteBuffer.wrap(decompressed).order(ByteOrder.LITTLE_ENDIAN);
+
+        // Read chain data: LInt length + JSON string
+        int chainLen = bb.getInt();
+        byte[] chainBytes = new byte[chainLen];
+        bb.get(chainBytes);
+        String chainJson = new String(chainBytes, java.nio.charset.StandardCharsets.UTF_8);
+
+        // Parse chain JSON to extract displayName and identity UUID
+        // Format: {"chain":["jwt1","jwt2",...]}
+        // Each JWT is header.payload.signature, we need to decode the payload (middle part)
+        username = "Player";
+        String skinId = "";
+        try {
+            // Extract the chain array from JSON (simple parsing without a JSON library)
+            int chainStart = chainJson.indexOf("[");
+            int chainEnd = chainJson.lastIndexOf("]");
+            if (chainStart >= 0 && chainEnd > chainStart) {
+                String chainArray = chainJson.substring(chainStart + 1, chainEnd);
+                // Split by comma (JWTs don't contain commas outside of quoted strings)
+                String[] jwts = splitJwtArray(chainArray);
+                for (String jwt : jwts) {
+                    jwt = jwt.trim();
+                    if (jwt.startsWith("\"")) jwt = jwt.substring(1);
+                    if (jwt.endsWith("\"")) jwt = jwt.substring(0, jwt.length() - 1);
+                    // Decode JWT payload (second part)
+                    String[] parts = jwt.split("\\.");
+                    if (parts.length >= 2) {
+                        String payloadJson = new String(
+                                Base64.getUrlDecoder().decode(padBase64(parts[1])),
+                                java.nio.charset.StandardCharsets.UTF_8);
+                        // Look for extraData containing displayName
+                        String displayName = extractJsonString(payloadJson, "displayName");
+                        if (displayName != null && !displayName.isEmpty()) {
+                            username = displayName;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[MCPE] v81 chain parse error: " + e.getMessage());
+        }
+
+        // Read skin token: LInt length + JWT string
+        if (bb.remaining() >= 4) {
+            int skinTokenLen = bb.getInt();
+            if (skinTokenLen > 0 && skinTokenLen <= bb.remaining()) {
+                byte[] skinTokenBytes = new byte[skinTokenLen];
+                bb.get(skinTokenBytes);
+                String skinJwt = new String(skinTokenBytes, java.nio.charset.StandardCharsets.UTF_8);
+                try {
+                    String[] parts = skinJwt.split("\\.");
+                    if (parts.length >= 2) {
+                        String payloadJson = new String(
+                                Base64.getUrlDecoder().decode(padBase64(parts[1])),
+                                java.nio.charset.StandardCharsets.UTF_8);
+                        // Extract SkinId and SkinData (base64-encoded RGBA)
+                        skinId = extractJsonString(payloadJson, "SkinId");
+                        if (skinId == null) skinId = "";
+                        clientSlim = skinId.toLowerCase().contains("slim") ? 1 : 0;
+
+                        String skinDataB64 = extractJsonString(payloadJson, "SkinData");
+                        if (skinDataB64 != null && !skinDataB64.isEmpty()) {
+                            clientSkinData = Base64.getDecoder().decode(skinDataB64);
+                            System.out.println("[MCPE] v81 skin: " + clientSkinData.length
+                                    + " bytes, skinId=" + skinId);
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("[MCPE] v81 skin parse error: " + e.getMessage());
+                }
+            }
+        }
+
+        // Store skinId for v81 PlayerList (which uses string-based skin format)
+        clientSkinId = skinId;
+
+        System.out.println("[MCPE] v81 Login from " + username + " (protocol=" + protocol + ")");
+
+        // Continue with common post-login logic (same as older versions from this point)
+        continueAfterLogin(ctx);
+    }
+
+    /** Split a JWT array string, handling commas inside JWT tokens correctly. */
+    private static String[] splitJwtArray(String arrayContent) {
+        java.util.List<String> result = new java.util.ArrayList<>();
+        int depth = 0;
+        boolean inQuote = false;
+        int start = 0;
+        for (int i = 0; i < arrayContent.length(); i++) {
+            char c = arrayContent.charAt(i);
+            if (c == '"' && (i == 0 || arrayContent.charAt(i - 1) != '\\')) {
+                inQuote = !inQuote;
+            } else if (!inQuote && c == ',') {
+                result.add(arrayContent.substring(start, i));
+                start = i + 1;
+            }
+        }
+        if (start < arrayContent.length()) {
+            result.add(arrayContent.substring(start));
+        }
+        return result.toArray(new String[0]);
+    }
+
+    /** Pad a Base64 string to be a multiple of 4 characters. */
+    private static String padBase64(String b64) {
+        int mod = b64.length() % 4;
+        if (mod == 0) return b64;
+        return b64 + "====".substring(mod);
+    }
+
+    /** Extract a simple string value from a JSON object (no nested objects). */
+    private static String extractJsonString(String json, String key) {
+        String search = "\"" + key + "\"";
+        int idx = json.indexOf(search);
+        if (idx < 0) return null;
+        idx = json.indexOf(':', idx + search.length());
+        if (idx < 0) return null;
+        idx++; // skip ':'
+        // Skip whitespace
+        while (idx < json.length() && json.charAt(idx) == ' ') idx++;
+        if (idx >= json.length() || json.charAt(idx) != '"') return null;
+        idx++; // skip opening quote
+        StringBuilder sb = new StringBuilder();
+        while (idx < json.length()) {
+            char c = json.charAt(idx);
+            if (c == '\\' && idx + 1 < json.length()) {
+                sb.append(json.charAt(idx + 1));
+                idx += 2;
+            } else if (c == '"') {
+                break;
+            } else {
+                sb.append(c);
+                idx++;
+            }
+        }
+        return sb.toString();
     }
 
     private void handleReady(ChannelHandlerContext ctx, ByteBuf payload) {
@@ -573,7 +794,15 @@ public class MCPELoginHandler {
         pkt.writeFloat(y);                        // player Y
         pkt.writeFloat(z);                        // player Z
         if (isV34) {
-            pkt.writeByte(0);                     // v34: terminator byte
+            if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_81) {
+                // v81: extra fields after position
+                pkt.writeByte(1);                 // enableNewInventorySystem (bool)
+                pkt.writeByte(1);                 // enableNewCraftingSystem (bool)
+                pkt.writeByte(0);                 // unknown byte
+                pkt.writeString("");              // levelId (empty)
+            } else {
+                pkt.writeByte(0);                 // v34: terminator byte
+            }
         }
         server.sendGamePacket(session, pkt.getBuf());
     }
@@ -642,6 +871,13 @@ public class MCPELoginHandler {
             pkt.writeByte(MCPEConstants.ADVENTURE_SETTINGS_V11);
         }
         pkt.writeInt(flags);
+        if (pv >= MCPEConstants.MCPE_PROTOCOL_VERSION_81) {
+            // v81: two additional int fields (PocketMine-MP protocol 81 Player.php).
+            // userPermission: 0=normal, 1=operator, 2=host, 3=automation, 4=admin
+            // globalPermission: permission level
+            pkt.writeInt(2); // PERMISSION_HOST
+            pkt.writeInt(2); // globalPermission = HOST
+        }
         server.sendGamePacket(session, pkt.getBuf());
     }
 
@@ -652,8 +888,10 @@ public class MCPELoginHandler {
     private void sendPlayerListAdd(ConnectedPlayer p) {
         java.util.UUID uuid = java.util.UUID.nameUUIDFromBytes(
                 p.getUsername().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        boolean isV81 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_81;
         MCPEPacketBuffer pkt = new MCPEPacketBuffer();
-        pkt.writeByte(MCPEConstants.V34_PLAYER_LIST); // 0xC3 (direct wire ID)
+        pkt.writeByte(isV81 ? (MCPEConstants.V81_PLAYER_LIST & 0xFF)
+                : (MCPEConstants.V34_PLAYER_LIST & 0xFF));
         pkt.writeByte(0); // TYPE_ADD
         pkt.writeInt(1);  // entry count
         long eid = p.getPlayerId() + 1;
@@ -665,23 +903,32 @@ public class MCPELoginHandler {
         if (skinData == null || skinData.length == 0) {
             skinData = MCPEConstants.DEFAULT_SKIN_64x64;
         }
-        // v38+ (0.13.1+): skinName(string) replaced slim(byte)+skinTransparent(byte)
-        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_38) {
-            pkt.writeString(""); // skinName (empty = Steve)
+        if (isV81) {
+            // v81: skinId(string) + skinData(raw bytes as string)
+            pkt.writeString(clientSkinId.isEmpty() ? "Standard_Steve" : clientSkinId);
+            pkt.writeShort(skinData.length);
+            pkt.writeBytes(skinData);
         } else {
-            pkt.writeByte(0); // slim = 0 (Steve model)
+            // v38+ (0.13.1+): skinName(string) replaced slim(byte)+skinTransparent(byte)
+            if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_38) {
+                pkt.writeString(""); // skinName (empty = Steve)
+            } else {
+                pkt.writeByte(0); // slim = 0 (Steve model)
+            }
+            pkt.writeShort(skinData.length);
+            pkt.writeBytes(skinData);
         }
-        pkt.writeShort(skinData.length);
-        pkt.writeBytes(skinData);
         server.sendGamePacket(session, pkt.getBuf());
     }
 
-    /** Send a v34 PlayerListAdd for another player (used in doSpawn loop). */
+    /** Send a PlayerListAdd for another player (used in doSpawn loop). */
     private void sendPlayerListAddForOther(ConnectedPlayer p, int entityId) {
         java.util.UUID uuid = java.util.UUID.nameUUIDFromBytes(
                 p.getUsername().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        boolean isV81 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_81;
         MCPEPacketBuffer pkt = new MCPEPacketBuffer();
-        pkt.writeByte(MCPEConstants.V34_PLAYER_LIST);
+        pkt.writeByte(isV81 ? (MCPEConstants.V81_PLAYER_LIST & 0xFF)
+                : (MCPEConstants.V34_PLAYER_LIST & 0xFF));
         pkt.writeByte(0); // TYPE_ADD
         pkt.writeInt(1);  // entry count
         pkt.writeLong(uuid.getMostSignificantBits());
@@ -692,14 +939,21 @@ public class MCPELoginHandler {
         if (skinData == null || skinData.length == 0) {
             skinData = MCPEConstants.DEFAULT_SKIN_64x64;
         }
-        // v38+ (0.13.1+): skinName(string) replaced slim(byte)+skinTransparent(byte)
-        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_38) {
-            pkt.writeString(""); // skinName (empty = Steve)
+        if (isV81) {
+            // v81: skinId(string) + skinData(raw bytes as string)
+            pkt.writeString("Standard_Steve");
+            pkt.writeShort(skinData.length);
+            pkt.writeBytes(skinData);
         } else {
-            pkt.writeByte(0); // slim = 0 (Steve model)
+            // v38+ (0.13.1+): skinName(string) replaced slim(byte)+skinTransparent(byte)
+            if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_38) {
+                pkt.writeString(""); // skinName (empty = Steve)
+            } else {
+                pkt.writeByte(0); // slim = 0 (Steve model)
+            }
+            pkt.writeShort(skinData.length);
+            pkt.writeBytes(skinData);
         }
-        pkt.writeShort(skinData.length);
-        pkt.writeBytes(skinData);
         server.sendGamePacket(session, pkt.getBuf());
     }
 
@@ -708,7 +962,10 @@ public class MCPELoginHandler {
      */
     private void sendUpdateAttributes(int entityId) {
         MCPEPacketBuffer pkt = new MCPEPacketBuffer();
-        pkt.writeByte(MCPEConstants.V34_UPDATE_ATTRIBUTES); // 0xA6 (direct wire ID)
+        int attrId = (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_81)
+                ? (MCPEConstants.V81_UPDATE_ATTRIBUTES & 0xFF)
+                : (MCPEConstants.V34_UPDATE_ATTRIBUTES & 0xFF);
+        pkt.writeByte(attrId);
         pkt.writeLong(entityId);
         pkt.writeShort(2); // 2 attributes
         // Health
@@ -861,11 +1118,16 @@ public class MCPELoginHandler {
         pkt.writeByte(wireId(MCPEConstants.CONTAINER_SET_CONTENT));
         pkt.writeByte(0x79); // SPECIAL_CREATIVE windowId
         pkt.writeShort(creativeItems.length);
+        boolean useLEShortNbt = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_45;
         for (int[] item : creativeItems) {
             pkt.writeShort(item[0]); // itemId
             pkt.writeByte(1);        // count
             pkt.writeShort(item[1]); // damage/meta
-            pkt.writeShort(0);       // nbtLen = 0
+            if (useLEShortNbt) {
+                pkt.writeLShort(0);  // v45+: nbtLen is little-endian short
+            } else {
+                pkt.writeShort(0);   // v34: nbtLen is big-endian short
+            }
         }
         pkt.writeShort(0); // v34: hotbar count = 0 for non-inventory windows
         server.sendGamePacket(session, pkt.getBuf());
@@ -1064,7 +1326,10 @@ public class MCPELoginHandler {
 
         MCPEPacketBuffer pkt = new MCPEPacketBuffer();
         if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34) {
-            pkt.writeByte(MCPEConstants.V34_FULL_CHUNK_DATA); // v34: 0xBF (direct wire ID)
+            int chunkPktId = (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_81)
+                    ? (MCPEConstants.V81_FULL_CHUNK_DATA & 0xFF)
+                    : (MCPEConstants.V34_FULL_CHUNK_DATA & 0xFF);
+            pkt.writeByte(chunkPktId);
             pkt.writeInt(chunkX);
             pkt.writeInt(chunkZ);
             pkt.writeByte(0); // v34: order byte (0 = ORDER_COLUMNS)

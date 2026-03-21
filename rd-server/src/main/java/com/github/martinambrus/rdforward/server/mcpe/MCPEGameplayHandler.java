@@ -873,7 +873,10 @@ public class MCPEGameplayHandler {
 
         MCPEPacketBuffer pkt = new MCPEPacketBuffer();
         if (isV34) {
-            pkt.writeByte(MCPEConstants.V34_FULL_CHUNK_DATA); // v34: 0xBF (direct wire ID)
+            int chunkPktId = (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_81)
+                    ? (MCPEConstants.V81_FULL_CHUNK_DATA & 0xFF)
+                    : (MCPEConstants.V34_FULL_CHUNK_DATA & 0xFF);
+            pkt.writeByte(chunkPktId);
             pkt.writeInt(chunkX);
             pkt.writeInt(chunkZ);
             pkt.writeByte(0); // v34: order byte (0 = ORDER_COLUMNS)

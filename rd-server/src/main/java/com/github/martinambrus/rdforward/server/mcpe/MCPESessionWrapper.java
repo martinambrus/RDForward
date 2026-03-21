@@ -98,6 +98,7 @@ public class MCPESessionWrapper {
 
         // v34+: send PlayerListAdd before AddPlayer (registers skin)
         if (isV34) {
+            boolean isV81 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_81;
             ConnectedPlayer spawnedPlayer = playerManager.getPlayer((byte) pkt.getPlayerId());
             byte[] skinData = (spawnedPlayer != null) ? spawnedPlayer.getMcpeSkinData() : null;
             if (skinData == null || skinData.length == 0) {
@@ -106,21 +107,29 @@ public class MCPESessionWrapper {
             // Generate a proper UUID from player name (v38+ clients validate UUIDs)
             java.util.UUID uuid = java.util.UUID.nameUUIDFromBytes(name.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             MCPEPacketBuffer plPkt = new MCPEPacketBuffer();
-            plPkt.writeByte(MCPEConstants.V34_PLAYER_LIST);
+            plPkt.writeByte(isV81 ? (MCPEConstants.V81_PLAYER_LIST & 0xFF)
+                    : (MCPEConstants.V34_PLAYER_LIST & 0xFF));
             plPkt.writeByte(0); // TYPE_ADD
             plPkt.writeInt(1);  // entry count
             plPkt.writeLong(uuid.getMostSignificantBits());
             plPkt.writeLong(uuid.getLeastSignificantBits());
             plPkt.writeLong(entityId);  // entityId
             plPkt.writeString(name);
-            // v38+ (0.13.1+): skinName(string) replaced slim(byte)+skinTransparent(byte)
-            if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_38) {
-                plPkt.writeString(""); // skinName (empty = Steve)
+            if (isV81) {
+                // v81: skinId(string) + skinData(string = raw bytes as string)
+                plPkt.writeString("Standard_Steve");
+                plPkt.writeShort(skinData.length);
+                plPkt.writeBytes(skinData);
             } else {
-                plPkt.writeByte(0); // slim = 0 (Steve model)
+                // v38+ (0.13.1+): skinName(string) replaced slim(byte)+skinTransparent(byte)
+                if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_38) {
+                    plPkt.writeString(""); // skinName (empty = Steve)
+                } else {
+                    plPkt.writeByte(0); // slim = 0 (Steve model)
+                }
+                plPkt.writeShort(skinData.length);
+                plPkt.writeBytes(skinData);
             }
-            plPkt.writeShort(skinData.length);
-            plPkt.writeBytes(skinData);
             server.sendGamePacket(session, plPkt.getBuf());
         }
 
@@ -213,35 +222,43 @@ public class MCPESessionWrapper {
     private void translateDespawnPlayer(DespawnPlayerPacket pkt) {
         int entityId = (pkt.getPlayerId() & 0xFF) + 1;
         boolean isV34 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34;
+        boolean isV81 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_81;
 
         MCPEPacketBuffer buf = new MCPEPacketBuffer();
-        buf.writeByte(wireId(MCPEConstants.REMOVE_PLAYER));
-        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
-            buf.writeLong(entityId); // v27+: 64-bit entity ID
+        if (isV81) {
+            // v81: REMOVE_PLAYER was dropped — use REMOVE_ENTITY instead
+            buf.writeByte(MCPEConstants.V81_REMOVE_ENTITY & 0xFF);
+            buf.writeLong(entityId);
         } else {
-            buf.writeInt(entityId);
-        }
-        if (isV34) {
-            // v34: UUID (2 longs) instead of clientId
-            ConnectedPlayer despawned = playerManager.getPlayer((byte) pkt.getPlayerId());
-            java.util.UUID despawnUuid = (despawned != null)
-                    ? java.util.UUID.nameUUIDFromBytes(despawned.getUsername().getBytes(java.nio.charset.StandardCharsets.UTF_8))
-                    : new java.util.UUID(0, entityId);
-            buf.writeLong(despawnUuid.getMostSignificantBits());
-            buf.writeLong(despawnUuid.getLeastSignificantBits());
-        } else {
-            buf.writeLong(entityId); // clientID (always long)
+            buf.writeByte(wireId(MCPEConstants.REMOVE_PLAYER));
+            if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
+                buf.writeLong(entityId); // v27+: 64-bit entity ID
+            } else {
+                buf.writeInt(entityId);
+            }
+            if (isV34) {
+                // v34: UUID (2 longs) instead of clientId
+                ConnectedPlayer despawned = playerManager.getPlayer((byte) pkt.getPlayerId());
+                java.util.UUID despawnUuid = (despawned != null)
+                        ? java.util.UUID.nameUUIDFromBytes(despawned.getUsername().getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                        : new java.util.UUID(0, entityId);
+                buf.writeLong(despawnUuid.getMostSignificantBits());
+                buf.writeLong(despawnUuid.getLeastSignificantBits());
+            } else {
+                buf.writeLong(entityId); // clientID (always long)
+            }
         }
         server.sendGamePacket(session, buf.getBuf());
 
-        // v34: also send PlayerList TYPE_REMOVE
+        // v34+: also send PlayerList TYPE_REMOVE
         if (isV34) {
             ConnectedPlayer despawned = playerManager.getPlayer((byte) pkt.getPlayerId());
             java.util.UUID despawnUuid = (despawned != null)
                     ? java.util.UUID.nameUUIDFromBytes(despawned.getUsername().getBytes(java.nio.charset.StandardCharsets.UTF_8))
                     : new java.util.UUID(0, entityId);
             MCPEPacketBuffer plPkt = new MCPEPacketBuffer();
-            plPkt.writeByte(MCPEConstants.V34_PLAYER_LIST);
+            plPkt.writeByte(isV81 ? (MCPEConstants.V81_PLAYER_LIST & 0xFF)
+                    : (MCPEConstants.V34_PLAYER_LIST & 0xFF));
             plPkt.writeByte(1); // TYPE_REMOVE
             plPkt.writeInt(1);  // entry count
             plPkt.writeLong(despawnUuid.getMostSignificantBits());

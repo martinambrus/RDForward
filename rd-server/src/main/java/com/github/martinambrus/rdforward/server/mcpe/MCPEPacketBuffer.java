@@ -43,6 +43,16 @@ public class MCPEPacketBuffer {
         return this;
     }
 
+    /** Write an unsigned VarInt (1-5 bytes, LEB128). */
+    public MCPEPacketBuffer writeUnsignedVarInt(int value) {
+        while ((value & ~0x7F) != 0) {
+            buf.writeByte((value & 0x7F) | 0x80);
+            value >>>= 7;
+        }
+        buf.writeByte(value & 0x7F);
+        return this;
+    }
+
     public MCPEPacketBuffer writeLong(long value) {
         buf.writeLong(value);
         return this;
@@ -171,6 +181,11 @@ public class MCPEPacketBuffer {
 
     public int readInt() {
         return buf.readInt();
+    }
+
+    /** Read a Little-Endian int. */
+    public int readLInt() {
+        return buf.readIntLE();
     }
 
     public long readLong() {

@@ -21,6 +21,23 @@ When adding support for new protocol versions (MCPE, Netty, Alpha, or otherwise)
 - When adding version thresholds (e.g. `if (version >= V27)`), verify that ALL versions in the affected range behave the same way. A threshold that's correct for v27 may be wrong for v17.
 - When touching shared code paths (packet dispatch, chunk sending, login sequence), re-test at least one client from each supported version range.
 
+## Running the Server
+
+To build and start the server for manual testing:
+
+```bash
+./gradlew buildAll
+sleep infinity | java -jar rd-server/build/libs/rd-server-0.1.0-SNAPSHOT-all.jar 2>&1 | tee /tmp/rdforward-server.log &
+```
+
+- `sleep infinity |` keeps stdin open so the server's console reader doesn't EOF and exit.
+- `tee /tmp/rdforward-server.log` lets you read logs later with `cat /tmp/rdforward-server.log`.
+- To check if it's running: `ps aux | grep rd-server | grep -v grep`
+- To stop it: `pkill -f "rd-server-0.1.0"`
+- To read live output: `cat /tmp/rdforward-server.log`
+- Ports: TCP 25565 (Java), UDP 19132 (MCPE/Bedrock)
+- If you get `BindException: Address already in use`, kill the old process first and wait 2-3 seconds.
+
 ## E2E Test Rules
 
 - NEVER run two Gradle test suites in parallel. They share the Gradle daemon and will conflict/kill each other. Always run test tasks sequentially — wait for one to complete before starting the next.

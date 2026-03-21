@@ -19,9 +19,10 @@ public final class MCPEConstants {
     public static final int MCPE_PROTOCOL_VERSION_34 = 34; // 0.12.1 (28-33 were dev-only)
     public static final int MCPE_PROTOCOL_VERSION_38 = 38; // 0.13.0 (35-37 were dev-only)
     public static final int MCPE_PROTOCOL_VERSION_45 = 45; // 0.14.0 (39-44 were dev-only)
+    public static final int MCPE_PROTOCOL_VERSION_81 = 81; // 0.15.0 (46-80 were dev-only)
     /** Highest supported protocol version (for pong advertisement). */
-    public static final int MCPE_PROTOCOL_VERSION_MAX = MCPE_PROTOCOL_VERSION_45;
-    public static final String MCPE_VERSION_STRING = "0.14.0";
+    public static final int MCPE_PROTOCOL_VERSION_MAX = MCPE_PROTOCOL_VERSION_81;
+    public static final String MCPE_VERSION_STRING = "0.15.0";
     public static final int DEFAULT_PORT = 19132;
 
     // --- RakNet ---
@@ -191,6 +192,55 @@ public final class MCPEConstants {
      */
     public static final byte V45_WRAPPER = (byte) 0x8E;
 
+    /**
+     * v81+ (0.15.0) wrapper byte: replaces 0x8E. All game packets prefixed with 0xFE.
+     */
+    public static final byte V81_WRAPPER = (byte) 0xFE;
+
+    // --- v81 Game Packets (0x01-0x41) — completely renumbered from v34/v45 ---
+    public static final byte V81_LOGIN               = 0x01;
+    public static final byte V81_PLAY_STATUS         = 0x02;
+    public static final byte V81_DISCONNECT          = 0x05;
+    public static final byte V81_BATCH               = 0x06;
+    public static final byte V81_TEXT                = 0x07;
+    public static final byte V81_SET_TIME            = 0x08;
+    public static final byte V81_START_GAME          = 0x09;
+    public static final byte V81_ADD_PLAYER          = 0x0A;
+    public static final byte V81_ADD_ENTITY          = 0x0B;
+    public static final byte V81_REMOVE_ENTITY       = 0x0C;
+    public static final byte V81_ADD_ITEM_ENTITY     = 0x0D;
+    public static final byte V81_TAKE_ITEM_ENTITY    = 0x0E;
+    public static final byte V81_MOVE_ENTITY         = 0x0F;
+    public static final byte V81_MOVE_PLAYER         = 0x10;
+    public static final byte V81_REMOVE_BLOCK        = 0x12;
+    public static final byte V81_UPDATE_BLOCK        = 0x13;
+    public static final byte V81_LEVEL_EVENT         = 0x16;
+    public static final byte V81_ENTITY_EVENT        = 0x18;
+    public static final byte V81_UPDATE_ATTRIBUTES   = 0x1A;
+    public static final byte V81_MOB_EQUIPMENT       = 0x1B;
+    public static final byte V81_MOB_ARMOR           = 0x1C;
+    public static final byte V81_INTERACT            = 0x1E;
+    public static final byte V81_USE_ITEM            = 0x1F;
+    public static final byte V81_PLAYER_ACTION       = 0x20;
+    public static final byte V81_SET_ENTITY_DATA     = 0x22;
+    public static final byte V81_SET_ENTITY_MOTION   = 0x23;
+    public static final byte V81_SET_HEALTH          = 0x25;
+    public static final byte V81_SET_SPAWN_POSITION  = 0x26;
+    public static final byte V81_ANIMATE             = 0x27;
+    public static final byte V81_RESPAWN             = 0x28;
+    public static final byte V81_CONTAINER_OPEN      = 0x2A;
+    public static final byte V81_CONTAINER_CLOSE     = 0x2B;
+    public static final byte V81_CONTAINER_SET_SLOT  = 0x2C;
+    public static final byte V81_CONTAINER_SET_CONTENT = 0x2E;
+    public static final byte V81_ADVENTURE_SETTINGS  = 0x31;
+    public static final byte V81_PLAYER_INPUT        = 0x33;
+    public static final byte V81_FULL_CHUNK_DATA     = 0x34;
+    public static final byte V81_SET_DIFFICULTY      = 0x35;
+    public static final byte V81_SET_PLAYER_GAMETYPE = 0x37;
+    public static final byte V81_PLAYER_LIST         = 0x38;
+    public static final byte V81_REQUEST_CHUNK_RADIUS = 0x3D;
+    public static final byte V81_CHUNK_RADIUS_UPDATED = 0x3E;
+
     // --- v34 Game Packets (0x8F-0xC4) — renumbered again from v27 ---
     public static final byte V34_LOGIN               = (byte) 0x8F;
     public static final byte V34_PLAY_STATUS         = (byte) 0x90;
@@ -333,6 +383,9 @@ public final class MCPEConstants {
      * v11/v12: returns the ID unchanged.
      */
     public static int toWireId(int canonicalId, int protocolVersion) {
+        if (protocolVersion >= MCPE_PROTOCOL_VERSION_81) {
+            return toV81WireId(canonicalId);
+        }
         if (protocolVersion >= MCPE_PROTOCOL_VERSION_34) {
             return toV34WireId(canonicalId);
         }
@@ -394,6 +447,9 @@ public final class MCPEConstants {
      * v11/v12: returns the ID unchanged.
      */
     public static int toCanonicalId(int wireId, int protocolVersion) {
+        if (protocolVersion >= MCPE_PROTOCOL_VERSION_81) {
+            return fromV81WireId(wireId);
+        }
         if (protocolVersion >= MCPE_PROTOCOL_VERSION_34) {
             return fromV34WireId(wireId);
         }
@@ -484,6 +540,66 @@ public final class MCPEConstants {
             case 0xB2: return 0xAB; // ANIMATE
             case 0xB6: return 0xB0; // CONTAINER_CLOSE
             case 0xBE: return 0xB9; // PLAYER_INPUT
+            default: return wireId;
+        }
+    }
+
+    /** Map v12-canonical packet ID to v81 wire ID. */
+    private static int toV81WireId(int canonicalId) {
+        switch (canonicalId & 0xFF) {
+            case 0x82: return V81_LOGIN & 0xFF;
+            case 0x83: return V81_PLAY_STATUS & 0xFF;
+            case 0x85: return V81_TEXT & 0xFF;
+            case 0x86: return V81_SET_TIME & 0xFF;
+            case 0x87: return V81_START_GAME & 0xFF;
+            case 0x89: return V81_ADD_PLAYER & 0xFF;
+            case 0x8D: return V81_REMOVE_ENTITY & 0xFF;
+            case 0x90: return V81_MOVE_ENTITY & 0xFF;
+            case 0x93: return V81_MOVE_ENTITY & 0xFF;
+            case 0x94: return V81_MOVE_PLAYER & 0xFF;
+            case 0x96: return V81_REMOVE_BLOCK & 0xFF;
+            case 0x97: return V81_UPDATE_BLOCK & 0xFF;
+            case 0x9C: return V81_ENTITY_EVENT & 0xFF;
+            case 0x9E: return V81_FULL_CHUNK_DATA & 0xFF;
+            case 0x9F: return V81_MOB_EQUIPMENT & 0xFF;
+            case 0xA0: return V81_MOB_ARMOR & 0xFF;
+            case 0xA1: return V81_INTERACT & 0xFF;
+            case 0xA2: return V81_USE_ITEM & 0xFF;
+            case 0xA3: return V81_PLAYER_ACTION & 0xFF;
+            case 0xA6: return V81_SET_ENTITY_DATA & 0xFF;
+            case 0xA7: return V81_SET_ENTITY_MOTION & 0xFF;
+            case 0xA9: return V81_SET_HEALTH & 0xFF;
+            case 0xAA: return V81_SET_SPAWN_POSITION & 0xFF;
+            case 0xAB: return V81_ANIMATE & 0xFF;
+            case 0xAC: return V81_RESPAWN & 0xFF;
+            case 0xAD: return V81_CONTAINER_SET_CONTENT & 0xFF;
+            case 0xB0: return V81_CONTAINER_CLOSE & 0xFF;
+            case 0xB3: return V81_CONTAINER_SET_CONTENT & 0xFF;
+            case 0xB5: return V81_TEXT & 0xFF;
+            case 0xB6: return V81_ADVENTURE_SETTINGS & 0xFF;
+            case 0xB7: return V81_ADVENTURE_SETTINGS & 0xFF;
+            case 0xB9: return V81_PLAYER_INPUT & 0xFF;
+            case 0xBA: return V81_FULL_CHUNK_DATA & 0xFF;
+            default: return canonicalId & 0xFF;
+        }
+    }
+
+    /** Map v81 wire ID to v12-canonical packet ID. */
+    private static int fromV81WireId(int wireId) {
+        switch (wireId & 0xFF) {
+            case 0x01: return 0x82; // LOGIN
+            case 0x07: return 0x85; // TEXT
+            case 0x10: return 0x94; // MOVE_PLAYER
+            case 0x12: return 0x96; // REMOVE_BLOCK
+            case 0x18: return 0x9C; // ENTITY_EVENT
+            case 0x1B: return 0x9F; // MOB_EQUIPMENT
+            case 0x1E: return 0xA1; // INTERACT
+            case 0x1F: return 0xA2; // USE_ITEM
+            case 0x20: return 0xA3; // PLAYER_ACTION
+            case 0x27: return 0xAB; // ANIMATE
+            case 0x2B: return 0xB0; // CONTAINER_CLOSE
+            case 0x33: return 0xB9; // PLAYER_INPUT
+            case 0x3D: return 0x9D; // REQUEST_CHUNK_RADIUS
             default: return wireId;
         }
     }
