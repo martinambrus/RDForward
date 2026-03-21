@@ -1,0 +1,71 @@
+name: Dev Release
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  dev-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Cache BuildTools downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            rd-game/build/download
+            rd-game/build/tools
+          key: buildtools-rd-132211-vf1.11.2
+
+      - name: Set up workspace
+        run: ./gradlew :rd-game:setupWorkspace
+
+      - name: Build
+        run: ./gradlew build -x :rd-bot:test
+
+      - name: Build server fat JAR
+        run: ./gradlew :rd-server:fatJar
+
+      - name: Prepare artifact
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          mv rd-server/build/libs/*-all.jar rd-server/build/libs/rdforward-server-dev-${SHORT_SHA}.jar
+          echo "SHORT_SHA=${SHORT_SHA}" >> "$GITHUB_ENV"
+          echo "JAR_NAME=rdforward-server-dev-${SHORT_SHA}.jar" >> "$GITHUB_ENV"
+
+      - name: Update dev release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dev
+          name: Development Build
+          prerelease: true
+          make_latest: false
+          files: rd-server/build/libs/${{ env.JAR_NAME }}
+          body: |
+            Automated development build from `main` branch.
+
+            **Commit:** ${{ github.sha }}
+            **Built:** ${{ github.event.head_commit.timestamp }}
+
+            ## Download
+
+            **`${{ env.JAR_NAME }}`** — Standalone server JAR (Java 8+). Run with:
+            ```bash
+            java -jar ${{ env.JAR_NAME }}
+            ```
+            Ports: TCP 25565 (Java Edition), UDP 19132 (Bedrock Edition)
+
+            > This is an unstable development build. For stable releases, see the [latest release](../../releases/latest).

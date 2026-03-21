@@ -35,3 +35,12 @@ jobs:
 
       - name: Build all modules
         run: ./gradlew build -x :rd-bot:test
+
+      - name: Build server fat JAR
+        run: ./gradlew :rd-server:fatJar
+
+      - name: Upload server JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: rd-server
+          path: rd-server/build/libs/*-all.jar

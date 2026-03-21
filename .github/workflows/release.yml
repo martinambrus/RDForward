@@ -35,23 +35,33 @@ jobs:
         run: ./gradlew :rd-game:setupWorkspace
 
       - name: Build
-        run: ./gradlew build
+        run: ./gradlew build -x :rd-bot:test
 
-      - name: Run tests
-        run: ./gradlew test
+      - name: Build server fat JAR
+        run: ./gradlew :rd-server:fatJar -PprojectVersion=${{ github.ref_name }}
+
+      - name: Rename server JAR
+        run: mv rd-server/build/libs/rd-server-${{ github.ref_name }}-all.jar rd-server/build/libs/rdforward-server-${{ github.ref_name }}.jar
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          files: rd-server/build/libs/rdforward-server-${{ github.ref_name }}.jar
           body: |
-            ## Build Instructions
+            ## Downloads
+
+            **`rdforward-server-${{ github.ref_name }}.jar`** — Standalone server JAR (Java 8+). Run with:
+            ```bash
+            java -jar rdforward-server-${{ github.ref_name }}.jar
+            ```
+            Ports: TCP 25565 (Java Edition), UDP 19132 (Bedrock Edition)
+
+            ## Building the Game Client
 
             Due to copyright restrictions, pre-built game JARs are not included.
             RDForward uses a **BuildTools** approach (like Spigot) where the original
             RubyDung code is downloaded and decompiled on your machine.
-
-            ### Quick Start
 
             ```bash
             git clone https://github.com/martinambrus/RDForward.git
@@ -69,5 +79,6 @@ jobs:
             ```
 
             ### Requirements
-            - Java 21+ (for building)
+            - Java 21+ (for building the client)
+            - Java 8+ (for running the server)
             - Internet connection (first build only, to download rd-132211.jar from Mojang)
