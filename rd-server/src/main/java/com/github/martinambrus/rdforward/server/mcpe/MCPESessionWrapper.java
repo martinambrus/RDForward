@@ -113,9 +113,11 @@ public class MCPESessionWrapper {
             plPkt.writeLong(uuid.getLeastSignificantBits());
             plPkt.writeLong(entityId);  // entityId
             plPkt.writeString(name);
-            plPkt.writeByte(0); // slim = 0 (Steve model)
+            // v38+ (0.13.1+): skinName(string) replaced slim(byte)+skinTransparent(byte)
             if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_38) {
-                plPkt.writeByte(0); // v38+: skinTransparent
+                plPkt.writeString(""); // skinName (empty = Steve)
+            } else {
+                plPkt.writeByte(0); // slim = 0 (Steve model)
             }
             plPkt.writeShort(skinData.length);
             plPkt.writeBytes(skinData);

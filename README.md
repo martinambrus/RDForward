@@ -217,6 +217,7 @@ This project would not be possible without the following open source projects, t
 | [ViaVersion](https://github.com/ViaVersion/ViaVersion) / [ViaLegacy](https://github.com/ViaVersion/ViaLegacy) | Primary reference for understanding wire format differences between Minecraft protocol versions (Alpha through Release 1.3.x). Version translation logic and packet format changes were cross-referenced against ViaLegacy's protocol classes. |
 | [GeyserMC](https://github.com/GeyserMC/Geyser) | Reference for Bedrock Edition protocol conventions — position semantics (eye vs feet level per packet type), rotation field ordering in MovePlayerPacket/AddPlayerPacket/PlayerAuthInputPacket. |
 | [NukkitX](https://github.com/CloudburstMC/Nukkit) | Reference for Bedrock Edition protocol conventions — confirmed position and rotation field semantics alongside GeyserMC sources. |
+| [ImagicalMine](https://github.com/phoshp/ImagicalMine) | PocketMine-MP fork for MCPE 0.14.0 (protocol 45). Authoritative reference for v45 packet ID table (confirmed same 0x8F+ range as v34), 0x8E wrapper byte handling, and the standalone-vs-batch packet sending strategy. |
 | [wiki.vg](https://wiki.vg/Protocol) / [minecraft.wiki](https://minecraft.wiki) | Community-maintained Minecraft protocol documentation. Used for packet formats, field types, and version-specific wire format details across all supported protocol versions. |
 | [Minecraft Wiki](https://minecraft.wiki) | Official Minecraft server JAR downloads for decompilation and protocol version history. |
 

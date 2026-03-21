@@ -18,9 +18,10 @@ public final class MCPEConstants {
     public static final int MCPE_PROTOCOL_VERSION_27 = 27; // 0.11.0 (21-26 were dev-only)
     public static final int MCPE_PROTOCOL_VERSION_34 = 34; // 0.12.1 (28-33 were dev-only)
     public static final int MCPE_PROTOCOL_VERSION_38 = 38; // 0.13.0 (35-37 were dev-only)
+    public static final int MCPE_PROTOCOL_VERSION_45 = 45; // 0.14.0 (39-44 were dev-only)
     /** Highest supported protocol version (for pong advertisement). */
-    public static final int MCPE_PROTOCOL_VERSION_MAX = MCPE_PROTOCOL_VERSION_38;
-    public static final String MCPE_VERSION_STRING = "0.13.0";
+    public static final int MCPE_PROTOCOL_VERSION_MAX = MCPE_PROTOCOL_VERSION_45;
+    public static final String MCPE_VERSION_STRING = "0.14.0";
     public static final int DEFAULT_PORT = 19132;
 
     // --- RakNet ---
@@ -182,6 +183,13 @@ public final class MCPEConstants {
     public static final byte V27_SET_DIFFICULTY      = 0x2F;
     /** BatchPacket — NOT renumbered with v27, stays at 0xB1 (same ID space as v11-v20). */
     public static final byte V27_BATCH               = (byte) 0xB1;
+
+    /**
+     * v45+ (0.14.0) wrapper byte: all game packets are prefixed with 0x8E on the wire.
+     * Both C2S and S2C. Inner batch sub-packets are also prefixed.
+     * This byte is NOT a packet ID — it is stripped on receive and prepended on send.
+     */
+    public static final byte V45_WRAPPER = (byte) 0x8E;
 
     // --- v34 Game Packets (0x8F-0xC4) — renumbered again from v27 ---
     public static final byte V34_LOGIN               = (byte) 0x8F;

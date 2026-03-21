@@ -79,7 +79,7 @@ public class MCPELoginHandler {
         int protocol1 = buf.readInt();
         int protocol2 = buf.readInt();
 
-        // v34+: clientId is long (was int). Also has UUID, serverAddress, clientSecret, skinTransparent.
+        // v34+: clientId is long (was int). Also has UUID, serverAddress, clientSecret, skin.
         if (protocol1 >= MCPEConstants.MCPE_PROTOCOL_VERSION_34) {
             long clientIdLong = buf.readLong();
             // Read UUID (16 bytes: 2 longs)
@@ -90,10 +90,16 @@ public class MCPELoginHandler {
             // serverAddress (string), clientSecret (string)
             if (buf.readableBytes() > 0) buf.readString(); // serverAddress
             if (buf.readableBytes() > 0) buf.readString(); // clientSecret
-            // skinTransparent(byte), slim(byte), skin(string)
+            // v38+ (0.13.1+): skinName(string) replaced skinTransparent(byte)+slim(byte)
+            // v34: skinTransparent(byte), slim(byte), skin(short+bytes)
             if (buf.readableBytes() > 0) {
-                buf.readUnsignedByte(); // skinTransparent
-                clientSlim = buf.readUnsignedByte();
+                if (protocol1 >= MCPEConstants.MCPE_PROTOCOL_VERSION_38) {
+                    String skinName = buf.readString(); // skinName (e.g. "Standard_Steve")
+                    clientSlim = skinName.toLowerCase().contains("slim") ? 1 : 0;
+                } else {
+                    buf.readUnsignedByte(); // skinTransparent
+                    clientSlim = buf.readUnsignedByte();
+                }
                 if (buf.readableBytes() >= 2) {
                     int skinLen = buf.readUnsignedShort();
                     if (skinLen > 0 && skinLen <= buf.readableBytes()) {
@@ -122,10 +128,11 @@ public class MCPELoginHandler {
         System.out.println("[MCPE] Login from " + username
                 + " (protocol=" + protocol1 + ")");
 
-        // Accept known protocol versions only (skip dev-only 13, 15-16, 19, 21-26, 28-33)
+        // Accept known protocol versions only (skip dev-only 13, 15-16, 19, 21-26, 28-33, 39-44)
         boolean validProtocol = protocol1 == 11 || protocol1 == 12 || protocol1 == 14
                 || protocol1 == 17 || protocol1 == 18 || protocol1 == 20
-                || protocol1 == 27 || protocol1 == 34 || protocol1 == 38;
+                || protocol1 == 27 || protocol1 == 34 || protocol1 == 38
+                || protocol1 == 45;
         if (!validProtocol) {
             int status = (protocol1 > MCPEConstants.MCPE_PROTOCOL_VERSION_MAX)
                     ? MCPEConstants.LOGIN_SERVER_OUTDATED
@@ -649,7 +656,6 @@ public class MCPELoginHandler {
         pkt.writeByte(MCPEConstants.V34_PLAYER_LIST); // 0xC3 (direct wire ID)
         pkt.writeByte(0); // TYPE_ADD
         pkt.writeInt(1);  // entry count
-        // Entry: uuid(2 longs), entityId(long), playerName(string), slim(byte), [v38: skinTransparent(byte)], skinData(short+bytes)
         long eid = p.getPlayerId() + 1;
         pkt.writeLong(uuid.getMostSignificantBits());
         pkt.writeLong(uuid.getLeastSignificantBits());
@@ -659,9 +665,11 @@ public class MCPELoginHandler {
         if (skinData == null || skinData.length == 0) {
             skinData = MCPEConstants.DEFAULT_SKIN_64x64;
         }
-        pkt.writeByte(0); // slim = 0 (Steve model)
+        // v38+ (0.13.1+): skinName(string) replaced slim(byte)+skinTransparent(byte)
         if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_38) {
-            pkt.writeByte(0); // v38+: skinTransparent
+            pkt.writeString(""); // skinName (empty = Steve)
+        } else {
+            pkt.writeByte(0); // slim = 0 (Steve model)
         }
         pkt.writeShort(skinData.length);
         pkt.writeBytes(skinData);
@@ -684,9 +692,11 @@ public class MCPELoginHandler {
         if (skinData == null || skinData.length == 0) {
             skinData = MCPEConstants.DEFAULT_SKIN_64x64;
         }
-        pkt.writeByte(0); // slim = 0 (Steve model)
+        // v38+ (0.13.1+): skinName(string) replaced slim(byte)+skinTransparent(byte)
         if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_38) {
-            pkt.writeByte(0); // v38+: skinTransparent
+            pkt.writeString(""); // skinName (empty = Steve)
+        } else {
+            pkt.writeByte(0); // slim = 0 (Steve model)
         }
         pkt.writeShort(skinData.length);
         pkt.writeBytes(skinData);

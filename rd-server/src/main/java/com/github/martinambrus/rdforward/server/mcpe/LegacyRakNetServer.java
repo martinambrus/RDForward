@@ -402,6 +402,13 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
         if (!payload.isReadable()) return;
         int gamePacketId = payload.readUnsignedByte();
 
+        // v45+ (0.14.0) wrapper byte: all game packets are prefixed with 0x8E.
+        // 0x8E is never sent C2S in any pre-v45 version (ADD_ITEM_ENTITY is S2C only),
+        // so this is unambiguous even before protocol version is known (pv==0).
+        if (gamePacketId == (MCPEConstants.V45_WRAPPER & 0xFF) && payload.isReadable()) {
+            gamePacketId = payload.readUnsignedByte();
+        }
+
         // Connected Ping — handled for all versions and states
         if (gamePacketId == 0x00) {
             handleConnectedPing(ctx, session, payload);
@@ -608,8 +615,23 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
                     + " to v" + session.getMcpeProtocolVersion());
         }
 
-        // v27+ clients require all game packets to be batch-wrapped (except batch itself).
-        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
+        // v45+: small packets sent standalone as [0x8E][packet], large packets (chunks etc.)
+        // batch-wrapped as [0x8E][0x92][compressed data] (ImagicalMine behavior).
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_45) {
+            int size = gamePayload.readableBytes();
+            if (size >= 256) {
+                // Large packet: batch-wrap with outer 0x8E, no inner 0x8E
+                gamePayload = wrapInBatch(session, gamePayload);
+            } else {
+                // Small packet: standalone with 0x8E prefix
+                ByteBuf wrapped = Unpooled.buffer(1 + size);
+                wrapped.writeByte(MCPEConstants.V45_WRAPPER);
+                wrapped.writeBytes(gamePayload);
+                gamePayload = wrapped;
+            }
+        }
+        // v27-v38: batch-wrap all game packets (except batch itself).
+        else if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
             int batchId = (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34)
                     ? (MCPEConstants.V34_BATCH & 0xFF)
                     : (MCPEConstants.V27_BATCH & 0xFF);
@@ -634,7 +656,8 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
     /**
      * Wrap a game packet in a BatchPacket for v27+ clients.
      * v27: [0xB1][int compLen][zlib(raw packet bytes)]
-     * v34: [0x92][int compLen][zlib(raw packet bytes)] — same as v27 but different batch ID
+     * v34: [0x92][int compLen][zlib(int len + raw packet bytes)]
+     * v45: same as v34 (0x8E wrapper only on standalone C2S packets, not in batch)
      */
     private ByteBuf wrapInBatch(LegacyRakNetSession session, ByteBuf gamePayload) {
         byte[] raw = new byte[gamePayload.readableBytes()];
@@ -642,7 +665,9 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
 
         boolean isV34 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34;
 
-        // v34: inner packets are int-length-prefixed inside the compressed data
+        // v34+: inner packets are int-length-prefixed inside the compressed data.
+        // v45 uses the same inner format as v34 (no 0x8E wrapper inside batch).
+        // The 0x8E wrapper only appears on standalone (non-batched) C2S packets.
         byte[] toCompress;
         if (isV34) {
             toCompress = new byte[4 + raw.length];
@@ -669,7 +694,12 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
         }
 
         byte batchId = isV34 ? MCPEConstants.V34_BATCH : MCPEConstants.V27_BATCH;
+        boolean isV45 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_45;
         ByteBuf batch = Unpooled.buffer();
+        // v45+: all game packets (including batch) are prefixed with 0x8E on the wire.
+        if (isV45) {
+            batch.writeByte(MCPEConstants.V45_WRAPPER);
+        }
         batch.writeByte(batchId);
         batch.writeInt(compressed.length);
         batch.writeBytes(compressed);
