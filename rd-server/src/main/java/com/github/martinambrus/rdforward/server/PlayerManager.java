@@ -216,6 +216,8 @@ public class PlayerManager {
                     SetTimePacket stp = new SetTimePacket();
                     stp.setTime((int) (Math.abs(timeOfDay) % 24000));
                     player.getBedrockSession().getSession().sendPacket(stp);
+                } else if (player.getMcpeSession() != null) {
+                    player.getMcpeSession().sendTimeUpdate((int) (Math.abs(timeOfDay) % 24000));
                 }
             } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
                 player.sendPacket(nettyV768);
@@ -225,7 +227,7 @@ public class PlayerManager {
                 player.sendPacket(preNettyV47);
             } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_4_2)) {
                 player.sendPacket(preNettyV47Abs);
-            } else if (v.isAtLeast(ProtocolVersion.ALPHA_1_2_0)) {
+            } else if (v.isAtLeast(ProtocolVersion.ALPHA_1_0_15)) {
                 player.sendPacket(preNetty);
             }
         }

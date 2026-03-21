@@ -431,6 +431,25 @@ public class MCPESessionWrapper {
 
     public LegacyRakNetSession getSession() { return session; }
 
+    /**
+     * Send a SetTime packet to this MCPE client using the correct wire format.
+     */
+    public void sendTimeUpdate(int time) {
+        if (session.getState() == LegacyRakNetSession.State.DISCONNECTED) return;
+        MCPEPacketBuffer pkt = new MCPEPacketBuffer();
+        pkt.writeByte(wireId(MCPEConstants.SET_TIME));
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_91) {
+            pkt.writeSignedVarInt(time);
+            pkt.writeByte(1); // started
+        } else {
+            pkt.writeInt(time);
+            if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_11) {
+                pkt.writeByte(session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34 ? 1 : 0x80);
+            }
+        }
+        server.sendGamePacket(session, pkt.getBuf());
+    }
+
     public void disconnect(String reason) {
         // Send disconnect packet
         MCPEPacketBuffer buf = new MCPEPacketBuffer();
