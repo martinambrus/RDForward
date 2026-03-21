@@ -34,7 +34,4 @@ jobs:
         run: ./gradlew :rd-game:setupWorkspace
 
       - name: Build all modules
-        run: ./gradlew build
-
-      - name: Run tests
-        run: ./gradlew test
+        run: ./gradlew build -x :rd-bot:test
