@@ -373,6 +373,10 @@ public final class MCPEConstants {
     public static final int ACTION_STOP_SNEAK     = 12;
     public static final int ACTION_CREATIVE_DESTROY = 13; // v34+: creative mode instant block destroy
 
+    // --- Block update flags ---
+    /** NEIGHBORS(1) | NETWORK(2) | PRIORITY(8) — used for authoritative block updates. */
+    public static final int FLAG_ALL_PRIORITY = 0x0B;
+
     // --- World generator types ---
     public static final int GENERATOR_OLD      = 0;
     public static final int GENERATOR_INFINITE = 1;
@@ -413,7 +417,23 @@ public final class MCPEConstants {
 
     // --- Default skin for cross-protocol players (64x64 RGBA = 16384 bytes) ---
     // Real Steve skin extracted from Minecraft 1.8 client JAR (assets/minecraft/textures/entity/steve.png).
-    public static final byte[] DEFAULT_SKIN_64x64 = loadSteveSkin();
+    // Lazy-loaded on first MCPE client that needs a skin.
+    private static volatile byte[] defaultSkin;
+
+    /** Get the default Steve skin (lazy-loaded on first access). */
+    public static byte[] getDefaultSkin() {
+        byte[] skin = defaultSkin;
+        if (skin == null) {
+            synchronized (MCPEConstants.class) {
+                skin = defaultSkin;
+                if (skin == null) {
+                    skin = loadSteveSkin();
+                    defaultSkin = skin;
+                }
+            }
+        }
+        return skin;
+    }
 
     private static byte[] loadSteveSkin() {
         try (java.io.InputStream is = MCPEConstants.class.getResourceAsStream("/mcpe/steve_skin_64x64.raw")) {
@@ -745,4 +765,5 @@ public final class MCPEConstants {
             default: return wireId;
         }
     }
+
 }

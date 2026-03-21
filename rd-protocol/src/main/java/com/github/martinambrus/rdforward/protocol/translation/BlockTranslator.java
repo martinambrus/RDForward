@@ -4,9 +4,11 @@ import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Translates block IDs between protocol versions.
@@ -15,10 +17,8 @@ import java.util.Properties;
  * to a client at protocol version M (where M != N), the block IDs
  * must be translated to the closest equivalent in the client's version.
  *
- * Translation tables are loaded from .properties resource files under
- * {@code block-mappings/}. Each file contains one mapping per line in
- * {@code sourceId=targetId} format. This makes the tables data-driven
- * and editable without recompiling.
+ * Translation tables are loaded lazily from .properties resource files under
+ * {@code block-mappings/} on first access for each version pair.
  *
  * Supported translation pairs:
  * - Classic -> RubyDung (50 -> 3 blocks)
@@ -28,50 +28,91 @@ import java.util.Properties;
  */
 public class BlockTranslator {
 
-    private static final Map<String, Map<Integer, Integer>> TRANSLATION_TABLES = new HashMap<>();
+    private static final ConcurrentHashMap<String, Map<Integer, Integer>> TRANSLATION_TABLES =
+            new ConcurrentHashMap<String, Map<Integer, Integer>>();
 
-    static {
-        // Load all translation tables from resource files
-        loadTable(ProtocolVersion.CLASSIC, ProtocolVersion.RUBYDUNG, "classic-to-rubydung.properties");
-        loadTable(ProtocolVersion.RUBYDUNG, ProtocolVersion.CLASSIC, "rubydung-to-classic.properties");
-
-        // Alpha tables — all Alpha versions share the same block mappings
-        Map<Integer, Integer> alphaToRd = loadProperties("alpha-to-rubydung.properties");
-        if (alphaToRd != null) {
-            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.RUBYDUNG), alphaToRd);
-            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.RUBYDUNG), alphaToRd);
-            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.RUBYDUNG), alphaToRd);
-            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.RUBYDUNG), alphaToRd);
-            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.RUBYDUNG), alphaToRd);
-            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.RUBYDUNG), alphaToRd);
-            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.RUBYDUNG), alphaToRd);
-            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.RUBYDUNG), alphaToRd);
-        }
-
-        Map<Integer, Integer> alphaToClassic = loadProperties("alpha-to-classic.properties");
-        if (alphaToClassic != null) {
-            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_0_15, ProtocolVersion.CLASSIC), alphaToClassic);
-            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_0_16, ProtocolVersion.CLASSIC), alphaToClassic);
-            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_0_17, ProtocolVersion.CLASSIC), alphaToClassic);
-            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_1_0, ProtocolVersion.CLASSIC), alphaToClassic);
-            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_2_0, ProtocolVersion.CLASSIC), alphaToClassic);
-            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_2_2, ProtocolVersion.CLASSIC), alphaToClassic);
-            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_2_3, ProtocolVersion.CLASSIC), alphaToClassic);
-            TRANSLATION_TABLES.put(makeKey(ProtocolVersion.ALPHA_1_2_5, ProtocolVersion.CLASSIC), alphaToClassic);
-        }
-    }
+    /** Sentinel value for keys that have no translation file. */
+    private static final Map<Integer, Integer> NO_TABLE = Collections.emptyMap();
 
     private static String makeKey(ProtocolVersion from, ProtocolVersion to) {
         return from.name() + "->" + to.name();
     }
 
     /**
-     * Load a translation table from a resource file and register it.
+     * Get (or lazily load) the translation table for a version pair.
+     * Returns null if no table exists for this pair.
      */
-    private static void loadTable(ProtocolVersion from, ProtocolVersion to, String resourceName) {
-        Map<Integer, Integer> table = loadProperties(resourceName);
+    private static Map<Integer, Integer> getTable(ProtocolVersion from, ProtocolVersion to) {
+        String key = makeKey(from, to);
+        Map<Integer, Integer> table = TRANSLATION_TABLES.get(key);
         if (table != null) {
-            TRANSLATION_TABLES.put(makeKey(from, to), table);
+            return table == NO_TABLE ? null : table;
+        }
+        // Lazy-load: determine the resource file for this version pair
+        table = loadTableForPair(from, to);
+        Map<Integer, Integer> existing = TRANSLATION_TABLES.putIfAbsent(key, table != null ? table : NO_TABLE);
+        if (existing != null) {
+            return existing == NO_TABLE ? null : existing;
+        }
+        return table;
+    }
+
+    /**
+     * Determine which resource file to load for a given version pair, and load it.
+     * Returns null if no mapping exists.
+     */
+    private static Map<Integer, Integer> loadTableForPair(ProtocolVersion from, ProtocolVersion to) {
+        // Classic <-> RubyDung
+        if (from == ProtocolVersion.CLASSIC && to == ProtocolVersion.RUBYDUNG) {
+            return loadProperties("classic-to-rubydung.properties");
+        }
+        if (from == ProtocolVersion.RUBYDUNG && to == ProtocolVersion.CLASSIC) {
+            return loadProperties("rubydung-to-classic.properties");
+        }
+
+        // All Alpha versions share the same mappings
+        if (isAlpha(from)) {
+            if (to == ProtocolVersion.RUBYDUNG) {
+                return getSharedAlphaTable("alpha-to-rubydung.properties");
+            }
+            if (to == ProtocolVersion.CLASSIC) {
+                return getSharedAlphaTable("alpha-to-classic.properties");
+            }
+        }
+
+        return null;
+    }
+
+    /** Cache for shared Alpha translation tables (all Alpha versions use the same file). */
+    private static final ConcurrentHashMap<String, Map<Integer, Integer>> ALPHA_TABLE_CACHE =
+            new ConcurrentHashMap<String, Map<Integer, Integer>>();
+
+    private static Map<Integer, Integer> getSharedAlphaTable(String resourceName) {
+        Map<Integer, Integer> table = ALPHA_TABLE_CACHE.get(resourceName);
+        if (table != null) {
+            return table == NO_TABLE ? null : table;
+        }
+        table = loadProperties(resourceName);
+        Map<Integer, Integer> existing = ALPHA_TABLE_CACHE.putIfAbsent(resourceName, table != null ? table : NO_TABLE);
+        if (existing != null) {
+            return existing == NO_TABLE ? null : existing;
+        }
+        return table;
+    }
+
+    private static boolean isAlpha(ProtocolVersion pv) {
+        switch (pv) {
+            case ALPHA_1_0_15:
+            case ALPHA_1_0_16:
+            case ALPHA_1_0_17:
+            case ALPHA_1_1_0:
+            case ALPHA_1_2_0:
+            case ALPHA_1_2_2:
+            case ALPHA_1_2_3:
+            case ALPHA_1_2_5:
+                return true;
+            default:
+                return false;
         }
     }
 
@@ -89,7 +130,7 @@ public class BlockTranslator {
             Properties props = new Properties();
             props.load(is);
 
-            Map<Integer, Integer> table = new HashMap<>();
+            Map<Integer, Integer> table = new HashMap<Integer, Integer>();
             for (String key : props.stringPropertyNames()) {
                 try {
                     int sourceId = Integer.parseInt(key.trim());
@@ -119,8 +160,7 @@ public class BlockTranslator {
             return blockId;
         }
 
-        String key = makeKey(from, to);
-        Map<Integer, Integer> table = TRANSLATION_TABLES.get(key);
+        Map<Integer, Integer> table = getTable(from, to);
         if (table == null) {
             // No translation table for this version pair — return as-is
             return blockId;
@@ -139,8 +179,7 @@ public class BlockTranslator {
     public static void translateArray(byte[] blocks, ProtocolVersion from, ProtocolVersion to) {
         if (from == to) return;
 
-        String key = makeKey(from, to);
-        Map<Integer, Integer> table = TRANSLATION_TABLES.get(key);
+        Map<Integer, Integer> table = getTable(from, to);
         if (table == null) return;
 
         for (int i = 0; i < blocks.length; i++) {
@@ -164,6 +203,6 @@ public class BlockTranslator {
      * Check if a translation table exists for the given version pair.
      */
     public static boolean hasTranslation(ProtocolVersion from, ProtocolVersion to) {
-        return TRANSLATION_TABLES.containsKey(makeKey(from, to));
+        return getTable(from, to) != null;
     }
 }

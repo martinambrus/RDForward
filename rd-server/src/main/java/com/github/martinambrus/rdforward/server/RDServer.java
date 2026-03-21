@@ -86,10 +86,55 @@ public class RDServer {
     private Channel udpFrontEndChannel;
     private LegacyRakNetServer mcpeServer;
     private UdpFrontEndHandler udpFrontEndHandler;
-    private BedrockBlockMapper bedrockBlockMapper;
-    private BedrockChunkConverter bedrockChunkConverter;
-    private BedrockRegistryData bedrockRegistryData;
+    private volatile BedrockBlockMapper bedrockBlockMapper;
+    private volatile BedrockChunkConverter bedrockChunkConverter;
+    private volatile BedrockRegistryData bedrockRegistryData;
     private volatile boolean stopped = false;
+
+    /** Lazy getter for BedrockBlockMapper — loaded on first Bedrock client connection. */
+    private BedrockBlockMapper getBedrockBlockMapper() {
+        BedrockBlockMapper mapper = bedrockBlockMapper;
+        if (mapper == null) {
+            synchronized (this) {
+                mapper = bedrockBlockMapper;
+                if (mapper == null) {
+                    mapper = new BedrockBlockMapper(BedrockProtocolConstants.getVanillaBlockStates());
+                    bedrockBlockMapper = mapper;
+                }
+            }
+        }
+        return mapper;
+    }
+
+    /** Lazy getter for BedrockChunkConverter — loaded on first Bedrock client connection. */
+    private BedrockChunkConverter getBedrockChunkConverter() {
+        BedrockChunkConverter converter = bedrockChunkConverter;
+        if (converter == null) {
+            synchronized (this) {
+                converter = bedrockChunkConverter;
+                if (converter == null) {
+                    converter = new BedrockChunkConverter(getBedrockBlockMapper());
+                    bedrockChunkConverter = converter;
+                }
+            }
+        }
+        return converter;
+    }
+
+    /** Lazy getter for BedrockRegistryData — loaded on first Bedrock client connection. */
+    private BedrockRegistryData getBedrockRegistryData() {
+        BedrockRegistryData data = bedrockRegistryData;
+        if (data == null) {
+            synchronized (this) {
+                data = bedrockRegistryData;
+                if (data == null) {
+                    data = new BedrockRegistryData();
+                    bedrockRegistryData = data;
+                }
+            }
+        }
+        return data;
+    }
 
     public RDServer(int port) {
         this(port, ProtocolVersion.RUBYDUNG, new FlatWorldGenerator(), DEFAULT_SEED);
@@ -200,10 +245,9 @@ public class RDServer {
     private void startUnifiedUdpServer() {
         int udpPort = bedrockPort; // default 19132, overridable via setBedrockPort()
 
-        // --- Initialize Bedrock support ---
-        bedrockBlockMapper = new BedrockBlockMapper(BedrockProtocolConstants.getVanillaBlockStates());
-        bedrockChunkConverter = new BedrockChunkConverter(bedrockBlockMapper);
-        bedrockRegistryData = new BedrockRegistryData();
+        // Bedrock infrastructure (BedrockBlockMapper, BedrockChunkConverter,
+        // BedrockRegistryData) is lazy-loaded on first Bedrock client connection
+        // via getBedrockBlockMapper(), getBedrockChunkConverter(), getBedrockRegistryData().
 
         final long bedrockGuid = System.currentTimeMillis();
 
@@ -232,7 +276,7 @@ public class RDServer {
             // Pong data is regenerated per-ping in LegacyRakNetServer
         };
         mcpeServer = new LegacyRakNetServer(
-                mcpeGuid, "RDForward Server", world, playerManager, chunkManager, mcpePongUpdater);
+                mcpeGuid, "RDForward Server", world, playerManager, mcpePongUpdater);
 
         // --- Create front-end handler ---
         udpFrontEndHandler = new UdpFrontEndHandler(mcpeServer);
@@ -281,8 +325,8 @@ public class RDServer {
                         session.setCodec(BedrockProtocolConstants.CODEC);
                         session.setPacketHandler(new BedrockLoginHandler(
                                 session, world, playerManager, chunkManager,
-                                bedrockBlockMapper, bedrockChunkConverter,
-                                bedrockRegistryData, bedrockPongUpdater));
+                                getBedrockBlockMapper(), getBedrockChunkConverter(),
+                                getBedrockRegistryData(), bedrockPongUpdater));
                     }
                 });
 

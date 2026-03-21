@@ -1,6 +1,5 @@
 package com.github.martinambrus.rdforward.server.mcpe;
 
-import com.github.martinambrus.rdforward.server.ChunkManager;
 import com.github.martinambrus.rdforward.server.PlayerManager;
 import com.github.martinambrus.rdforward.server.ServerWorld;
 import io.netty.bootstrap.Bootstrap;
@@ -31,7 +30,6 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
     private final String serverName;
     private final ServerWorld world;
     private final PlayerManager playerManager;
-    private final ChunkManager chunkManager;
     private final Runnable pongUpdater;
 
     /** Active sessions keyed by client address. */
@@ -45,12 +43,11 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
 
     public LegacyRakNetServer(long serverGuid, String serverName,
                               ServerWorld world, PlayerManager playerManager,
-                              ChunkManager chunkManager, Runnable pongUpdater) {
+                              Runnable pongUpdater) {
         this.serverGuid = serverGuid;
         this.serverName = serverName;
         this.world = world;
         this.playerManager = playerManager;
-        this.chunkManager = chunkManager;
         this.pongUpdater = pongUpdater;
     }
 
@@ -270,7 +267,7 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
 
         // Create login handler
         MCPELoginHandler loginHandler = new MCPELoginHandler(
-                session, world, playerManager, chunkManager, this, pongUpdater);
+                session, world, playerManager, this, pongUpdater);
         session.setLoginHandler(loginHandler);
 
         // Send Open Connection Reply 2

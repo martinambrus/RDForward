@@ -15,6 +15,9 @@
 ## Data File Protection
 - [feedback_no_delete_world.md](feedback_no_delete_world.md): NEVER delete world/player save files without explicit permission
 
+## Performance Principles
+- [feedback_lazy_loading.md](feedback_lazy_loading.md): Lazy-load all protocol infrastructure and decouple version-specific code into per-session codecs
+
 ## Workflow Preferences
 - [feedback_restart_server.md](feedback_restart_server.md): Rebuild and restart the server proactively after code changes
 

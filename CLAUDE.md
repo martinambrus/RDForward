@@ -21,6 +21,15 @@ When adding support for new protocol versions (MCPE, Netty, Alpha, or otherwise)
 - When adding version thresholds (e.g. `if (version >= V27)`), verify that ALL versions in the affected range behave the same way. A threshold that's correct for v27 may be wrong for v17.
 - When touching shared code paths (packet dispatch, chunk sending, login sequence), re-test at least one client from each supported version range.
 
+## Lazy Loading and Code Decoupling
+
+Performance is a top priority. Protocol adapters, registries, and version-specific code must be loaded and executed only when actually needed:
+
+- **Lazy-load infrastructure**: Bedrock block palettes, MCPE servers, packet registry overlays, block state mappers, and translation tables should NOT be loaded at startup. Defer initialization to the first client connection of that protocol type. Use JVM inner-class holders (thread-safe without synchronization) or synchronized lazy getters (double-checked locking with volatile) as appropriate.
+- **Decouple version branches**: When multiple protocol versions share a handler method via cascading if-else chains on protocol version numbers, extract version-specific wire format logic into separate codec/strategy classes selected at connection time. Each session should only execute its own version's code path, never code for other versions.
+- **No unnecessary processing**: If only Alpha clients are connected, zero MCPE or Bedrock code should execute. If only 1.8 clients are connected, no 1.21-specific packet registry overlays should be loaded. Broadcast methods that write to sessions of mixed versions must dispatch on the RECIPIENT's codec, not the sender's.
+- **Existing pattern to follow**: `BedrockProtocolConstants` uses synchronized lazy getters as the reference pattern. `ProtocolDetectionHandler` dynamically reconfigures the Netty pipeline per-connection as the reference pattern for per-client protocol selection.
+
 ## Running the Server
 
 To build and start the server for manual testing:
