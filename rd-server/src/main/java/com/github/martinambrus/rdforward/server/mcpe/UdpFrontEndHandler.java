@@ -151,11 +151,17 @@ public class UdpFrontEndHandler extends SimpleChannelInboundHandler<DatagramPack
      * Inject a DatagramPacket into CloudburstMC's internal pipeline as if it
      * arrived on the network. The sender address is preserved so CloudburstMC
      * creates/looks up the correct RakNet child channel.
+     *
+     * Uses retainedSlice(0, writerIndex) to get a fresh ByteBuf view starting
+     * from byte 0, independent of the original buffer's reader position.
+     * This is critical for the ping path where the legacy server reads from
+     * the shared buffer before CloudburstMC gets it.
      */
     private void injectIntoBedrock(DatagramPacket packet) {
         if (bedrockInternalChannel == null) return;
+        ByteBuf content = packet.content();
         DatagramPacket injected = new DatagramPacket(
-                packet.content().retain(),
+                content.retainedSlice(0, content.writerIndex()),
                 (InetSocketAddress) bedrockInternalChannel.localAddress(),
                 packet.sender()
         );
