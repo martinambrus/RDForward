@@ -270,4 +270,152 @@ public class MCPEPacketBuffer {
         buf.readBytes(data);
         return data;
     }
+
+    // --- v91 (0.16.0) VarInt and wire format methods ---
+
+    /** Read an unsigned VarInt (LEB128, 1-5 bytes). */
+    public int readUnsignedVarInt() {
+        int value = 0;
+        int shift = 0;
+        for (int i = 0; i < 5; i++) {
+            int b = buf.readUnsignedByte();
+            value |= (b & 0x7F) << shift;
+            if ((b & 0x80) == 0) return value;
+            shift += 7;
+        }
+        throw new RuntimeException("VarInt too long");
+    }
+
+    /** Write a signed VarInt (zigzag-encoded, 1-5 bytes). */
+    public MCPEPacketBuffer writeSignedVarInt(int value) {
+        return writeUnsignedVarInt((value << 1) ^ (value >> 31));
+    }
+
+    /** Read a signed VarInt (zigzag-decoded). */
+    public int readSignedVarInt() {
+        int raw = readUnsignedVarInt();
+        return (raw >>> 1) ^ -(raw & 1);
+    }
+
+    /** Read a Little-Endian float. */
+    public float readLFloat() {
+        return buf.readFloatLE();
+    }
+
+    /** Write a VarInt-prefixed string (v91+ format). */
+    public MCPEPacketBuffer writeStringV91(String value) {
+        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+        writeUnsignedVarInt(bytes.length);
+        buf.writeBytes(bytes);
+        return this;
+    }
+
+    /** Read a VarInt-prefixed string (v91+ format). */
+    public String readStringV91() {
+        int length = readUnsignedVarInt();
+        byte[] bytes = new byte[length];
+        buf.readBytes(bytes);
+        return new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    /** Write block coordinates in v91 format: SignedVarInt(x) + byte(y) + SignedVarInt(z). */
+    public MCPEPacketBuffer writeBlockCoords(int x, int y, int z) {
+        writeSignedVarInt(x);
+        buf.writeByte(y);
+        writeSignedVarInt(z);
+        return this;
+    }
+
+    /** Read block coordinates in v91 format: SignedVarInt(x) + byte(y) + SignedVarInt(z). */
+    public int[] readBlockCoords() {
+        int x = readSignedVarInt();
+        int y = buf.readUnsignedByte();
+        int z = readSignedVarInt();
+        return new int[]{x, y, z};
+    }
+
+    /** Write v91 metadata string entry (UnsignedVarInt length prefix instead of LE short). */
+    public MCPEPacketBuffer writeMetaStringV91(int index, String value) {
+        buf.writeByte((MCPEConstants.META_TYPE_STRING << 5) | (index & 0x1F));
+        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+        writeUnsignedVarInt(bytes.length);
+        buf.writeBytes(bytes);
+        return this;
+    }
+
+    // --- v91 metadata writers (new format: VarInt count, VarInt key, VarInt type, value) ---
+
+    /** Start a v91 metadata block by writing the entry count. */
+    public MCPEPacketBuffer writeMetadataV91Start(int count) {
+        writeUnsignedVarInt(count);
+        return this;
+    }
+
+    /** Write a v91 metadata byte entry: UnsignedVarInt(key) + UnsignedVarInt(0=BYTE) + byte. */
+    public MCPEPacketBuffer writeMetaByteV91(int key, byte value) {
+        writeUnsignedVarInt(key);
+        writeUnsignedVarInt(MCPEConstants.META_TYPE_BYTE);
+        buf.writeByte(value);
+        return this;
+    }
+
+    /** Write a v91 metadata short entry: UnsignedVarInt(key) + UnsignedVarInt(1=SHORT) + LShort. */
+    public MCPEPacketBuffer writeMetaShortV91(int key, short value) {
+        writeUnsignedVarInt(key);
+        writeUnsignedVarInt(MCPEConstants.META_TYPE_SHORT);
+        buf.writeShortLE(value);
+        return this;
+    }
+
+    /** Write a v91 metadata string entry: UnsignedVarInt(key) + UnsignedVarInt(4=STRING) + VarInt-prefixed string. */
+    public MCPEPacketBuffer writeMetaStringV91Entry(int key, String value) {
+        writeUnsignedVarInt(key);
+        writeUnsignedVarInt(MCPEConstants.META_TYPE_STRING);
+        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+        writeUnsignedVarInt(bytes.length);
+        buf.writeBytes(bytes);
+        return this;
+    }
+
+    /** Write a v91 metadata long entry: UnsignedVarInt(key) + UnsignedVarInt(7=LONG) + SignedVarInt(value). */
+    public MCPEPacketBuffer writeMetaLongV91(int key, int value) {
+        writeUnsignedVarInt(key);
+        writeUnsignedVarInt(MCPEConstants.META_TYPE_LONG);
+        writeSignedVarInt(value);
+        return this;
+    }
+
+    /** Write a v91 metadata float entry: UnsignedVarInt(key) + UnsignedVarInt(3=FLOAT) + LFloat(value). */
+    public MCPEPacketBuffer writeMetaFloatV91(int key, float value) {
+        writeUnsignedVarInt(key);
+        writeUnsignedVarInt(MCPEConstants.META_TYPE_FLOAT);
+        buf.writeFloatLE(value);
+        return this;
+    }
+
+    /**
+     * Write an unsigned VarInt directly to a ByteBuf (static helper for batch framing).
+     */
+    public static void writeUnsignedVarInt(io.netty.buffer.ByteBuf target, int value) {
+        while ((value & ~0x7F) != 0) {
+            target.writeByte((value & 0x7F) | 0x80);
+            value >>>= 7;
+        }
+        target.writeByte(value & 0x7F);
+    }
+
+    /**
+     * Read an unsigned VarInt directly from a ByteBuf (static helper for batch framing).
+     */
+    public static int readUnsignedVarInt(io.netty.buffer.ByteBuf source) {
+        int value = 0;
+        int shift = 0;
+        for (int i = 0; i < 5; i++) {
+            int b = source.readUnsignedByte();
+            value |= (b & 0x7F) << shift;
+            if ((b & 0x80) == 0) return value;
+            shift += 7;
+        }
+        throw new RuntimeException("VarInt too long");
+    }
 }

@@ -68,13 +68,20 @@ public class MCPESessionWrapper {
     private void translateSetBlock(SetBlockServerPacket pkt) {
         MCPEPacketBuffer buf = new MCPEPacketBuffer();
         buf.writeByte(wireId(MCPEConstants.UPDATE_BLOCK));
-        buf.writeInt(pkt.getX());
-        buf.writeInt(pkt.getZ());
-        buf.writeByte(pkt.getY());
-        buf.writeByte(pkt.getBlockType());
-        // v27: upper nibble = flags (NEIGHBORS|NETWORK|PRIORITY = 0x0B)
-        int flags = (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) ? 0x0B : 0;
-        buf.writeByte((flags << 4));
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_91) {
+            // v91: blockCoords + UnsignedVarInt(blockId) + UnsignedVarInt((flags<<4)|meta)
+            buf.writeBlockCoords(pkt.getX(), pkt.getY(), pkt.getZ());
+            buf.writeUnsignedVarInt(pkt.getBlockType());
+            buf.writeUnsignedVarInt(0x0B << 4); // FLAG_ALL_PRIORITY, meta=0
+        } else {
+            buf.writeInt(pkt.getX());
+            buf.writeInt(pkt.getZ());
+            buf.writeByte(pkt.getY());
+            buf.writeByte(pkt.getBlockType());
+            // v27: upper nibble = flags (NEIGHBORS|NETWORK|PRIORITY = 0x0B)
+            int flags = (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) ? 0x0B : 0;
+            buf.writeByte((flags << 4));
+        }
         server.sendGamePacket(session, buf.getBuf());
 
         // v27+: UpdateBlock is silently ignored — resend chunk as workaround
@@ -85,6 +92,7 @@ public class MCPESessionWrapper {
     }
 
     private void translateSpawnPlayer(SpawnPlayerPacket pkt) {
+        boolean isV91 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_91;
         boolean isV34 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34;
         boolean isV27 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27;
         // Classic uses fixed-point (x32), MCPE uses float
@@ -98,15 +106,26 @@ public class MCPESessionWrapper {
 
         // v34+: send PlayerListAdd before AddPlayer (registers skin)
         if (isV34) {
-            boolean isV81 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_81;
             ConnectedPlayer spawnedPlayer = playerManager.getPlayer((byte) pkt.getPlayerId());
             byte[] skinData = (spawnedPlayer != null) ? spawnedPlayer.getMcpeSkinData() : null;
             if (skinData == null || skinData.length == 0) {
                 skinData = MCPEConstants.DEFAULT_SKIN_64x64;
             }
-            // Generate a proper UUID from player name (v38+ clients validate UUIDs)
             java.util.UUID uuid = java.util.UUID.nameUUIDFromBytes(name.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             MCPEPacketBuffer plPkt = new MCPEPacketBuffer();
+            if (isV91) {
+                plPkt.writeByte(MCPEConstants.V91_PLAYER_LIST & 0xFF);
+                plPkt.writeByte(0); // TYPE_ADD
+                plPkt.writeUnsignedVarInt(1); // entry count
+                plPkt.writeLong(uuid.getMostSignificantBits());
+                plPkt.writeLong(uuid.getLeastSignificantBits());
+                plPkt.writeSignedVarInt(entityId);
+                plPkt.writeStringV91(name);
+                plPkt.writeStringV91("Standard_Steve");
+                plPkt.writeUnsignedVarInt(skinData.length); // raw skin bytes
+                plPkt.writeBytes(skinData);
+            } else {
+            boolean isV81 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_81;
             plPkt.writeByte(isV81 ? (MCPEConstants.V81_PLAYER_LIST & 0xFF)
                     : (MCPEConstants.V34_PLAYER_LIST & 0xFF));
             plPkt.writeByte(0); // TYPE_ADD
@@ -116,29 +135,45 @@ public class MCPESessionWrapper {
             plPkt.writeLong(entityId);  // entityId
             plPkt.writeString(name);
             if (isV81) {
-                // v81: skinId(string) + skinData(string = raw bytes as string)
                 plPkt.writeString("Standard_Steve");
                 plPkt.writeShort(skinData.length);
                 plPkt.writeBytes(skinData);
             } else {
-                // v38+ (0.13.1+): skinName(string) replaced slim(byte)+skinTransparent(byte)
                 if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_38) {
-                    plPkt.writeString(""); // skinName (empty = Steve)
+                    plPkt.writeString("");
                 } else {
-                    plPkt.writeByte(0); // slim = 0 (Steve model)
+                    plPkt.writeByte(0);
                 }
                 plPkt.writeShort(skinData.length);
                 plPkt.writeBytes(skinData);
+            }
             }
             server.sendGamePacket(session, plPkt.getBuf());
         }
 
         MCPEPacketBuffer buf = new MCPEPacketBuffer();
         buf.writeByte(wireId(MCPEConstants.ADD_PLAYER));
-        if (isV34) {
-            // v34: uuid(2 longs), username, entityId(long), x, y, z,
-            //       speedX, speedY, speedZ, yaw, headYaw, pitch,
-            //       slot(compound — air), metadata
+        if (isV91) {
+            // v91: UUID + VarInt-string name + VarInt uniqueId + VarInt runtimeId
+            //   + 3x LFloat pos + 3x LFloat speed + LFloat yaw/headYaw/pitch
+            //   + VarInt(0) air slot + metadata
+            java.util.UUID addUuid = java.util.UUID.nameUUIDFromBytes(name.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            buf.writeLong(addUuid.getMostSignificantBits());
+            buf.writeLong(addUuid.getLeastSignificantBits());
+            buf.writeStringV91(name);
+            buf.writeSignedVarInt(entityId); // uniqueId
+            buf.writeSignedVarInt(entityId); // runtimeId
+            buf.writeLFloat(x);
+            buf.writeLFloat(y);
+            buf.writeLFloat(z);
+            buf.writeLFloat(0); // speedX
+            buf.writeLFloat(0); // speedY
+            buf.writeLFloat(0); // speedZ
+            buf.writeLFloat(yaw);
+            buf.writeLFloat(yaw);  // headYaw
+            buf.writeLFloat(pitch);
+            buf.writeSignedVarInt(0); // held item (air)
+        } else if (isV34) {
             java.util.UUID addUuid = java.util.UUID.nameUUIDFromBytes(name.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             buf.writeLong(addUuid.getMostSignificantBits());
             buf.writeLong(addUuid.getLeastSignificantBits());
@@ -147,32 +182,23 @@ public class MCPESessionWrapper {
             buf.writeFloat(x);
             buf.writeFloat(y);
             buf.writeFloat(z);
-            buf.writeFloat(0); // speedX
-            buf.writeFloat(0); // speedY
-            buf.writeFloat(0); // speedZ
+            buf.writeFloat(0); buf.writeFloat(0); buf.writeFloat(0);
             buf.writeFloat(yaw);
-            buf.writeFloat(yaw);  // headYaw
+            buf.writeFloat(yaw);
             buf.writeFloat(pitch);
-            buf.writeShort(0); // held item (air = slot compound)
+            buf.writeShort(0); // held item (air)
         } else if (isV27) {
-            // v27: clientId(long), username, entityId(long), x, y, z,
-            //       speedX, speedY, speedZ, yaw, headYaw, pitch,
-            //       itemId(short), itemDamage(short), slim(byte), skin(string), metadata
             buf.writeLong(entityId);
             buf.writeString(name);
             buf.writeLong(entityId);
             buf.writeFloat(x);
             buf.writeFloat(y);
             buf.writeFloat(z);
-            buf.writeFloat(0); // speedX
-            buf.writeFloat(0); // speedY
-            buf.writeFloat(0); // speedZ
+            buf.writeFloat(0); buf.writeFloat(0); buf.writeFloat(0);
             buf.writeFloat(yaw);
-            buf.writeFloat(yaw);  // headYaw
+            buf.writeFloat(yaw);
             buf.writeFloat(pitch);
-            buf.writeShort(0); // item ID (air)
-            buf.writeShort(0); // item damage
-            // Use spawned player's MCPE skin if available, else default Steve
+            buf.writeShort(0); buf.writeShort(0);
             ConnectedPlayer spawnedPlayer = playerManager.getPlayer((byte) pkt.getPlayerId());
             byte[] skinData = (spawnedPlayer != null) ? spawnedPlayer.getMcpeSkinData() : null;
             if (skinData != null && skinData.length > 0) {
@@ -180,24 +206,21 @@ public class MCPESessionWrapper {
                 buf.writeShort(skinData.length);
                 buf.writeBytes(skinData);
             } else {
-                buf.writeByte(0); // slim (0 = steve)
+                buf.writeByte(0);
                 buf.writeShort(MCPEConstants.DEFAULT_SKIN_64x64.length);
                 buf.writeBytes(MCPEConstants.DEFAULT_SKIN_64x64);
             }
         } else if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_11) {
-            buf.writeLong(entityId);      // clientID
+            buf.writeLong(entityId);
             buf.writeString(name);
-            buf.writeInt(entityId);       // entity ID
+            buf.writeInt(entityId);
             buf.writeFloat(x);
             buf.writeFloat(y);
             buf.writeFloat(z);
-            buf.writeByte((pkt.getYaw() + 128) & 0xFF);  // Classic→MCPE yaw: +128 (180°)
-            buf.writeByte(pkt.getPitch()); // pitch
-            buf.writeShort(0);            // held item ID
-            buf.writeShort(0);            // held item aux value
+            buf.writeByte((pkt.getYaw() + 128) & 0xFF);
+            buf.writeByte(pkt.getPitch());
+            buf.writeShort(0); buf.writeShort(0);
         } else {
-            // v9: clientId(long), username, entityId(int), x, y, z, metadata
-            // No yaw/pitch/held item fields
             buf.writeLong(entityId);
             buf.writeString(name);
             buf.writeInt(entityId);
@@ -207,8 +230,18 @@ public class MCPESessionWrapper {
         }
 
         boolean isV9 = session.getMcpeProtocolVersion() < MCPEConstants.MCPE_PROTOCOL_VERSION_11;
-        if (isV9) {
-            // v9: PocketMine sends metadata indices 0,1,16,17 (no nametag/showNametag)
+        if (isV91) {
+            // v91 metadata: VarInt count + per-entry VarInt key + VarInt type + value
+            int flags91 = (1 << MCPEConstants.V91_FLAG_CAN_SHOW_NAMETAG)
+                        | (1 << MCPEConstants.V91_FLAG_ALWAYS_SHOW_NAMETAG);
+            buf.writeMetadataV91Start(6);
+            buf.writeMetaLongV91(MCPEConstants.V91_META_FLAGS, flags91);
+            buf.writeMetaShortV91(MCPEConstants.V91_META_AIR, (short) 400);
+            buf.writeMetaShortV91(MCPEConstants.V91_META_MAX_AIR, (short) 400);
+            buf.writeMetaStringV91Entry(MCPEConstants.V91_META_NAMETAG, name);
+            buf.writeMetaLongV91(MCPEConstants.V91_META_LEAD_HOLDER_EID, -1);
+            buf.writeMetaFloatV91(MCPEConstants.V91_META_SCALE, 1.0f);
+        } else if (isV9) {
             buf.writeMetaByte(MCPEConstants.META_FLAGS, (byte) 0);
             buf.writeMetaShort(MCPEConstants.META_AIR, (short) 300);
             buf.writeMetaByte(16, (byte) 0);
@@ -224,50 +257,66 @@ public class MCPESessionWrapper {
         server.sendGamePacket(session, buf.getBuf());
 
         if (isV9) {
-            // v9: PocketMine sends PLAYER_EQUIPMENT after AddPlayer (not SET_ENTITY_DATA)
             MCPEPacketBuffer eqPkt = new MCPEPacketBuffer();
             eqPkt.writeByte(wireId(MCPEConstants.PLAYER_EQUIPMENT));
             eqPkt.writeInt(entityId);
-            eqPkt.writeShort(0); // block = air
-            eqPkt.writeShort(0); // meta = 0
+            eqPkt.writeShort(0); eqPkt.writeShort(0);
             server.sendGamePacket(session, eqPkt.getBuf());
         } else {
-            // v11+: Send SET_ENTITY_DATA with nametag (some clients only read metadata from this packet)
             MCPEPacketBuffer meta = new MCPEPacketBuffer();
             meta.writeByte(wireId(MCPEConstants.SET_ENTITY_DATA));
-            if (isV27) {
-                meta.writeLong(entityId); // v27+: 64-bit entity ID
+            if (isV91) {
+                meta.writeSignedVarInt(entityId);
+                int metaFlags91 = (1 << MCPEConstants.V91_FLAG_CAN_SHOW_NAMETAG)
+                                | (1 << MCPEConstants.V91_FLAG_ALWAYS_SHOW_NAMETAG);
+                meta.writeMetadataV91Start(6);
+                meta.writeMetaLongV91(MCPEConstants.V91_META_FLAGS, metaFlags91);
+                meta.writeMetaShortV91(MCPEConstants.V91_META_AIR, (short) 400);
+                meta.writeMetaShortV91(MCPEConstants.V91_META_MAX_AIR, (short) 400);
+                meta.writeMetaStringV91Entry(MCPEConstants.V91_META_NAMETAG, name);
+                meta.writeMetaLongV91(MCPEConstants.V91_META_LEAD_HOLDER_EID, -1);
+                meta.writeMetaFloatV91(MCPEConstants.V91_META_SCALE, 1.0f);
+            } else if (isV27) {
+                meta.writeLong(entityId);
+                meta.writeMetaByte(MCPEConstants.META_FLAGS, (byte) 0);
+                meta.writeMetaShort(MCPEConstants.META_AIR, (short) 300);
+                meta.writeMetaString(MCPEConstants.META_NAMETAG, name);
+                meta.writeMetaByte(MCPEConstants.META_SHOW_NAMETAG, (byte) 1);
+                meta.writeMetaEnd();
             } else {
                 meta.writeInt(entityId);
+                meta.writeMetaByte(MCPEConstants.META_FLAGS, (byte) 0);
+                meta.writeMetaShort(MCPEConstants.META_AIR, (short) 300);
+                meta.writeMetaString(MCPEConstants.META_NAMETAG, name);
+                meta.writeMetaByte(MCPEConstants.META_SHOW_NAMETAG, (byte) 1);
+                meta.writeMetaEnd();
             }
-            meta.writeMetaByte(MCPEConstants.META_FLAGS, (byte) 0);
-            meta.writeMetaShort(MCPEConstants.META_AIR, (short) 300);
-            meta.writeMetaString(MCPEConstants.META_NAMETAG, name);
-            meta.writeMetaByte(MCPEConstants.META_SHOW_NAMETAG, (byte) 1);
-            meta.writeMetaEnd();
             server.sendGamePacket(session, meta.getBuf());
         }
     }
 
     private void translateDespawnPlayer(DespawnPlayerPacket pkt) {
         int entityId = (pkt.getPlayerId() & 0xFF) + 1;
+        boolean isV91 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_91;
         boolean isV34 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34;
         boolean isV81 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_81;
 
         MCPEPacketBuffer buf = new MCPEPacketBuffer();
-        if (isV81) {
-            // v81: REMOVE_PLAYER was dropped — use REMOVE_ENTITY instead
+        if (isV91) {
+            // v91: REMOVE_ENTITY with VarInt entity ID
+            buf.writeByte(MCPEConstants.V91_REMOVE_ENTITY & 0xFF);
+            buf.writeSignedVarInt(entityId);
+        } else if (isV81) {
             buf.writeByte(MCPEConstants.V81_REMOVE_ENTITY & 0xFF);
             buf.writeLong(entityId);
         } else {
             buf.writeByte(wireId(MCPEConstants.REMOVE_PLAYER));
             if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
-                buf.writeLong(entityId); // v27+: 64-bit entity ID
+                buf.writeLong(entityId);
             } else {
                 buf.writeInt(entityId);
             }
             if (isV34) {
-                // v34: UUID (2 longs) instead of clientId
                 ConnectedPlayer despawned = playerManager.getPlayer((byte) pkt.getPlayerId());
                 java.util.UUID despawnUuid = (despawned != null)
                         ? java.util.UUID.nameUUIDFromBytes(despawned.getUsername().getBytes(java.nio.charset.StandardCharsets.UTF_8))
@@ -275,7 +324,7 @@ public class MCPESessionWrapper {
                 buf.writeLong(despawnUuid.getMostSignificantBits());
                 buf.writeLong(despawnUuid.getLeastSignificantBits());
             } else {
-                buf.writeLong(entityId); // clientID (always long)
+                buf.writeLong(entityId);
             }
         }
         server.sendGamePacket(session, buf.getBuf());
@@ -287,10 +336,16 @@ public class MCPESessionWrapper {
                     ? java.util.UUID.nameUUIDFromBytes(despawned.getUsername().getBytes(java.nio.charset.StandardCharsets.UTF_8))
                     : new java.util.UUID(0, entityId);
             MCPEPacketBuffer plPkt = new MCPEPacketBuffer();
-            plPkt.writeByte(isV81 ? (MCPEConstants.V81_PLAYER_LIST & 0xFF)
-                    : (MCPEConstants.V34_PLAYER_LIST & 0xFF));
-            plPkt.writeByte(1); // TYPE_REMOVE
-            plPkt.writeInt(1);  // entry count
+            if (isV91) {
+                plPkt.writeByte(MCPEConstants.V91_PLAYER_LIST & 0xFF);
+                plPkt.writeByte(1); // TYPE_REMOVE
+                plPkt.writeUnsignedVarInt(1);
+            } else {
+                plPkt.writeByte(isV81 ? (MCPEConstants.V81_PLAYER_LIST & 0xFF)
+                        : (MCPEConstants.V34_PLAYER_LIST & 0xFF));
+                plPkt.writeByte(1); // TYPE_REMOVE
+                plPkt.writeInt(1);
+            }
             plPkt.writeLong(despawnUuid.getMostSignificantBits());
             plPkt.writeLong(despawnUuid.getLeastSignificantBits());
             server.sendGamePacket(session, plPkt.getBuf());
@@ -309,31 +364,44 @@ public class MCPESessionWrapper {
         }
         float z = pkt.getZ() / 32.0f;
         int entityId = (pkt.getPlayerId() & 0xFF) + 1;
-        // Classic yaw 0=North, MCPE yaw 0=South → add 180°
         float yaw = ((pkt.getYaw() + 128) & 0xFF) * 360.0f / 256.0f;
         float pitch = (pkt.getPitch() & 0xFF) * 360.0f / 256.0f;
 
         MCPEPacketBuffer buf = new MCPEPacketBuffer();
         buf.writeByte(wireId(MCPEConstants.MOVE_PLAYER));
-        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
-            buf.writeLong(entityId); // v27+: 64-bit entity ID
-        } else {
-            buf.writeInt(entityId);
-        }
-        buf.writeFloat(x);
-        buf.writeFloat(y);
-        buf.writeFloat(z);
-        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
-            buf.writeFloat(yaw);
-            buf.writeFloat(yaw);  // headYaw (same as body yaw)
-            buf.writeFloat(pitch);
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_91) {
+            buf.writeSignedVarInt(entityId);
+            buf.writeLFloat(x);
+            buf.writeLFloat(y);
+            buf.writeLFloat(z);
+            buf.writeLFloat(pitch);
+            buf.writeLFloat(yaw);
+            buf.writeLFloat(yaw); // bodyYaw
             buf.writeByte(0);     // mode = normal
             buf.writeByte(0);     // onGround
-        } else if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_14) {
-            buf.writeFloat(yaw);  // bodyYaw
+        } else if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
+            buf.writeLong(entityId);
+            buf.writeFloat(x);
+            buf.writeFloat(y);
+            buf.writeFloat(z);
+            buf.writeFloat(yaw);
+            buf.writeFloat(yaw);
             buf.writeFloat(pitch);
-            buf.writeFloat(yaw);  // headYaw
+            buf.writeByte(0);
+            buf.writeByte(0);
+        } else if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_14) {
+            buf.writeInt(entityId);
+            buf.writeFloat(x);
+            buf.writeFloat(y);
+            buf.writeFloat(z);
+            buf.writeFloat(yaw);
+            buf.writeFloat(pitch);
+            buf.writeFloat(yaw);
         } else {
+            buf.writeInt(entityId);
+            buf.writeFloat(x);
+            buf.writeFloat(y);
+            buf.writeFloat(z);
             buf.writeFloat(yaw);
             buf.writeFloat(pitch);
         }
@@ -343,14 +411,21 @@ public class MCPESessionWrapper {
     private void translateMessage(MessagePacket pkt) {
         MCPEPacketBuffer buf = new MCPEPacketBuffer();
         buf.writeByte(wireId(MCPEConstants.MESSAGE));
-        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
-            // v27+ TextPacket: type(byte) + source(string) + message(string)
+        if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_91) {
+            // v91: byte type + VarInt-prefixed strings
             buf.writeByte(1); // type = CHAT
-            buf.writeString(""); // source
+            buf.writeStringV91(""); // source
+            buf.writeStringV91(pkt.getMessage());
+        } else if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
+            buf.writeByte(1); // type = CHAT
+            buf.writeString("");
+            buf.writeString(pkt.getMessage());
         } else if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_12) {
-            buf.writeString(""); // source (system message = empty)
+            buf.writeString("");
+            buf.writeString(pkt.getMessage());
+        } else {
+            buf.writeString(pkt.getMessage());
         }
-        buf.writeString(pkt.getMessage());
         server.sendGamePacket(session, buf.getBuf());
     }
 

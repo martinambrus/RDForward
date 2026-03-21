@@ -483,9 +483,17 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
         }
     }
 
-    /** Decompress a v27 BatchPacket and dispatch each inner game packet. */
+    /** Decompress a BatchPacket and dispatch each inner game packet. */
     private void handleBatchPacket(ChannelHandlerContext ctx, LegacyRakNetSession session, ByteBuf payload) {
-        int compressedLength = payload.readInt();
+        boolean isV91 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_91;
+
+        // v91: compressed length is UnsignedVarInt; older: int
+        int compressedLength;
+        if (isV91) {
+            compressedLength = MCPEPacketBuffer.readUnsignedVarInt(payload);
+        } else {
+            compressedLength = payload.readInt();
+        }
         if (compressedLength <= 0 || compressedLength > payload.readableBytes()) {
             System.err.println("[MCPE] BatchPacket invalid length: " + compressedLength);
             return;
@@ -511,24 +519,34 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
 
         ByteBuf decompBuf = Unpooled.wrappedBuffer(decompressed);
         try {
-            // Detect framing: if first 4 bytes form a valid length that fits,
-            // use int-length-prefixed framing; otherwise treat as a raw single packet.
-            boolean hasIntFraming = false;
-            if (decompBuf.readableBytes() >= 5) { // at least 4 (len) + 1 (packet id)
-                int possibleLen = decompBuf.getInt(decompBuf.readerIndex());
-                hasIntFraming = possibleLen > 0 && possibleLen <= decompBuf.readableBytes() - 4;
-            }
-
-            if (hasIntFraming) {
-                while (decompBuf.readableBytes() >= 4) {
-                    int pktLen = decompBuf.readInt();
+            if (isV91) {
+                // v91: inner packets are UnsignedVarInt-length-prefixed
+                while (decompBuf.isReadable()) {
+                    int pktLen = MCPEPacketBuffer.readUnsignedVarInt(decompBuf);
                     if (pktLen <= 0 || pktLen > decompBuf.readableBytes()) break;
                     ByteBuf innerPayload = decompBuf.readSlice(pktLen);
                     handleGamePacket(ctx, session, innerPayload);
                 }
             } else {
-                // No framing — entire decompressed content is a single game packet
-                handleGamePacket(ctx, session, decompBuf);
+                // Detect framing: if first 4 bytes form a valid length that fits,
+                // use int-length-prefixed framing; otherwise treat as a raw single packet.
+                boolean hasIntFraming = false;
+                if (decompBuf.readableBytes() >= 5) { // at least 4 (len) + 1 (packet id)
+                    int possibleLen = decompBuf.getInt(decompBuf.readerIndex());
+                    hasIntFraming = possibleLen > 0 && possibleLen <= decompBuf.readableBytes() - 4;
+                }
+
+                if (hasIntFraming) {
+                    while (decompBuf.readableBytes() >= 4) {
+                        int pktLen = decompBuf.readInt();
+                        if (pktLen <= 0 || pktLen > decompBuf.readableBytes()) break;
+                        ByteBuf innerPayload = decompBuf.readSlice(pktLen);
+                        handleGamePacket(ctx, session, innerPayload);
+                    }
+                } else {
+                    // No framing — entire decompressed content is a single game packet
+                    handleGamePacket(ctx, session, decompBuf);
+                }
             }
         } finally {
             decompBuf.release();
@@ -669,18 +687,27 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
      * v34: [0x92][int compLen][zlib(int len + raw packet bytes)]
      * v45: [0x8E][0x92][int compLen][zlib(int len + raw packet bytes)]
      * v81: [0xFE][0x06][int compLen][zlib(int len + raw packet bytes)]
+     * v91: [0xFE][0x06][UnsignedVarInt compLen][zlib(UnsignedVarInt len + raw packet bytes)]
      */
     private ByteBuf wrapInBatch(LegacyRakNetSession session, ByteBuf gamePayload) {
         byte[] raw = new byte[gamePayload.readableBytes()];
         gamePayload.readBytes(raw);
 
+        boolean isV91 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_91;
         boolean isV34 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34;
 
-        // v34+: inner packets are int-length-prefixed inside the compressed data.
-        // v45 uses the same inner format as v34 (no 0x8E wrapper inside batch).
-        // The 0x8E wrapper only appears on standalone (non-batched) C2S packets.
+        // Inner packets are length-prefixed inside the compressed data.
+        // v91: UnsignedVarInt length prefix; v34-v81: int length prefix; v27: no prefix.
         byte[] toCompress;
-        if (isV34) {
+        if (isV91) {
+            // Build VarInt-prefixed inner packet
+            ByteBuf innerBuf = Unpooled.buffer(5 + raw.length);
+            MCPEPacketBuffer.writeUnsignedVarInt(innerBuf, raw.length);
+            innerBuf.writeBytes(raw);
+            toCompress = new byte[innerBuf.readableBytes()];
+            innerBuf.readBytes(toCompress);
+            innerBuf.release();
+        } else if (isV34) {
             toCompress = new byte[4 + raw.length];
             toCompress[0] = (byte) ((raw.length >> 24) & 0xFF);
             toCompress[1] = (byte) ((raw.length >> 16) & 0xFF);
@@ -715,7 +742,12 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
             batch.writeByte(isV81 ? MCPEConstants.V81_WRAPPER : MCPEConstants.V45_WRAPPER);
         }
         batch.writeByte(batchId);
-        batch.writeInt(compressed.length);
+        // v91: UnsignedVarInt compressed length; older: int compressed length
+        if (isV91) {
+            MCPEPacketBuffer.writeUnsignedVarInt(batch, compressed.length);
+        } else {
+            batch.writeInt(compressed.length);
+        }
         batch.writeBytes(compressed);
         return batch;
     }

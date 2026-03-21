@@ -21,9 +21,10 @@ public final class MCPEConstants {
     public static final int MCPE_PROTOCOL_VERSION_38 = 38; // 0.13.0 (35-37 were dev-only)
     public static final int MCPE_PROTOCOL_VERSION_45 = 45; // 0.14.0 (39-44 were dev-only)
     public static final int MCPE_PROTOCOL_VERSION_81 = 81; // 0.15.0 (46-80 were dev-only)
+    public static final int MCPE_PROTOCOL_VERSION_91 = 91; // 0.16.0 (82-90 were dev-only)
     /** Highest supported protocol version (for pong advertisement). */
-    public static final int MCPE_PROTOCOL_VERSION_MAX = MCPE_PROTOCOL_VERSION_81;
-    public static final String MCPE_VERSION_STRING = "0.15.0";
+    public static final int MCPE_PROTOCOL_VERSION_MAX = MCPE_PROTOCOL_VERSION_91;
+    public static final String MCPE_VERSION_STRING = "0.16.0";
     public static final int DEFAULT_PORT = 19132;
 
     // --- RakNet ---
@@ -248,6 +249,52 @@ public final class MCPEConstants {
     public static final byte V81_REQUEST_CHUNK_RADIUS = 0x3D;
     public static final byte V81_CHUNK_RADIUS_UPDATED = 0x3E;
 
+    // --- v91 Game Packets (0x01-0x4F) — renumbered from v81 (+3 for resource pack packets) ---
+    public static final byte V91_LOGIN               = 0x01;
+    public static final byte V91_PLAY_STATUS         = 0x02;
+    public static final byte V91_DISCONNECT          = 0x05;
+    public static final byte V91_BATCH               = 0x06;
+    public static final byte V91_RESOURCE_PACKS_INFO = 0x07; // NEW
+    public static final byte V91_RESOURCE_PACK_CLIENT_RESPONSE = 0x09; // NEW (C2S)
+    public static final byte V91_TEXT                = 0x0A;
+    public static final byte V91_SET_TIME            = 0x0B;
+    public static final byte V91_START_GAME          = 0x0C;
+    public static final byte V91_ADD_PLAYER          = 0x0D;
+    public static final byte V91_ADD_ENTITY          = 0x0E;
+    public static final byte V91_REMOVE_ENTITY       = 0x0F;
+    public static final byte V91_ADD_ITEM_ENTITY     = 0x10;
+    public static final byte V91_MOVE_ENTITY         = 0x13;
+    public static final byte V91_MOVE_PLAYER         = 0x14;
+    public static final byte V91_REMOVE_BLOCK        = 0x16;
+    public static final byte V91_UPDATE_BLOCK        = 0x17;
+    public static final byte V91_LEVEL_EVENT         = 0x1B;
+    public static final byte V91_ENTITY_EVENT        = 0x1D;
+    public static final byte V91_UPDATE_ATTRIBUTES   = 0x1F;
+    public static final byte V91_MOB_EQUIPMENT       = 0x20;
+    public static final byte V91_MOB_ARMOR           = 0x21;
+    public static final byte V91_INTERACT            = 0x22;
+    public static final byte V91_USE_ITEM            = 0x23;
+    public static final byte V91_PLAYER_ACTION       = 0x24;
+    public static final byte V91_SET_ENTITY_DATA     = 0x26;
+    public static final byte V91_SET_ENTITY_MOTION   = 0x27;
+    public static final byte V91_SET_HEALTH          = 0x29;
+    public static final byte V91_SET_SPAWN_POSITION  = 0x2A;
+    public static final byte V91_ANIMATE             = 0x2B;
+    public static final byte V91_RESPAWN             = 0x2C;
+    public static final byte V91_DROP_ITEM           = 0x2D;
+    public static final byte V91_CONTAINER_OPEN      = 0x2F;
+    public static final byte V91_CONTAINER_CLOSE     = 0x30;
+    public static final byte V91_CONTAINER_SET_SLOT  = 0x31;
+    public static final byte V91_CONTAINER_SET_CONTENT = 0x33;
+    public static final byte V91_ADVENTURE_SETTINGS  = 0x36;
+    public static final byte V91_PLAYER_INPUT        = 0x38;
+    public static final byte V91_FULL_CHUNK_DATA     = 0x39;
+    public static final byte V91_SET_DIFFICULTY      = 0x3B;
+    public static final byte V91_SET_PLAYER_GAMETYPE = 0x3D;
+    public static final byte V91_PLAYER_LIST         = 0x3E;
+    public static final byte V91_REQUEST_CHUNK_RADIUS = 0x43;
+    public static final byte V91_CHUNK_RADIUS_UPDATED = 0x44;
+
     // --- v34 Game Packets (0x8F-0xC4) — renumbered again from v27 ---
     public static final byte V34_LOGIN               = (byte) 0x8F;
     public static final byte V34_PLAY_STATUS         = (byte) 0x90;
@@ -343,13 +390,26 @@ public final class MCPEConstants {
     public static final byte META_TYPE_STRING   = 4;
     public static final byte META_TYPE_SLOT     = 5;
     public static final byte META_TYPE_POSITION = 6;
+    public static final byte META_TYPE_LONG     = 7;
     public static final byte META_TERMINATOR    = 0x7F;
 
-    // --- Entity metadata indices ---
+    // --- Entity metadata indices (pre-v91 format: header byte = (type<<5)|index) ---
     public static final int META_FLAGS          = 0;  // byte: bit 0=onFire, bit 4=sprinting
     public static final int META_AIR            = 1;  // short
     public static final int META_NAMETAG        = 2;  // string
     public static final int META_SHOW_NAMETAG   = 3;  // byte
+
+    // --- v91 entity metadata key indices (different from pre-v91!) ---
+    public static final int V91_META_FLAGS          = 0;   // type: LONG (flags bitmask)
+    public static final int V91_META_NAMETAG        = 4;   // type: STRING
+    public static final int V91_META_AIR            = 7;   // type: SHORT
+    public static final int V91_META_LEAD_HOLDER_EID = 38; // type: LONG (-1 = no leash)
+    public static final int V91_META_SCALE          = 39;  // type: FLOAT
+    public static final int V91_META_MAX_AIR        = 44;  // type: SHORT
+
+    // --- v91 DATA_FLAG bits (stored in V91_META_FLAGS long) ---
+    public static final int V91_FLAG_CAN_SHOW_NAMETAG    = 14;
+    public static final int V91_FLAG_ALWAYS_SHOW_NAMETAG = 15;
 
     // --- Default skin for cross-protocol players (64x64 RGBA = 16384 bytes) ---
     // Real Steve skin extracted from Minecraft 1.8 client JAR (assets/minecraft/textures/entity/steve.png).
@@ -390,6 +450,9 @@ public final class MCPEConstants {
      * v11/v12: returns the ID unchanged.
      */
     public static int toWireId(int canonicalId, int protocolVersion) {
+        if (protocolVersion >= MCPE_PROTOCOL_VERSION_91) {
+            return toV91WireId(canonicalId);
+        }
         if (protocolVersion >= MCPE_PROTOCOL_VERSION_81) {
             return toV81WireId(canonicalId);
         }
@@ -458,6 +521,9 @@ public final class MCPEConstants {
      * v11/v12: returns the ID unchanged.
      */
     public static int toCanonicalId(int wireId, int protocolVersion) {
+        if (protocolVersion >= MCPE_PROTOCOL_VERSION_91) {
+            return fromV91WireId(wireId);
+        }
         if (protocolVersion >= MCPE_PROTOCOL_VERSION_81) {
             return fromV81WireId(wireId);
         }
@@ -616,6 +682,66 @@ public final class MCPEConstants {
             case 0x2B: return 0xB0; // CONTAINER_CLOSE
             case 0x33: return 0xB9; // PLAYER_INPUT
             case 0x3D: return 0x9D; // REQUEST_CHUNK_RADIUS
+            default: return wireId;
+        }
+    }
+
+    /** Map v12-canonical packet ID to v91 wire ID. */
+    private static int toV91WireId(int canonicalId) {
+        switch (canonicalId & 0xFF) {
+            case 0x82: return V91_LOGIN & 0xFF;
+            case 0x83: return V91_PLAY_STATUS & 0xFF;
+            case 0x85: return V91_TEXT & 0xFF;
+            case 0x86: return V91_SET_TIME & 0xFF;
+            case 0x87: return V91_START_GAME & 0xFF;
+            case 0x89: return V91_ADD_PLAYER & 0xFF;
+            case 0x8D: return V91_REMOVE_ENTITY & 0xFF;
+            case 0x90: return V91_MOVE_ENTITY & 0xFF;
+            case 0x93: return V91_MOVE_ENTITY & 0xFF;
+            case 0x94: return V91_MOVE_PLAYER & 0xFF;
+            case 0x96: return V91_REMOVE_BLOCK & 0xFF;
+            case 0x97: return V91_UPDATE_BLOCK & 0xFF;
+            case 0x9C: return V91_ENTITY_EVENT & 0xFF;
+            case 0x9E: return V91_FULL_CHUNK_DATA & 0xFF;
+            case 0x9F: return V91_MOB_EQUIPMENT & 0xFF;
+            case 0xA0: return V91_MOB_ARMOR & 0xFF;
+            case 0xA1: return V91_INTERACT & 0xFF;
+            case 0xA2: return V91_USE_ITEM & 0xFF;
+            case 0xA3: return V91_PLAYER_ACTION & 0xFF;
+            case 0xA6: return V91_SET_ENTITY_DATA & 0xFF;
+            case 0xA7: return V91_SET_ENTITY_MOTION & 0xFF;
+            case 0xA9: return V91_SET_HEALTH & 0xFF;
+            case 0xAA: return V91_SET_SPAWN_POSITION & 0xFF;
+            case 0xAB: return V91_ANIMATE & 0xFF;
+            case 0xAC: return V91_RESPAWN & 0xFF;
+            case 0xAD: return V91_CONTAINER_SET_CONTENT & 0xFF;
+            case 0xB0: return V91_CONTAINER_CLOSE & 0xFF;
+            case 0xB3: return V91_CONTAINER_SET_CONTENT & 0xFF;
+            case 0xB5: return V91_TEXT & 0xFF;
+            case 0xB6: return V91_ADVENTURE_SETTINGS & 0xFF;
+            case 0xB7: return V91_ADVENTURE_SETTINGS & 0xFF;
+            case 0xB9: return V91_PLAYER_INPUT & 0xFF;
+            case 0xBA: return V91_FULL_CHUNK_DATA & 0xFF;
+            default: return canonicalId & 0xFF;
+        }
+    }
+
+    /** Map v91 wire ID to v12-canonical packet ID. */
+    private static int fromV91WireId(int wireId) {
+        switch (wireId & 0xFF) {
+            case 0x01: return 0x82; // LOGIN
+            case 0x0A: return 0x85; // TEXT
+            case 0x14: return 0x94; // MOVE_PLAYER
+            case 0x16: return 0x96; // REMOVE_BLOCK
+            case 0x1D: return 0x9C; // ENTITY_EVENT
+            case 0x20: return 0x9F; // MOB_EQUIPMENT
+            case 0x22: return 0xA1; // INTERACT
+            case 0x23: return 0xA2; // USE_ITEM
+            case 0x24: return 0xA3; // PLAYER_ACTION
+            case 0x2B: return 0xAB; // ANIMATE
+            case 0x30: return 0xB0; // CONTAINER_CLOSE
+            case 0x38: return 0xB9; // PLAYER_INPUT
+            case 0x43: return 0x9D; // REQUEST_CHUNK_RADIUS
             default: return wireId;
         }
     }

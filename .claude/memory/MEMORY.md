@@ -46,6 +46,7 @@
 - **MCPE 0.7.x (protocol 11)**: See `memory/mcpe-protocol.md`
 - **MCPE 0.14.0 (protocol 45)**: See `memory/mcpe-v45-protocol.md`
 - **MCPE 0.15.0 (protocol 81)**: See `memory/mcpe-v81-protocol.md`
+- **MCPE 0.16.0 (protocol 91)**: See `memory/mcpe-v91-protocol.md`
 
 ## Client JAR Sources
 - **Mojang CDN**: Primary source. URLs from `https://piston-meta.mojang.com/mc/game/version_manifest_v2.json` -> version JSON -> downloads.client.url
