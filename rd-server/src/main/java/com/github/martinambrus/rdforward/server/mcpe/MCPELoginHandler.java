@@ -73,6 +73,9 @@ public class MCPELoginHandler {
             handleLogin(ctx, payload);
         } else if (packetId == (MCPEConstants.READY & 0xFF)) {
             handleReady(ctx, payload);
+        } else if (packetId == (MCPEConstants.REQUEST_CHUNK & 0xFF)) {
+            // v9/v11 clients request chunks during login phase (before READY)
+            handleRequestChunkDuringLogin(payload);
         } else if (packetId == (MCPEConstants.V91_RESOURCE_PACK_CLIENT_RESPONSE & 0xFF)
                 && session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_91) {
             // v91: client sends ResourcePackClientResponse — ignore it (server doesn't wait)
@@ -303,15 +306,19 @@ public class MCPELoginHandler {
             server.sendGamePacket(session, diff.getBuf());
         }
 
-        // Send initial chunks around spawn
+        // Send initial chunks around spawn.
+        // v9/v11 clients request chunks on demand via REQUEST_CHUNK — don't flood them.
+        // v17+ clients need proactive chunk sending (they don't request during login).
         int spawnCX = (int) Math.floor(spawnX) >> 4;
         int spawnCZ = (int) Math.floor(spawnZ) >> 4;
         int viewRadius = 4; // Send 4-chunk radius initially
         int chunkCount = 0;
-        for (int cx = spawnCX - viewRadius; cx <= spawnCX + viewRadius; cx++) {
-            for (int cz = spawnCZ - viewRadius; cz <= spawnCZ + viewRadius; cz++) {
-                sendChunkData(cx, cz);
-                chunkCount++;
+        if (isV17) {
+            for (int cx = spawnCX - viewRadius; cx <= spawnCX + viewRadius; cx++) {
+                for (int cz = spawnCZ - viewRadius; cz <= spawnCZ + viewRadius; cz++) {
+                    sendChunkData(cx, cz);
+                    chunkCount++;
+                }
             }
         }
         System.out.println("[MCPE] Sent " + chunkCount + " chunks around (" + spawnCX + "," + spawnCZ + ")");
@@ -562,6 +569,17 @@ public class MCPELoginHandler {
             }
         }
         return sb.toString();
+    }
+
+    /**
+     * Handle REQUEST_CHUNK during login phase (before gameplay handler is set up).
+     * v9/v11 clients request chunks after receiving StartGame, before sending READY.
+     */
+    private void handleRequestChunkDuringLogin(ByteBuf payload) {
+        MCPEPacketBuffer buf = new MCPEPacketBuffer(payload);
+        int chunkX = buf.readInt();
+        int chunkZ = buf.readInt();
+        sendChunkData(chunkX, chunkZ);
     }
 
     private void handleReady(ChannelHandlerContext ctx, ByteBuf payload) {
@@ -1415,10 +1433,16 @@ public class MCPELoginHandler {
     }
 
     /**
-     * Convert a world column to MCPE 0.7.0 chunk format and send it.
-     * PocketMine Alpha_1.3 sends one Y-section per packet (getOrderedMiniChunk).
-     * Each packet: chunkX, chunkZ, then 256 columns of (flag + 16 blockIDs + 8 meta).
-     * Flag = (1 << Y) indicating which section this packet represents.
+     * Convert a world chunk to MCPE 0.6.1/0.7.x section-based format and send it.
+     * Matches PocketMine Alpha_1.1 getOrderedChunk: all 8 sections per column,
+     * flag=0xFF, interleaved block IDs and metadata per section.
+     *
+     * Data per column: flag(1) + 8 * (blockIDs(16) + meta(8)) = 193 bytes.
+     * Columns split across multiple small packets (6 columns each) to avoid
+     * RakNet fragmentation. Columns already sent in previous packets are padded
+     * with flag=0x00 (PocketMine format).
+     *
+     * Column order: X inner (varies fastest), Z outer — matches PocketMine.
      */
     private void sendChunkData(int chunkX, int chunkZ) {
         if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27) {
@@ -1432,45 +1456,73 @@ public class MCPELoginHandler {
 
         int baseX = chunkX * 16;
         int baseZ = chunkZ * 16;
+        int worldHeight = world.getHeight();
+        int worldWidth = world.getWidth();
+        int worldDepth = world.getDepth();
 
-        // Send one packet per Y-section (0-7), matching PocketMine's approach
-        for (int section = 0; section < 8; section++) {
+        // PocketMine formula: columns per packet based on MTU
+        // max(1, floor((MTU - 16 - 255) / 192))
+        // With typical MTU of 1464: max(1, floor((1464 - 16 - 255) / 192)) = 6
+        int columnsPerPacket = Math.max(1,
+                (session.getMtu() - 16 - 255) / 192);
+        if (columnsPerPacket > 256) columnsPerPacket = 256;
+
+        // Pre-build column data: 193 bytes per column (flag + 8 sections)
+        byte[][] columnData = new byte[256][];
+        for (int j = 0; j < 256; j++) {
+            int localX = j & 0x0F;
+            int localZ = (j >> 4) & 0x0F;
+            int worldX = baseX + localX;
+            int worldZ = baseZ + localZ;
+
+            byte[] col = new byte[193];
+            col[0] = (byte) 0xFF; // all 8 sections present
+            int offset = 1;
+
+            for (int section = 0; section < 8; section++) {
+                int sectionBaseY = section * 16;
+                for (int localY = 0; localY < 16; localY++) {
+                    int worldY = sectionBaseY + localY;
+                    if (worldX >= 0 && worldX < worldWidth
+                            && worldZ >= 0 && worldZ < worldDepth
+                            && worldY < worldHeight) {
+                        col[offset++] = (byte) mapBlockId(world.getBlock(worldX, worldY, worldZ));
+                    } else {
+                        col[offset++] = 0; // air
+                    }
+                }
+                // 8 metadata nibble bytes (all zero for basic blocks)
+                offset += 8; // already zero-initialized
+            }
+            columnData[j] = col;
+        }
+
+        // Send columns in batches, matching PocketMine's getOrderedChunk format:
+        // Each packet: [packetId][chunkX][chunkZ][padding zeros for prior columns][column data...]
+        int columnsSent = 0;
+        int packetIndex = 0;
+        while (columnsSent < 256) {
+            int batchSize = Math.min(columnsPerPacket, 256 - columnsSent);
+
             MCPEPacketBuffer pkt = new MCPEPacketBuffer();
             pkt.writeByte(wireId(MCPEConstants.CHUNK_DATA));
             pkt.writeInt(chunkX);
             pkt.writeInt(chunkZ);
 
-            int flag = 1 << section;
-            int sectionBaseY = section * 16;
+            // Pad with 0x00 flag bytes for columns already sent in previous packets
+            for (int p = 0; p < columnsSent; p++) {
+                pkt.writeByte(0);
+            }
 
-            // 256 columns: X inner (varies fastest), Z outer
-            for (int j = 0; j < 256; j++) {
-                int localX = j & 0x0F;
-                int localZ = (j >> 4) & 0x0F;
-                int worldX = baseX + localX;
-                int worldZ = baseZ + localZ;
-
-                pkt.writeByte(flag);
-
-                // 16 block IDs for this column in this section
-                for (int localY = 0; localY < 16; localY++) {
-                    int worldY = sectionBaseY + localY;
-                    if (worldX >= 0 && worldX < world.getWidth()
-                            && worldZ >= 0 && worldZ < world.getDepth()
-                            && worldY < world.getHeight()) {
-                        pkt.writeByte(mapBlockId(world.getBlock(worldX, worldY, worldZ)));
-                    } else {
-                        pkt.writeByte(0); // air
-                    }
-                }
-
-                // 8 metadata nibble bytes (all zero for basic blocks)
-                for (int i = 0; i < 8; i++) {
-                    pkt.writeByte(0);
-                }
+            // Write this batch of columns
+            for (int c = 0; c < batchSize; c++) {
+                pkt.writeBytes(columnData[columnsSent + c]);
             }
 
             server.sendGamePacket(session, pkt.getBuf());
+
+            columnsSent += batchSize;
+            packetIndex++;
         }
     }
 

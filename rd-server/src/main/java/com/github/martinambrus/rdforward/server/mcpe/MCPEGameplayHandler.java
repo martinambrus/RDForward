@@ -856,42 +856,64 @@ public class MCPEGameplayHandler {
 
         int baseX = chunkX * 16;
         int baseZ = chunkZ * 16;
+        int worldHeight = world.getHeight();
+        int worldWidth = world.getWidth();
+        int worldDepth = world.getDepth();
 
-        // One packet per Y-section (PocketMine Alpha_1.3 style)
-        for (int section = 0; section < 8; section++) {
+        // PocketMine formula: columns per packet based on MTU
+        int columnsPerPacket = Math.max(1,
+                (session.getMtu() - 16 - 255) / 192);
+        if (columnsPerPacket > 256) columnsPerPacket = 256;
+
+        // Pre-build column data: 193 bytes per column (flag + 8 sections)
+        byte[][] columnData = new byte[256][];
+        for (int j = 0; j < 256; j++) {
+            int localX = j & 0x0F;
+            int localZ = (j >> 4) & 0x0F;
+            int worldX = baseX + localX;
+            int worldZ = baseZ + localZ;
+
+            byte[] col = new byte[193];
+            col[0] = (byte) 0xFF;
+            int offset = 1;
+
+            for (int section = 0; section < 8; section++) {
+                int sectionBaseY = section * 16;
+                for (int localY = 0; localY < 16; localY++) {
+                    int worldY = sectionBaseY + localY;
+                    if (worldX >= 0 && worldX < worldWidth
+                            && worldZ >= 0 && worldZ < worldDepth
+                            && worldY < worldHeight) {
+                        col[offset++] = (byte) mapBlockId(world.getBlock(worldX, worldY, worldZ));
+                    } else {
+                        col[offset++] = 0;
+                    }
+                }
+                offset += 8; // metadata (zero-initialized)
+            }
+            columnData[j] = col;
+        }
+
+        // Send columns in batches with zero-padding for prior columns
+        int columnsSent = 0;
+        while (columnsSent < 256) {
+            int batchSize = Math.min(columnsPerPacket, 256 - columnsSent);
+
             MCPEPacketBuffer pkt = new MCPEPacketBuffer();
             pkt.writeByte(wireId(MCPEConstants.CHUNK_DATA));
             pkt.writeInt(chunkX);
             pkt.writeInt(chunkZ);
 
-            int flag = 1 << section;
-            int sectionBaseY = section * 16;
+            for (int p = 0; p < columnsSent; p++) {
+                pkt.writeByte(0);
+            }
 
-            for (int j = 0; j < 256; j++) {
-                int localX = j & 0x0F;
-                int localZ = (j >> 4) & 0x0F;
-                int worldX = baseX + localX;
-                int worldZ = baseZ + localZ;
-
-                pkt.writeByte(flag);
-
-                for (int localY = 0; localY < 16; localY++) {
-                    int worldY = sectionBaseY + localY;
-                    if (worldX >= 0 && worldX < world.getWidth()
-                            && worldZ >= 0 && worldZ < world.getDepth()
-                            && worldY < world.getHeight()) {
-                        pkt.writeByte(mapBlockId(world.getBlock(worldX, worldY, worldZ)));
-                    } else {
-                        pkt.writeByte(0);
-                    }
-                }
-
-                for (int i = 0; i < 8; i++) {
-                    pkt.writeByte(0);
-                }
+            for (int c = 0; c < batchSize; c++) {
+                pkt.writeBytes(columnData[columnsSent + c]);
             }
 
             server.sendGamePacket(session, pkt.getBuf());
+            columnsSent += batchSize;
         }
     }
 
