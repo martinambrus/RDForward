@@ -4,6 +4,7 @@ import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.server.ConnectedPlayer;
 import com.github.martinambrus.rdforward.server.PlayerManager;
 import com.github.martinambrus.rdforward.server.ServerWorld;
+import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 
@@ -275,13 +276,13 @@ public class MCPELoginHandler {
             MCPEPacketBuffer diff = new MCPEPacketBuffer();
             if (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_91) {
                 diff.writeByte(MCPEConstants.V91_SET_DIFFICULTY & 0xFF);
-                diff.writeUnsignedVarInt(1); // difficulty (EASY) — v91 uses UnsignedVarInt
+                diff.writeUnsignedVarInt(ServerProperties.getDifficulty()); // v91 uses UnsignedVarInt
             } else {
                 int diffId = (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_81)
                         ? (MCPEConstants.V81_SET_DIFFICULTY & 0xFF)
                         : (MCPEConstants.V34_SET_DIFFICULTY & 0xFF);
                 diff.writeByte(diffId);
-                diff.writeInt(1); // PEACEFUL=0, EASY=1, NORMAL=2, HARD=3
+                diff.writeInt(ServerProperties.getDifficulty()); // PEACEFUL=0, EASY=1, NORMAL=2, HARD=3
             }
             server.sendGamePacket(session, diff.getBuf());
         }
@@ -914,8 +915,8 @@ public class MCPELoginHandler {
             pkt.writeSignedVarInt(0);                 // seed
             pkt.writeSignedVarInt(0);                 // dimension
             pkt.writeSignedVarInt(MCPEConstants.GENERATOR_FLAT); // generator
-            pkt.writeSignedVarInt(MCPEConstants.GAMEMODE_CREATIVE); // gamemode
-            pkt.writeSignedVarInt(1);                 // difficulty (EASY)
+            pkt.writeSignedVarInt(ServerProperties.getGameMode()); // gamemode
+            pkt.writeSignedVarInt(ServerProperties.getDifficulty()); // difficulty
             pkt.writeBlockCoords((int) x, (int) y, (int) z); // spawn position
             pkt.writeByte(1);                         // hasAchievementsDisabled
             pkt.writeSignedVarInt(-1);                // dayCycleStopTime (-1 = not stopped)
@@ -936,7 +937,7 @@ public class MCPELoginHandler {
             // v11-v20: NO dimension field (PocketMine Alpha_1.4dev confirms)
             pkt.writeInt(MCPEConstants.GENERATOR_FLAT); // generator type
             if (!isV27 || isV34) {
-                pkt.writeInt(MCPEConstants.GAMEMODE_CREATIVE); // gamemode (removed in v27, restored in v34)
+                pkt.writeInt(ServerProperties.getGameMode()); // gamemode (removed in v27, restored in v34)
             }
             if (isV27) {
                 pkt.writeLong(entityId); // entity ID (64-bit in v27+)

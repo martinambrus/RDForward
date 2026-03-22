@@ -12,6 +12,7 @@ import com.github.martinambrus.rdforward.protocol.packet.alpha.*;
 import com.github.martinambrus.rdforward.protocol.packet.classic.PlayerTeleportPacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
 import com.github.martinambrus.rdforward.server.api.CommandRegistry;
+import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.util.Arrays;
@@ -446,34 +447,36 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         int entityId = player.getPlayerId() + 1;
 
         // Send LoginS2C (format varies by version)
+        int gm = ServerProperties.getGameMode();
+        int diff = ServerProperties.getDifficulty();
         if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
             // Release 1.3.1+: no empty username, gameMode/dimension as byte.
-            ctx.writeAndFlush(new LoginS2CPacketV39(entityId, "default", 1,
-                    0, (byte) 0, (byte) 0, (byte) 20));
+            ctx.writeAndFlush(new LoginS2CPacketV39(entityId, "default", gm,
+                    0, (byte) diff, (byte) 0, (byte) 20));
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_2_1)) {
             // Release 1.2.1+: no seed, int dimension, levelType remains.
-            ctx.writeAndFlush(new LoginS2CPacketV28(entityId, "default", 1,
-                    0, (byte) 0, (byte) 0, (byte) 20));
+            ctx.writeAndFlush(new LoginS2CPacketV28(entityId, "default", gm,
+                    0, (byte) diff, (byte) 0, (byte) 20));
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_1)) {
             // Release 1.1+ added levelType String16 between seed and gameMode.
-            ctx.writeAndFlush(new LoginS2CPacketV23(entityId, 0L, "default", 1,
-                    (byte) 0, (byte) 0, (byte) 128, (byte) 20));
+            ctx.writeAndFlush(new LoginS2CPacketV23(entityId, 0L, "default", gm,
+                    (byte) 0, (byte) diff, (byte) 128, (byte) 20));
         } else if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
             // Beta 1.8+ has native creative mode: gameMode=1 enables instant break,
             // creative inventory, flying, and no fall damage on the client.
-            ctx.writeAndFlush(new LoginS2CPacketV17(entityId, 0L, 1,
-                    (byte) 0, (byte) 0, (byte) 128, (byte) 20));
+            ctx.writeAndFlush(new LoginS2CPacketV17(entityId, 0L, gm,
+                    (byte) 0, (byte) diff, (byte) 128, (byte) 20));
         } else if (clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_2_0)) {
             ctx.writeAndFlush(new LoginS2CPacket(entityId, 0L, (byte) 0));
         } else {
             ctx.writeAndFlush(new LoginS2CPacketV2(entityId));
         }
 
-        // v39+: send PlayerAbilities after login (flags: invulnerable+allowFlying+creative).
+        // v39+: send PlayerAbilities after login with gamemode-aware flags.
         // Bit 1 (flying) is deliberately NOT set so the player spawns on the ground
         // instead of mid-air. Players can still fly by double-tapping jump.
         if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_6_1)) {
-            ctx.writeAndFlush(new PlayerAbilitiesPacketV73(0x0D, 0.05f, 0.1f));
+            ctx.writeAndFlush(new PlayerAbilitiesPacketV73(ServerProperties.getAbilitiesFlags(), 0.05f, 0.1f));
             // v73+: client relies on Entity Properties for movement speed.
             // Without this, it defaults to EntityLivingBase's 0.7 instead of 0.1.
             // v74+ added modifier list (short count + modifiers) per property.
@@ -485,7 +488,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                         "generic.movementSpeed", 0.10000000149011612));
             }
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
-            ctx.writeAndFlush(new PlayerAbilitiesPacketV39(0x0D, 12, 25));
+            ctx.writeAndFlush(new PlayerAbilitiesPacketV39(ServerProperties.getAbilitiesFlags(), 12, 25));
         }
 
         // Determine spawn position

@@ -199,7 +199,7 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
         }
 
         int playerCount = playerManager.getPlayerCount();
-        int maxPlayers = com.github.martinambrus.rdforward.server.PlayerManager.MAX_PLAYERS;
+        int maxPlayers = com.github.martinambrus.rdforward.server.PlayerManager.getMaxPlayers();
 
         if (hasClientGuid) {
             // 0.9.0+ client — advertise latest supported version.

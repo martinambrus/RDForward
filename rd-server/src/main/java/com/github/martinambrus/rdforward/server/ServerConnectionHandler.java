@@ -8,6 +8,7 @@ import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.protocol.packet.classic.*;
 import com.github.martinambrus.rdforward.protocol.translation.VersionTranslator;
 import com.github.martinambrus.rdforward.server.api.CommandRegistry;
+import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import com.github.martinambrus.rdforward.server.event.ServerEvents;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -133,7 +134,7 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
         // Send Server Identification
         ctx.writeAndFlush(new ServerIdentificationPacket(
                 serverVersion.getVersionNumber(),
-                "RDForward Server",
+                ServerProperties.getMotd(),
                 "Welcome to RDForward!",
                 ServerIdentificationPacket.USER_TYPE_NORMAL
         ));

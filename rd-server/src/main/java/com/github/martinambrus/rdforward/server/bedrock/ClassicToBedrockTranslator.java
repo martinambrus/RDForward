@@ -139,7 +139,7 @@ public class ClassicToBedrockTranslator {
         app.setHand(org.cloudburstmc.protocol.bedrock.data.inventory.ItemData.AIR);
         app.setPlatformChatId("");
         app.setDeviceId("");
-        app.setGameType(org.cloudburstmc.protocol.bedrock.data.GameType.CREATIVE);
+        app.setGameType(BedrockUtils.getConfiguredGameType());
 
         // Entity metadata required for the player to render
         EntityDataMap metadata = app.getMetadata();

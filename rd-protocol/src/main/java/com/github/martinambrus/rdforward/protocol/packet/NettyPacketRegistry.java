@@ -2104,7 +2104,13 @@ public class NettyPacketRegistry {
             // V761 LOGIN state: same format as V759
             REVERSE.put(reverseKey(ConnectionState.LOGIN, PacketDirection.SERVER_TO_CLIENT,
                     LoginSuccessPacketV759.class), 0x02);
-    
+
+            // V761 LOGIN state C2S: LoginStart now includes player UUID
+            REGISTRY.put(key(ConnectionState.LOGIN, PacketDirection.CLIENT_TO_SERVER, 0x00),
+                    new PacketFactory() { public Packet create() { return new LoginStartPacketV761(); } });
+            REVERSE.put(reverseKey(ConnectionState.LOGIN, PacketDirection.CLIENT_TO_SERVER,
+                    LoginStartPacketV761.class), 0x00);
+
             // V761 LOGIN state C2S: 1.19.3 removed the hasVerifyToken boolean from EncryptionResponse,
             // reverting to the simpler V47 format (VarInt sharedSecret + VarInt verifyToken, no boolean).
             REGISTRY.put(key(ConnectionState.LOGIN, PacketDirection.CLIENT_TO_SERVER, 0x01),
@@ -2470,9 +2476,14 @@ public class NettyPacketRegistry {
                     LoginAcknowledgedPacket.class, 0x03);
     
             // === V764 CONFIGURATION state ===
-            // S2C forward entries (for bot decoder, if needed)
+            // S2C forward entries (for bot decoder)
             registerV764Forward(ConnectionState.CONFIGURATION, PacketDirection.SERVER_TO_CLIENT, 0x02,
                     new PacketFactory() { public Packet create() { return new ConfigFinishS2CPacket(); } });
+            // KeepAlive in CONFIGURATION state (Spigot sends these during config phase)
+            registerV764Forward(ConnectionState.CONFIGURATION, PacketDirection.SERVER_TO_CLIENT, 0x03,
+                    new PacketFactory() { public Packet create() { return new KeepAlivePacketV340(); } });
+            registerV764Reverse(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER,
+                    KeepAlivePacketV340.class, 0x03);
             registerV764Forward(ConnectionState.CONFIGURATION, PacketDirection.SERVER_TO_CLIENT, 0x05,
                     new PacketFactory() { public Packet create() { return new RegistryDataPacketV764(); } });
             registerV764Forward(ConnectionState.CONFIGURATION, PacketDirection.SERVER_TO_CLIENT, 0x07,
@@ -2490,11 +2501,15 @@ public class NettyPacketRegistry {
                     UpdateTagsPacketV764.class, 0x08);
             // C2S forward entries (for server decoder)
             registerV764Forward(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER, 0x00,
-                    new PacketFactory() { public Packet create() { return new NoOpPacket(); } }); // Client Information
+                    new PacketFactory() { public Packet create() { return new ConfigClientInformationC2SPacket(); } });
             registerV764Forward(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER, 0x01,
-                    new PacketFactory() { public Packet create() { return new NoOpPacket(); } }); // Custom Payload (brand)
+                    new PacketFactory() { public Packet create() { return new ConfigCustomPayloadC2SPacket(); } });
             registerV764Forward(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER, 0x02,
                     new PacketFactory() { public Packet create() { return new ConfigFinishC2SPacket(); } });
+            registerV764Reverse(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER,
+                    ConfigClientInformationC2SPacket.class, 0x00);
+            registerV764Reverse(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER,
+                    ConfigCustomPayloadC2SPacket.class, 0x01);
             registerV764Reverse(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER,
                     ConfigFinishC2SPacket.class, 0x02);
     
@@ -2602,10 +2617,10 @@ public class NettyPacketRegistry {
             registerV764C2S(0x34, new PacketFactory() { public Packet create() { return new NettyBlockPlacementPacketV759(); } }); // v762:0x31
             registerV764C2S(0x35, new PacketFactory() { public Packet create() { return new UseItemPacketV109(); } }); // v762:0x32
     
-            // === V764 C2S PLAY reverse map entries (for bot decoder) ===
+            // === V764 C2S PLAY reverse map entries (for bot encoder) ===
             registerV764C2SReverse(TeleportConfirmPacketV109.class, 0x00);
-            registerV764C2SReverse(ChatCommandC2SPacketV759.class, 0x04);
-            registerV764C2SReverse(NettyChatC2SPacket.class, 0x05);
+            registerV764C2SReverse(NettyChatCommandC2SPacketV764.class, 0x04);
+            registerV764C2SReverse(NettyChatC2SPacketV764.class, 0x05);
             registerV764C2SReverse(ChunkBatchReceivedPacket.class, 0x07);
             registerV764C2SReverse(KeepAlivePacketV340.class, 0x14);
             registerV764C2SReverse(PlayerDiggingPacketV759.class, 0x20);
@@ -2663,6 +2678,10 @@ public class NettyPacketRegistry {
             registerV765Reverse(ConnectionState.CONFIGURATION, PacketDirection.SERVER_TO_CLIENT,
                     UpdateTagsPacketV765.class, 0x09);
     
+            // === V765 S2C PLAY forward entries (for bot decoder) ===
+            registerV765S2C(0x69, new PacketFactory() { public Packet create() { return new SystemChatPacketV765(); } });
+            registerV765S2C(0x1B, new PacketFactory() { public Packet create() { return new NettyDisconnectPacketV765(); } });
+
             // === V765 S2C PLAY reverse map entries (for server encoder) ===
             // Packets with new class (changed wire format):
             registerV765S2CReverse(SystemChatPacketV765.class, 0x69);
@@ -2721,10 +2740,10 @@ public class NettyPacketRegistry {
             registerV765C2S(0x35, new PacketFactory() { public Packet create() { return new NettyBlockPlacementPacketV759(); } }); // v764:0x34
             registerV765C2S(0x36, new PacketFactory() { public Packet create() { return new UseItemPacketV109(); } }); // v764:0x35
     
-            // === V765 C2S PLAY reverse map entries (for bot decoder) ===
+            // === V765 C2S PLAY reverse map entries (for bot encoder) ===
             registerV765C2SReverse(TeleportConfirmPacketV109.class, 0x00);
-            registerV765C2SReverse(ChatCommandC2SPacketV759.class, 0x04);
-            registerV765C2SReverse(NettyChatC2SPacket.class, 0x05);
+            registerV765C2SReverse(NettyChatCommandC2SPacketV764.class, 0x04);
+            registerV765C2SReverse(NettyChatC2SPacketV764.class, 0x05);
             registerV765C2SReverse(ChunkBatchReceivedPacket.class, 0x07);
             registerV765C2SReverse(KeepAlivePacketV340.class, 0x15);
             registerV765C2SReverse(PlayerDiggingPacketV759.class, 0x21);
@@ -2745,6 +2764,10 @@ public class NettyPacketRegistry {
 
         private static void registerV765Reverse(ConnectionState state, PacketDirection direction, Class<? extends Packet> clazz, int packetId) {
             REVERSE.put(reverseKey(state, direction, clazz), packetId);
+        }
+
+        private static void registerV765S2C(int packetId, PacketFactory factory) {
+            REGISTRY.put(key(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, packetId), factory);
         }
 
         private static void registerV765S2CReverse(Class<? extends Packet> clazz, int packetId) {
@@ -2931,7 +2954,9 @@ public class NettyPacketRegistry {
             // === V766 C2S PLAY reverse map entries (for bot decoder) ===
             registerV766C2SReverse(TeleportConfirmPacketV109.class, 0x00);
             registerV766C2SReverse(ChatCommandC2SPacketV759.class, 0x04);
+            registerV766C2SReverse(NettyChatCommandC2SPacketV764.class, 0x04);
             registerV766C2SReverse(NettyChatC2SPacket.class, 0x06);
+            registerV766C2SReverse(NettyChatC2SPacketV764.class, 0x06);
             registerV766C2SReverse(ChunkBatchReceivedPacket.class, 0x08);
             registerV766C2SReverse(KeepAlivePacketV340.class, 0x18);
             registerV766C2SReverse(PlayerDiggingPacketV759.class, 0x24);
@@ -3131,7 +3156,9 @@ public class NettyPacketRegistry {
             // === V768 C2S PLAY reverse map entries (for bot decoder) ===
             registerV768C2SReverse(TeleportConfirmPacketV109.class, 0x00);
             registerV768C2SReverse(ChatCommandC2SPacketV759.class, 0x05);
+            registerV768C2SReverse(NettyChatCommandC2SPacketV764.class, 0x05);
             registerV768C2SReverse(NettyChatC2SPacket.class, 0x07);
+            registerV768C2SReverse(NettyChatC2SPacketV764.class, 0x07);
             registerV768C2SReverse(ChunkBatchReceivedPacket.class, 0x09);
             registerV768C2SReverse(KeepAlivePacketV340.class, 0x1A);
             registerV768C2SReverse(PlayerDiggingPacketV759.class, 0x26);

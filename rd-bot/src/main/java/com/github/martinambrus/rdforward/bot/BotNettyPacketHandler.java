@@ -65,8 +65,12 @@ public class BotNettyPacketHandler extends SimpleChannelInboundHandler<Packet> {
         // Transition decoder/encoder to LOGIN state
         setCodecState(ctx, ConnectionState.LOGIN);
 
-        // Send LoginStart
-        ctx.writeAndFlush(new LoginStartPacket(username));
+        // Send LoginStart (v761+ requires UUID)
+        if (version.isAtLeast(ProtocolVersion.RELEASE_1_19_3)) {
+            ctx.writeAndFlush(new LoginStartPacketV761(username));
+        } else {
+            ctx.writeAndFlush(new LoginStartPacket(username));
+        }
     }
 
     @Override
@@ -177,7 +181,10 @@ public class BotNettyPacketHandler extends SimpleChannelInboundHandler<Packet> {
         else if (packet instanceof NettySpawnPlayerPacket sp) { session.recordSpawnPlayer(sp.getEntityId(), sp.getPlayerName()); }
 
         // === PLAY state — Chat / SystemChat ===
-        else if (packet instanceof SystemChatPacketV765 sc) { session.recordChat(sc.getPlainText()); }
+        else if (packet instanceof SystemChatPacketV765 sc) {
+            String text = sc.getPlainText();
+            if (text != null) session.recordChat(text);
+        }
         else if (packet instanceof SystemChatPacketV760 sc) { recordChatFromJson(sc.getJsonMessage()); }
         else if (packet instanceof SystemChatPacketV759 sc) { recordChatFromJson(sc.getJsonMessage()); }
         else if (packet instanceof NettyChatS2CPacketV735 chat) { recordChatFromJson(chat.getJsonMessage()); }
@@ -185,7 +192,10 @@ public class BotNettyPacketHandler extends SimpleChannelInboundHandler<Packet> {
         else if (packet instanceof NettyChatS2CPacket chat) { recordChatFromJson(chat.getJsonMessage()); }
 
         // === PLAY state — KeepAlive ===
-        else if (packet instanceof KeepAlivePacketV340 ka) { ctx.writeAndFlush(new KeepAlivePacketV340(ka.getKeepAliveId())); }
+        else if (packet instanceof KeepAlivePacketV340 ka) {
+            System.err.println("BotNetty: KeepAlive received (id=" + ka.getKeepAliveId() + "), responding");
+            ctx.writeAndFlush(new KeepAlivePacketV340(ka.getKeepAliveId()));
+        }
         else if (packet instanceof KeepAlivePacketV47 ka) { ctx.writeAndFlush(new KeepAlivePacketV47(ka.getKeepAliveId())); }
         else if (packet instanceof KeepAlivePacketV17 ka) { ctx.writeAndFlush(new KeepAlivePacketV17(ka.getKeepAliveId())); }
 
@@ -245,7 +255,7 @@ public class BotNettyPacketHandler extends SimpleChannelInboundHandler<Packet> {
 
         // === PLAY state — Disconnect ===
         else if (packet instanceof NettyDisconnectPacketV765 disc) {
-            System.err.println("BotNetty disconnected: " + disc.getPlainText());
+            System.err.println("BotNetty V765 disconnected: " + disc.getPlainText());
             ctx.close();
         }
         else if (packet instanceof NettyDisconnectPacket disc) {
@@ -259,6 +269,9 @@ public class BotNettyPacketHandler extends SimpleChannelInboundHandler<Packet> {
             // v764+: Send LoginAcknowledged (still in LOGIN state), then transition to CONFIGURATION
             ctx.writeAndFlush(new LoginAcknowledgedPacket());
             setCodecState(ctx, ConnectionState.CONFIGURATION);
+            // Spigot requires ClientInformation and brand before it sends ConfigFinish
+            ctx.writeAndFlush(new ConfigClientInformationC2SPacket());
+            ctx.writeAndFlush(new ConfigCustomPayloadC2SPacket());
         } else {
             // Pre-v764: transition directly to PLAY
             setCodecState(ctx, ConnectionState.PLAY);
@@ -484,6 +497,12 @@ public class BotNettyPacketHandler extends SimpleChannelInboundHandler<Packet> {
         if (encoder != null) {
             encoder.setConnectionState(state);
         }
+    }
+
+    @Override
+    public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+        System.err.println("BotNettyPacketHandler: channel closed (" + version + ")");
+        super.channelInactive(ctx);
     }
 
     @Override

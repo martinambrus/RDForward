@@ -42,8 +42,22 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class PlayerManager {
 
-    /** Maximum number of simultaneous players (MC Classic limit: 128). */
-    public static final int MAX_PLAYERS = 128;
+    /** Hard ceiling for player IDs: MC Classic uses signed byte IDs (0-127). */
+    public static final int MAX_PLAYER_IDS = 128;
+
+    /** Configurable max players (set via ServerProperties). Capped at MAX_PLAYER_IDS. */
+    private static volatile int maxPlayers = MAX_PLAYER_IDS;
+
+    public static int getMaxPlayers() { return maxPlayers; }
+
+    public static void setMaxPlayers(int max) {
+        int clamped = Math.max(1, Math.min(MAX_PLAYER_IDS, max));
+        if (clamped != max) {
+            System.err.println("[WARN] max-players=" + max + " clamped to " + clamped
+                    + " (valid range: 1-" + MAX_PLAYER_IDS + ")");
+        }
+        maxPlayers = clamped;
+    }
 
     /** Player eye height matching Alpha client precision. */
     private static final double PLAYER_EYE_HEIGHT = (double) 1.62f;
@@ -58,7 +72,7 @@ public class PlayerManager {
     private final Map<Byte, ConnectedPlayer> playersById = new ConcurrentHashMap<>();
 
     /** Tracks which IDs are in use. */
-    private final boolean[] usedIds = new boolean[MAX_PLAYERS];
+    private final boolean[] usedIds = new boolean[MAX_PLAYER_IDS];
 
     /** Shared inventory adapter for cross-version inventory tracking. */
     private final InventoryAdapter inventoryAdapter = new InventoryAdapter();
@@ -511,7 +525,7 @@ public class PlayerManager {
      * Returns -1 if all slots are taken.
      */
     private byte allocateId() {
-        for (int i = 0; i < MAX_PLAYERS; i++) {
+        for (int i = 0; i < maxPlayers; i++) {
             if (!usedIds[i]) {
                 usedIds[i] = true;
                 return (byte) i;

@@ -46,6 +46,7 @@ crash-reports/
 *.log
 
 # Server runtime files (created when server starts)
+server.properties
 server-world.dat
 server-players.dat
 banned-players.txt

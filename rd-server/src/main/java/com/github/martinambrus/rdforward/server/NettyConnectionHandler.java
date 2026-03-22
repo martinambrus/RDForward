@@ -14,6 +14,7 @@ import com.github.martinambrus.rdforward.protocol.packet.classic.PlayerTeleportP
 import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
 import com.github.martinambrus.rdforward.protocol.packet.netty.*;
 import com.github.martinambrus.rdforward.server.api.CommandRegistry;
+import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import com.github.martinambrus.rdforward.server.event.ServerEvents;
 import com.github.martinambrus.rdforward.protocol.BlockStateMapper;
 import com.github.martinambrus.rdforward.world.BlockRegistry;
@@ -258,9 +259,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         int protocol = clientVersion.getVersionNumber();
         String json = "{"
                 + "\"version\":{\"name\":\"" + versionName + "\",\"protocol\":" + protocol + "},"
-                + "\"players\":{\"max\":" + PlayerManager.MAX_PLAYERS
+                + "\"players\":{\"max\":" + PlayerManager.getMaxPlayers()
                 + ",\"online\":" + playerManager.getPlayerCount() + "},"
-                + "\"description\":{\"text\":\"RDForward Server\"}"
+                + "\"description\":{\"text\":\"" + escapeJsonString(ServerProperties.getMotd()) + "\"}"
                 + "}";
         ctx.writeAndFlush(new StatusResponsePacket(json));
     }
@@ -666,60 +667,62 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // v573 (1.15) added hashedSeed + enableRespawnScreen.
         // v477 (1.14) removed difficulty from JoinGame and added viewDistance.
         // v108 (1.9.1) changed dimension from byte to int.
+        int gm = ServerProperties.getGameMode();
+        int diff = ServerProperties.getDifficulty();
         if (isV768) {
-            ctx.writeAndFlush(new JoinGamePacketV768(entityId, 1,
+            ctx.writeAndFlush(new JoinGamePacketV768(entityId, gm,
                     20, ChunkManager.CLIENT_VIEW_DISTANCE, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV766) {
-            ctx.writeAndFlush(new JoinGamePacketV766(entityId, 1,
+            ctx.writeAndFlush(new JoinGamePacketV766(entityId, gm,
                     20, ChunkManager.CLIENT_VIEW_DISTANCE, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV764) {
-            ctx.writeAndFlush(new JoinGamePacketV764(entityId, 1,
+            ctx.writeAndFlush(new JoinGamePacketV764(entityId, gm,
                     20, ChunkManager.CLIENT_VIEW_DISTANCE, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV763) {
-            ctx.writeAndFlush(new JoinGamePacketV763(entityId, 1,
+            ctx.writeAndFlush(new JoinGamePacketV763(entityId, gm,
                     20, ChunkManager.CLIENT_VIEW_DISTANCE, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV762) {
-            ctx.writeAndFlush(new JoinGamePacketV762(entityId, 1,
+            ctx.writeAndFlush(new JoinGamePacketV762(entityId, gm,
                     20, ChunkManager.CLIENT_VIEW_DISTANCE, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV761) {
             // V761 reuses V760 JoinGame format; registry handles the ID shift (0x25 -> 0x24)
-            ctx.writeAndFlush(new JoinGamePacketV760(entityId, 1,
+            ctx.writeAndFlush(new JoinGamePacketV760(entityId, gm,
                     20, ChunkManager.CLIENT_VIEW_DISTANCE, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV760) {
-            ctx.writeAndFlush(new JoinGamePacketV760(entityId, 1,
+            ctx.writeAndFlush(new JoinGamePacketV760(entityId, gm,
                     20, ChunkManager.CLIENT_VIEW_DISTANCE, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV759) {
-            ctx.writeAndFlush(new JoinGamePacketV759(entityId, 1,
+            ctx.writeAndFlush(new JoinGamePacketV759(entityId, gm,
                     20, ChunkManager.CLIENT_VIEW_DISTANCE, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV758) {
-            ctx.writeAndFlush(new JoinGamePacketV758(entityId, 1,
+            ctx.writeAndFlush(new JoinGamePacketV758(entityId, gm,
                     20, ChunkManager.CLIENT_VIEW_DISTANCE, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV757) {
-            ctx.writeAndFlush(new JoinGamePacketV757(entityId, 1,
+            ctx.writeAndFlush(new JoinGamePacketV757(entityId, gm,
                     20, ChunkManager.CLIENT_VIEW_DISTANCE, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV755) {
-            ctx.writeAndFlush(new JoinGamePacketV755(entityId, 1,
+            ctx.writeAndFlush(new JoinGamePacketV755(entityId, gm,
                     20, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV751) {
-            ctx.writeAndFlush(new JoinGamePacketV751(entityId, 1,
+            ctx.writeAndFlush(new JoinGamePacketV751(entityId, gm,
                     20, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV735) {
-            ctx.writeAndFlush(new JoinGamePacketV735(entityId, 1,
+            ctx.writeAndFlush(new JoinGamePacketV735(entityId, gm,
                     20, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV573) {
-            ctx.writeAndFlush(new JoinGamePacketV573(entityId, 1, 0,
+            ctx.writeAndFlush(new JoinGamePacketV573(entityId, gm, diff,
                     20, "default", ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV477) {
-            ctx.writeAndFlush(new JoinGamePacketV477(entityId, 1, 0,
+            ctx.writeAndFlush(new JoinGamePacketV477(entityId, gm, diff,
                     20, "default", ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_9_1)) {
-            ctx.writeAndFlush(new JoinGamePacketV108(entityId, 1, 0, 0,
+            ctx.writeAndFlush(new JoinGamePacketV108(entityId, gm, diff, 0,
                     20, "default"));
         } else if (isV47) {
-            ctx.writeAndFlush(new JoinGamePacketV47(entityId, 1, 0, 0,
+            ctx.writeAndFlush(new JoinGamePacketV47(entityId, gm, diff, 0,
                     20, "default"));
         } else {
-            ctx.writeAndFlush(new JoinGamePacket(entityId, 1, 0, 0,
+            ctx.writeAndFlush(new JoinGamePacket(entityId, gm, diff, 0,
                     20, "default"));
         }
 
@@ -771,8 +774,8 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                     "minecraft:brand", brandData));
         }
 
-        // Send PlayerAbilities (creative: invulnerable + allowFlying + creative = 0x0D)
-        ctx.writeAndFlush(new PlayerAbilitiesPacketV73(0x0D, 0.05f, 0.1f));
+        // Send PlayerAbilities with gamemode-aware flags
+        ctx.writeAndFlush(new PlayerAbilitiesPacketV73(ServerProperties.getAbilitiesFlags(), 0.05f, 0.1f));
 
         // Send Entity Properties for movement speed
         // 1.20.5+ uses VarInt registry ID (17 = movement_speed)
@@ -1713,5 +1716,32 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private static byte toByteRotation(float degrees) {
         return (byte) ((degrees / 360.0f) * 256);
+    }
+
+    /**
+     * Escape a string for safe embedding inside a JSON string literal.
+     * Handles backslash, double-quote, common control characters, and
+     * any other char below U+0020 via \\uXXXX.
+     */
+    private static String escapeJsonString(String s) {
+        StringBuilder sb = new StringBuilder(s.length() + 16);
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '\\': sb.append("\\\\"); break;
+                case '"':  sb.append("\\\""); break;
+                case '\n': sb.append("\\n");  break;
+                case '\r': sb.append("\\r");  break;
+                case '\t': sb.append("\\t");  break;
+                default:
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+                    break;
+            }
+        }
+        return sb.toString();
     }
 }

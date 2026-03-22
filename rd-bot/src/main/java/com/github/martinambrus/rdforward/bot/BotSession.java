@@ -13,6 +13,8 @@ import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlaceme
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlacementPacketV759;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlacementPacketV768;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyChatC2SPacket;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettyChatC2SPacketV764;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettyChatCommandC2SPacketV764;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyWindowClickPacket;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyWindowClickPacketV47;
 import com.github.martinambrus.rdforward.protocol.packet.netty.PlayerDiggingPacketV47;
@@ -476,7 +478,14 @@ public class BotSession {
             bedrockSession.sendPacketImmediately(text);
             return;
         }
-        if (version.isAtLeast(ProtocolVersion.RELEASE_1_7_2)) {
+        if (version.isAtLeast(ProtocolVersion.RELEASE_1_20_2)) {
+            // v764+: commands and chat use different packet formats with signing fields
+            if (message.startsWith("/")) {
+                sendPacket(new NettyChatCommandC2SPacketV764(message.substring(1)));
+            } else {
+                sendPacket(new NettyChatC2SPacketV764(message));
+            }
+        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_7_2)) {
             sendPacket(new NettyChatC2SPacket(message));
         } else if (!version.isAtLeast(ProtocolVersion.ALPHA_1_0_15)) {
             // Classic/RubyDung: MessagePacket (0x0D), player ID 0xFF for C2S

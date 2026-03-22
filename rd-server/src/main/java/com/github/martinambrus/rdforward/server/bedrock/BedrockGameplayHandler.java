@@ -9,6 +9,7 @@ import com.github.martinambrus.rdforward.server.ConnectedPlayer;
 import com.github.martinambrus.rdforward.server.PlayerManager;
 import com.github.martinambrus.rdforward.server.ServerWorld;
 import com.github.martinambrus.rdforward.server.api.CommandRegistry;
+import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import com.github.martinambrus.rdforward.server.event.ServerEvents;
 import com.github.martinambrus.rdforward.world.BlockRegistry;
 import com.github.martinambrus.rdforward.world.alpha.AlphaChunk;
@@ -281,7 +282,8 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         StartGamePacket sgp = new StartGamePacket();
         sgp.setUniqueEntityId(entityId);
         sgp.setRuntimeEntityId(entityId);
-        sgp.setPlayerGameType(GameType.CREATIVE);
+        GameType gameType = BedrockUtils.getConfiguredGameType();
+        sgp.setPlayerGameType(gameType);
         sgp.setPlayerPosition(Vector3f.from(x, y, z));
         sgp.setRotation(Vector2f.from(yaw, pitch));
         sgp.setSeed(0L);
@@ -289,8 +291,8 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         sgp.setCustomBiomeName("");
         sgp.setDimensionId(0);
         sgp.setGeneratorId(1); // flat
-        sgp.setLevelGameType(GameType.CREATIVE);
-        sgp.setDifficulty(0);
+        sgp.setLevelGameType(gameType);
+        sgp.setDifficulty(ServerProperties.getDifficulty());
         sgp.setDefaultSpawn(Vector3i.from((int) x, (int) y, (int) z));
         sgp.setAchievementsDisabled(true);
         sgp.setDayCycleStopTime(world.isTimeFrozen() ? (int) (world.getWorldTime() % 24000) : -1);
@@ -349,7 +351,7 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
     }
 
     /**
-     * Send UpdateAbilitiesPacket with creative-mode abilities.
+     * Send UpdateAbilitiesPacket with gamemode-aware abilities.
      */
     private void sendUpdateAbilities(long entityId) {
         UpdateAbilitiesPacket pkt = new UpdateAbilitiesPacket();
@@ -360,7 +362,7 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         AbilityLayer layer = new AbilityLayer();
         layer.setLayerType(AbilityLayer.Type.BASE);
 
-        // Define which abilities are present in this layer
+        // Define which abilities are present in this layer (same for all gamemodes)
         layer.getAbilitiesSet().add(Ability.BUILD);
         layer.getAbilitiesSet().add(Ability.MINE);
         layer.getAbilitiesSet().add(Ability.DOORS_AND_SWITCHES);
@@ -380,7 +382,10 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         layer.getAbilitiesSet().add(Ability.WORLD_BUILDER);
         layer.getAbilitiesSet().add(Ability.NO_CLIP);
 
-        // Enable the appropriate abilities for creative mode
+        // Enable abilities based on configured gamemode
+        int gm = ServerProperties.getGameMode();
+
+        // Common abilities for all gamemodes
         layer.getAbilityValues().add(Ability.BUILD);
         layer.getAbilityValues().add(Ability.MINE);
         layer.getAbilityValues().add(Ability.DOORS_AND_SWITCHES);
@@ -389,9 +394,18 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         layer.getAbilityValues().add(Ability.ATTACK_MOBS);
         layer.getAbilityValues().add(Ability.OPERATOR_COMMANDS);
         layer.getAbilityValues().add(Ability.TELEPORT);
-        layer.getAbilityValues().add(Ability.INVULNERABLE);
-        layer.getAbilityValues().add(Ability.MAY_FLY);
-        layer.getAbilityValues().add(Ability.INSTABUILD);
+
+        if (gm == 1) {
+            // Creative: invulnerable, may fly, instabuild
+            layer.getAbilityValues().add(Ability.INVULNERABLE);
+            layer.getAbilityValues().add(Ability.MAY_FLY);
+            layer.getAbilityValues().add(Ability.INSTABUILD);
+        } else if (gm == 3) {
+            // Spectator: may fly + flying (spawns in flight)
+            layer.getAbilityValues().add(Ability.MAY_FLY);
+            layer.getAbilityValues().add(Ability.FLYING);
+        }
+        // Survival (0) and Adventure (2): no extra abilities
 
         layer.setFlySpeed(0.05f);
         layer.setWalkSpeed(0.1f);
@@ -529,7 +543,8 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         app.setHand(org.cloudburstmc.protocol.bedrock.data.inventory.ItemData.AIR);
         app.setPlatformChatId("");
         app.setDeviceId("");
-        app.setGameType(GameType.CREATIVE);
+        GameType existingGameType = BedrockUtils.getConfiguredGameType();
+        app.setGameType(existingGameType);
 
         // Entity metadata required for the player to render
         EntityDataMap metadata = app.getMetadata();

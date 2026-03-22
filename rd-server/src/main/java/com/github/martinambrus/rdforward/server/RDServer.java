@@ -8,9 +8,8 @@ import com.github.martinambrus.rdforward.server.api.BanManager;
 import com.github.martinambrus.rdforward.server.api.CommandRegistry;
 import com.github.martinambrus.rdforward.server.api.PermissionManager;
 import com.github.martinambrus.rdforward.server.api.Scheduler;
-import com.github.martinambrus.rdforward.world.AlphaWorldGenerator;
+import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import com.github.martinambrus.rdforward.world.FlatWorldGenerator;
-import com.github.martinambrus.rdforward.world.RubyDungWorldGenerator;
 import com.github.martinambrus.rdforward.world.WorldGenerator;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockBlockMapper;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockChunkConverter;
@@ -58,16 +57,14 @@ import java.util.Collection;
  */
 public class RDServer {
 
-    /** Default world dimensions matching RubyDung's original size. */
+    /** Default world dimensions matching RubyDung's original size.
+     *  These must stay in sync with ServerProperties.DEFAULTS. */
     public static final int DEFAULT_WORLD_WIDTH = 256;
     public static final int DEFAULT_WORLD_HEIGHT = 64;
     public static final int DEFAULT_WORLD_DEPTH = 256;
 
     /** Default world seed (can be overridden via constructor). */
     private static final long DEFAULT_SEED = 0L;
-
-    /** Default directory for Alpha-format chunk storage. */
-    private static final String DEFAULT_WORLD_DIR = "world";
 
     private final int port;
     private int bedrockPort = BedrockProtocolConstants.DEFAULT_PORT; // 19132
@@ -163,7 +160,8 @@ public class RDServer {
         this.dataDir = dataDir;
         this.world = new ServerWorld(worldWidth, worldHeight, worldDepth, dataDir);
         this.playerManager = new PlayerManager();
-        File worldDir = (dataDir != null) ? new File(dataDir, DEFAULT_WORLD_DIR) : new File(DEFAULT_WORLD_DIR);
+        String levelName = ServerProperties.getLevelName();
+        File worldDir = (dataDir != null) ? new File(dataDir, levelName) : new File(levelName);
         this.chunkManager = new ChunkManager(worldGenerator, worldSeed, worldDir);
         System.out.println("[RDServer] ChunkManager viewDistance="
                 + ChunkManager.DEFAULT_VIEW_DISTANCE
@@ -183,8 +181,8 @@ public class RDServer {
         registerBuiltInCommands();
 
         if (!world.load()) {
-            System.out.println("Generating world (" + DEFAULT_WORLD_WIDTH + "x"
-                    + DEFAULT_WORLD_HEIGHT + "x" + DEFAULT_WORLD_DEPTH
+            System.out.println("Generating world (" + world.getWidth() + "x"
+                    + world.getHeight() + "x" + world.getDepth()
                     + ") using " + worldGenerator.getName() + " generator...");
             world.generate(worldGenerator, worldSeed);
             System.out.println("World generated.");
@@ -256,11 +254,11 @@ public class RDServer {
             if (bedrockChannel == null) return;
             BedrockPong p = new BedrockPong()
                     .edition("MCPE")
-                    .motd("RDForward Server")
+                    .motd(ServerProperties.getMotd())
                     .subMotd("RDForward")
                     .playerCount(playerManager.getPlayerCount())
-                    .maximumPlayerCount(PlayerManager.MAX_PLAYERS)
-                    .gameType("Creative")
+                    .maximumPlayerCount(PlayerManager.getMaxPlayers())
+                    .gameType(ServerProperties.getGameModeName())
                     .protocolVersion(BedrockProtocolConstants.CODEC.getProtocolVersion())
                     .version(BedrockProtocolConstants.CODEC.getMinecraftVersion())
                     .ipv4Port(udpPort)
@@ -276,7 +274,7 @@ public class RDServer {
             // Pong data is regenerated per-ping in LegacyRakNetServer
         };
         mcpeServer = new LegacyRakNetServer(
-                mcpeGuid, "RDForward Server", world, playerManager, mcpePongUpdater);
+                mcpeGuid, ServerProperties.getMotd(), world, playerManager, mcpePongUpdater);
 
         // --- Create front-end handler ---
         udpFrontEndHandler = new UdpFrontEndHandler(mcpeServer);
@@ -299,11 +297,11 @@ public class RDServer {
         // --- Start CloudburstMC internally on loopback (no external port) ---
         BedrockPong initialPong = new BedrockPong()
                 .edition("MCPE")
-                .motd("RDForward Server")
+                .motd(ServerProperties.getMotd())
                 .subMotd("RDForward")
                 .playerCount(0)
-                .maximumPlayerCount(PlayerManager.MAX_PLAYERS)
-                .gameType("Creative")
+                .maximumPlayerCount(PlayerManager.getMaxPlayers())
+                .gameType(ServerProperties.getGameModeName())
                 .protocolVersion(BedrockProtocolConstants.CODEC.getProtocolVersion())
                 .version(BedrockProtocolConstants.CODEC.getMinecraftVersion())
                 .ipv4Port(udpPort)
@@ -453,7 +451,7 @@ public class RDServer {
 
         CommandRegistry.register("list", "Show connected players", ctx -> {
             Collection<ConnectedPlayer> players = playerManager.getAllPlayers();
-            ctx.reply("Players online: " + players.size() + "/" + PlayerManager.MAX_PLAYERS);
+            ctx.reply("Players online: " + players.size() + "/" + PlayerManager.getMaxPlayers());
             for (ConnectedPlayer p : players) {
                 ctx.reply("  [" + p.getPlayerId() + "] " + p.getUsername()
                     + " (" + String.format("%.1f, %.1f, %.1f",
@@ -895,55 +893,50 @@ public class RDServer {
      * Server entry point.
      *
      * Usage: java -cp rd-server.jar com.github.martinambrus.rdforward.server.RDServer [port]
-     * Default port: 25565
      *
-     * System properties for world configuration:
-     *   -Drdforward.world.width=256    World X dimension (default: 256)
-     *   -Drdforward.world.height=64    World Y/vertical dimension (default: 64)
-     *   -Drdforward.world.depth=256    World Z dimension (default: 256)
-     *   -Drdforward.generator=flat     Generator: flat, rubydung, alpha (default: flat)
-     *   -Drdforward.seed=12345         World seed (default: 0)
+     * Configuration is read from server.properties (created with defaults if missing).
+     * CLI port argument overrides server-port from the file.
+     * System properties (-Drdforward.*, -De2e.viewDistance) override file values.
      */
     public static void main(String[] args) {
-        int port = 25565;
+        // Load server.properties (creates with defaults if missing)
+        ServerProperties.load();
+
+        int port;
         if (args.length > 0) {
             try {
                 port = Integer.parseInt(args[0]);
             } catch (NumberFormatException e) {
                 System.err.println("Invalid port: " + args[0]);
                 System.exit(1);
+                return;
             }
+        } else {
+            port = ServerProperties.getServerPort();
         }
 
-        // Parse world dimensions from system properties
-        int worldWidth = getIntProperty("rdforward.world.width", DEFAULT_WORLD_WIDTH);
-        int worldHeight = getIntProperty("rdforward.world.height", DEFAULT_WORLD_HEIGHT);
-        int worldDepth = getIntProperty("rdforward.world.depth", DEFAULT_WORLD_DEPTH);
-        long seed = getLongProperty("rdforward.seed", DEFAULT_SEED);
-
-        // Select world generator
-        String generatorName = System.getProperty("rdforward.generator", "flat").toLowerCase();
-        WorldGenerator generator;
-        switch (generatorName) {
-            case "rubydung":
-            case "classic":
-                generator = new RubyDungWorldGenerator();
-                break;
-            case "alpha":
-            case "terrain":
-                generator = new AlphaWorldGenerator();
-                break;
-            case "flat":
-            default:
-                generator = new FlatWorldGenerator();
-                break;
+        ProtocolVersion version;
+        try {
+            version = ServerProperties.getProtocolVersion();
+        } catch (IllegalArgumentException e) {
+            System.err.println("[ERROR] " + e.getMessage());
+            System.exit(1);
+            return;
         }
+        WorldGenerator generator = ServerProperties.createWorldGenerator();
+        long seed = ServerProperties.getLevelSeed();
+        int worldWidth = ServerProperties.getWorldWidth();
+        int worldHeight = ServerProperties.getWorldHeight();
+        int worldDepth = ServerProperties.getWorldDepth();
+
+        PlayerManager.setMaxPlayers(ServerProperties.getMaxPlayers());
 
         System.out.println("[RDForward] World config: " + worldWidth + "x" + worldHeight + "x" + worldDepth
             + ", generator=" + generator.getName() + ", seed=" + seed);
 
-        RDServer server = new RDServer(port, ProtocolVersion.RUBYDUNG, generator, seed,
+        RDServer server = new RDServer(port, version, generator, seed,
             worldWidth, worldHeight, worldDepth);
+        server.setBedrockPort(ServerProperties.getBedrockPort());
         Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "RDForward-Shutdown"));
 
         try {
@@ -951,28 +944,6 @@ public class RDServer {
             server.runConsole();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-        }
-    }
-
-    private static int getIntProperty(String key, int defaultValue) {
-        String value = System.getProperty(key);
-        if (value == null) return defaultValue;
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-            System.err.println("Invalid value for " + key + ": " + value + ", using default " + defaultValue);
-            return defaultValue;
-        }
-    }
-
-    private static long getLongProperty(String key, long defaultValue) {
-        String value = System.getProperty(key);
-        if (value == null) return defaultValue;
-        try {
-            return Long.parseLong(value);
-        } catch (NumberFormatException e) {
-            System.err.println("Invalid value for " + key + ": " + value + ", using default " + defaultValue);
-            return defaultValue;
         }
     }
 }

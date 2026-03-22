@@ -10,6 +10,7 @@ import com.github.martinambrus.rdforward.protocol.codec.VarIntFrameEncoder;
 import com.github.martinambrus.rdforward.protocol.packet.ConnectionState;
 import com.github.martinambrus.rdforward.protocol.packet.PacketDirection;
 import com.github.martinambrus.rdforward.protocol.McDataTypes;
+import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -102,19 +103,23 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
                 // For 1.4.2-1.5.2 (no MC|PingHost), show hint about Direct Connect
                 // since some versions in this range will see "incompatible".
                 String motd = clientProtocol > 0
-                        ? "RDForward Server"
+                        ? ServerProperties.getMotd()
                         : "Incompatible? Use Direct Connect";
+                // Strip null chars so MOTD can't break the \u0000-delimited response
+                motd = motd.replace("\u0000", "");
                 response = "\u00A71\u0000"
                         + reportProtocol + "\u0000"
                         + reportVersion + "\u0000"
                         + motd + "\u0000"
                         + playerManager.getPlayerCount() + "\u0000"
-                        + PlayerManager.MAX_PLAYERS;
+                        + PlayerManager.getMaxPlayers();
             } else {
                 // Old ping (Beta 1.8 - 1.3.2): no version field.
-                response = "RDForward Server\u00A7"
+                // Strip section signs so MOTD can't break the \u00A7-delimited response
+                String motd = ServerProperties.getMotd().replace("\u00A7", "");
+                response = motd + "\u00A7"
                         + playerManager.getPlayerCount() + "\u00A7"
-                        + PlayerManager.MAX_PLAYERS;
+                        + PlayerManager.getMaxPlayers();
             }
 
             ByteBuf out = ctx.alloc().buffer();
