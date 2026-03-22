@@ -31,7 +31,17 @@ import java.util.zip.GZIPInputStream;
  * Block IDs pass through unchanged — RubyDung uses 0 (air), 2 (grass),
  * and 4 (cobblestone), which are valid Alpha block IDs.
  */
-public class RubyDungToAlphaConverter {
+public class RubyDungToAlphaConverter implements FormatConverter {
+
+    @Override
+    public WorldFormat sourceFormat() {
+        return WorldFormat.RUBYDUNG_SERVER;
+    }
+
+    @Override
+    public WorldFormat targetFormat() {
+        return WorldFormat.ALPHA;
+    }
 
     /**
      * Convert a RubyDung server-world.dat to Alpha chunk format.

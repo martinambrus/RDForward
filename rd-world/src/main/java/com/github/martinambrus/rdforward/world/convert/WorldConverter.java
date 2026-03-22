@@ -8,14 +8,9 @@ import java.io.File;
  * Usage:
  *   java -jar rd-world.jar convert <input> <output-dir> <target-format>
  *
- * Supported conversions:
- *   rubydung-to-alpha   — server-world.dat → Alpha chunk directory
- *   alpha-to-region     — Alpha chunk directory → McRegion .mcr files
- *   rubydung-to-region  — server-world.dat → McRegion .mcr files (two-step)
- *
- * Input auto-detection:
- *   - If input is a .dat file → treated as RubyDung server-world.dat
- *   - If input is a directory → treated as Alpha world directory
+ * Input format is auto-detected via {@link WorldFormatDetector}.
+ * Multi-step conversions (e.g. RubyDung to McRegion) are chained
+ * automatically via {@link ConversionRegistry}.
  *
  * Target formats:
  *   alpha   — Minecraft Alpha individual chunk files (pre-Beta 1.3)
@@ -36,16 +31,18 @@ public class WorldConverter {
         "\n" +
         "Converts worlds between RubyDung, Alpha, and McRegion formats.\n" +
         "\n" +
-        "Input (auto-detected):\n" +
-        "  .dat file    → RubyDung server-world.dat\n" +
-        "  directory    → Alpha chunk world\n" +
+        "Input format is auto-detected:\n" +
+        "  .dat file    -> RubyDung (server or original format, detected by header)\n" +
+        "  directory    -> Alpha or McRegion world (detected by contents)\n" +
         "\n" +
         "Target formats:\n" +
-        "  alpha        → Minecraft Alpha individual chunk files\n" +
-        "  region       → McRegion .mcr files (Beta 1.3+)\n" +
+        "  alpha              -> Minecraft Alpha individual chunk files\n" +
+        "  region|mcregion|mcr -> McRegion .mcr files (Beta 1.3+)\n" +
+        "  server|rdserver    -> RDForward server-world.dat format\n" +
+        "  rubydung|rd        -> Original RubyDung level.dat format\n" +
         "\n" +
         "Options:\n" +
-        "  --seed <n>   → World seed for level.dat (default: 0)\n" +
+        "  --seed <n>   -> World seed for level.dat (default: 0)\n" +
         "\n" +
         "Examples:\n" +
         "  convert server-world.dat ./alpha-world alpha\n" +
@@ -73,7 +70,7 @@ public class WorldConverter {
 
         String inputPath = args[argOffset];
         String outputPath = args[argOffset + 1];
-        String targetFormat = args[argOffset + 2].toLowerCase();
+        String targetFormatArg = args[argOffset + 2].toLowerCase();
 
         // Parse options
         long seed = 0;
@@ -96,42 +93,33 @@ public class WorldConverter {
             System.exit(1);
         }
 
-        // Detect input format
-        boolean isRubyDung = input.isFile() && input.getName().endsWith(".dat");
-        boolean isAlpha = input.isDirectory();
-
-        if (!isRubyDung && !isAlpha) {
+        // Auto-detect source format
+        WorldFormat sourceFormat = WorldFormatDetector.detect(input);
+        if (sourceFormat == null) {
             System.err.println("Error: cannot determine input format.");
-            System.err.println("Expected a .dat file (RubyDung) or directory (Alpha world).");
+            System.err.println("Expected a RubyDung .dat file, Alpha world directory, "
+                    + "or McRegion world directory.");
             System.exit(1);
         }
 
+        // Parse target format
+        WorldFormat targetFormat = parseTargetFormat(targetFormatArg);
+        if (targetFormat == null) {
+            System.err.println("Error: unknown target format '" + targetFormatArg + "'");
+            System.err.println("Supported formats: alpha, region, server, rubydung");
+            System.exit(1);
+        }
+
+        // Find and execute conversion path
+        ConversionRegistry registry = ConversionRegistry.createDefault();
+
         try {
-            switch (targetFormat) {
-                case "alpha":
-                    if (!isRubyDung) {
-                        System.err.println("Error: 'alpha' target only supports RubyDung .dat input.");
-                        System.exit(1);
-                    }
-                    convertRubyDungToAlpha(input, output, seed);
-                    break;
-
-                case "region":
-                case "mcregion":
-                case "mcr":
-                    if (isRubyDung) {
-                        // Two-step: RubyDung → Alpha (temp) → Region
-                        convertRubyDungToRegion(input, output, seed);
-                    } else {
-                        convertAlphaToRegion(input, output);
-                    }
-                    break;
-
-                default:
-                    System.err.println("Error: unknown target format '" + targetFormat + "'");
-                    System.err.println("Supported formats: alpha, region");
-                    System.exit(1);
-            }
+            System.out.println("=== " + sourceFormat + " -> " + targetFormat + " conversion ===");
+            registry.convert(input, output, sourceFormat, targetFormat, seed);
+            System.out.println("=== Conversion complete ===");
+        } catch (IllegalArgumentException e) {
+            System.err.println("Error: " + e.getMessage());
+            System.exit(1);
         } catch (Exception e) {
             System.err.println("Conversion failed: " + e.getMessage());
             e.printStackTrace();
@@ -139,49 +127,22 @@ public class WorldConverter {
         }
     }
 
-    private static void convertRubyDungToAlpha(File input, File output, long seed) throws Exception {
-        System.out.println("=== RubyDung → Alpha conversion ===");
-        new RubyDungToAlphaConverter().convert(input, output, seed);
-    }
-
-    private static void convertAlphaToRegion(File input, File output) throws Exception {
-        System.out.println("=== Alpha → McRegion conversion ===");
-        new McRegionWriter().convertAlphaToRegion(input, output);
-    }
-
-    private static void convertRubyDungToRegion(File input, File output, long seed) throws Exception {
-        System.out.println("=== RubyDung → McRegion conversion (via Alpha) ===");
-
-        // Step 1: Convert to Alpha in a temp directory
-        File tempAlpha = new File(output.getParentFile(),
-            ".rdforward-convert-temp-" + System.currentTimeMillis());
-        try {
-            System.out.println();
-            System.out.println("Step 1/2: RubyDung → Alpha");
-            new RubyDungToAlphaConverter().convert(input, tempAlpha, seed);
-
-            // Step 2: Convert Alpha to McRegion
-            System.out.println();
-            System.out.println("Step 2/2: Alpha → McRegion");
-            new McRegionWriter().convertAlphaToRegion(tempAlpha, output);
-        } finally {
-            // Clean up temp directory
-            deleteRecursive(tempAlpha);
+    private static WorldFormat parseTargetFormat(String arg) {
+        switch (arg) {
+            case "alpha":
+                return WorldFormat.ALPHA;
+            case "region":
+            case "mcregion":
+            case "mcr":
+                return WorldFormat.MCREGION;
+            case "server":
+            case "rdserver":
+                return WorldFormat.RUBYDUNG_SERVER;
+            case "rubydung":
+            case "rd":
+                return WorldFormat.RUBYDUNG;
+            default:
+                return null;
         }
-
-        System.out.println();
-        System.out.println("=== Conversion complete ===");
-    }
-
-    private static void deleteRecursive(File file) {
-        if (file.isDirectory()) {
-            File[] children = file.listFiles();
-            if (children != null) {
-                for (File child : children) {
-                    deleteRecursive(child);
-                }
-            }
-        }
-        file.delete();
     }
 }

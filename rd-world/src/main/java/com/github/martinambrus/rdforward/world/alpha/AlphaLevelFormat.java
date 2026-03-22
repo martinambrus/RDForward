@@ -30,37 +30,7 @@ public class AlphaLevelFormat {
     public static void saveChunk(File worldDir, AlphaChunk chunk) throws IOException {
         File chunkFile = getChunkFile(worldDir, chunk.getXPos(), chunk.getZPos());
         chunkFile.getParentFile().mkdirs();
-
-        CompoundTag root = new CompoundTag();
-        CompoundTag level = new CompoundTag();
-
-        level.putInt("xPos", chunk.getXPos());
-        level.putInt("zPos", chunk.getZPos());
-        level.putByte("TerrainPopulated", (byte) (chunk.isTerrainPopulated() ? 1 : 0));
-        level.putLong("LastUpdate", chunk.getLastUpdate());
-        level.putByteArray("Blocks", chunk.getBlocks());
-        level.putByteArray("Data", chunk.getData());
-        level.putByteArray("BlockLight", chunk.getBlockLight());
-        level.putByteArray("SkyLight", chunk.getSkyLight());
-        level.putByteArray("HeightMap", chunk.getHeightMap());
-
-        // Serialize entities (mobs, items, projectiles, etc.)
-        ListTag<CompoundTag> entitiesTag = new ListTag<CompoundTag>(CompoundTag.class);
-        for (int i = 0; i < chunk.getEntities().size(); i++) {
-            entitiesTag.add(chunk.getEntities().get(i).toNbt());
-        }
-        level.put("Entities", entitiesTag);
-
-        // Serialize tile entities (chests, furnaces, signs, etc.)
-        ListTag<CompoundTag> tileEntitiesTag = new ListTag<CompoundTag>(CompoundTag.class);
-        for (int i = 0; i < chunk.getTileEntities().size(); i++) {
-            tileEntitiesTag.add(chunk.getTileEntities().get(i).toNbt());
-        }
-        level.put("TileEntities", tileEntitiesTag);
-
-        root.put("Level", level);
-
-        NBTUtil.write(new NamedTag("", root), chunkFile);
+        NBTUtil.write(new NamedTag("", chunk.toNbt()), chunkFile);
     }
 
     /**

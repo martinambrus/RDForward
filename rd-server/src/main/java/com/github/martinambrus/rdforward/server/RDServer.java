@@ -12,6 +12,10 @@ import com.github.martinambrus.rdforward.server.api.Scheduler;
 import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import com.github.martinambrus.rdforward.world.FlatWorldGenerator;
 import com.github.martinambrus.rdforward.world.WorldGenerator;
+import com.github.martinambrus.rdforward.world.convert.ConversionRegistry;
+import com.github.martinambrus.rdforward.world.convert.ServerToOriginalRubyDungConverter;
+import com.github.martinambrus.rdforward.world.convert.WorldFormat;
+import com.github.martinambrus.rdforward.world.convert.WorldFormatDetector;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockBlockMapper;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockChunkConverter;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockLoginHandler;
@@ -89,6 +93,10 @@ public class RDServer {
     private volatile BedrockChunkConverter bedrockChunkConverter;
     private volatile BedrockRegistryData bedrockRegistryData;
     private volatile boolean stopped = false;
+
+    private File getDataDir() {
+        return (dataDir != null) ? dataDir : new File(".");
+    }
 
     /** Lazy getter for BedrockBlockMapper — loaded on first Bedrock client connection. */
     private BedrockBlockMapper getBedrockBlockMapper() {
@@ -183,6 +191,8 @@ public class RDServer {
         registerBuiltInCommands();
         registerSpawnProtection();
 
+        convertWorldIfNeeded();
+
         if (!world.load()) {
             System.out.println("Generating world (" + world.getWidth() + "x"
                     + world.getHeight() + "x" + world.getDepth()
@@ -230,6 +240,130 @@ public class RDServer {
 
         // Start unified UDP server (legacy MCPE + modern Bedrock on port 19132)
         startUnifiedUdpServer();
+    }
+
+    /**
+     * Detect and convert world files to the server format if needed.
+     *
+     * In RD/Classic mode, server-world.dat is the authoritative source.
+     * The world/ directory is just a ChunkManager cache (rebuilt on demand
+     * via overlayServerWorldBlocks), not an independent Alpha world.
+     *
+     * This method handles two scenarios:
+     *   1. server-world.dat exists but is original RD format (no header) — convert in place
+     *   2. level.dat exists but no server-world.dat — convert level.dat to server format
+     *
+     * In both cases, any stale world/ chunk cache is removed since it
+     * corresponds to a different save and would be overwritten by
+     * ChunkManager's overlay anyway.
+     */
+    private void convertWorldIfNeeded() {
+        File dir = getDataDir();
+        File worldFile = new File(dir, "server-world.dat");
+        File originalRdFile = new File(dir, "level.dat");
+
+        boolean converted = false;
+
+        // Clean up leftover temp file from a previously interrupted conversion
+        File staleTemp = new File(dir, "server-world.dat.converting");
+        if (staleTemp.exists()) {
+            System.out.println("[RDServer] Removing leftover conversion temp file.");
+            staleTemp.delete();
+        }
+
+        // Case 1: server-world.dat exists but is actually original RD format
+        if (worldFile.exists()) {
+            WorldFormat detected = WorldFormatDetector.detect(worldFile);
+            if (detected == WorldFormat.RUBYDUNG) {
+                System.out.println("[RDServer] server-world.dat is in original RubyDung format, "
+                        + "converting to server format...");
+                File tempFile = new File(dir, "server-world.dat.converting");
+                File backupFile = new File(dir, "server-world.dat.backup");
+                try {
+                    long startMs = System.currentTimeMillis();
+                    ConversionRegistry.createDefault().convert(worldFile, tempFile,
+                            WorldFormat.RUBYDUNG, WorldFormat.RUBYDUNG_SERVER, worldSeed);
+                    // Backup original, then replace with converted file
+                    java.nio.file.Files.move(worldFile.toPath(), backupFile.toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    if (!tempFile.renameTo(worldFile)) {
+                        java.nio.file.Files.move(tempFile.toPath(), worldFile.toPath(),
+                                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    }
+                    backupFile.delete();
+                    System.out.println("[RDServer] Conversion complete in "
+                            + (System.currentTimeMillis() - startMs) + "ms.");
+                    converted = true;
+                } catch (Exception e) {
+                    System.err.println("[RDServer] Conversion failed: " + e.getMessage());
+                    e.printStackTrace();
+                    // Restore backup if original was moved
+                    if (!worldFile.exists() && backupFile.exists()) {
+                        backupFile.renameTo(worldFile);
+                    }
+                    tempFile.delete();
+                }
+            }
+        }
+
+        // Case 2: level.dat exists but no server-world.dat
+        // Write to temp file first, then rename — crash-safe
+        if (!worldFile.exists() && originalRdFile.exists()) {
+            WorldFormat detected = WorldFormatDetector.detect(originalRdFile);
+            if (detected == WorldFormat.RUBYDUNG) {
+                System.out.println("[RDServer] Original RubyDung level.dat detected, "
+                        + "converting to server format...");
+                File tempFile = new File(dir, "server-world.dat.converting");
+                try {
+                    long startMs = System.currentTimeMillis();
+                    ConversionRegistry.createDefault().convert(originalRdFile, tempFile,
+                            WorldFormat.RUBYDUNG, WorldFormat.RUBYDUNG_SERVER, worldSeed);
+                    if (!tempFile.renameTo(worldFile)) {
+                        java.nio.file.Files.move(tempFile.toPath(), worldFile.toPath(),
+                                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    }
+                    System.out.println("[RDServer] Conversion complete in "
+                            + (System.currentTimeMillis() - startMs) + "ms.");
+                    converted = true;
+                } catch (Exception e) {
+                    System.err.println("[RDServer] Conversion failed: " + e.getMessage());
+                    e.printStackTrace();
+                    tempFile.delete();
+                }
+            }
+        }
+
+        // If we converted a new world, clear the stale chunk cache
+        // (it was derived from the old save and won't match the new data)
+        if (converted) {
+            String levelName = ServerProperties.getLevelName();
+            File worldDir = new File(dir, levelName);
+            if (worldDir.isDirectory()) {
+                System.out.println("[RDServer] Clearing stale chunk cache at " + worldDir + "...");
+                deleteRecursive(worldDir);
+            }
+        }
+    }
+
+    private static void deleteRecursive(File file) {
+        // Don't follow symlinks — delete the link itself, not its target
+        if (java.nio.file.Files.isSymbolicLink(file.toPath())) {
+            if (!file.delete()) {
+                System.err.println("[RDServer] Failed to delete symlink: " + file);
+            }
+            return;
+        }
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    deleteRecursive(child);
+                }
+            }
+        }
+        if (!file.delete()) {
+            System.err.println("[RDServer] Failed to delete: " + file);
+        }
     }
 
     /**
@@ -960,6 +1094,40 @@ public class RDServer {
                 default:
                     ctx.reply("Unknown subcommand. Usage: whitelist <on|off|add|remove|list|reload>");
                     break;
+            }
+        });
+
+        CommandRegistry.registerOp("convert_to_rd_world",
+                "Convert server world to original RubyDung level.dat",
+                PermissionManager.OP_ADMIN, ctx -> {
+            // Only available when the server uses RubyDung flat format
+            if (protocolVersion != ProtocolVersion.RUBYDUNG) {
+                ctx.reply("This command is only available when the server uses the RubyDung map format.");
+                return;
+            }
+
+            File dir = getDataDir();
+            File serverWorldFile = new File(dir, "server-world.dat");
+            if (!serverWorldFile.exists()) {
+                ctx.reply("No server-world.dat found — nothing to convert.");
+                return;
+            }
+
+            File outputFile = new File(dir, "level.dat");
+            if (outputFile.exists()) {
+                ctx.reply("level.dat already exists. Delete or rename it first to avoid overwriting.");
+                return;
+            }
+
+            ctx.reply("Converting server world to original RubyDung format...");
+            try {
+                new ServerToOriginalRubyDungConverter().convert(serverWorldFile, outputFile, 0L);
+                ctx.reply("Done! level.dat has been created in the server directory.");
+                ctx.reply("Players can download this file and place it in their RubyDung game folder to play the map locally.");
+            } catch (Exception e) {
+                ctx.reply("Conversion failed: " + e.getMessage());
+                System.err.println("[convert_to_rd_world] " + e.getMessage());
+                e.printStackTrace();
             }
         });
     }

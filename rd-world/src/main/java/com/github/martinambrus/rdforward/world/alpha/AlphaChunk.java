@@ -1828,4 +1828,40 @@ public class AlphaChunk {
         }
         return false;
     }
+
+    /**
+     * Serialize this chunk to a root NBT compound in the Alpha chunk format.
+     * Used by both AlphaLevelFormat (GZip file) and McRegionWriter (deflate stream).
+     */
+    public net.querz.nbt.tag.CompoundTag toNbt() {
+        net.querz.nbt.tag.CompoundTag root = new net.querz.nbt.tag.CompoundTag();
+        net.querz.nbt.tag.CompoundTag level = new net.querz.nbt.tag.CompoundTag();
+
+        level.putInt("xPos", xPos);
+        level.putInt("zPos", zPos);
+        level.putByte("TerrainPopulated", (byte) (terrainPopulated ? 1 : 0));
+        level.putLong("LastUpdate", lastUpdate);
+        level.putByteArray("Blocks", blocks.clone());
+        level.putByteArray("Data", data.clone());
+        level.putByteArray("BlockLight", blockLight.clone());
+        level.putByteArray("SkyLight", skyLight.clone());
+        level.putByteArray("HeightMap", heightMap.clone());
+
+        net.querz.nbt.tag.ListTag<net.querz.nbt.tag.CompoundTag> entitiesTag =
+                new net.querz.nbt.tag.ListTag<>(net.querz.nbt.tag.CompoundTag.class);
+        for (int i = 0; i < entities.size(); i++) {
+            entitiesTag.add(entities.get(i).toNbt());
+        }
+        level.put("Entities", entitiesTag);
+
+        net.querz.nbt.tag.ListTag<net.querz.nbt.tag.CompoundTag> tileEntitiesTag =
+                new net.querz.nbt.tag.ListTag<>(net.querz.nbt.tag.CompoundTag.class);
+        for (int i = 0; i < tileEntities.size(); i++) {
+            tileEntitiesTag.add(tileEntities.get(i).toNbt());
+        }
+        level.put("TileEntities", tileEntitiesTag);
+
+        root.put("Level", level);
+        return root;
+    }
 }

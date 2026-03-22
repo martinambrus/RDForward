@@ -5,7 +5,6 @@ import com.github.martinambrus.rdforward.world.alpha.AlphaLevelFormat;
 
 import net.querz.nbt.io.NBTOutputStream;
 import net.querz.nbt.io.NamedTag;
-import net.querz.nbt.tag.*;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -39,7 +38,26 @@ import java.util.zip.Deflater;
  * This class can convert an Alpha-format world directory to McRegion format,
  * or write individual chunks incrementally.
  */
-public class McRegionWriter {
+public class McRegionWriter implements FormatConverter {
+
+    @Override
+    public WorldFormat sourceFormat() {
+        return WorldFormat.ALPHA;
+    }
+
+    @Override
+    public WorldFormat targetFormat() {
+        return WorldFormat.MCREGION;
+    }
+
+    /**
+     * Seed is unused — McRegion repackages existing Alpha chunks and copies
+     * the Alpha level.dat which already contains the seed.
+     */
+    @Override
+    public void convert(File inputPath, File outputPath, long seed) throws IOException {
+        convertAlphaToRegion(inputPath, outputPath);
+    }
 
     /** Each sector is 4KB */
     private static final int SECTOR_SIZE = 4096;
@@ -200,45 +218,20 @@ public class McRegionWriter {
      * Returns the compressed bytes (without the length/compression header).
      */
     private byte[] serializeChunkNbt(AlphaChunk chunk) throws IOException {
-        // Build the same NBT structure as AlphaLevelFormat.saveChunk
-        CompoundTag root = new CompoundTag();
-        CompoundTag level = new CompoundTag();
-
-        level.putInt("xPos", chunk.getXPos());
-        level.putInt("zPos", chunk.getZPos());
-        level.putByte("TerrainPopulated", (byte) (chunk.isTerrainPopulated() ? 1 : 0));
-        level.putLong("LastUpdate", chunk.getLastUpdate());
-        level.putByteArray("Blocks", chunk.getBlocks());
-        level.putByteArray("Data", chunk.getData());
-        level.putByteArray("BlockLight", chunk.getBlockLight());
-        level.putByteArray("SkyLight", chunk.getSkyLight());
-        level.putByteArray("HeightMap", chunk.getHeightMap());
-
-        ListTag<CompoundTag> entitiesTag = new ListTag<>(CompoundTag.class);
-        for (int i = 0; i < chunk.getEntities().size(); i++) {
-            entitiesTag.add(chunk.getEntities().get(i).toNbt());
-        }
-        level.put("Entities", entitiesTag);
-
-        ListTag<CompoundTag> tileEntitiesTag = new ListTag<>(CompoundTag.class);
-        for (int i = 0; i < chunk.getTileEntities().size(); i++) {
-            tileEntitiesTag.add(chunk.getTileEntities().get(i).toNbt());
-        }
-        level.put("TileEntities", tileEntitiesTag);
-
-        root.put("Level", level);
-
-        // Serialize NBT to uncompressed bytes
         ByteArrayOutputStream nbtBytes = new ByteArrayOutputStream();
         try (NBTOutputStream nbtOut = new NBTOutputStream(nbtBytes)) {
-            nbtOut.writeTag(new NamedTag("", root), 512);
+            nbtOut.writeTag(new NamedTag("", chunk.toNbt()), 512);
         }
 
-        // Compress with zlib (deflate)
         ByteArrayOutputStream compressed = new ByteArrayOutputStream();
-        DeflaterOutputStream dos = new DeflaterOutputStream(compressed, new Deflater(Deflater.BEST_SPEED));
-        dos.write(nbtBytes.toByteArray());
-        dos.close();
+        Deflater deflater = new Deflater(Deflater.BEST_SPEED);
+        try {
+            DeflaterOutputStream dos = new DeflaterOutputStream(compressed, deflater);
+            dos.write(nbtBytes.toByteArray());
+            dos.close();
+        } finally {
+            deflater.end();
+        }
 
         return compressed.toByteArray();
     }
