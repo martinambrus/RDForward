@@ -127,13 +127,6 @@ public final class ServerProperties {
         // Apply system property overrides (transient, not saved)
         applySystemPropertyOverrides();
 
-        // Bridge for ChunkManager: set e2e.viewDistance system property.
-        // IMPORTANT: This must happen before ChunkManager class loads, since
-        // ChunkManager.DEFAULT_VIEW_DISTANCE reads Integer.getInteger at class-load time.
-        if (System.getProperty("e2e.viewDistance") == null) {
-            System.setProperty("e2e.viewDistance", props.getProperty("view-distance"));
-        }
-
         loaded = true;
 
         // Log effective configuration
@@ -141,7 +134,7 @@ public final class ServerProperties {
         System.out.println("  server-version=" + props.getProperty("server-version")
                 + ", gamemode=" + getGameModeName() + ", difficulty=" + getDifficultyName()
                 + ", max-players=" + getMaxPlayers());
-        System.out.println("  motd=\"" + getMotd() + "\""
+        System.out.println("  motd=\"" + getMotd() + "\", view-distance=" + getViewDistance()
                 + ", server-port=" + getServerPort() + ", bedrock-port=" + getBedrockPort());
     }
 
@@ -344,7 +337,12 @@ public final class ServerProperties {
 
     public static int getViewDistance() {
         warnIfNotLoaded();
-        return Math.max(1, getInt("view-distance", 5));
+        int value = getInt("view-distance", 5);
+        if (value < 1 || value > 32) {
+            System.err.println("[WARN] view-distance=" + value
+                    + " is out of range (1-32), clamping");
+        }
+        return Math.max(1, Math.min(value, 32));
     }
 
     public static String getMotd() {

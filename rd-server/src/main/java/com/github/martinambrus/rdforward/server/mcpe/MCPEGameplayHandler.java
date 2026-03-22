@@ -6,6 +6,7 @@ import com.github.martinambrus.rdforward.server.ServerWorld;
 import com.github.martinambrus.rdforward.server.event.ServerEvents;
 import com.github.martinambrus.rdforward.protocol.event.EventResult;
 import com.github.martinambrus.rdforward.world.BlockRegistry;
+import com.github.martinambrus.rdforward.server.ChunkManager;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 
@@ -331,7 +332,7 @@ public class MCPEGameplayHandler {
             // v91: REQUEST_CHUNK_RADIUS — respond with all chunks within radius
             int radius = data.chunkXOrRadius;
             if (radius < 1) radius = 1;
-            if (radius > 8) radius = 8;
+            radius = Math.min(radius, ChunkManager.DEFAULT_VIEW_DISTANCE);
 
             // Send CHUNK_RADIUS_UPDATED response
             MCPEPacketBuffer resp = new MCPEPacketBuffer();

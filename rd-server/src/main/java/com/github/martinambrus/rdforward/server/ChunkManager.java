@@ -20,6 +20,7 @@ import com.github.martinambrus.rdforward.protocol.packet.netty.UnloadChunkPacket
 import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacketV477;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacketV735;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacketV755;
+import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import com.github.martinambrus.rdforward.world.WorldGenerator;
 import com.github.martinambrus.rdforward.world.alpha.AlphaChunk;
 import com.github.martinambrus.rdforward.world.alpha.AlphaLevelFormat;
@@ -53,12 +54,10 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ChunkManager {
 
     /** Default view distance in chunks (radius around the player's chunk).
-     *  Kept moderate to avoid triggering the Alpha client's TimSort comparator
-     *  bug when too many chunks are loaded at once (Java 7+ strict contract).
-     *  E2E tests can override via -De2e.viewDistance=N to reduce chunk load
-     *  under parallel Mesa llvmpipe software rendering. */
+     *  Configured via "view-distance" in server.properties. E2E tests can
+     *  override via -De2e.viewDistance=N system property. */
     public static final int DEFAULT_VIEW_DISTANCE =
-            Integer.getInteger("e2e.viewDistance", 5);
+            ServerProperties.getViewDistance();
 
     /** View distance advertised to the client in JoinGame / SetChunkCacheRadius.
      *  Always >= 2 so the client doesn't cap its effective render distance below

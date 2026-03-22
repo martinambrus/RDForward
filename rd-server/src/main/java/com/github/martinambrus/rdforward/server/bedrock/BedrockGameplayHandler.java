@@ -938,9 +938,9 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
 
     @Override
     public PacketSignal handle(RequestChunkRadiusPacket packet) {
-        // Use the client's requested radius (capped at 16) so empty chunks cover
-        // the full area — prevents invisible solid blocks beyond the world edge
-        int radius = Math.min(packet.getRadius(), 16);
+        // Use the client's requested radius (capped at server view distance) so empty
+        // chunks cover the full area — prevents invisible solid blocks beyond the world edge
+        int radius = Math.max(1, Math.min(packet.getRadius(), ChunkManager.DEFAULT_VIEW_DISTANCE));
 
         ChunkRadiusUpdatedPacket response = new ChunkRadiusUpdatedPacket();
         response.setRadius(radius);

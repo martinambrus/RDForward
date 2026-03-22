@@ -12,6 +12,7 @@ import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlaceme
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlacementPacketV477;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlacementPacketV759;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyBlockPlacementPacketV768;
+import com.github.martinambrus.rdforward.protocol.packet.netty.ChatCommandC2SPacketV759;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyChatC2SPacket;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyChatC2SPacketV764;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyChatCommandC2SPacketV764;
@@ -479,8 +480,15 @@ public class BotSession {
             bedrockSession.sendPacketImmediately(text);
             return;
         }
-        if (version.isAtLeast(ProtocolVersion.RELEASE_1_20_2)) {
-            // v764+: commands and chat use different packet formats with signing fields
+        if (version.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
+            // v766+: unsigned command format (just command string, no signing fields)
+            if (message.startsWith("/")) {
+                sendPacket(new ChatCommandC2SPacketV759(message.substring(1)));
+            } else {
+                sendPacket(new NettyChatC2SPacket(message));
+            }
+        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_20_2)) {
+            // v764-v765: commands and chat use different packet formats with signing fields
             if (message.startsWith("/")) {
                 sendPacket(new NettyChatCommandC2SPacketV764(message.substring(1)));
             } else {

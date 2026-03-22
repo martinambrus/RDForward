@@ -28,6 +28,10 @@ public class ChatCommandC2SPacketV759 implements Packet {
 
     public ChatCommandC2SPacketV759() {}
 
+    public ChatCommandC2SPacketV759(String command) {
+        this.command = command;
+    }
+
     @Override
     public int getPacketId() { return 0x03; }
 
