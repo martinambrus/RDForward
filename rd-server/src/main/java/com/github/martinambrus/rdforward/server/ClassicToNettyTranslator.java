@@ -29,8 +29,28 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
 
     private volatile ProtocolVersion clientVersion = ProtocolVersion.RELEASE_1_7_2;
 
+    /** Global username -> UUID map for online-mode UUID resolution across all translators. */
+    private static final java.util.concurrent.ConcurrentHashMap<String, String> playerUuids =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     public void setClientVersion(ProtocolVersion version) {
         this.clientVersion = version;
+    }
+
+    /** Register a player's UUID for broadcast packet translation. */
+    public static void registerPlayerUuid(String username, String uuid) {
+        playerUuids.put(username, uuid);
+    }
+
+    /** Unregister a player's UUID when they disconnect. */
+    public static void unregisterPlayerUuid(String username) {
+        playerUuids.remove(username);
+    }
+
+    /** Resolve UUID for a player: look up registered UUID first, fall back to offline UUID. */
+    public static String resolveUuid(String username) {
+        String uuid = playerUuids.get(username);
+        return (uuid != null) ? uuid : generateOfflineUuid(username);
     }
 
     @Override
@@ -82,20 +102,20 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
             PlayerListItemPacket pli = (PlayerListItemPacket) packet;
             if (isV761) {
                 // V761: PlayerInfoUpdate/PlayerInfoRemove replace PlayerListItem
-                String uuid = generateOfflineUuid(pli.getUsername());
+                String uuid = resolveUuid(pli.getUsername());
                 return pli.isOnline()
                         ? NettyPlayerInfoUpdatePacketV761.addPlayer(uuid, pli.getUsername(), 1, pli.getPing())
                         : NettyPlayerInfoRemovePacketV761.removePlayer(uuid);
             }
             if (isV759) {
                 // V759 and V760 share the same PlayerListItem format
-                String uuid = generateOfflineUuid(pli.getUsername());
+                String uuid = resolveUuid(pli.getUsername());
                 return pli.isOnline()
                         ? NettyPlayerListItemPacketV759.addPlayer(uuid, pli.getUsername(), 1, pli.getPing())
                         : NettyPlayerListItemPacketV759.removePlayer(uuid);
             }
             if (isV47) {
-                String uuid = generateOfflineUuid(pli.getUsername());
+                String uuid = resolveUuid(pli.getUsername());
                 return pli.isOnline()
                         ? NettyPlayerListItemPacketV47.addPlayer(uuid, pli.getUsername(), 1, pli.getPing())
                         : NettyPlayerListItemPacketV47.removePlayer(uuid);
@@ -156,8 +176,8 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
             int feetY = (int) sp.getY() - EYE_HEIGHT_FIXED;
             // Classic yaw 0 = North; Alpha/Netty yaw 0 = South. Add 128 (180°) to convert.
             int alphaYaw = (sp.getYaw() + 128) & 0xFF;
-            // Generate offline UUID from username
-            String uuid = generateOfflineUuid(sp.getPlayerName());
+            // Resolve UUID: online-mode UUID if registered, offline UUID otherwise
+            String uuid = resolveUuid(sp.getPlayerName());
             if (isV774) {
                 // 1.21.11: camel_husk, nautilus, parched, zombie_nautilus inserted (player: 151 -> 155)
                 return new NettySpawnEntityPacketV774(

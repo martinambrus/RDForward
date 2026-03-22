@@ -87,7 +87,7 @@ public class PlayerManager {
      * Channel may be null for Bedrock players (they use a different transport).
      * Returns null if the server is full.
      */
-    public synchronized ConnectedPlayer addPlayer(String username, Channel channel, ProtocolVersion version) {
+    public synchronized ConnectedPlayer addPlayer(String username, String uuid, Channel channel, ProtocolVersion version) {
         byte id = allocateId();
         if (id == -1) {
             return null; // Server full
@@ -108,11 +108,17 @@ public class PlayerManager {
             suffix++;
         }
 
-        ConnectedPlayer player = new ConnectedPlayer(id, username, channel, version);
+        // Compute offline UUID if none provided (offline mode or unauthenticatable clients)
+        if (uuid == null) {
+            uuid = ClassicToNettyTranslator.generateOfflineUuid(username);
+        }
+
+        ConnectedPlayer player = new ConnectedPlayer(id, username, uuid, channel, version);
         if (channel != null) {
             playersByChannel.put(channel, player);
         }
         playersById.put(id, player);
+        ClassicToNettyTranslator.registerPlayerUuid(username, uuid);
         return player;
     }
 
@@ -124,6 +130,7 @@ public class PlayerManager {
         if (player != null) {
             playersById.remove(player.getPlayerId());
             usedIds[player.getPlayerId()] = false;
+            ClassicToNettyTranslator.unregisterPlayerUuid(player.getUsername());
         }
     }
 
@@ -138,6 +145,7 @@ public class PlayerManager {
                 playersByChannel.remove(player.getChannel());
             }
             usedIds[playerId] = false;
+            ClassicToNettyTranslator.unregisterPlayerUuid(player.getUsername());
         }
     }
 

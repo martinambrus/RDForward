@@ -1,5 +1,6 @@
 package com.github.martinambrus.rdforward.server;
 
+import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import com.github.martinambrus.rdforward.world.BlockRegistry;
 import com.github.martinambrus.rdforward.world.WorldGenerator;
 
@@ -14,8 +15,13 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -74,8 +80,8 @@ public class ServerWorld {
     private final Queue<PendingBlockChange> pendingBlockChanges = new ConcurrentLinkedQueue<>();
 
     /** In-memory cache of all known player positions (online + disconnected). */
-    private final java.util.concurrent.ConcurrentHashMap<String, short[]> playerPositionCache =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, short[]> playerPositionCache =
+            new ConcurrentHashMap<>();
 
     public ServerWorld(int width, int height, int depth) {
         this(width, height, depth, null);
@@ -348,20 +354,20 @@ public class ServerWorld {
      * Save player positions asynchronously. Gathers position data on the
      * calling thread, then submits GZip+write to the background save thread.
      */
-    public void savePlayersAsync(java.util.Collection<ConnectedPlayer> players) {
+    public void savePlayersAsync(Collection<ConnectedPlayer> players) {
         gatherPlayerPositions(players);
         if (playerPositionCache.isEmpty()) return;
-        java.util.Map<String, short[]> snapshot = new java.util.HashMap<>(playerPositionCache);
+        Map<String, short[]> snapshot = new HashMap<>(playerPositionCache);
         saveExecutor.submit(() -> writePlayerSnapshot(snapshot));
     }
 
     /** Write player position snapshot to disk via temp file + atomic rename. */
-    private void writePlayerSnapshot(java.util.Map<String, short[]> snapshot) {
+    private void writePlayerSnapshot(Map<String, short[]> snapshot) {
         File tmp = new File(playersFile.getPath() + ".tmp");
         try (DataOutputStream dos = new DataOutputStream(
                 new GZIPOutputStream(new FileOutputStream(tmp)))) {
             dos.writeInt(snapshot.size());
-            for (java.util.Map.Entry<String, short[]> entry : snapshot.entrySet()) {
+            for (Map.Entry<String, short[]> entry : snapshot.entrySet()) {
                 dos.writeUTF(entry.getKey());
                 short[] pos = entry.getValue();
                 dos.writeShort(pos[0]);
@@ -451,7 +457,7 @@ public class ServerWorld {
      * Called when a player disconnects so their position survives until the next save.
      */
     public void rememberPlayerPosition(ConnectedPlayer player) {
-        gatherPlayerPositions(java.util.Collections.singletonList(player));
+        gatherPlayerPositions(Collections.singletonList(player));
     }
 
     /**
@@ -461,7 +467,8 @@ public class ServerWorld {
      * Classic/RubyDung clients only use short fields (doubleX/Y/Z stay 0.0),
      * so fall back to the short coordinates for those clients.
      */
-    private void gatherPlayerPositions(java.util.Collection<ConnectedPlayer> players) {
+    private void gatherPlayerPositions(Collection<ConnectedPlayer> players) {
+        boolean online = ServerProperties.isOnlineMode();
         for (ConnectedPlayer p : players) {
             short fx, fy, fz;
             if (p.getDoubleX() != 0 || p.getDoubleY() != 0 || p.getDoubleZ() != 0) {
@@ -471,16 +478,17 @@ public class ServerWorld {
             } else {
                 fx = p.getX(); fy = p.getY(); fz = p.getZ();
             }
-            playerPositionCache.put(p.getUsername(), new short[]{
+            // In online mode, use UUID as save key; in offline mode, use username
+            String key = (online && p.getUuid() != null) ? p.getUuid() : p.getUsername();
+            playerPositionCache.put(key, new short[]{
                 fx, fy, fz, p.getYaw(), p.getPitch()
             });
         }
     }
 
     /**
-     * Save a default spawn position for a username in the in-memory cache.
-     * Used to mark a player as "known" without a full ConnectedPlayer object
-     * (e.g., after kicking a first-time v2 client with the JVM flag message).
+     * Remove a player's saved position from the in-memory cache.
+     * Used by E2E tests and when a player needs a fresh spawn position.
      */
     public void forgetPlayerPosition(String username) {
         playerPositionCache.remove(username);
@@ -502,17 +510,29 @@ public class ServerWorld {
      * Merges the in-memory cache (disconnected players) with currently online players.
      * Format: [int count] then for each player: [UTF name] [short x,y,z] [byte yaw,pitch].
      */
-    public void savePlayers(java.util.Collection<ConnectedPlayer> players) {
+    public void savePlayers(Collection<ConnectedPlayer> players) {
         gatherPlayerPositions(players);
         if (playerPositionCache.isEmpty()) return;
-        writePlayerSnapshot(new java.util.HashMap<>(playerPositionCache));
+        writePlayerSnapshot(new HashMap<>(playerPositionCache));
     }
+
+    private volatile boolean playersLoadedFromDisk = false;
 
     /**
      * Load saved player positions into the in-memory cache and return it.
+     * Only reads from disk once; subsequent calls return the cache directly.
      */
-    public java.util.Map<String, short[]> loadPlayerPositions() {
-        if (!playersFile.exists()) return playerPositionCache;
+    public Map<String, short[]> loadPlayerPositions() {
+        if (playersLoadedFromDisk) return playerPositionCache;
+        return loadPlayerPositionsFromDisk();
+    }
+
+    private synchronized Map<String, short[]> loadPlayerPositionsFromDisk() {
+        if (playersLoadedFromDisk) return playerPositionCache;
+        if (!playersFile.exists()) {
+            playersLoadedFromDisk = true;
+            return playerPositionCache;
+        }
 
         try (DataInputStream dis = new DataInputStream(new GZIPInputStream(new FileInputStream(playersFile)))) {
             int count = dis.readInt();
@@ -531,7 +551,30 @@ public class ServerWorld {
         } catch (IOException e) {
             System.err.println("Failed to load player data: " + e.getMessage());
         }
+        playersLoadedFromDisk = true;
         return playerPositionCache;
+    }
+
+    /**
+     * Look up a saved player position by username or UUID, depending on online mode.
+     * In online mode, tries UUID first, then falls back to username (handles
+     * transition from offline to online mode). In offline mode, tries username
+     * first, then falls back to UUID.
+     * Returns null if no saved position exists.
+     */
+    public short[] getSavedPlayerPosition(String username, String uuid) {
+        Map<String, short[]> saved = loadPlayerPositions();
+        String trimmedName = (username != null) ? username.trim() : null;
+        if (ServerProperties.isOnlineMode() && uuid != null) {
+            short[] pos = saved.get(uuid);
+            if (pos != null) return pos;
+            // Fallback: position may have been saved under username before online mode was enabled
+            return saved.get(trimmedName);
+        }
+        short[] pos = saved.get(trimmedName);
+        if (pos != null) return pos;
+        // Fallback: position may have been saved under UUID before offline mode was enabled
+        return (uuid != null) ? saved.get(uuid) : null;
     }
 
     /**

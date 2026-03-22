@@ -68,7 +68,7 @@ public final class ServerProperties {
 
     /** Properties that exist in the file but have no effect yet. */
     private static final Set<String> PLACEHOLDER_KEYS = new HashSet<String>(
-            Arrays.asList("pvp", "online-mode", "enable-command-block"));
+            Arrays.asList("pvp", "enable-command-block"));
 
     private static final Properties props = new Properties();
     private static volatile boolean loaded = false;
@@ -137,7 +137,8 @@ public final class ServerProperties {
                 + ", gamemode=" + getGameModeName() + ", difficulty=" + getDifficultyName()
                 + ", max-players=" + getMaxPlayers());
         System.out.println("  motd=\"" + getMotd() + "\", view-distance=" + getViewDistance()
-                + ", server-port=" + getServerPort() + ", bedrock-port=" + getBedrockPort());
+                + ", server-port=" + getServerPort() + ", bedrock-port=" + getBedrockPort()
+                + ", online-mode=" + isOnlineMode());
     }
 
     /**

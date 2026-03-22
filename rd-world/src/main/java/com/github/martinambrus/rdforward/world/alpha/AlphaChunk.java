@@ -6,7 +6,9 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.function.BiFunction;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 
@@ -596,78 +598,64 @@ public class AlphaChunk {
         // Determine which sections (0-7) contain non-air blocks.
         int primaryBitMask = 0;
         for (int section = 0; section < 8; section++) {
-            int baseY = section * 16;
-            boolean hasBlocks = false;
-            for (int x = 0; x < WIDTH && !hasBlocks; x++) {
-                for (int z = 0; z < DEPTH && !hasBlocks; z++) {
-                    for (int ly = 0; ly < 16; ly++) {
-                        if (getBlock(x, baseY + ly, z) != 0) {
-                            hasBlocks = true;
-                        }
-                    }
-                }
-            }
-            if (hasBlocks) {
+            if (hasNonAirBlocks(section * 16)) {
                 primaryBitMask |= (1 << section);
             }
         }
 
-        // Build the raw data using a ByteArrayOutputStream for simplicity
-        // since paletted sections have variable size.
         ByteArrayOutputStream baos = new ByteArrayOutputStream(16384);
 
         for (int section = 0; section < 8; section++) {
             if ((primaryBitMask & (1 << section)) == 0) continue;
             int baseY = section * 16;
 
-            // Collect unique block states and build palette
-            // Block state = (blockId << 4) | metadata
-            java.util.LinkedHashMap<Integer, Integer> paletteMap = new java.util.LinkedHashMap<>();
-            int[] blockStates = new int[4096];
-            for (int ly = 0; ly < 16; ly++) {
-                for (int z = 0; z < DEPTH; z++) {
-                    for (int x = 0; x < WIDTH; x++) {
-                        int blockId = getBlock(x, baseY + ly, z);
-                        int meta = getBlockData(x, baseY + ly, z);
-                        int state = (blockId << 4) | (meta & 0x0F);
-                        int idx = (ly * 16 + z) * 16 + x;
-                        blockStates[idx] = state;
-                        if (!paletteMap.containsKey(state)) {
-                            paletteMap.put(state, paletteMap.size());
-                        }
-                    }
-                }
-            }
+            // Collect unique block states and build indirect palette.
+            // Block state = (blockId << 4) | metadata (1.9-1.12 global palette format).
+            // Using indirect palette avoids global palette bitsPerBlock mismatch:
+            // the server can't know the exact registry size the client uses, so global
+            // palette's readLongArray may create a mismatched-length array that gets lost.
+            IndirectPaletteResult paletteResult = buildIndirectPalette(baseY,
+                    (blockId, meta) -> (blockId << 4) | (meta & 0x0F));
+            LinkedHashMap<Integer, Integer> paletteMap = paletteResult.paletteMap;
+            int[] blockStates = paletteResult.blockStates;
 
             int paletteSize = paletteMap.size();
 
-            // Use global palette mode (bitsPerBlock=13) to bypass section palette.
-            // In global mode, data array contains raw global block state IDs directly.
-            int bitsPerBlock = 13;
+            // Indirect palette: bitsPerBlock = max(4, ceil(log2(paletteSize)))
+            int bitsPerBlock = 4;
+            while ((1 << bitsPerBlock) < paletteSize) {
+                bitsPerBlock++;
+            }
+            // Cap at 8 — above that the 1.9 client switches to global palette
+            if (bitsPerBlock > 8) {
+                bitsPerBlock = 8;
+            }
 
             // Write bitsPerBlock
             baos.write(bitsPerBlock);
 
-            // Write empty palette (global palette mode: VarInt(0))
-            writeVarIntToStream(baos, 0);
+            // Write indirect palette: VarInt paletteLength + VarInt[] palette entries
+            writeVarIntToStream(baos, paletteSize);
+            for (int stateId : paletteMap.keySet()) {
+                writeVarIntToStream(baos, stateId);
+            }
 
-            // Pack raw global block state IDs into longs
-            // 1.9-1.12: entries span across long boundaries
+            // Pack palette indices into longs.
+            // 1.9-1.12: spanning packing (entries CAN cross long boundaries).
             int totalBits = 4096 * bitsPerBlock;
             int longsNeeded = (totalBits + 63) / 64;
             long[] dataArray = new long[longsNeeded];
 
             long mask = (1L << bitsPerBlock) - 1;
             for (int i = 0; i < 4096; i++) {
-                long stateId = blockStates[i]; // raw global block state ID
+                long paletteIndex = paletteMap.get(blockStates[i]);
                 int bitIndex = i * bitsPerBlock;
                 int longIndex = bitIndex / 64;
                 int bitOffset = bitIndex % 64;
-                dataArray[longIndex] |= (stateId & mask) << bitOffset;
-                // Check if entry spans two longs
+                dataArray[longIndex] |= (paletteIndex & mask) << bitOffset;
                 if (bitOffset + bitsPerBlock > 64) {
                     int bitsInFirst = 64 - bitOffset;
-                    dataArray[longIndex + 1] |= (stateId & mask) >> bitsInFirst;
+                    dataArray[longIndex + 1] |= (paletteIndex & mask) >> bitsInFirst;
                 }
             }
 
@@ -677,27 +665,10 @@ public class AlphaChunk {
                 writeLongToStream(baos, dataArray[i]);
             }
 
-            // Write block light nibbles (2048 bytes)
-            for (int ly = 0; ly < 16; ly++) {
-                for (int z = 0; z < DEPTH; z++) {
-                    for (int x = 0; x < WIDTH; x += 2) {
-                        int low = getBlockLight(x, baseY + ly, z) & 0x0F;
-                        int high = getBlockLight(x + 1, baseY + ly, z) & 0x0F;
-                        baos.write(low | (high << 4));
-                    }
-                }
-            }
-
-            // Write sky light nibbles (2048 bytes)
-            for (int ly = 0; ly < 16; ly++) {
-                for (int z = 0; z < DEPTH; z++) {
-                    for (int x = 0; x < WIDTH; x += 2) {
-                        int low = getSkyLight(x, baseY + ly, z) & 0x0F;
-                        int high = getSkyLight(x + 1, baseY + ly, z) & 0x0F;
-                        baos.write(low | (high << 4));
-                    }
-                }
-            }
+            // Write block light + sky light nibbles (2048 bytes each)
+            byte[][] light = packLightNibbles(baseY);
+            baos.write(light[0], 0, 2048); // blockLight
+            baos.write(light[1], 0, 2048); // skyLight
         }
 
         // Biome data: 256 bytes, all plains (1)
@@ -733,6 +704,105 @@ public class AlphaChunk {
     }
 
     /**
+     * Check if a 16x16x16 section has any non-air blocks. Short-circuits on first hit.
+     * Used by V109/V393 section detection where only presence matters, not count.
+     */
+    boolean hasNonAirBlocks(int baseY) {
+        for (int x = 0; x < WIDTH; x++) {
+            for (int z = 0; z < DEPTH; z++) {
+                for (int ly = 0; ly < 16; ly++) {
+                    if (getBlock(x, baseY + ly, z) != 0) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Count the number of non-air blocks in a 16x16x16 section starting at baseY.
+     * Used by serialize methods that need a blockCount field (1.14+).
+     */
+    int countNonAirBlocks(int baseY) {
+        int nonAirCount = 0;
+        for (int x = 0; x < WIDTH; x++) {
+            for (int z = 0; z < DEPTH; z++) {
+                for (int ly = 0; ly < 16; ly++) {
+                    if (getBlock(x, baseY + ly, z) != 0) {
+                        nonAirCount++;
+                    }
+                }
+            }
+        }
+        return nonAirCount;
+    }
+
+    /**
+     * Pack block light and sky light nibbles for a 16x16x16 section starting at baseY.
+     * Returns a 2-element array: [0] = blockLight (2048 bytes), [1] = skyLight (2048 bytes).
+     * Order matches the Minecraft wire format (blockLight before skyLight).
+     */
+    byte[][] packLightNibbles(int baseY) {
+        byte[] sectionSkyLight = new byte[2048];
+        byte[] sectionBlockLight = new byte[2048];
+        int lightIdx = 0;
+        for (int ly = 0; ly < 16; ly++) {
+            for (int z = 0; z < DEPTH; z++) {
+                for (int x = 0; x < WIDTH; x += 2) {
+                    int skyLow = getSkyLight(x, baseY + ly, z) & 0x0F;
+                    int skyHigh = getSkyLight(x + 1, baseY + ly, z) & 0x0F;
+                    sectionSkyLight[lightIdx] = (byte) (skyLow | (skyHigh << 4));
+
+                    int blkLow = getBlockLight(x, baseY + ly, z) & 0x0F;
+                    int blkHigh = getBlockLight(x + 1, baseY + ly, z) & 0x0F;
+                    sectionBlockLight[lightIdx] = (byte) (blkLow | (blkHigh << 4));
+
+                    lightIdx++;
+                }
+            }
+        }
+        return new byte[][] { sectionBlockLight, sectionSkyLight };
+    }
+
+    /**
+     * Result of building an indirect palette for a section: the palette map
+     * (state ID -> palette index) and the per-block state ID array.
+     */
+    static class IndirectPaletteResult {
+        final LinkedHashMap<Integer, Integer> paletteMap;
+        final int[] blockStates;
+        IndirectPaletteResult(LinkedHashMap<Integer, Integer> paletteMap, int[] blockStates) {
+            this.paletteMap = paletteMap;
+            this.blockStates = blockStates;
+        }
+    }
+
+    /**
+     * Build an indirect palette for a 16x16x16 section starting at baseY.
+     * The stateMapper receives (blockId, metadata) and returns the block state ID
+     * appropriate for the target protocol version.
+     */
+    IndirectPaletteResult buildIndirectPalette(int baseY,
+            BiFunction<Integer, Integer, Integer> stateMapper) {
+        LinkedHashMap<Integer, Integer> paletteMap = new LinkedHashMap<>();
+        int[] blockStates = new int[4096];
+        for (int ly = 0; ly < 16; ly++) {
+            for (int z = 0; z < DEPTH; z++) {
+                for (int x = 0; x < WIDTH; x++) {
+                    int blockId = getBlock(x, baseY + ly, z);
+                    int metadata = getBlockData(x, baseY + ly, z);
+                    int stateId = stateMapper.apply(blockId, metadata);
+                    int idx = (ly * 16 + z) * 16 + x;
+                    blockStates[idx] = stateId;
+                    if (!paletteMap.containsKey(stateId)) {
+                        paletteMap.put(stateId, paletteMap.size());
+                    }
+                }
+            }
+        }
+        return new IndirectPaletteResult(paletteMap, blockStates);
+    }
+
+    /**
      * Result container for v109 chunk serialization.
      */
     public static class V109ChunkData {
@@ -763,18 +833,7 @@ public class AlphaChunk {
         // Determine which sections (0-7) contain non-air blocks.
         int primaryBitMask = 0;
         for (int section = 0; section < 8; section++) {
-            int baseY = section * 16;
-            boolean hasBlocks = false;
-            for (int x = 0; x < WIDTH && !hasBlocks; x++) {
-                for (int z = 0; z < DEPTH && !hasBlocks; z++) {
-                    for (int ly = 0; ly < 16; ly++) {
-                        if (getBlock(x, baseY + ly, z) != 0) {
-                            hasBlocks = true;
-                        }
-                    }
-                }
-            }
-            if (hasBlocks) {
+            if (hasNonAirBlocks(section * 16)) {
                 primaryBitMask |= (1 << section);
             }
         }
@@ -785,40 +844,63 @@ public class AlphaChunk {
             if ((primaryBitMask & (1 << section)) == 0) continue;
             int baseY = section * 16;
 
-            // Use global palette mode (bitsPerBlock=14 for 1.13+)
-            int bitsPerBlock = 14;
+            // Collect unique 1.13 block state IDs and build an indirect palette.
+            // Our simple world has few unique blocks per section, so an indirect
+            // palette is both more compact and avoids 1.13 global palette edge cases.
+            IndirectPaletteResult paletteResult = buildIndirectPalette(baseY,
+                    (blockId, meta) -> com.github.martinambrus.rdforward.protocol
+                            .BlockStateMapper.toV393BlockState(blockId));
+            LinkedHashMap<Integer, Integer> paletteMap = paletteResult.paletteMap;
+            int[] sectionStates = paletteResult.blockStates;
+
+            int paletteSize = paletteMap.size();
+            // 1.13 indirect palette: bitsPerBlock = max(4, ceil(log2(paletteSize)))
+            // Minimum 4 bits. If > 8 unique states, use global palette (bitsPerBlock=14).
+            int bitsPerBlock;
+            boolean useGlobalPalette = paletteSize > 256; // >8 bits needed
+            if (useGlobalPalette) {
+                bitsPerBlock = 14;
+            } else {
+                bitsPerBlock = 4;
+                while ((1 << bitsPerBlock) < paletteSize) {
+                    bitsPerBlock++;
+                }
+            }
 
             // Write bitsPerBlock
             baos.write(bitsPerBlock);
 
-            // 1.13 global palette: NO palette length prefix.
-            // Unlike 1.9-1.12 where VarInt(0) is written for global mode,
-            // the 1.13 client's global palette read is a no-op.
+            if (useGlobalPalette) {
+                // 1.13 global palette: NO palette length prefix (read is a no-op)
+            } else {
+                // Write indirect palette: VarInt paletteLength + VarInt[] palette entries
+                writeVarIntToStream(baos, paletteSize);
+                for (int stateId : paletteMap.keySet()) {
+                    writeVarIntToStream(baos, stateId);
+                }
+            }
 
-            // Convert legacy block IDs to 1.13 global block state IDs
-            // and pack into longs. 1.13 uses spanning packing (same as 1.9-1.12):
-            // entries CAN cross long boundaries. Non-spanning was introduced in 1.16.
+            // Pack block state IDs (or palette indices) into longs.
+            // 1.13 uses spanning packing (entries CAN cross long boundaries).
             int totalBits = 4096 * bitsPerBlock;
             int longsNeeded = (totalBits + 63) / 64;
             long[] dataArray = new long[longsNeeded];
 
             long mask = (1L << bitsPerBlock) - 1;
-            for (int ly = 0; ly < 16; ly++) {
-                for (int z = 0; z < DEPTH; z++) {
-                    for (int x = 0; x < WIDTH; x++) {
-                        int blockId = getBlock(x, baseY + ly, z);
-                        long stateId = com.github.martinambrus.rdforward.protocol
-                                .BlockStateMapper.toV393BlockState(blockId);
-                        int i = (ly * 16 + z) * 16 + x;
-                        int bitIndex = i * bitsPerBlock;
-                        int longIndex = bitIndex / 64;
-                        int bitOffset = bitIndex % 64;
-                        dataArray[longIndex] |= (stateId & mask) << bitOffset;
-                        if (bitOffset + bitsPerBlock > 64) {
-                            int bitsInFirst = 64 - bitOffset;
-                            dataArray[longIndex + 1] |= (stateId & mask) >> bitsInFirst;
-                        }
-                    }
+            for (int i = 0; i < 4096; i++) {
+                long value;
+                if (useGlobalPalette) {
+                    value = sectionStates[i]; // raw global block state ID
+                } else {
+                    value = paletteMap.get(sectionStates[i]); // palette index
+                }
+                int bitIndex = i * bitsPerBlock;
+                int longIndex = bitIndex / 64;
+                int bitOffset = bitIndex % 64;
+                dataArray[longIndex] |= (value & mask) << bitOffset;
+                if (bitOffset + bitsPerBlock > 64) {
+                    int bitsInFirst = 64 - bitOffset;
+                    dataArray[longIndex + 1] |= (value & mask) >> bitsInFirst;
                 }
             }
 
@@ -828,27 +910,10 @@ public class AlphaChunk {
                 writeLongToStream(baos, dataArray[i]);
             }
 
-            // Write block light nibbles (2048 bytes)
-            for (int ly = 0; ly < 16; ly++) {
-                for (int z = 0; z < DEPTH; z++) {
-                    for (int x = 0; x < WIDTH; x += 2) {
-                        int low = getBlockLight(x, baseY + ly, z) & 0x0F;
-                        int high = getBlockLight(x + 1, baseY + ly, z) & 0x0F;
-                        baos.write(low | (high << 4));
-                    }
-                }
-            }
-
-            // Write sky light nibbles (2048 bytes)
-            for (int ly = 0; ly < 16; ly++) {
-                for (int z = 0; z < DEPTH; z++) {
-                    for (int x = 0; x < WIDTH; x += 2) {
-                        int low = getSkyLight(x, baseY + ly, z) & 0x0F;
-                        int high = getSkyLight(x + 1, baseY + ly, z) & 0x0F;
-                        baos.write(low | (high << 4));
-                    }
-                }
-            }
+            // Write block light + sky light nibbles (2048 bytes each)
+            byte[][] light = packLightNibbles(baseY);
+            baos.write(light[0], 0, 2048); // blockLight
+            baos.write(light[1], 0, 2048); // skyLight
         }
 
         // Biome data: int[256] (4 bytes each, all plains=1)
@@ -875,17 +940,7 @@ public class AlphaChunk {
         int primaryBitMask = 0;
         int[] sectionBlockCounts = new int[8];
         for (int section = 0; section < 8; section++) {
-            int baseY = section * 16;
-            int nonAirCount = 0;
-            for (int x = 0; x < WIDTH; x++) {
-                for (int z = 0; z < DEPTH; z++) {
-                    for (int ly = 0; ly < 16; ly++) {
-                        if (getBlock(x, baseY + ly, z) != 0) {
-                            nonAirCount++;
-                        }
-                    }
-                }
-            }
+            int nonAirCount = countNonAirBlocks(section * 16);
             if (nonAirCount > 0) {
                 primaryBitMask |= (1 << section);
                 sectionBlockCounts[section] = nonAirCount;
@@ -941,26 +996,9 @@ public class AlphaChunk {
             // NO light data in sections for 1.14+
 
             // Collect light data for UpdateLight packet
-            byte[] sectionSkyLight = new byte[2048];
-            byte[] sectionBlockLight = new byte[2048];
-            int lightIdx = 0;
-            for (int ly = 0; ly < 16; ly++) {
-                for (int z = 0; z < DEPTH; z++) {
-                    for (int x = 0; x < WIDTH; x += 2) {
-                        int skyLow = getSkyLight(x, baseY + ly, z) & 0x0F;
-                        int skyHigh = getSkyLight(x + 1, baseY + ly, z) & 0x0F;
-                        sectionSkyLight[lightIdx] = (byte) (skyLow | (skyHigh << 4));
-
-                        int blkLow = getBlockLight(x, baseY + ly, z) & 0x0F;
-                        int blkHigh = getBlockLight(x + 1, baseY + ly, z) & 0x0F;
-                        sectionBlockLight[lightIdx] = (byte) (blkLow | (blkHigh << 4));
-
-                        lightIdx++;
-                    }
-                }
-            }
-            skyLightSections[section] = sectionSkyLight;
-            blockLightSections[section] = sectionBlockLight;
+            byte[][] light = packLightNibbles(baseY);
+            blockLightSections[section] = light[0];
+            skyLightSections[section] = light[1];
         }
 
         // Biome data: int[256] (4 bytes each, all plains=1)
@@ -986,17 +1024,7 @@ public class AlphaChunk {
         int primaryBitMask = 0;
         int[] sectionBlockCounts = new int[8];
         for (int section = 0; section < 8; section++) {
-            int baseY = section * 16;
-            int nonAirCount = 0;
-            for (int x = 0; x < WIDTH; x++) {
-                for (int z = 0; z < DEPTH; z++) {
-                    for (int ly = 0; ly < 16; ly++) {
-                        if (getBlock(x, baseY + ly, z) != 0) {
-                            nonAirCount++;
-                        }
-                    }
-                }
-            }
+            int nonAirCount = countNonAirBlocks(section * 16);
             if (nonAirCount > 0) {
                 primaryBitMask |= (1 << section);
                 sectionBlockCounts[section] = nonAirCount;
@@ -1052,26 +1080,9 @@ public class AlphaChunk {
             // NO light data in sections for 1.15+
 
             // Collect light data for UpdateLight packet
-            byte[] sectionSkyLight = new byte[2048];
-            byte[] sectionBlockLight = new byte[2048];
-            int lightIdx = 0;
-            for (int ly = 0; ly < 16; ly++) {
-                for (int z = 0; z < DEPTH; z++) {
-                    for (int x = 0; x < WIDTH; x += 2) {
-                        int skyLow = getSkyLight(x, baseY + ly, z) & 0x0F;
-                        int skyHigh = getSkyLight(x + 1, baseY + ly, z) & 0x0F;
-                        sectionSkyLight[lightIdx] = (byte) (skyLow | (skyHigh << 4));
-
-                        int blkLow = getBlockLight(x, baseY + ly, z) & 0x0F;
-                        int blkHigh = getBlockLight(x + 1, baseY + ly, z) & 0x0F;
-                        sectionBlockLight[lightIdx] = (byte) (blkLow | (blkHigh << 4));
-
-                        lightIdx++;
-                    }
-                }
-            }
-            skyLightSections[section] = sectionSkyLight;
-            blockLightSections[section] = sectionBlockLight;
+            byte[][] light = packLightNibbles(baseY);
+            blockLightSections[section] = light[0];
+            skyLightSections[section] = light[1];
         }
 
         // Biomes: int[1024] for 3D biomes (4x4x4 sections, all plains=1)
@@ -1104,17 +1115,7 @@ public class AlphaChunk {
         int primaryBitMask = 0;
         int[] sectionBlockCounts = new int[8];
         for (int section = 0; section < 8; section++) {
-            int baseY = section * 16;
-            int nonAirCount = 0;
-            for (int x = 0; x < WIDTH; x++) {
-                for (int z = 0; z < DEPTH; z++) {
-                    for (int ly = 0; ly < 16; ly++) {
-                        if (getBlock(x, baseY + ly, z) != 0) {
-                            nonAirCount++;
-                        }
-                    }
-                }
-            }
+            int nonAirCount = countNonAirBlocks(section * 16);
             if (nonAirCount > 0) {
                 primaryBitMask |= (1 << section);
                 sectionBlockCounts[section] = nonAirCount;
@@ -1166,26 +1167,9 @@ public class AlphaChunk {
             // NO light data in sections for 1.16+
 
             // Collect light data for UpdateLight packet
-            byte[] sectionSkyLight = new byte[2048];
-            byte[] sectionBlockLight = new byte[2048];
-            int lightIdx = 0;
-            for (int ly = 0; ly < 16; ly++) {
-                for (int z = 0; z < DEPTH; z++) {
-                    for (int x = 0; x < WIDTH; x += 2) {
-                        int skyLow = getSkyLight(x, baseY + ly, z) & 0x0F;
-                        int skyHigh = getSkyLight(x + 1, baseY + ly, z) & 0x0F;
-                        sectionSkyLight[lightIdx] = (byte) (skyLow | (skyHigh << 4));
-
-                        int blkLow = getBlockLight(x, baseY + ly, z) & 0x0F;
-                        int blkHigh = getBlockLight(x + 1, baseY + ly, z) & 0x0F;
-                        sectionBlockLight[lightIdx] = (byte) (blkLow | (blkHigh << 4));
-
-                        lightIdx++;
-                    }
-                }
-            }
-            skyLightSections[section] = sectionSkyLight;
-            blockLightSections[section] = sectionBlockLight;
+            byte[][] light = packLightNibbles(baseY);
+            blockLightSections[section] = light[0];
+            skyLightSections[section] = light[1];
         }
 
         // Biomes: int[1024] for 3D biomes (same as 1.15)
@@ -1216,18 +1200,7 @@ public class AlphaChunk {
         int primaryBitMask = 0;
         int[] sectionBlockCounts = new int[numSections];
         for (int section = 0; section < 8; section++) {
-            int baseY = section * 16;
-            int nonAirCount = 0;
-            for (int x = 0; x < WIDTH; x++) {
-                for (int z = 0; z < DEPTH; z++) {
-                    for (int ly = 0; ly < 16; ly++) {
-                        if (getBlock(x, baseY + ly, z) != 0) {
-                            nonAirCount++;
-                        }
-                    }
-                }
-            }
-            sectionBlockCounts[section] = nonAirCount;
+            sectionBlockCounts[section] = countNonAirBlocks(section * 16);
         }
         // All 16 sections are present in the bitmask
         primaryBitMask = 0xFFFF;
@@ -1272,26 +1245,9 @@ public class AlphaChunk {
                 }
 
                 // Collect light data from actual world data
-                byte[] sectionSkyLight = new byte[2048];
-                byte[] sectionBlockLight = new byte[2048];
-                int lightIdx = 0;
-                for (int ly = 0; ly < 16; ly++) {
-                    for (int z = 0; z < DEPTH; z++) {
-                        for (int x = 0; x < WIDTH; x += 2) {
-                            int skyLow = getSkyLight(x, baseY + ly, z) & 0x0F;
-                            int skyHigh = getSkyLight(x + 1, baseY + ly, z) & 0x0F;
-                            sectionSkyLight[lightIdx] = (byte) (skyLow | (skyHigh << 4));
-
-                            int blkLow = getBlockLight(x, baseY + ly, z) & 0x0F;
-                            int blkHigh = getBlockLight(x + 1, baseY + ly, z) & 0x0F;
-                            sectionBlockLight[lightIdx] = (byte) (blkLow | (blkHigh << 4));
-
-                            lightIdx++;
-                        }
-                    }
-                }
-                skyLightSections[section] = sectionSkyLight;
-                blockLightSections[section] = sectionBlockLight;
+                byte[][] light = packLightNibbles(baseY);
+                skyLightSections[section] = light[0];
+                blockLightSections[section] = light[1];
             } else {
                 // Empty air section: single-valued palette (air=0)
                 writeShortToStream(baos, 0);  // blockCount = 0
@@ -1371,16 +1327,7 @@ public class AlphaChunk {
 
             if (section < 8) {
                 // Populated section (Y 0-127)
-                int nonAirCount = 0;
-                for (int x = 0; x < WIDTH; x++) {
-                    for (int z = 0; z < DEPTH; z++) {
-                        for (int ly = 0; ly < 16; ly++) {
-                            if (getBlock(x, baseY + ly, z) != 0) {
-                                nonAirCount++;
-                            }
-                        }
-                    }
-                }
+                int nonAirCount = countNonAirBlocks(baseY);
 
                 // blockCount (short)
                 writeShortToStream(baos, nonAirCount);
@@ -1420,26 +1367,9 @@ public class AlphaChunk {
                 writeVarIntToStream(baos, 0); // data array length: 0
 
                 // Collect light data for this section
-                byte[] sectionSkyLight = new byte[2048];
-                byte[] sectionBlockLight = new byte[2048];
-                int lightIdx = 0;
-                for (int ly = 0; ly < 16; ly++) {
-                    for (int z = 0; z < DEPTH; z++) {
-                        for (int x = 0; x < WIDTH; x += 2) {
-                            int skyLow = getSkyLight(x, baseY + ly, z) & 0x0F;
-                            int skyHigh = getSkyLight(x + 1, baseY + ly, z) & 0x0F;
-                            sectionSkyLight[lightIdx] = (byte) (skyLow | (skyHigh << 4));
-
-                            int blkLow = getBlockLight(x, baseY + ly, z) & 0x0F;
-                            int blkHigh = getBlockLight(x + 1, baseY + ly, z) & 0x0F;
-                            sectionBlockLight[lightIdx] = (byte) (blkLow | (blkHigh << 4));
-
-                            lightIdx++;
-                        }
-                    }
-                }
-                skyLightSections[section] = sectionSkyLight;
-                blockLightSections[section] = sectionBlockLight;
+                byte[][] light = packLightNibbles(baseY);
+                skyLightSections[section] = light[0];
+                blockLightSections[section] = light[1];
             } else {
                 // Empty section (Y 128-255)
                 // blockCount = 0
@@ -1480,16 +1410,7 @@ public class AlphaChunk {
 
             if (section < 8) {
                 // Populated section (Y 0-127)
-                int nonAirCount = 0;
-                for (int x = 0; x < WIDTH; x++) {
-                    for (int z = 0; z < DEPTH; z++) {
-                        for (int ly = 0; ly < 16; ly++) {
-                            if (getBlock(x, baseY + ly, z) != 0) {
-                                nonAirCount++;
-                            }
-                        }
-                    }
-                }
+                int nonAirCount = countNonAirBlocks(baseY);
 
                 // blockCount (short)
                 writeShortToStream(baos, nonAirCount);
@@ -1529,26 +1450,9 @@ public class AlphaChunk {
                 writeVarIntToStream(baos, 0); // data array length: 0
 
                 // Collect light data for this section
-                byte[] sectionSkyLight = new byte[2048];
-                byte[] sectionBlockLight = new byte[2048];
-                int lightIdx = 0;
-                for (int ly = 0; ly < 16; ly++) {
-                    for (int z = 0; z < DEPTH; z++) {
-                        for (int x = 0; x < WIDTH; x += 2) {
-                            int skyLow = getSkyLight(x, baseY + ly, z) & 0x0F;
-                            int skyHigh = getSkyLight(x + 1, baseY + ly, z) & 0x0F;
-                            sectionSkyLight[lightIdx] = (byte) (skyLow | (skyHigh << 4));
-
-                            int blkLow = getBlockLight(x, baseY + ly, z) & 0x0F;
-                            int blkHigh = getBlockLight(x + 1, baseY + ly, z) & 0x0F;
-                            sectionBlockLight[lightIdx] = (byte) (blkLow | (blkHigh << 4));
-
-                            lightIdx++;
-                        }
-                    }
-                }
-                skyLightSections[section] = sectionSkyLight;
-                blockLightSections[section] = sectionBlockLight;
+                byte[][] light = packLightNibbles(baseY);
+                skyLightSections[section] = light[0];
+                blockLightSections[section] = light[1];
             } else {
                 // Empty section (Y 128-255)
                 // blockCount = 0
@@ -1586,16 +1490,7 @@ public class AlphaChunk {
 
             if (section < 8) {
                 // Populated section (Y 0-127)
-                int nonAirCount = 0;
-                for (int x = 0; x < WIDTH; x++) {
-                    for (int z = 0; z < DEPTH; z++) {
-                        for (int ly = 0; ly < 16; ly++) {
-                            if (getBlock(x, baseY + ly, z) != 0) {
-                                nonAirCount++;
-                            }
-                        }
-                    }
-                }
+                int nonAirCount = countNonAirBlocks(baseY);
 
                 // blockCount (short)
                 writeShortToStream(baos, nonAirCount);
@@ -1635,26 +1530,9 @@ public class AlphaChunk {
                 // No VarInt data array length prefix in v770
 
                 // Collect light data for this section
-                byte[] sectionSkyLight = new byte[2048];
-                byte[] sectionBlockLight = new byte[2048];
-                int lightIdx = 0;
-                for (int ly = 0; ly < 16; ly++) {
-                    for (int z = 0; z < DEPTH; z++) {
-                        for (int x = 0; x < WIDTH; x += 2) {
-                            int skyLow = getSkyLight(x, baseY + ly, z) & 0x0F;
-                            int skyHigh = getSkyLight(x + 1, baseY + ly, z) & 0x0F;
-                            sectionSkyLight[lightIdx] = (byte) (skyLow | (skyHigh << 4));
-
-                            int blkLow = getBlockLight(x, baseY + ly, z) & 0x0F;
-                            int blkHigh = getBlockLight(x + 1, baseY + ly, z) & 0x0F;
-                            sectionBlockLight[lightIdx] = (byte) (blkLow | (blkHigh << 4));
-
-                            lightIdx++;
-                        }
-                    }
-                }
-                skyLightSections[section] = sectionSkyLight;
-                blockLightSections[section] = sectionBlockLight;
+                byte[][] light = packLightNibbles(baseY);
+                skyLightSections[section] = light[0];
+                blockLightSections[section] = light[1];
             } else {
                 // Empty section (Y 128-255)
                 // blockCount = 0

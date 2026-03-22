@@ -79,6 +79,13 @@ public class MCPELoginHandler {
     }
 
     private void handleLogin(ChannelHandlerContext ctx, ByteBuf payload) {
+        // Reject legacy MCPE clients in online mode (no auth mechanism)
+        if (ServerProperties.isOnlineMode()) {
+            System.out.println("[MCPE] Rejected client: online mode requires Xbox Live authentication");
+            sendLoginStatus(MCPEConstants.LOGIN_CLIENT_OUTDATED);
+            return;
+        }
+
         MCPEPacketBuffer buf = new MCPEPacketBuffer(payload);
 
         // v81 (0.15.0): JWT-based login format.
@@ -198,7 +205,7 @@ public class MCPELoginHandler {
         }
 
         // Register player
-        player = playerManager.addPlayer(username, null, ProtocolVersion.BEDROCK);
+        player = playerManager.addPlayer(username, null, null, ProtocolVersion.BEDROCK);
         if (player == null) {
             // Server full — disconnect
             sendLoginStatus(MCPEConstants.LOGIN_CLIENT_OUTDATED); // No "server full" status in protocol 11
@@ -225,8 +232,7 @@ public class MCPELoginHandler {
         // Calculate spawn position
         double spawnX, spawnY = 0, spawnZ;
         float spawnYaw = 0, spawnPitch = 0;
-        java.util.Map<String, short[]> savedPositions = world.loadPlayerPositions();
-        short[] savedPos = savedPositions.get(player.getUsername());
+        short[] savedPos = world.getSavedPlayerPosition(player.getUsername(), player.getUuid());
 
         spawnX = world.getWidth() / 2.0 + 0.5;
         spawnZ = world.getDepth() / 2.0 + 0.5;
@@ -421,7 +427,7 @@ public class MCPELoginHandler {
         byte[] compressed = new byte[Math.min(compressedLen, buf.readableBytes())];
         buf.getBuf().readBytes(compressed);
 
-        // Decompress
+        // Decompress (cap at 1MB to prevent decompression bombs)
         byte[] decompressed;
         try {
             ByteArrayInputStream bais = new ByteArrayInputStream(compressed);
@@ -429,7 +435,15 @@ public class MCPELoginHandler {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             byte[] tmp = new byte[4096];
             int read;
+            int totalRead = 0;
+            int maxDecompressedSize = 1024 * 1024; // 1MB
             while ((read = iis.read(tmp)) != -1) {
+                totalRead += read;
+                if (totalRead > maxDecompressedSize) {
+                    System.err.println("[MCPE] v81 login data exceeds 1MB decompressed limit");
+                    sendLoginStatus(MCPEConstants.LOGIN_CLIENT_OUTDATED);
+                    return;
+                }
                 baos.write(tmp, 0, read);
             }
             decompressed = baos.toByteArray();

@@ -100,13 +100,21 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
             return;
         }
 
+        // Reject Classic clients in online mode (no auth mechanism in Classic protocol)
+        if (ServerProperties.isOnlineMode()) {
+            ctx.writeAndFlush(new DisconnectPacket(
+                    "Authentication not supported by your client version"));
+            ctx.close();
+            return;
+        }
+
         // If a non-blank username is already online, kick the old connection
         if (username != null && !username.trim().isEmpty()) {
             playerManager.kickDuplicatePlayer(username.trim(), world);
         }
 
         // Register the player (assigns an ID, may rename blank/duplicate names)
-        player = playerManager.addPlayer(username, ctx.channel(), clientVersion);
+        player = playerManager.addPlayer(username, null, ctx.channel(), clientVersion);
         if (player == null) {
             ctx.writeAndFlush(new DisconnectPacket("Server is full!"));
             ctx.close();
@@ -145,8 +153,7 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
         // Restore saved position if available, otherwise spawn at world center
         // Use the assigned username (player.getUsername()), not the raw packet name,
         // because empty names get renamed to "Player<ID>" by addPlayer().
-        java.util.Map<String, short[]> savedPositions = world.loadPlayerPositions();
-        short[] savedPos = savedPositions.get(player.getUsername());
+        short[] savedPos = world.getSavedPlayerPosition(player.getUsername(), player.getUuid());
 
         short spawnX, spawnY, spawnZ;
         byte spawnYaw = 0, spawnPitch = 0;

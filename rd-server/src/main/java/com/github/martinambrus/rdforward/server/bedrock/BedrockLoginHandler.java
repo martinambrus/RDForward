@@ -3,14 +3,19 @@ package com.github.martinambrus.rdforward.server.bedrock;
 import org.cloudburstmc.protocol.bedrock.BedrockServerSession;
 import org.cloudburstmc.protocol.bedrock.data.PacketCompressionAlgorithm;
 import org.cloudburstmc.protocol.bedrock.packet.*;
+import org.cloudburstmc.protocol.bedrock.util.ChainValidationResult;
+import org.cloudburstmc.protocol.bedrock.util.EncryptionUtils;
 import org.cloudburstmc.protocol.common.PacketSignal;
 
 import com.github.martinambrus.rdforward.server.ChunkManager;
 import com.github.martinambrus.rdforward.server.PlayerManager;
 import com.github.martinambrus.rdforward.server.ServerWorld;
+import com.github.martinambrus.rdforward.server.api.ServerProperties;
 
 import com.github.martinambrus.rdforward.server.bedrock.BedrockProtocolConstants;
 
+import javax.crypto.SecretKey;
+import java.security.KeyPair;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
@@ -36,6 +41,8 @@ public class BedrockLoginHandler implements BedrockPacketHandler {
     private final Runnable pongUpdater;
 
     private String username;
+    private String authenticatedUuid;
+    private SecretKey pendingSecretKey;
 
     public BedrockLoginHandler(BedrockServerSession session, ServerWorld world,
                                PlayerManager playerManager, ChunkManager chunkManager,
@@ -81,18 +88,99 @@ public class BedrockLoginHandler implements BedrockPacketHandler {
             username = "BedrockPlayer";
         }
 
-        // Skip encryption — send LOGIN_SUCCESS immediately
+        if (ServerProperties.isOnlineMode()) {
+            // Validate Xbox Live JWT chain
+            try {
+                ChainValidationResult result = EncryptionUtils.validatePayload(packet.getAuthPayload());
+                if (!result.signed()) {
+                    System.err.println("[Bedrock AUTH] Rejected " + username
+                            + ": JWT chain not signed by Mojang");
+                    PlayStatusPacket status = new PlayStatusPacket();
+                    status.setStatus(PlayStatusPacket.Status.LOGIN_FAILED_INVALID_TENANT);
+                    session.sendPacketImmediately(status);
+                    session.disconnect();
+                    return PacketSignal.HANDLED;
+                }
+
+                // Extract verified identity
+                ChainValidationResult.IdentityClaims claims = result.identityClaims();
+                if (claims.extraData != null) {
+                    username = claims.extraData.displayName;
+                    if (claims.extraData.identity != null) {
+                        authenticatedUuid = claims.extraData.identity.toString();
+                    }
+                }
+
+                if (authenticatedUuid == null) {
+                    System.err.println("[Bedrock AUTH] Rejected " + username
+                            + ": no identity UUID in Xbox Live claims");
+                    PlayStatusPacket rejectStatus = new PlayStatusPacket();
+                    rejectStatus.setStatus(PlayStatusPacket.Status.LOGIN_FAILED_INVALID_TENANT);
+                    session.sendPacketImmediately(rejectStatus);
+                    session.disconnect();
+                    return PacketSignal.HANDLED;
+                }
+
+                System.out.println("[Bedrock AUTH] Verified " + username
+                        + " (UUID: " + authenticatedUuid
+                        + ", XUID: " + (claims.extraData != null ? claims.extraData.xuid : "N/A") + ")");
+
+                // ECDH encryption handshake
+                KeyPair serverKeyPair = EncryptionUtils.createKeyPair();
+                byte[] token = EncryptionUtils.generateRandomToken();
+                pendingSecretKey = EncryptionUtils.getSecretKey(
+                        serverKeyPair.getPrivate(),
+                        claims.parsedIdentityPublicKey(),
+                        token);
+
+                ServerToClientHandshakePacket handshake = new ServerToClientHandshakePacket();
+                handshake.setJwt(EncryptionUtils.createHandshakeJwt(serverKeyPair, token));
+                session.sendPacketImmediately(handshake);
+
+                // Enable encryption IMMEDIATELY after sending the handshake.
+                // The client enables encryption as soon as it receives the handshake,
+                // so its next packet (ClientToServerHandshake) will already be encrypted.
+                // Must use sendPacketImmediately above to ensure the handshake is on the
+                // wire before encryption is enabled, otherwise it gets encrypted too.
+                session.getPeer().enableEncryption(pendingSecretKey);
+                System.out.println("[Bedrock] Encryption enabled for " + username);
+
+            } catch (Exception e) {
+                System.err.println("[Bedrock AUTH] JWT validation failed for " + username
+                        + ": " + e.getMessage());
+                PlayStatusPacket status = new PlayStatusPacket();
+                status.setStatus(PlayStatusPacket.Status.LOGIN_FAILED_INVALID_TENANT);
+                session.sendPacketImmediately(status);
+                session.disconnect();
+                return PacketSignal.HANDLED;
+            }
+        } else {
+            // Offline mode: send LOGIN_SUCCESS immediately
+            sendLoginSuccess();
+        }
+
+        return PacketSignal.HANDLED;
+    }
+
+    @Override
+    public PacketSignal handle(ClientToServerHandshakePacket packet) {
+        // Encryption was already enabled right after sending ServerToClientHandshake.
+        // The client sends this confirmation encrypted — just proceed with login.
+        System.out.println("[Bedrock] Encryption handshake complete for " + username);
+        sendLoginSuccess();
+        return PacketSignal.HANDLED;
+    }
+
+    /** Send LOGIN_SUCCESS + resource packs info. */
+    private void sendLoginSuccess() {
         PlayStatusPacket status = new PlayStatusPacket();
         status.setStatus(PlayStatusPacket.Status.LOGIN_SUCCESS);
         session.sendPacket(status);
 
-        // Send empty resource packs info
         ResourcePacksInfoPacket packsInfo = new ResourcePacksInfoPacket();
         packsInfo.setWorldTemplateId(UUID.randomUUID());
         packsInfo.setWorldTemplateVersion("*");
         session.sendPacket(packsInfo);
-
-        return PacketSignal.HANDLED;
     }
 
     @Override
@@ -114,7 +202,8 @@ public class BedrockLoginHandler implements BedrockPacketHandler {
                 // Transition to gameplay handler
                 BedrockGameplayHandler gameplayHandler = new BedrockGameplayHandler(
                         session, world, playerManager, chunkManager,
-                        blockMapper, chunkConverter, registryData, username, pongUpdater);
+                        blockMapper, chunkConverter, registryData, username,
+                        authenticatedUuid, pongUpdater);
                 session.setPacketHandler(gameplayHandler);
                 gameplayHandler.onReady();
                 break;

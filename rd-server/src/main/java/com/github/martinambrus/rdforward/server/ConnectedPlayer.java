@@ -18,6 +18,7 @@ public class ConnectedPlayer {
 
     private final byte playerId;
     private final String username;
+    private final String uuid;
     private final Channel channel;
     private final ProtocolVersion protocolVersion;
 
@@ -61,9 +62,10 @@ public class ConnectedPlayer {
     // RTT-based entity update throttling
     private volatile int entityUpdateThrottleCounter = 0;
 
-    public ConnectedPlayer(byte playerId, String username, Channel channel, ProtocolVersion protocolVersion) {
+    public ConnectedPlayer(byte playerId, String username, String uuid, Channel channel, ProtocolVersion protocolVersion) {
         this.playerId = playerId;
         this.username = username;
+        this.uuid = uuid;
         this.channel = channel;
         this.protocolVersion = protocolVersion;
     }
@@ -176,6 +178,7 @@ public class ConnectedPlayer {
 
     public byte getPlayerId() { return playerId; }
     public String getUsername() { return username; }
+    public String getUuid() { return uuid; }
     public Channel getChannel() { return channel; }
     public ProtocolVersion getProtocolVersion() { return protocolVersion; }
     public short getX() { return x; }

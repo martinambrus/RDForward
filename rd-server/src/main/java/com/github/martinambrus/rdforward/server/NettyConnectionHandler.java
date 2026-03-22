@@ -15,6 +15,7 @@ import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerP
 import com.github.martinambrus.rdforward.protocol.packet.netty.*;
 import com.github.martinambrus.rdforward.server.api.CommandRegistry;
 import com.github.martinambrus.rdforward.server.api.ServerProperties;
+import com.github.martinambrus.rdforward.server.auth.MojangSessionVerifier;
 import com.github.martinambrus.rdforward.server.event.ServerEvents;
 import com.github.martinambrus.rdforward.protocol.BlockStateMapper;
 import com.github.martinambrus.rdforward.world.BlockRegistry;
@@ -53,10 +54,30 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     private ConnectedPlayer player;
     private boolean loginComplete = false;
 
-    // Encryption state
-    private KeyPair rsaKeyPair;
+    // Encryption state — RSA keypair shared across all connections (thread-safe: generated once)
+    private static volatile KeyPair sharedRsaKeyPair;
+    private static final Object RSA_LOCK = new Object();
+    private static final java.security.SecureRandom SECURE_RANDOM = new java.security.SecureRandom();
     private byte[] verifyToken;
     private boolean awaitingEncryptionResponse = false;
+
+    // Online-mode authentication result (null in offline mode)
+    private String authenticatedUuid;
+
+    /** Lazily generate a single RSA keypair shared by all connections. */
+    private static KeyPair getOrCreateRsaKeyPair() throws java.security.NoSuchAlgorithmException {
+        KeyPair kp = sharedRsaKeyPair;
+        if (kp != null) return kp;
+        synchronized (RSA_LOCK) {
+            kp = sharedRsaKeyPair;
+            if (kp != null) return kp;
+            KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
+            keyGen.initialize(1024);
+            kp = keyGen.generateKeyPair();
+            sharedRsaKeyPair = kp;
+            return kp;
+        }
+    }
 
     // KeepAlive
     private java.util.concurrent.ScheduledFuture<?> keepAliveTask;
@@ -99,8 +120,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 break;
 
             case LOGIN:
-                if (packet instanceof LoginStartPacket) {
-                    handleLoginStart(ctx, (LoginStartPacket) packet);
+                if (packet instanceof LoginStartPacketV761) {
+                    handleLoginStart(ctx, ((LoginStartPacketV761) packet).getUsername());
+                } else if (packet instanceof LoginStartPacket) {
+                    handleLoginStart(ctx, ((LoginStartPacket) packet).getUsername());
                 } else if (packet instanceof LoginAcknowledgedPacket) {
                     handleLoginAcknowledged(ctx);
                 } else if (packet instanceof NettyEncryptionResponsePacketV759) {
@@ -275,15 +298,33 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     // Login state
     // ========================================================================
 
-    private void handleLoginStart(ChannelHandlerContext ctx, LoginStartPacket packet) {
-        pendingUsername = packet.getUsername();
+    private void handleLoginStart(ChannelHandlerContext ctx, String username) {
+        pendingUsername = username;
 
-        // RDForward is an offline-mode server — skip encryption and go
-        // directly to LoginSuccess.  Netty-era clients (1.7.2+) always
-        // attempt Mojang session authentication when they receive an
-        // EncryptionRequest, which fails in E2E tests (and for any
-        // offline-mode scenario).  Skipping encryption avoids this.
-        completeLogin(ctx);
+        if (ServerProperties.isOnlineMode()) {
+            // Online mode: send EncryptionRequest to initiate Mojang session authentication
+            try {
+                KeyPair rsaKeyPair = getOrCreateRsaKeyPair();
+                verifyToken = new byte[4];
+                SECURE_RANDOM.nextBytes(verifyToken);
+
+                byte[] pubKey = rsaKeyPair.getPublic().getEncoded();
+                if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
+                    ctx.writeAndFlush(new NettyEncryptionRequestPacketV766("", pubKey, verifyToken, true));
+                } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+                    ctx.writeAndFlush(new NettyEncryptionRequestPacketV47("", pubKey, verifyToken));
+                } else {
+                    ctx.writeAndFlush(new NettyEncryptionRequestPacket("", pubKey, verifyToken));
+                }
+                awaitingEncryptionResponse = true;
+            } catch (Exception e) {
+                System.err.println("Failed to generate RSA keypair: " + e.getMessage());
+                sendLoginDisconnect(ctx, "Encryption error");
+            }
+        } else {
+            // Offline mode: skip encryption, go directly to LoginSuccess
+            completeLogin(ctx);
+        }
     }
 
     /**
@@ -296,8 +337,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.pipeline().remove("loginTimeout");
         }
 
-        // Send LoginSuccess — version-specific variants
-        String uuid = ClassicToNettyTranslator.generateOfflineUuid(pendingUsername);
+        // Send LoginSuccess — use Mojang UUID in online mode, offline UUID otherwise
+        String uuid = (authenticatedUuid != null)
+                ? authenticatedUuid
+                : ClassicToNettyTranslator.generateOfflineUuid(pendingUsername);
         if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
             ctx.writeAndFlush(new LoginSuccessPacketV768(uuid, pendingUsername));
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
@@ -323,80 +366,28 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleEncryptionResponse(ChannelHandlerContext ctx,
                                            NettyEncryptionResponsePacket packet) {
-        if (!awaitingEncryptionResponse || rsaKeyPair == null) {
-            sendLoginDisconnect(ctx, "Unexpected encryption response");
-            return;
-        }
-        awaitingEncryptionResponse = false;
-
-        try {
-            Cipher rsaCipher = Cipher.getInstance("RSA");
-            rsaCipher.init(Cipher.DECRYPT_MODE, rsaKeyPair.getPrivate());
-            byte[] sharedSecret = rsaCipher.doFinal(packet.getSharedSecret());
-
-            rsaCipher.init(Cipher.DECRYPT_MODE, rsaKeyPair.getPrivate());
-            byte[] decryptedToken = rsaCipher.doFinal(packet.getVerifyToken());
-
-            if (!Arrays.equals(decryptedToken, verifyToken)) {
-                System.err.println("Encryption verify token mismatch for " + pendingUsername);
-                sendLoginDisconnect(ctx, "Encryption verification failed");
-                return;
-            }
-
-            // Install cipher handlers in the pipeline
-            MinecraftCipher decryptCipher = new MinecraftCipher(Cipher.DECRYPT_MODE, sharedSecret);
-            MinecraftCipher encryptCipher = new MinecraftCipher(Cipher.ENCRYPT_MODE, sharedSecret);
-            ctx.pipeline().addBefore("decoder", "decrypt", new CipherDecoder(decryptCipher));
-            ctx.pipeline().addBefore("encoder", "encrypt", new CipherEncoder(encryptCipher));
-
-            completeLogin(ctx);
-
-        } catch (Exception e) {
-            System.err.println("Encryption handshake failed for " + pendingUsername
-                    + ": " + e.getMessage());
-            sendLoginDisconnect(ctx, "Encryption error");
-        }
+        processEncryptionResponse(ctx, packet.getSharedSecret(), packet.getVerifyToken());
     }
 
     private void handleEncryptionResponseV47(ChannelHandlerContext ctx,
                                               NettyEncryptionResponsePacketV47 packet) {
-        if (!awaitingEncryptionResponse || rsaKeyPair == null) {
-            sendLoginDisconnect(ctx, "Unexpected encryption response");
-            return;
-        }
-        awaitingEncryptionResponse = false;
-
-        try {
-            Cipher rsaCipher = Cipher.getInstance("RSA");
-            rsaCipher.init(Cipher.DECRYPT_MODE, rsaKeyPair.getPrivate());
-            byte[] sharedSecret = rsaCipher.doFinal(packet.getSharedSecret());
-
-            rsaCipher.init(Cipher.DECRYPT_MODE, rsaKeyPair.getPrivate());
-            byte[] decryptedToken = rsaCipher.doFinal(packet.getVerifyToken());
-
-            if (!Arrays.equals(decryptedToken, verifyToken)) {
-                System.err.println("Encryption verify token mismatch for " + pendingUsername);
-                sendLoginDisconnect(ctx, "Encryption verification failed");
-                return;
-            }
-
-            // Install cipher handlers in the pipeline
-            MinecraftCipher decryptCipher = new MinecraftCipher(Cipher.DECRYPT_MODE, sharedSecret);
-            MinecraftCipher encryptCipher = new MinecraftCipher(Cipher.ENCRYPT_MODE, sharedSecret);
-            ctx.pipeline().addBefore("decoder", "decrypt", new CipherDecoder(decryptCipher));
-            ctx.pipeline().addBefore("encoder", "encrypt", new CipherEncoder(encryptCipher));
-
-            completeLogin(ctx);
-
-        } catch (Exception e) {
-            System.err.println("Encryption handshake failed for " + pendingUsername
-                    + ": " + e.getMessage());
-            sendLoginDisconnect(ctx, "Encryption error");
-        }
+        processEncryptionResponse(ctx, packet.getSharedSecret(), packet.getVerifyToken());
     }
 
     private void handleEncryptionResponseV759(ChannelHandlerContext ctx,
                                                NettyEncryptionResponsePacketV759 packet) {
+        // V759: verify token may be null in chat signing mode
+        processEncryptionResponse(ctx, packet.getSharedSecret(), packet.getVerifyToken());
+    }
+
+    /**
+     * Common encryption response processing. Decrypts shared secret, verifies token
+     * (unless null for V759 chat signing mode), installs ciphers, then proceeds to auth.
+     */
+    private void processEncryptionResponse(ChannelHandlerContext ctx,
+                                            byte[] encryptedSharedSecret,
+                                            byte[] encryptedVerifyToken) {
+        KeyPair rsaKeyPair = sharedRsaKeyPair;
         if (!awaitingEncryptionResponse || rsaKeyPair == null) {
             sendLoginDisconnect(ctx, "Unexpected encryption response");
             return;
@@ -406,12 +397,18 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         try {
             Cipher rsaCipher = Cipher.getInstance("RSA");
             rsaCipher.init(Cipher.DECRYPT_MODE, rsaKeyPair.getPrivate());
-            byte[] sharedSecret = rsaCipher.doFinal(packet.getSharedSecret());
+            byte[] sharedSecret = rsaCipher.doFinal(encryptedSharedSecret);
 
-            if (packet.getVerifyToken() != null) {
-                // Traditional RSA-encrypted verify token — decrypt and verify
+            if (sharedSecret.length != 16) {
+                System.err.println("Invalid shared secret length (" + sharedSecret.length
+                        + ") from " + pendingUsername);
+                sendLoginDisconnect(ctx, "Encryption verification failed");
+                return;
+            }
+
+            if (encryptedVerifyToken != null) {
                 rsaCipher.init(Cipher.DECRYPT_MODE, rsaKeyPair.getPrivate());
-                byte[] decryptedToken = rsaCipher.doFinal(packet.getVerifyToken());
+                byte[] decryptedToken = rsaCipher.doFinal(encryptedVerifyToken);
 
                 if (!Arrays.equals(decryptedToken, verifyToken)) {
                     System.err.println("Encryption verify token mismatch for " + pendingUsername);
@@ -419,17 +416,15 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                     return;
                 }
             }
-            // else: Chat signing mode (salt + signature). In offline mode, skip
-            // verify token check — the RSA-encrypted shared secret already proves
-            // the client received our encryption request.
+            // null verify token: V759 chat signing mode — the RSA-encrypted shared
+            // secret already proves the client received our encryption request.
 
-            // Install cipher handlers in the pipeline
             MinecraftCipher decryptCipher = new MinecraftCipher(Cipher.DECRYPT_MODE, sharedSecret);
             MinecraftCipher encryptCipher = new MinecraftCipher(Cipher.ENCRYPT_MODE, sharedSecret);
             ctx.pipeline().addBefore("decoder", "decrypt", new CipherDecoder(decryptCipher));
             ctx.pipeline().addBefore("encoder", "encrypt", new CipherEncoder(encryptCipher));
 
-            completeLogin(ctx);
+            verifyAndCompleteLogin(ctx, sharedSecret);
 
         } catch (Exception e) {
             System.err.println("Encryption handshake failed for " + pendingUsername
@@ -442,6 +437,35 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         String json = "{\"text\":\"" + reason.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
         ctx.writeAndFlush(new LoginDisconnectPacket(json))
                 .addListener(io.netty.channel.ChannelFutureListener.CLOSE);
+    }
+
+    /**
+     * Verify player authentication with Mojang session server, then complete login.
+     * In offline mode, completes login immediately.
+     */
+    private void verifyAndCompleteLogin(ChannelHandlerContext ctx, byte[] sharedSecret) {
+        if (ServerProperties.isOnlineMode()) {
+            MojangSessionVerifier.verifySession(pendingUsername, sharedSecret,
+                            sharedRsaKeyPair.getPublic().getEncoded())
+                    .thenAcceptAsync(result -> {
+                        if (!ctx.channel().isActive()) return;
+                        if (result.isSuccess()) {
+                            authenticatedUuid = result.uuid;
+                            pendingUsername = result.name; // use Mojang's canonical casing
+                            System.out.println("[AUTH] Verified " + pendingUsername
+                                    + " (UUID: " + authenticatedUuid + ")");
+                            completeLogin(ctx);
+                        } else {
+                            System.err.println("[AUTH] Failed to verify " + pendingUsername
+                                    + " (" + ctx.channel().remoteAddress() + ", "
+                                    + clientVersion.getDisplayName() + "): " + result.failureMessage);
+                            sendLoginDisconnect(ctx, result.failureMessage);
+                        }
+                    }, ctx.executor()); // run callback on Netty event loop
+        } else {
+            System.out.println("[AUTH] Offline mode, skipping verification for " + pendingUsername);
+            completeLogin(ctx);
+        }
     }
 
     // ========================================================================
@@ -627,7 +651,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
 
         // Register player
-        player = playerManager.addPlayer(pendingUsername, ctx.channel(), clientVersion);
+        player = playerManager.addPlayer(pendingUsername, authenticatedUuid, ctx.channel(), clientVersion);
         if (player == null) {
             sendPlayDisconnect(ctx, "Server is full!");
             return;
@@ -713,19 +737,19 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.writeAndFlush(new JoinGamePacketV735(entityId, gm,
                     20, ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV573) {
-            ctx.writeAndFlush(new JoinGamePacketV573(entityId, gm, diff,
+            ctx.writeAndFlush(new JoinGamePacketV573(entityId, gm, 0,
                     20, "default", ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (isV477) {
-            ctx.writeAndFlush(new JoinGamePacketV477(entityId, gm, diff,
+            ctx.writeAndFlush(new JoinGamePacketV477(entityId, gm, 0,
                     20, "default", ChunkManager.CLIENT_VIEW_DISTANCE));
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_9_1)) {
-            ctx.writeAndFlush(new JoinGamePacketV108(entityId, gm, diff, 0,
+            ctx.writeAndFlush(new JoinGamePacketV108(entityId, gm, 0, diff,
                     20, "default"));
         } else if (isV47) {
-            ctx.writeAndFlush(new JoinGamePacketV47(entityId, gm, diff, 0,
+            ctx.writeAndFlush(new JoinGamePacketV47(entityId, gm, 0, diff,
                     20, "default"));
         } else {
-            ctx.writeAndFlush(new JoinGamePacket(entityId, gm, diff, 0,
+            ctx.writeAndFlush(new JoinGamePacket(entityId, gm, 0, diff,
                     20, "default"));
         }
 
@@ -802,9 +826,8 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             }
         }
 
-        // Determine spawn position
-        Map<String, short[]> savedPositions = world.loadPlayerPositions();
-        short[] savedPos = savedPositions.get(player.getUsername());
+        // Determine spawn position (lookup by UUID in online mode, username in offline mode)
+        short[] savedPos = world.getSavedPlayerPosition(player.getUsername(), player.getUuid());
 
         double spawnX, spawnY, spawnZ;
         float spawnYaw = 0, spawnPitch = 0;
@@ -954,7 +977,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 int existingEntityId = existing.getPlayerId() + 1;
                 int alphaYaw = (existing.getYaw() + 128) & 0xFF;
                 int pitch = existing.getPitch() & 0xFF;
-                String existingUuid = ClassicToNettyTranslator.generateOfflineUuid(existing.getUsername());
+                String existingUuid = existing.getUuid();
 
                 if (isV109) {
                     // 1.9: PlayerListItem ADD before SpawnPlayer (double coords)
@@ -1058,7 +1081,6 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         if (translator != null) {
             translator.setClientVersion(clientVersion);
         }
-
         // Broadcast new player spawn to everyone else
         // PlayerListItem ADD is broadcast before spawn (handled by translator for v47 clients)
         playerManager.broadcastPlayerListAdd(player);

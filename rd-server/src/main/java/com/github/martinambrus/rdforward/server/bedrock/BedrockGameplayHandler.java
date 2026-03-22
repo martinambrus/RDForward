@@ -66,6 +66,7 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
     private final BedrockChunkConverter chunkConverter;
     private final BedrockRegistryData registryData;
     private final String username;
+    private final String authenticatedUuid;
     private final Runnable pongUpdater;
 
     /** Number of biome sections for overworld dimension (Y=-64 to Y=319, 24 sub-chunks). */
@@ -84,7 +85,7 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
                                   PlayerManager playerManager, ChunkManager chunkManager,
                                   BedrockBlockMapper blockMapper, BedrockChunkConverter chunkConverter,
                                   BedrockRegistryData registryData, String username,
-                                  Runnable pongUpdater) {
+                                  String authenticatedUuid, Runnable pongUpdater) {
         this.session = session;
         this.world = world;
         this.playerManager = playerManager;
@@ -93,6 +94,7 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         this.chunkConverter = chunkConverter;
         this.registryData = registryData;
         this.username = username;
+        this.authenticatedUuid = authenticatedUuid;
         this.pongUpdater = pongUpdater;
     }
 
@@ -125,7 +127,7 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         }
 
         // Register player with Bedrock protocol version
-        player = playerManager.addPlayer(username, null, ProtocolVersion.BEDROCK);
+        player = playerManager.addPlayer(username, authenticatedUuid, null, ProtocolVersion.BEDROCK);
         if (player == null) {
             session.disconnect("Server is full!");
             return;
@@ -137,9 +139,8 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         sessionWrapper.setChunkSender(chunkConverter, world);
         player.setBedrockSession(sessionWrapper);
 
-        // Determine spawn position
-        Map<String, short[]> savedPositions = world.loadPlayerPositions();
-        short[] savedPos = savedPositions.get(player.getUsername());
+        // Determine spawn position (lookup by UUID in online mode, username in offline mode)
+        short[] savedPos = world.getSavedPlayerPosition(player.getUsername(), player.getUuid());
 
         double spawnX, spawnY, spawnZ;
         float spawnYaw = 0, spawnPitch = 0;
@@ -509,8 +510,7 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
 
     private void sendAddPlayer(ConnectedPlayer existing) {
         long entityId = existing.getPlayerId() + 1;
-        UUID playerUuid = UUID.nameUUIDFromBytes(
-                ("RDForward:" + existing.getUsername()).getBytes());
+        UUID playerUuid = ClassicToBedrockTranslator.resolveBedrockUuid(existing.getUsername());
 
         // 1. Send PlayerListPacket (ADD) — required before AddPlayerPacket
         //    so the client has a skin and UUID mapping for the entity.

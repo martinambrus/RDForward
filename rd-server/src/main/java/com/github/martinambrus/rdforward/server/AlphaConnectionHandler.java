@@ -13,6 +13,7 @@ import com.github.martinambrus.rdforward.protocol.packet.classic.PlayerTeleportP
 import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
 import com.github.martinambrus.rdforward.server.api.CommandRegistry;
 import com.github.martinambrus.rdforward.server.api.ServerProperties;
+import com.github.martinambrus.rdforward.server.auth.MojangSessionVerifier;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.util.Arrays;
@@ -42,7 +43,7 @@ import java.util.Map;
  */
 public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> {
 
-    private static final int LOGIN_TIMEOUT_SECONDS = 5;
+    private static final int LOGIN_TIMEOUT_SECONDS = 15;
 
     /**
      * Player eye height in blocks. Must use (double) 1.62f to match the MC Alpha
@@ -72,11 +73,34 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     private ConnectedPlayer player;
     private boolean loginComplete = false;
 
-    // v39+ encryption state
-    private KeyPair rsaKeyPair;
+    // v39+ encryption state — RSA keypair shared across all connections
+    private static volatile KeyPair sharedRsaKeyPair;
+    private static final Object RSA_LOCK = new Object();
+    private static final java.security.SecureRandom SECURE_RANDOM = new java.security.SecureRandom();
     private byte[] verifyToken;
     private boolean awaitingEncryptionResponse = false;
     private boolean awaitingClientStatus = false;
+    private boolean authPending = false;
+    private boolean clientStatusReceived = false;
+    private ChannelHandlerContext clientStatusCtx;
+
+    // Online-mode authentication result (null in offline mode)
+    private String authenticatedUuid;
+
+    /** Lazily generate a single RSA keypair shared by all connections. */
+    private static KeyPair getOrCreateRsaKeyPair() throws java.security.NoSuchAlgorithmException {
+        KeyPair kp = sharedRsaKeyPair;
+        if (kp != null) return kp;
+        synchronized (RSA_LOCK) {
+            kp = sharedRsaKeyPair;
+            if (kp != null) return kp;
+            KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
+            keyGen.initialize(1024);
+            kp = keyGen.generateKeyPair();
+            sharedRsaKeyPair = kp;
+            return kp;
+        }
+    }
 
     /**
      * Server-side estimate of the player's cobblestone count. Corrected by
@@ -242,18 +266,18 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
             // Generate RSA keypair and verify token for encryption handshake
             try {
-                KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
-                keyGen.initialize(1024);
-                rsaKeyPair = keyGen.generateKeyPair();
+                KeyPair rsaKeyPair = getOrCreateRsaKeyPair();
                 verifyToken = new byte[4];
-                new java.security.SecureRandom().nextBytes(verifyToken);
+                SECURE_RANDOM.nextBytes(verifyToken);
 
                 // Send Encryption Key Request (no S2C Handshake for v39+).
                 // serverId="-" signals offline mode: the client checks
                 // !"-".equals(serverId) to decide whether to authenticate
-                // with Mojang's session server. Sending "" would trigger auth.
+                // with Mojang's session server. Sending "" triggers auth.
+                String serverId = ServerProperties.isOnlineMode()
+                        ? "" : "-";
                 ctx.writeAndFlush(new EncryptionKeyRequestPacket(
-                        "-", rsaKeyPair.getPublic().getEncoded(), verifyToken));
+                        serverId, rsaKeyPair.getPublic().getEncoded(), verifyToken));
                 awaitingEncryptionResponse = true;
             } catch (Exception e) {
                 System.err.println("Failed to generate RSA keypair: " + e.getMessage());
@@ -288,11 +312,20 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             }
         }
 
+        // Reject pre-v39 clients in online mode (old auth servers are defunct)
+        if (ServerProperties.isOnlineMode()) {
+            ctx.writeAndFlush(new DisconnectPacket(
+                    "Authentication not supported by your client version"));
+            ctx.close();
+            return;
+        }
+
         // Respond with offline-mode hash
         ctx.writeAndFlush(new HandshakeS2CPacket("-"));
     }
 
     private void handleEncryptionResponse(ChannelHandlerContext ctx, EncryptionKeyResponsePacket packet) {
+        KeyPair rsaKeyPair = sharedRsaKeyPair;
         if (!awaitingEncryptionResponse || rsaKeyPair == null) {
             ctx.writeAndFlush(new DisconnectPacket("Unexpected encryption response"));
             ctx.close();
@@ -305,6 +338,14 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             Cipher rsaCipher = Cipher.getInstance("RSA");
             rsaCipher.init(Cipher.DECRYPT_MODE, rsaKeyPair.getPrivate());
             byte[] sharedSecret = rsaCipher.doFinal(packet.getData1());
+
+            if (sharedSecret.length != 16) {
+                System.err.println("Invalid shared secret length (" + sharedSecret.length
+                        + ") from " + pendingUsername);
+                ctx.writeAndFlush(new DisconnectPacket("Encryption verification failed"));
+                ctx.close();
+                return;
+            }
 
             rsaCipher.init(Cipher.DECRYPT_MODE, rsaKeyPair.getPrivate());
             byte[] decryptedToken = rsaCipher.doFinal(packet.getData2());
@@ -331,6 +372,30 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 ctx.pipeline().addBefore("encoder", "encrypt", new CipherEncoder(encryptCipher));
 
                 awaitingClientStatus = true;
+                if (ServerProperties.isOnlineMode()) {
+                    authPending = true;
+                    MojangSessionVerifier.verifySession(pendingUsername, sharedSecret,
+                                    rsaKeyPair.getPublic().getEncoded())
+                            .thenAcceptAsync(result -> {
+                                authPending = false;
+                                if (!ctx.channel().isActive()) return;
+                                if (result.isSuccess()) {
+                                    authenticatedUuid = result.uuid;
+                                    pendingUsername = result.name;
+                                    System.out.println("[AUTH] Verified " + pendingUsername
+                                            + " (UUID: " + authenticatedUuid + ")");
+                                    if (clientStatusReceived) {
+                                        handleLogin(clientStatusCtx, clientVersion.getVersionNumber());
+                                    }
+                                } else {
+                                    System.err.println("[AUTH] Failed to verify " + pendingUsername
+                                            + " (" + ctx.channel().remoteAddress() + ", "
+                                            + clientVersion.getDisplayName() + "): " + result.failureMessage);
+                                    ctx.writeAndFlush(new DisconnectPacket(result.failureMessage));
+                                    ctx.close();
+                                }
+                            }, ctx.executor());
+                }
             });
         } catch (Exception e) {
             System.err.println("Encryption handshake failed for " + pendingUsername + ": " + e.getMessage());
@@ -347,6 +412,12 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 return;
             }
             awaitingClientStatus = false;
+            if (authPending) {
+                // Auth still in progress — defer login to the auth callback
+                clientStatusReceived = true;
+                clientStatusCtx = ctx;
+                return;
+            }
             // clientVersion was already set in handleHandshake for v39+
             handleLogin(ctx, clientVersion.getVersionNumber());
         } else if (packet.getPayload() == ClientStatusPacket.RESPAWN) {
@@ -445,7 +516,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
 
         // Register the player
-        player = playerManager.addPlayer(pendingUsername, ctx.channel(), clientVersion);
+        player = playerManager.addPlayer(pendingUsername, authenticatedUuid, ctx.channel(), clientVersion);
         if (player == null) {
             ctx.writeAndFlush(new DisconnectPacket("Server is full!"));
             ctx.close();
@@ -500,9 +571,8 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.writeAndFlush(new PlayerAbilitiesPacketV39(ServerProperties.getAbilitiesFlags(), 12, 25));
         }
 
-        // Determine spawn position
-        Map<String, short[]> savedPositions = world.loadPlayerPositions();
-        short[] savedPos = savedPositions.get(player.getUsername());
+        // Determine spawn position (lookup by UUID in online mode, username in offline mode)
+        short[] savedPos = world.getSavedPlayerPosition(player.getUsername(), player.getUuid());
 
         double spawnX, spawnY, spawnZ;
         float spawnYaw = 0, spawnPitch = 0;

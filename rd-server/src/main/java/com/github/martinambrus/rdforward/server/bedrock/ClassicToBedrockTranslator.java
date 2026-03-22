@@ -52,6 +52,20 @@ public class ClassicToBedrockTranslator {
     private final BedrockBlockMapper blockMapper;
 
     /**
+     * Resolve a player's UUID for Bedrock packet use.
+     * Uses the global UUID map from ClassicToNettyTranslator, converting
+     * the hyphenated string UUID to java.util.UUID.
+     */
+    static UUID resolveBedrockUuid(String username) {
+        String uuidStr = com.github.martinambrus.rdforward.server.ClassicToNettyTranslator.resolveUuid(username);
+        try {
+            return UUID.fromString(uuidStr);
+        } catch (Exception e) {
+            return UUID.nameUUIDFromBytes(("RDForward:" + username).getBytes());
+        }
+    }
+
+    /**
      * Tracks absolute positions per entity for delta-to-absolute reconstruction.
      * Bedrock only supports absolute MovePlayerPacket.
      */
@@ -147,8 +161,7 @@ public class ClassicToBedrockTranslator {
 
         AddPlayerPacket app = new AddPlayerPacket();
         long entityId = pkt.getPlayerId() + 1;
-        app.setUuid(UUID.nameUUIDFromBytes(
-                ("RDForward:" + pkt.getPlayerName()).getBytes()));
+        app.setUuid(resolveBedrockUuid(pkt.getPlayerName()));
         app.setUsername(pkt.getPlayerName());
         app.setUniqueEntityId(entityId);
         app.setRuntimeEntityId(entityId);
@@ -321,8 +334,7 @@ public class ClassicToBedrockTranslator {
         if (pkt.getPlayerId() == -1) return Collections.emptyList();
 
         long entityId = pkt.getPlayerId() + 1;
-        UUID playerUuid = UUID.nameUUIDFromBytes(
-                ("RDForward:" + pkt.getPlayerName()).getBytes());
+        UUID playerUuid = resolveBedrockUuid(pkt.getPlayerName());
 
         // 1. PlayerListPacket (ADD) with skin
         PlayerListPacket playerList = new PlayerListPacket();
