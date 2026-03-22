@@ -174,6 +174,24 @@ public class MCPELoginHandler {
 
     /** Common post-login sequence shared by all protocol versions. */
     private void continueAfterLogin(ChannelHandlerContext ctx) {
+        // Ban check — reject banned players/IPs before registration
+        {
+            String ip = com.github.martinambrus.rdforward.server.PlayerManager.extractIp(
+                    ctx.channel().remoteAddress());
+            if (com.github.martinambrus.rdforward.server.api.BanManager.isPlayerBanned(username)
+                    || (ip != null && com.github.martinambrus.rdforward.server.api.BanManager.isIpBanned(ip))) {
+                sendLoginStatus(MCPEConstants.LOGIN_CLIENT_OUTDATED);
+                return;
+            }
+        }
+
+        // Whitelist check — reject non-whitelisted players when whitelist is enabled
+        if (!com.github.martinambrus.rdforward.server.api.WhitelistManager.isAllowed(username)) {
+            System.out.println("[INFO] " + username + " was rejected (not white-listed)");
+            sendLoginStatus(MCPEConstants.LOGIN_CLIENT_OUTDATED);
+            return;
+        }
+
         // Check for duplicate username
         if (username != null && !username.trim().isEmpty()) {
             playerManager.kickDuplicatePlayer(username.trim(), world);

@@ -17,6 +17,7 @@ import com.github.martinambrus.rdforward.protocol.packet.netty.NettyChatC2SPacke
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyChatCommandC2SPacketV764;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyWindowClickPacket;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyWindowClickPacketV47;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettyWindowClickPacketV755;
 import com.github.martinambrus.rdforward.protocol.packet.netty.PlayerDiggingPacketV47;
 import com.github.martinambrus.rdforward.protocol.packet.netty.PlayerDiggingPacketV477;
 import com.github.martinambrus.rdforward.protocol.packet.netty.PlayerDiggingPacketV759;
@@ -663,7 +664,10 @@ public class BotSession {
         if (version == ProtocolVersion.BEDROCK) {
             return actionNum; // No-op for Bedrock
         }
-        if (version.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+        if (version.isAtLeast(ProtocolVersion.RELEASE_1_17)) {
+            // V755+ format: stateId added, action number removed, changed slots array + carried item at end
+            sendPacket(new NettyWindowClickPacketV755(0, 0, slot, button, mode));
+        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
             sendPacket(new NettyWindowClickPacketV47(0, slot, button, actionNum, mode));
         } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_7_2)) {
             sendPacket(new NettyWindowClickPacket(0, slot, button, actionNum, mode));
@@ -684,7 +688,7 @@ public class BotSession {
      */
     public void sendCloseWindow(int windowId) {
         if (version == ProtocolVersion.BEDROCK) return;
-        sendPacket(new CloseWindowPacket());
+        sendPacket(new CloseWindowPacket(windowId));
     }
 
     /**

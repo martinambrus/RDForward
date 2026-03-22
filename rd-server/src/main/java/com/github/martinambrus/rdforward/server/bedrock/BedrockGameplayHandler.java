@@ -103,16 +103,20 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
     public void onReady() {
         // Ban check — reject banned players/IPs before registration
         {
-            String ip = null;
-            java.net.SocketAddress peerAddr = session.getPeer().getSocketAddress();
-            if (peerAddr instanceof java.net.InetSocketAddress) {
-                ip = ((java.net.InetSocketAddress) peerAddr).getAddress().getHostAddress();
-            }
+            String ip = com.github.martinambrus.rdforward.server.PlayerManager.extractIp(
+                    session.getPeer().getSocketAddress());
             if (com.github.martinambrus.rdforward.server.api.BanManager.isPlayerBanned(username)
                     || (ip != null && com.github.martinambrus.rdforward.server.api.BanManager.isIpBanned(ip))) {
                 session.disconnect("You are banned from this server");
                 return;
             }
+        }
+
+        // Whitelist check — reject non-whitelisted players when whitelist is enabled
+        if (!com.github.martinambrus.rdforward.server.api.WhitelistManager.isAllowed(username)) {
+            System.out.println("[INFO] " + username + " was rejected (not white-listed)");
+            session.disconnect("You are not white-listed on this server!");
+            return;
         }
 
         // If a non-blank username is already online, kick the old connection

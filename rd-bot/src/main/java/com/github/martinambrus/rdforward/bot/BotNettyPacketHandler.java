@@ -269,7 +269,11 @@ public class BotNettyPacketHandler extends SimpleChannelInboundHandler<Packet> {
             ctx.writeAndFlush(new LoginAcknowledgedPacket());
             setCodecState(ctx, ConnectionState.CONFIGURATION);
             // Spigot requires ClientInformation and brand before it sends ConfigFinish
-            ctx.writeAndFlush(new ConfigClientInformationC2SPacket());
+            if (version.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
+                ctx.writeAndFlush(new ConfigClientInformationC2SPacketV768());
+            } else {
+                ctx.writeAndFlush(new ConfigClientInformationC2SPacket());
+            }
             ctx.writeAndFlush(new ConfigCustomPayloadC2SPacket());
         } else {
             // Pre-v764: transition directly to PLAY

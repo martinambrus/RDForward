@@ -5,6 +5,7 @@ import com.github.martinambrus.rdforward.protocol.codec.PacketDecoder;
 import com.github.martinambrus.rdforward.protocol.codec.PacketEncoder;
 import com.github.martinambrus.rdforward.protocol.packet.PacketDirection;
 import com.github.martinambrus.rdforward.server.api.BanManager;
+import com.github.martinambrus.rdforward.server.api.WhitelistManager;
 import com.github.martinambrus.rdforward.server.api.CommandRegistry;
 import com.github.martinambrus.rdforward.server.api.PermissionManager;
 import com.github.martinambrus.rdforward.server.api.Scheduler;
@@ -178,6 +179,7 @@ public class RDServer {
         // Initialize mod APIs
         PermissionManager.load(dataDir);
         BanManager.load(dataDir);
+        WhitelistManager.load(dataDir);
         Scheduler.init();
         registerBuiltInCommands();
         registerSpawnProtection();
@@ -864,6 +866,101 @@ public class RDServer {
                 System.out.println("[INFO] " + ctx.getSenderName() + " unbanned " + arg);
             } else {
                 ctx.reply(arg + " is not banned.");
+            }
+        });
+
+        CommandRegistry.registerOp("whitelist", "Manage the server whitelist", PermissionManager.OP_MANAGE, ctx -> {
+            String[] args = ctx.getArgs();
+            if (args.length == 0) {
+                ctx.reply("Usage: whitelist <on|off|add|remove|list|reload>");
+                return;
+            }
+            String sub = args[0].toLowerCase();
+            switch (sub) {
+                case "on":
+                    if (ServerProperties.isWhiteList()) {
+                        ctx.reply("Whitelist is already enabled");
+                        return;
+                    }
+                    ServerProperties.setWhiteList(true);
+                    ServerProperties.save();
+                    ctx.reply("Whitelist is now enabled");
+                    System.out.println("[INFO] " + ctx.getSenderName() + " enabled the whitelist");
+                    if (ServerProperties.isEnforceWhitelist()) {
+                        int kicked = 0;
+                        for (ConnectedPlayer p : new java.util.ArrayList<>(playerManager.getAllPlayers())) {
+                            if (!WhitelistManager.isAllowed(p.getUsername())) {
+                                System.out.println("[INFO] Kicking " + p.getUsername()
+                                        + " (not white-listed, enforce-whitelist is on)");
+                                playerManager.kickPlayer(p.getUsername(),
+                                        "You are not white-listed on this server!", world);
+                                kicked++;
+                            }
+                        }
+                        if (kicked > 0) {
+                            ctx.reply("Kicked " + kicked + " non-whitelisted player(s)");
+                        }
+                    }
+                    break;
+                case "off":
+                    if (!ServerProperties.isWhiteList()) {
+                        ctx.reply("Whitelist is already disabled");
+                        return;
+                    }
+                    ServerProperties.setWhiteList(false);
+                    ServerProperties.save();
+                    ctx.reply("Whitelist is now disabled");
+                    System.out.println("[INFO] " + ctx.getSenderName() + " disabled the whitelist");
+                    break;
+                case "add":
+                    if (args.length < 2) {
+                        ctx.reply("Usage: whitelist add <player>");
+                        return;
+                    }
+                    if (WhitelistManager.addPlayer(args[1])) {
+                        ctx.reply("Added " + args[1] + " to the whitelist");
+                        System.out.println("[INFO] " + ctx.getSenderName()
+                                + " added " + args[1] + " to whitelist");
+                    } else {
+                        ctx.reply(args[1] + " is already whitelisted");
+                    }
+                    break;
+                case "remove":
+                    if (args.length < 2) {
+                        ctx.reply("Usage: whitelist remove <player>");
+                        return;
+                    }
+                    if (WhitelistManager.removePlayer(args[1])) {
+                        ctx.reply("Removed " + args[1] + " from the whitelist");
+                        System.out.println("[INFO] " + ctx.getSenderName()
+                                + " removed " + args[1] + " from whitelist");
+                    } else {
+                        ctx.reply(args[1] + " is not whitelisted");
+                    }
+                    break;
+                case "list": {
+                    java.util.Set<String> wl = WhitelistManager.getWhitelistedPlayers();
+                    String status = ServerProperties.isWhiteList() ? "enabled" : "disabled";
+                    if (wl.isEmpty()) {
+                        ctx.reply("Whitelist is empty. Whitelist is " + status + ".");
+                    } else {
+                        java.util.ArrayList<String> sorted = new java.util.ArrayList<>(wl);
+                        java.util.Collections.sort(sorted);
+                        ctx.reply("Whitelisted (" + wl.size() + "): " + String.join(", ", sorted));
+                        ctx.reply("Whitelist is " + status + ".");
+                    }
+                    break;
+                }
+                case "reload":
+                    WhitelistManager.reload();
+                    int reloadCount = WhitelistManager.getWhitelistedPlayers().size();
+                    ctx.reply("Reloaded whitelist from file (" + reloadCount + " entries)");
+                    System.out.println("[INFO] " + ctx.getSenderName()
+                            + " reloaded the whitelist (" + reloadCount + " entries)");
+                    break;
+                default:
+                    ctx.reply("Unknown subcommand. Usage: whitelist <on|off|add|remove|list|reload>");
+                    break;
             }
         });
     }

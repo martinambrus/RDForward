@@ -60,15 +60,17 @@ public final class ServerProperties {
         DEFAULTS.put("pvp", "true");
         DEFAULTS.put("online-mode", "false");
         DEFAULTS.put("white-list", "false");
+        DEFAULTS.put("enforce-whitelist", "false");
         DEFAULTS.put("enable-command-block", "false");
     }
 
     /** Properties that exist in the file but have no effect yet. */
     private static final Set<String> PLACEHOLDER_KEYS = new HashSet<String>(
-            Arrays.asList("pvp", "online-mode", "white-list", "enable-command-block"));
+            Arrays.asList("pvp", "online-mode", "enable-command-block"));
 
     private static final Properties props = new Properties();
     private static volatile boolean loaded = false;
+    private static volatile File loadedFile;
 
     /**
      * Load server.properties from the current working directory.
@@ -86,6 +88,7 @@ public final class ServerProperties {
     public static void load(File dataDir) {
         File dir = (dataDir != null) ? dataDir : new File(".");
         File file = new File(dir, FILE_NAME);
+        loadedFile = file;
 
         // Start from defaults
         props.clear();
@@ -140,6 +143,16 @@ public final class ServerProperties {
                 + ", max-players=" + getMaxPlayers());
         System.out.println("  motd=\"" + getMotd() + "\""
                 + ", server-port=" + getServerPort() + ", bedrock-port=" + getBedrockPort());
+    }
+
+    /**
+     * Save current properties to disk. System property overrides are
+     * excluded (transient per-run values are not persisted).
+     */
+    public static void save() {
+        if (loadedFile != null) {
+            saveOrdered(loadedFile);
+        }
     }
 
     /**
@@ -412,6 +425,16 @@ public final class ServerProperties {
     public static boolean isWhiteList() {
         warnIfNotLoaded();
         return getBoolean("white-list", false);
+    }
+
+    /** Set white-list enabled/disabled at runtime. */
+    public static void setWhiteList(boolean enabled) {
+        props.setProperty("white-list", String.valueOf(enabled));
+    }
+
+    public static boolean isEnforceWhitelist() {
+        warnIfNotLoaded();
+        return getBoolean("enforce-whitelist", false);
     }
 
     public static boolean isEnableCommandBlock() {

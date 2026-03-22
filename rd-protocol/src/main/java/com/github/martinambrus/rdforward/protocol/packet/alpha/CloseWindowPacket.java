@@ -17,6 +17,10 @@ public class CloseWindowPacket implements Packet {
 
     public CloseWindowPacket() {}
 
+    public CloseWindowPacket(int windowId) {
+        this.windowId = windowId;
+    }
+
     @Override
     public int getPacketId() {
         return 0x65;

@@ -492,18 +492,27 @@ public class PlayerManager {
     }
 
     /**
+     * Extract the IP address string from a socket address.
+     * Returns null if the address is not an InetSocketAddress.
+     */
+    public static String extractIp(java.net.SocketAddress addr) {
+        if (addr instanceof InetSocketAddress) {
+            return ((InetSocketAddress) addr).getAddress().getHostAddress();
+        }
+        return null;
+    }
+
+    /**
      * Extract the IP address string from a player's connection.
      * Returns null if unable to determine.
      */
     public static String extractIp(ConnectedPlayer player) {
         if (player.getBedrockSession() != null) {
-            java.net.SocketAddress addr = player.getBedrockSession().getSession().getPeer().getSocketAddress();
-            if (addr instanceof InetSocketAddress) {
-                return ((InetSocketAddress) addr).getAddress().getHostAddress();
-            }
+            String ip = extractIp(player.getBedrockSession().getSession().getPeer().getSocketAddress());
+            if (ip != null) return ip;
         }
-        if (player.getChannel() != null && player.getChannel().remoteAddress() instanceof InetSocketAddress) {
-            return ((InetSocketAddress) player.getChannel().remoteAddress()).getAddress().getHostAddress();
+        if (player.getChannel() != null) {
+            return extractIp(player.getChannel().remoteAddress());
         }
         return null;
     }

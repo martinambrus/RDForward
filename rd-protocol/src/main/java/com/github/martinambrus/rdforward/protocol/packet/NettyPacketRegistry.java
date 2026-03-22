@@ -2578,7 +2578,7 @@ public class NettyPacketRegistry {
             registerV764C2S(0x0A, NO_OP_FACTORY); // CommandSuggestion (v762:0x09)
             registerV764C2S(0x0B, NO_OP_FACTORY); // ConfigurationAcknowledged (NEW)
             registerV764C2S(0x0C, NO_OP_FACTORY); // ContainerButtonClick (v762:0x0A)
-            registerV764C2S(0x0D, NO_OP_FACTORY); // ContainerClick (v762:0x0B)
+            registerV764C2S(0x0D, new PacketFactory() { public Packet create() { return new NettyWindowClickPacketV755(); } }); // ContainerClick (v762:0x0B)
             registerV764C2S(0x0E, new PacketFactory() { public Packet create() { return new CloseWindowPacket(); } }); // v762:0x0C
             registerV764C2S(0x0F, new PacketFactory() { public Packet create() { return new NettyPluginMessagePacketV47(); } }); // v762:0x0D
             registerV764C2S(0x10, NO_OP_FACTORY); // EditBook (v762:0x0E)
@@ -2628,6 +2628,8 @@ public class NettyPacketRegistry {
             registerV764C2SReverse(KeepAlivePacketV340.class, 0x14);
             registerV764C2SReverse(PlayerDiggingPacketV759.class, 0x20);
             registerV764C2SReverse(NettyBlockPlacementPacketV759.class, 0x34);
+            registerV764C2SReverse(NettyWindowClickPacketV755.class, 0x0D);
+            registerV764C2SReverse(CloseWindowPacket.class, 0x0E);
         }
 
         private static void registerV764C2S(int packetId, PacketFactory factory) {
@@ -2840,6 +2842,10 @@ public class NettyPacketRegistry {
                     new PacketFactory() { public Packet create() { return new SelectKnownPacksC2SPacket(); } }); // NEW
     
             // CONFIG C2S reverse map (for server encoder — bot sending config packets)
+            registerV766Reverse(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER,
+                    ConfigClientInformationC2SPacket.class, 0x00);
+            registerV766Reverse(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER,
+                    ConfigCustomPayloadC2SPacket.class, 0x02); // shifted from 0x01 (CookieResponse now at 0x01)
             registerV766Reverse(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER,
                     ConfigFinishC2SPacket.class, 0x03);
             registerV766Reverse(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER,
@@ -3092,6 +3098,12 @@ public class NettyPacketRegistry {
             registerV768Reverse(ConnectionState.CONFIGURATION, PacketDirection.SERVER_TO_CLIENT,
                     UpdateTagsPacketV768.class, 0x0D);
     
+            // V768 CONFIG C2S: ClientInformation gained VarInt particleStatus
+            registerV768Forward(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER, 0x00,
+                    new PacketFactory() { public Packet create() { return new ConfigClientInformationC2SPacketV768(); } });
+            registerV768Reverse(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER,
+                    ConfigClientInformationC2SPacketV768.class, 0x00);
+
             // === V768 C2S PLAY forward map entries (for server decoder) ===
             // 2 new packets: BUNDLE_ITEM_SELECTED at 0x02, CLIENT_TICK_END at 0x0B
             // Shift: v766 0x00-0x01 unchanged, v766 0x02-0x09 shift +1, v766 0x0A+ shift +2
