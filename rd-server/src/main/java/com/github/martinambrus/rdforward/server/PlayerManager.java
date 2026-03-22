@@ -8,7 +8,10 @@ import com.github.martinambrus.rdforward.protocol.packet.alpha.TimeUpdatePacket;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.TimeUpdatePacketV47;
 import com.github.martinambrus.rdforward.protocol.packet.classic.DespawnPlayerPacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.MessagePacket;
+import com.github.martinambrus.rdforward.protocol.packet.classic.OrientationUpdatePacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.PlayerTeleportPacket;
+import com.github.martinambrus.rdforward.protocol.packet.classic.PositionOrientationUpdatePacket;
+import com.github.martinambrus.rdforward.protocol.packet.classic.PositionUpdatePacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.SpawnPlayerPacket;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyChangeGameStatePacket;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyPlayerPositionS2CPacket;
@@ -175,20 +178,42 @@ public class PlayerManager {
 
     /**
      * Send a packet to all connected players.
+     * Uses write+flush batching so the PrioritizingOutboundHandler
+     * can reorder queued packets by priority before flushing.
      */
     public void broadcastPacket(Packet packet) {
         for (ConnectedPlayer player : playersById.values()) {
-            player.sendPacket(packet);
+            player.writePacket(packet);
+        }
+        for (ConnectedPlayer player : playersById.values()) {
+            player.flushPackets();
         }
     }
 
     /**
      * Send a packet to all players except the specified one.
+     * Uses write+flush batching for priority reordering.
+     * Entity position packets are throttled for high-RTT players to
+     * prevent saturating their connection with updates they can't keep up with.
      */
     public void broadcastPacketExcept(Packet packet, ConnectedPlayer exclude) {
+        boolean isEntityPositionPacket = (packet instanceof PlayerTeleportPacket)
+                || (packet instanceof PositionOrientationUpdatePacket)
+                || (packet instanceof PositionUpdatePacket)
+                || (packet instanceof OrientationUpdatePacket);
+
+        for (ConnectedPlayer player : playersById.values()) {
+            if (player == exclude) continue;
+            if (isEntityPositionPacket) {
+                int tier = player.getRttTier();
+                if (tier == 1 && player.incrementAndGetThrottleCounter() % 2 != 0) continue;
+                else if (tier == 2 && player.incrementAndGetThrottleCounter() % 5 != 0) continue;
+            }
+            player.writePacket(packet);
+        }
         for (ConnectedPlayer player : playersById.values()) {
             if (player != exclude) {
-                player.sendPacket(packet);
+                player.flushPackets();
             }
         }
     }
@@ -485,10 +510,38 @@ public class PlayerManager {
         short fixedZ = (short) (z * 32);
         byte byteYaw = (byte) ((classicYaw / 360.0f) * 256);
         byte bytePitch = (byte) ((pitch / 360.0f) * 256);
-        broadcastPacketExcept(
-                new PlayerTeleportPacket(target.getPlayerId(),
-                        fixedX, fixedY, fixedZ, byteYaw & 0xFF, bytePitch & 0xFF),
-                target);
+        broadcastPositionUpdate(target, fixedX, fixedY, fixedZ, byteYaw, bytePitch);
+    }
+
+    /**
+     * Broadcast a position update for a player to all other players.
+     * Uses delta compression when the movement fits in signed byte range (±4 blocks),
+     * falling back to absolute teleport packets for larger movements.
+     */
+    public void broadcastPositionUpdate(ConnectedPlayer player, short fixedX, short fixedY, short fixedZ,
+                                        byte byteYaw, byte bytePitch) {
+        if (player.hasBroadcastPosition()) {
+            int dx = fixedX - player.getLastBroadcastX();
+            int dy = fixedY - player.getLastBroadcastY();
+            int dz = fixedZ - player.getLastBroadcastZ();
+            if (dx >= -128 && dx <= 127 && dy >= -128 && dy <= 127 && dz >= -128 && dz <= 127) {
+                broadcastPacketExcept(
+                        new PositionOrientationUpdatePacket(player.getPlayerId(),
+                                dx, dy, dz, byteYaw & 0xFF, bytePitch & 0xFF),
+                        player);
+            } else {
+                broadcastPacketExcept(
+                        new PlayerTeleportPacket(player.getPlayerId(),
+                                fixedX, fixedY, fixedZ, byteYaw & 0xFF, bytePitch & 0xFF),
+                        player);
+            }
+        } else {
+            broadcastPacketExcept(
+                    new PlayerTeleportPacket(player.getPlayerId(),
+                            fixedX, fixedY, fixedZ, byteYaw & 0xFF, bytePitch & 0xFF),
+                    player);
+        }
+        player.updateLastBroadcastPosition(fixedX, fixedY, fixedZ, byteYaw, bytePitch);
     }
 
     /**

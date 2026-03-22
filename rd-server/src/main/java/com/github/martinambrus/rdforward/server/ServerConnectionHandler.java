@@ -340,11 +340,8 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
         // Fire player move event
         ServerEvents.PLAYER_MOVE.invoker().onPlayerMove(player.getUsername(), x, y, z, yaw, pitch);
 
-        // Broadcast absolute position to all other players
-        playerManager.broadcastPacketExcept(
-            new PlayerTeleportPacket(player.getPlayerId(), x, y, z, yaw & 0xFF, pitch & 0xFF),
-            player
-        );
+        // Broadcast position update (delta when possible, absolute otherwise)
+        playerManager.broadcastPositionUpdate(player, x, y, z, yaw, pitch);
     }
 
     private void handleMessage(ChannelHandlerContext ctx, MessagePacket packet) {

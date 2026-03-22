@@ -224,6 +224,7 @@ public class MCPELoginHandler {
 
         // Calculate spawn position
         double spawnX, spawnY = 0, spawnZ;
+        float spawnYaw = 0, spawnPitch = 0;
         java.util.Map<String, short[]> savedPositions = world.loadPlayerPositions();
         short[] savedPos = savedPositions.get(player.getUsername());
 
@@ -234,6 +235,9 @@ public class MCPELoginHandler {
             spawnX = savedPos[0] / 32.0;
             spawnY = savedPos[1] / 32.0;
             spawnZ = savedPos[2] / 32.0;
+            spawnYaw = (savedPos[3] & 0xFF) * 360.0f / 256.0f;
+            spawnPitch = (savedPos[4] & 0xFF) * 360.0f / 256.0f;
+            if (spawnPitch > 180.0f) spawnPitch -= 360.0f;
         }
 
         // Always validate spawn against terrain — recalculate if feet would be inside a solid block
@@ -256,12 +260,14 @@ public class MCPELoginHandler {
             }
         }
 
-        player.updatePositionDouble(spawnX, spawnY, spawnZ, 0, 0);
+        // spawnYaw is Classic convention (0=North); all MCPE versions expect 0=South
+        float mcpeYaw = (spawnYaw + 180.0f) % 360.0f;
+        player.updatePositionDouble(spawnX, spawnY, spawnZ, spawnYaw, spawnPitch);
 
         // Send StartGame — v34: Y is eye-level; older: Y is feet-level
         boolean isV34 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34;
         float startGameY = isV34 ? (float) spawnY : (float) (spawnY - PLAYER_EYE_HEIGHT);
-        sendStartGame((float) spawnX, startGameY, (float) spawnZ);
+        sendStartGame((float) spawnX, startGameY, (float) spawnZ, mcpeYaw, spawnPitch);
 
         boolean isV17 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_17;
 
@@ -591,7 +597,7 @@ public class MCPELoginHandler {
         }
     }
 
-    /** v34 spawn — AdventureSettings already sent; no MovePlayer (PocketMine doesn't send one). */
+    /** v34 spawn — AdventureSettings already sent. */
     private void doSpawnV34() {
         // v91: attributes already sent early (after SetTime, before chunks, matching Genisys)
         // Pre-v91: send attributes now before inventory
@@ -599,6 +605,16 @@ public class MCPELoginHandler {
             sendUpdateAttributes(player.getPlayerId() + 1);
         }
         sendInventory();
+
+        // Send MovePlayer to set the player's own rotation (StartGame yaw/pitch
+        // may not affect the camera). Mode 2 = RESET for initial spawn.
+        double x = player.getDoubleX();
+        double y = player.getDoubleY();
+        double z = player.getDoubleZ();
+        float moveY = (float) y; // v34+: eye-level
+        float spawnMcpeYaw = (player.getFloatYaw() + 180.0f) % 360.0f;
+        sendMovePlayer(player.getPlayerId() + 1, (float) x, moveY, (float) z,
+                spawnMcpeYaw, player.getFloatPitch(), 1);
 
         // Transition to gameplay handler
         MCPEGameplayHandler gameplayHandler = new MCPEGameplayHandler(
@@ -617,6 +633,12 @@ public class MCPELoginHandler {
             int oeid = (other.getPlayerId() & 0xFF) + 1;
             float yaw = ((other.getYaw() + 128) & 0xFF) * 360.0f / 256.0f;
             float pitch = (other.getPitch() & 0xFF) * 360.0f / 256.0f;
+            if (pitch > 180.0f) pitch -= 360.0f;
+
+            // Register entity position for delta-to-absolute reconstruction
+            sessionWrapper.registerEntityPosition(other.getPlayerId(),
+                    other.getX(), other.getY(), other.getZ(),
+                    other.getYaw(), other.getPitch());
 
             sendPlayerListAddForOther(other, oeid);
 
@@ -636,9 +658,9 @@ public class MCPELoginHandler {
                 addPkt.writeLFloat(0); // speedX
                 addPkt.writeLFloat(0); // speedY
                 addPkt.writeLFloat(0); // speedZ
+                addPkt.writeLFloat(pitch);
                 addPkt.writeLFloat(yaw);
                 addPkt.writeLFloat(yaw);  // headYaw
-                addPkt.writeLFloat(pitch);
                 addPkt.writeSignedVarInt(0); // held item (air slot: VarInt 0)
                 int addFlags91 = (1 << MCPEConstants.V91_FLAG_CAN_SHOW_NAMETAG)
                                | (1 << MCPEConstants.V91_FLAG_ALWAYS_SHOW_NAMETAG);
@@ -718,7 +740,9 @@ public class MCPELoginHandler {
         // v17+ MovePlayer Y = eye-level (PocketMine Alpha_1.4dev confirms); v11-v13 = feet-level
         float moveY = (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_17)
                 ? (float) y : (float) (y - PLAYER_EYE_HEIGHT);
-        sendMovePlayer(player.getPlayerId() + 1, (float) x, moveY, (float) z, 0, 0, 2);
+        float spawnMcpeYaw = (player.getFloatYaw() + 180.0f) % 360.0f;
+        sendMovePlayer(player.getPlayerId() + 1, (float) x, moveY, (float) z,
+                spawnMcpeYaw, player.getFloatPitch(), 1);
         // v27+: 0x01=WORLD_IMMUTABLE (prevents block breaking!), 0x20=AUTO_JUMP, 0x40=ALLOW_FLIGHT
         // v14: 0x01=WORLD_IMMUTABLE (same as v27 — prevents RemoveBlock), use 0x20|0x40 instead
         // 0x01 meaning differs per version:
@@ -755,8 +779,16 @@ public class MCPELoginHandler {
             float oy = other.getY() / 32.0f - (float) PLAYER_EYE_HEIGHT;
             float oz = other.getZ() / 32.0f;
             int oeid = (other.getPlayerId() & 0xFF) + 1;
+            boolean isV9 = session.getMcpeProtocolVersion() < MCPEConstants.MCPE_PROTOCOL_VERSION_11;
+            // All MCPE versions use 0=South; Classic byte is 0=North. +128 = +180°.
             float yaw = ((other.getYaw() + 128) & 0xFF) * 360.0f / 256.0f;
             float pitch = (other.getPitch() & 0xFF) * 360.0f / 256.0f;
+            if (pitch > 180.0f) pitch -= 360.0f;
+
+            // Register entity position for delta-to-absolute reconstruction
+            sessionWrapper.registerEntityPosition(other.getPlayerId(),
+                    other.getX(), other.getY(), other.getZ(),
+                    other.getYaw(), other.getPitch());
 
             // v34: send PlayerListAdd before AddPlayer (registers skin)
             if (isV34) {
@@ -836,7 +868,6 @@ public class MCPELoginHandler {
                 addPkt.writeFloat(oz);
             }
 
-            boolean isV9 = session.getMcpeProtocolVersion() < MCPEConstants.MCPE_PROTOCOL_VERSION_11;
             if (isV9) {
                 // v9: PocketMine sends metadata indices 0,1,16,17 (no nametag/showNametag)
                 addPkt.writeMetaByte(MCPEConstants.META_FLAGS, (byte) 0);
@@ -861,6 +892,9 @@ public class MCPELoginHandler {
                 eqPkt.writeShort(0); // block = air
                 eqPkt.writeShort(0); // meta = 0
                 server.sendGamePacket(session, eqPkt.getBuf());
+
+                // v9 AddPlayer has no rotation fields — send MovePlayer to set initial rotation
+                sendMovePlayer(oeid, ox, oy, oz, yaw, pitch, 0);
             } else {
                 MCPEPacketBuffer meta = new MCPEPacketBuffer();
                 meta.writeByte(codec.wireId(MCPEConstants.SET_ENTITY_DATA));
@@ -875,6 +909,16 @@ public class MCPELoginHandler {
                 meta.writeMetaByte(MCPEConstants.META_SHOW_NAMETAG, (byte) 1);
                 meta.writeMetaEnd();
                 server.sendGamePacket(session, meta.getBuf());
+
+                // Send MovePlayer after AddPlayer to set correct rotation.
+                // v11-v20 AddPlayer uses byte yaw whose convention may differ
+                // from MovePlayer float yaw. The MovePlayer ensures the correct
+                // float yaw (0=South) is always applied.
+                // MovePlayer Y convention: v18+ = eye-level, v11-v17 = feet-level.
+                float moveOy = (session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_18)
+                        ? other.getY() / 32.0f  // eye-level
+                        : oy;                    // feet-level (already computed above)
+                sendMovePlayer(oeid, ox, moveOy, oz, yaw, pitch, 0);
             }
         }
 
@@ -911,7 +955,7 @@ public class MCPELoginHandler {
         server.sendGamePacket(session, pkt.getBuf());
     }
 
-    private void sendStartGame(float x, float y, float z) {
+    private void sendStartGame(float x, float y, float z, float yaw, float pitch) {
         boolean isV91 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_91;
         boolean isV34 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34;
         boolean isV27 = session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_27;
@@ -928,8 +972,8 @@ public class MCPELoginHandler {
             pkt.writeLFloat(x);                       // position X
             pkt.writeLFloat(y);                       // position Y
             pkt.writeLFloat(z);                       // position Z
-            pkt.writeLFloat(0);                       // yaw (padding)
-            pkt.writeLFloat(0);                       // pitch (padding)
+            pkt.writeLFloat(yaw);
+            pkt.writeLFloat(pitch);
             pkt.writeSignedVarInt(0);                 // seed
             pkt.writeSignedVarInt(0);                 // dimension
             pkt.writeSignedVarInt(MCPEConstants.GENERATOR_FLAT); // generator
@@ -1030,8 +1074,8 @@ public class MCPELoginHandler {
             pkt.writeFloat(y);
             pkt.writeFloat(z);
             pkt.writeFloat(yaw);
-            pkt.writeFloat(pitch);
             pkt.writeFloat(yaw);   // headYaw
+            pkt.writeFloat(pitch);
             pkt.writeByte(mode);
             pkt.writeByte(0);      // onGround
         } else {

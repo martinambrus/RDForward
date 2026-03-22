@@ -134,6 +134,7 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         // Create session wrapper for Classic->Bedrock translation
         ClassicToBedrockTranslator translator = new ClassicToBedrockTranslator(blockMapper);
         sessionWrapper = new BedrockSessionWrapper(session, translator);
+        sessionWrapper.setChunkSender(chunkConverter, world);
         player.setBedrockSession(sessionWrapper);
 
         // Determine spawn position
@@ -148,6 +149,7 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
             spawnZ = savedPos[2] / 32.0;
             spawnYaw = (savedPos[3] & 0xFF) * 360.0f / 256.0f;
             spawnPitch = (savedPos[4] & 0xFF) * 360.0f / 256.0f;
+            if (spawnPitch > 180.0f) spawnPitch -= 360.0f;
 
             // Safety check: ensure player isn't inside solid blocks.
             // Fixed-point truncation can place feet slightly inside the ground,

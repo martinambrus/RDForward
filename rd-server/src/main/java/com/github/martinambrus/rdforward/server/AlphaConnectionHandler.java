@@ -193,7 +193,12 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 || packet instanceof TabCompletePacket) {
             // Silently accept (not yet implemented server-side)
         } else if (packet instanceof KeepAlivePacket) {
-            // Silently accept
+            // Keep-alive response — measure RTT (only meaningful for Beta 1.8+
+            // which sends KeepAlivePacketV17 with echoed ID)
+            if (player != null && packet instanceof KeepAlivePacketV17) {
+                player.updateRtt(player.getKeepAliveSentNanos());
+                player.setLastKeepAliveResponseTime(System.currentTimeMillis());
+            }
         } else if (packet instanceof DisconnectPacket) {
             ctx.close();
         }
@@ -508,6 +513,10 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             spawnZ = savedPos[2] / 32.0;
             spawnYaw = (savedPos[3] & 0xFF) * 360.0f / 256.0f;
             spawnPitch = (savedPos[4] & 0xFF) * 360.0f / 256.0f;
+            // Normalize pitch back to signed range (-180..+180).
+            // The byte→unsigned→degree conversion maps negative pitches (looking up)
+            // to 180-360° range, but S2C packets expect -90..+90.
+            if (spawnPitch > 180.0f) spawnPitch -= 360.0f;
 
             // Snap feet to nearest block surface if within fixed-point tolerance.
             // Eye-level Y is saved as fixed-point (round(eyeY*32)/32), so the
@@ -668,11 +677,23 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         // Beta 1.8+ requires periodic KeepAlive with int ID (client times out otherwise)
         if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
+            int keepAliveInterval = ServerProperties.getKeepAliveIntervalSeconds();
+            long keepAliveTimeoutMs = ServerProperties.getKeepAliveTimeoutSeconds() * 1000L;
             keepAliveTask = ctx.executor().scheduleAtFixedRate(() -> {
                 if (ctx.channel().isActive()) {
+                    // Check for timeout before sending next keep-alive
+                    if (player != null
+                            && System.currentTimeMillis() - player.getLastKeepAliveResponseTime() > keepAliveTimeoutMs) {
+                        ctx.writeAndFlush(new DisconnectPacket("Timed out"));
+                        ctx.close();
+                        return;
+                    }
+                    if (player != null) {
+                        player.setKeepAliveSentNanos(System.nanoTime());
+                    }
                     ctx.writeAndFlush(new KeepAlivePacketV17(++keepAliveCounter));
                 }
-            }, 10, 10, TimeUnit.SECONDS);
+            }, keepAliveInterval, keepAliveInterval, TimeUnit.SECONDS);
         }
 
         // Remove login timeout
@@ -787,11 +808,8 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         ServerEvents.PLAYER_MOVE.invoker().onPlayerMove(
                 player.getUsername(), fixedX, fixedY, fixedZ, byteYaw, bytePitch);
 
-        // Broadcast as Classic PlayerTeleportPacket (eye-level, translator adjusts for Alpha)
-        playerManager.broadcastPacketExcept(
-                new PlayerTeleportPacket(player.getPlayerId(),
-                        fixedX, fixedY, fixedZ, byteYaw & 0xFF, bytePitch & 0xFF),
-                player);
+        // Broadcast position update (delta when possible, absolute otherwise)
+        playerManager.broadcastPositionUpdate(player, fixedX, fixedY, fixedZ, byteYaw, bytePitch);
     }
 
     /**

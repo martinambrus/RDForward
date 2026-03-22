@@ -62,6 +62,8 @@ public final class ServerProperties {
         DEFAULTS.put("white-list", "false");
         DEFAULTS.put("enforce-whitelist", "false");
         DEFAULTS.put("enable-command-block", "false");
+        DEFAULTS.put("keep-alive-interval", "15");
+        DEFAULTS.put("keep-alive-timeout", "30");
     }
 
     /** Properties that exist in the file but have no effect yet. */
@@ -438,6 +440,25 @@ public final class ServerProperties {
     public static boolean isEnableCommandBlock() {
         warnIfNotLoaded();
         return getBoolean("enable-command-block", false);
+    }
+
+    /**
+     * Get keep-alive send interval in seconds.
+     * Vanilla Minecraft uses 15 seconds.
+     */
+    public static int getKeepAliveIntervalSeconds() {
+        warnIfNotLoaded();
+        return Math.max(1, getInt("keep-alive-interval", 15));
+    }
+
+    /**
+     * Get keep-alive timeout in seconds. If no response is received
+     * within this period, the player is disconnected.
+     * Vanilla Minecraft uses 30 seconds (2x the send interval).
+     */
+    public static int getKeepAliveTimeoutSeconds() {
+        warnIfNotLoaded();
+        return Math.max(1, getInt("keep-alive-timeout", 30));
     }
 
     /**

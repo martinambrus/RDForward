@@ -45,6 +45,22 @@ public class ConnectedPlayer {
     private volatile float floatYaw;
     private volatile float floatPitch;
 
+    // RTT tracking (used for keep-alive timeout detection and graceful degradation)
+    private volatile long rttMillis = 0;
+    private volatile long keepAliveSentNanos = 0;
+    private volatile long lastKeepAliveResponseTime = System.currentTimeMillis();
+
+    // Delta compression — last broadcast position (fixed-point)
+    private volatile short lastBroadcastX;
+    private volatile short lastBroadcastY;
+    private volatile short lastBroadcastZ;
+    private volatile byte lastBroadcastYaw;
+    private volatile byte lastBroadcastPitch;
+    private volatile boolean hasBroadcastPosition = false;
+
+    // RTT-based entity update throttling
+    private volatile int entityUpdateThrottleCounter = 0;
+
     public ConnectedPlayer(byte playerId, String username, Channel channel, ProtocolVersion protocolVersion) {
         this.playerId = playerId;
         this.username = username;
@@ -53,16 +69,44 @@ public class ConnectedPlayer {
     }
 
     public void sendPacket(Packet packet) {
+        if (sendViaNonTcp(packet)) return;
+        if (channel != null && channel.isActive()) {
+            channel.writeAndFlush(packet);
+        }
+    }
+
+    /**
+     * Write a packet without flushing. Use with {@link #flushPackets()}
+     * to batch multiple writes, allowing the {@link PrioritizingOutboundHandler}
+     * to reorder them by priority before flushing to the network.
+     */
+    public void writePacket(Packet packet) {
+        if (sendViaNonTcp(packet)) return;
+        if (channel != null && channel.isActive()) {
+            channel.write(packet);
+        }
+    }
+
+    /** Route packet to Bedrock/MCPE transport if applicable. Returns true if handled. */
+    private boolean sendViaNonTcp(Packet packet) {
         if (bedrockSession != null) {
             bedrockSession.translateAndSend(packet);
-            return;
+            return true;
         }
         if (mcpeSession != null) {
             mcpeSession.translateAndSend(packet);
-            return;
+            return true;
         }
+        return false;
+    }
+
+    /**
+     * Flush all buffered writes. Called after a batch of {@link #writePacket}
+     * calls to trigger the {@link PrioritizingOutboundHandler} to sort and send.
+     */
+    public void flushPackets() {
         if (channel != null && channel.isActive()) {
-            channel.writeAndFlush(packet);
+            channel.flush();
         }
     }
 
@@ -144,4 +188,57 @@ public class ConnectedPlayer {
     public double getDoubleZ() { return doubleZ; }
     public float getFloatYaw() { return floatYaw; }
     public float getFloatPitch() { return floatPitch; }
+
+    // --- RTT tracking ---
+
+    public void setKeepAliveSentNanos(long nanos) { this.keepAliveSentNanos = nanos; }
+    public long getKeepAliveSentNanos() { return keepAliveSentNanos; }
+
+    public void setLastKeepAliveResponseTime(long millis) { this.lastKeepAliveResponseTime = millis; }
+    public long getLastKeepAliveResponseTime() { return lastKeepAliveResponseTime; }
+
+    /**
+     * Update RTT using exponential moving average (weight 7/8 old, 1/8 new).
+     * Call with the nanoTime recorded when the keep-alive was sent.
+     */
+    public void updateRtt(long sentNanos) {
+        long measured = (System.nanoTime() - sentNanos) / 1_000_000;
+        if (measured < 0) measured = 0;
+        rttMillis = (rttMillis == 0) ? measured : (rttMillis * 7 + measured) / 8;
+    }
+
+    public long getRttMillis() { return rttMillis; }
+
+    /**
+     * Get RTT tier for graceful degradation.
+     * 0 = normal (< 150ms), 1 = degraded (150-499ms), 2 = critical (>= 500ms).
+     */
+    public int getRttTier() {
+        long rtt = rttMillis;
+        if (rtt >= 500) return 2;
+        if (rtt >= 150) return 1;
+        return 0;
+    }
+
+    // --- Delta compression (last broadcast position) ---
+
+    public boolean hasBroadcastPosition() { return hasBroadcastPosition; }
+    public short getLastBroadcastX() { return lastBroadcastX; }
+    public short getLastBroadcastY() { return lastBroadcastY; }
+    public short getLastBroadcastZ() { return lastBroadcastZ; }
+    public byte getLastBroadcastYaw() { return lastBroadcastYaw; }
+    public byte getLastBroadcastPitch() { return lastBroadcastPitch; }
+
+    public void updateLastBroadcastPosition(short x, short y, short z, byte yaw, byte pitch) {
+        this.lastBroadcastX = x;
+        this.lastBroadcastY = y;
+        this.lastBroadcastZ = z;
+        this.lastBroadcastYaw = yaw;
+        this.lastBroadcastPitch = pitch;
+        this.hasBroadcastPosition = true;
+    }
+
+    // --- RTT-based throttling ---
+
+    public int incrementAndGetThrottleCounter() { return ++entityUpdateThrottleCounter; }
 }

@@ -814,6 +814,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             spawnZ = savedPos[2] / 32.0;
             spawnYaw = (savedPos[3] & 0xFF) * 360.0f / 256.0f;
             spawnPitch = (savedPos[4] & 0xFF) * 360.0f / 256.0f;
+            if (spawnPitch > 180.0f) spawnPitch -= 360.0f;
 
             // Snap feet to nearest block surface
             double feetY = spawnY - PLAYER_EYE_HEIGHT;
@@ -1126,10 +1127,18 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
         adapter.setSlot(player.getUsername(), 36, BlockRegistry.COBBLESTONE, 1, 0);
 
-        // Start KeepAlive heartbeat
+        // Start KeepAlive heartbeat with configurable interval and timeout
         boolean isV340 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_12_2);
+        int keepAliveInterval = ServerProperties.getKeepAliveIntervalSeconds();
+        long keepAliveTimeoutMs = ServerProperties.getKeepAliveTimeoutSeconds() * 1000L;
         keepAliveTask = ctx.executor().scheduleAtFixedRate(() -> {
             if (ctx.channel().isActive()) {
+                // Check for timeout before sending next keep-alive
+                if (System.currentTimeMillis() - player.getLastKeepAliveResponseTime() > keepAliveTimeoutMs) {
+                    sendPlayDisconnect(ctx, "Timed out");
+                    return;
+                }
+                player.setKeepAliveSentNanos(System.nanoTime());
                 if (isV340) {
                     ctx.writeAndFlush(new KeepAlivePacketV340(++keepAliveCounter));
                 } else if (isV47) {
@@ -1138,7 +1147,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                     ctx.writeAndFlush(new KeepAlivePacketV17(++keepAliveCounter));
                 }
             }
-        }, 10, 10, TimeUnit.SECONDS);
+        }, keepAliveInterval, keepAliveInterval, TimeUnit.SECONDS);
 
         // Send tab list entries (for v4/v5 using old format; v47 already sent ADD_PLAYER above)
         if (!isV47) {
@@ -1211,7 +1220,13 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             awaitingTeleportConfirm = false;
         } else if (packet instanceof KeepAlivePacketV47
                 || packet instanceof KeepAlivePacketV17
-                || packet instanceof HoldingChangePacketBeta
+                || packet instanceof KeepAlivePacketV340) {
+            // Keep-alive response — measure RTT
+            if (player != null) {
+                player.updateRtt(player.getKeepAliveSentNanos());
+                player.setLastKeepAliveResponseTime(System.currentTimeMillis());
+            }
+        } else if (packet instanceof HoldingChangePacketBeta
                 || packet instanceof AnimationPacket
                 || packet instanceof AnimationPacketV47
                 || packet instanceof NettyEntityActionPacket
@@ -1239,7 +1254,6 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 || packet instanceof AnimationPacketV109
                 || packet instanceof NettyClientSettingsPacketV109
                 || packet instanceof NettyTabCompletePacketV109
-                || packet instanceof KeepAlivePacketV340
                 || packet instanceof ChunkBatchReceivedPacket
                 || packet instanceof NoOpPacket) {
             // Silently accept
@@ -1297,10 +1311,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         ServerEvents.PLAYER_MOVE.invoker().onPlayerMove(
                 player.getUsername(), fixedX, fixedY, fixedZ, byteYaw, bytePitch);
 
-        playerManager.broadcastPacketExcept(
-                new PlayerTeleportPacket(player.getPlayerId(),
-                        fixedX, fixedY, fixedZ, byteYaw & 0xFF, bytePitch & 0xFF),
-                player);
+        playerManager.broadcastPositionUpdate(player, fixedX, fixedY, fixedZ, byteYaw, bytePitch);
     }
 
     private void handleDiggingV477(ChannelHandlerContext ctx, PlayerDiggingPacketV477 packet) {

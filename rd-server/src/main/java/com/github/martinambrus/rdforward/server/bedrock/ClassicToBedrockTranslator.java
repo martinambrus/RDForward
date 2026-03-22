@@ -27,7 +27,9 @@ import org.cloudburstmc.protocol.bedrock.packet.UpdateBlockPacket;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -48,6 +50,25 @@ public class ClassicToBedrockTranslator {
     private static final double EYE_HEIGHT = 1.62;
 
     private final BedrockBlockMapper blockMapper;
+
+    /**
+     * Tracks absolute positions per entity for delta-to-absolute reconstruction.
+     * Bedrock only supports absolute MovePlayerPacket.
+     */
+    private final Map<Integer, EntityPosition> entityPositions = new HashMap<>();
+
+    /** Per-entity tracked position. x/y/z in fixed-point (x32), yaw/pitch in Classic 0-255. */
+    private static final class EntityPosition {
+        float x, y, z, yaw, pitch;
+
+        EntityPosition(float x, float y, float z, float yaw, float pitch) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.yaw = yaw;
+            this.pitch = pitch;
+        }
+    }
 
     public ClassicToBedrockTranslator(BedrockBlockMapper blockMapper) {
         this.blockMapper = blockMapper;
@@ -120,6 +141,10 @@ public class ClassicToBedrockTranslator {
     private AddPlayerPacket translateSpawnPlayer(SpawnPlayerPacket pkt) {
         if (pkt.getPlayerId() == -1) return null; // self-spawn not applicable
 
+        // Store initial absolute position for delta reconstruction
+        entityPositions.put(pkt.getPlayerId(), new EntityPosition(
+                pkt.getX(), pkt.getY(), pkt.getZ(), pkt.getYaw(), pkt.getPitch()));
+
         AddPlayerPacket app = new AddPlayerPacket();
         long entityId = pkt.getPlayerId() + 1;
         app.setUuid(UUID.nameUUIDFromBytes(
@@ -162,6 +187,10 @@ public class ClassicToBedrockTranslator {
     private MovePlayerPacket translatePlayerTeleport(PlayerTeleportPacket pkt) {
         if (pkt.getPlayerId() == -1) return null;
 
+        // Store absolute position for delta reconstruction
+        entityPositions.put(pkt.getPlayerId(), new EntityPosition(
+                pkt.getX(), pkt.getY(), pkt.getZ(), pkt.getYaw(), pkt.getPitch()));
+
         MovePlayerPacket mpp = new MovePlayerPacket();
         mpp.setRuntimeEntityId(pkt.getPlayerId() + 1);
         // Internal Y is eye-level; MovePlayerPacket expects eye/head position (not feet)
@@ -176,30 +205,54 @@ public class ClassicToBedrockTranslator {
         return mpp;
     }
 
-    /**
-     * Relative position+orientation updates.
-     * We convert these to absolute MovePlayerPacket since Bedrock only has absolute moves.
-     * The caller provides the current absolute position if available;
-     * here we approximate by ignoring (the client will resync).
-     * In practice, the server sends PlayerTeleportPacket for large moves.
-     */
     private MovePlayerPacket translatePositionOrientationUpdate(PositionOrientationUpdatePacket pkt) {
-        // Relative updates can't be cleanly converted without knowing absolute position.
-        // Drop them — the full PlayerTeleportPacket handles sync.
-        return null;
+        EntityPosition pos = entityPositions.get(pkt.getPlayerId());
+        if (pos == null) return null; // No known position yet — wait for absolute packet
+
+        pos.x += pkt.getChangeX();
+        pos.y += pkt.getChangeY();
+        pos.z += pkt.getChangeZ();
+        pos.yaw = pkt.getYaw();
+        pos.pitch = pkt.getPitch();
+
+        return buildMovePacket(pkt.getPlayerId(), pos);
     }
 
     private MovePlayerPacket translatePositionUpdate(PositionUpdatePacket pkt) {
-        // Same as above — relative updates not directly translatable
-        return null;
+        EntityPosition pos = entityPositions.get(pkt.getPlayerId());
+        if (pos == null) return null;
+
+        pos.x += pkt.getChangeX();
+        pos.y += pkt.getChangeY();
+        pos.z += pkt.getChangeZ();
+
+        return buildMovePacket(pkt.getPlayerId(), pos);
     }
 
     private MovePlayerPacket translateOrientationUpdate(OrientationUpdatePacket pkt) {
-        // Same as above
-        return null;
+        EntityPosition pos = entityPositions.get(pkt.getPlayerId());
+        if (pos == null) return null;
+
+        pos.yaw = pkt.getYaw();
+        pos.pitch = pkt.getPitch();
+
+        return buildMovePacket(pkt.getPlayerId(), pos);
+    }
+
+    private MovePlayerPacket buildMovePacket(int playerId, EntityPosition pos) {
+        MovePlayerPacket mpp = new MovePlayerPacket();
+        mpp.setRuntimeEntityId(playerId + 1);
+        mpp.setPosition(fixedPointToFloat((short) pos.x, (short) pos.y, (short) pos.z, false));
+        float bedrockYaw = classicYawToBedrockDegrees((int) pos.yaw);
+        float bedrockPitch = classicPitchToDegrees((int) pos.pitch);
+        mpp.setRotation(Vector3f.from(bedrockPitch, bedrockYaw, bedrockYaw));
+        mpp.setMode(MovePlayerPacket.Mode.NORMAL);
+        mpp.setOnGround(true);
+        return mpp;
     }
 
     private RemoveEntityPacket translateDespawn(DespawnPlayerPacket pkt) {
+        entityPositions.remove(pkt.getPlayerId());
         RemoveEntityPacket rep = new RemoveEntityPacket();
         rep.setUniqueEntityId(pkt.getPlayerId() + 1);
         return rep;

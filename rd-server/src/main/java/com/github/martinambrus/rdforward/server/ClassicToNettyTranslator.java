@@ -288,22 +288,24 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
         if (packet instanceof PositionOrientationUpdatePacket) {
             PositionOrientationUpdatePacket pou = (PositionOrientationUpdatePacket) packet;
             int entityId = pou.getPlayerId() + 1;
+            // Classic yaw 0 = North; Netty yaw 0 = South. Add 128 (180°) to convert.
+            int alphaYaw = (pou.getYaw() + 128) & 0xFF;
             if (isV109) {
                 // 1.9: short deltas, scale 1/4096 (was 1/32). Multiply by 128.
                 return new EntityLookAndMovePacketV109(entityId,
                         (short) (pou.getChangeX() * 128),
                         (short) (pou.getChangeY() * 128),
                         (short) (pou.getChangeZ() * 128),
-                        pou.getYaw(), pou.getPitch());
+                        alphaYaw, pou.getPitch());
             }
             if (isV47) {
                 return new EntityLookAndMovePacketV47(entityId,
                         pou.getChangeX(), pou.getChangeY(), pou.getChangeZ(),
-                        pou.getYaw(), pou.getPitch());
+                        alphaYaw, pou.getPitch());
             }
             return new EntityLookAndMovePacket(entityId,
                     pou.getChangeX(), pou.getChangeY(), pou.getChangeZ(),
-                    pou.getYaw(), pou.getPitch());
+                    alphaYaw, pou.getPitch());
         }
 
         if (packet instanceof PositionUpdatePacket) {
@@ -327,10 +329,12 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
         if (packet instanceof OrientationUpdatePacket) {
             OrientationUpdatePacket ou = (OrientationUpdatePacket) packet;
             int entityId = ou.getPlayerId() + 1;
+            // Classic yaw 0 = North; Netty yaw 0 = South. Add 128 (180°) to convert.
+            int alphaYaw = (ou.getYaw() + 128) & 0xFF;
             if (isV47) {
-                return new EntityLookPacketV47(entityId, ou.getYaw(), ou.getPitch());
+                return new EntityLookPacketV47(entityId, alphaYaw, ou.getPitch());
             }
-            return new EntityLookPacket(entityId, ou.getYaw(), ou.getPitch());
+            return new EntityLookPacket(entityId, alphaYaw, ou.getPitch());
         }
 
         if (packet instanceof DespawnPlayerPacket) {

@@ -145,10 +145,15 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
 
             pipeline.replace("encoder", "encoder", new RawPacketEncoder());
 
-            // Add outbound translator AFTER encoder in head-to-tail order,
+            // Add packet prioritizer AFTER encoder in head-to-tail order.
+            // In the outbound direction (tail-to-head), the prioritizer
+            // buffers writes from the translator and reorders by priority on flush.
+            pipeline.addAfter("encoder", "prioritizer", new PrioritizingOutboundHandler());
+
+            // Add outbound translator AFTER prioritizer in head-to-tail order,
             // so in the outbound direction (tail-to-head) the translator
-            // receives Packet objects BEFORE the encoder encodes them.
-            pipeline.addAfter("encoder", "alphaTranslator", new ClassicToAlphaTranslator());
+            // receives Packet objects BEFORE the prioritizer buffers them.
+            pipeline.addAfter("prioritizer", "alphaTranslator", new ClassicToAlphaTranslator());
 
             pipeline.replace("handler", "handler",
                     new AlphaConnectionHandler(serverVersion, world, playerManager, chunkManager));
@@ -178,8 +183,12 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
             pipeline.addAfter("encoder", "packetEncoder",
                     new NettyPacketEncoder(ConnectionState.HANDSHAKING));
 
-            // Add outbound translator (Classic→Netty) after packet encoder
-            pipeline.addAfter("packetEncoder", "nettyTranslator",
+            // Add packet prioritizer after packet encoder
+            pipeline.addAfter("packetEncoder", "prioritizer",
+                    new PrioritizingOutboundHandler());
+
+            // Add outbound translator (Classic→Netty) after prioritizer
+            pipeline.addAfter("prioritizer", "nettyTranslator",
                     new ClassicToNettyTranslator());
 
             // Replace handler

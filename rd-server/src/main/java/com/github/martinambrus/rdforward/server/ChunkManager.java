@@ -147,6 +147,11 @@ public class ChunkManager {
         Set<ChunkCoord> current = playerChunks.get(player);
         if (current == null) return;
 
+        // Skip new chunk loading for players with critical RTT (>= 500ms).
+        // They keep existing chunks but don't load new ones until RTT improves,
+        // preventing megabytes of chunk data from queueing into a saturated connection.
+        if (player.getRttTier() >= 2) return;
+
         // Convert fixed-point position to chunk coordinates
         int blockX = player.getX() / 32;
         int blockZ = player.getZ() / 32;
@@ -195,6 +200,13 @@ public class ChunkManager {
             if (!isChunkNeededByAnyPlayer(coord)) {
                 unloadChunk(coord);
             }
+        }
+
+        // For Bedrock clients, update the chunk publisher area before sending new chunks
+        // so the client accepts chunks outside the original spawn area.
+        if (!toLoad.isEmpty() && player.getBedrockSession() != null) {
+            player.getBedrockSession().sendChunkPublisherUpdate(
+                    blockX, player.getY() / 32, blockZ, viewDistance * 16);
         }
 
         // Load and send chunks that entered view distance
@@ -444,6 +456,17 @@ public class ChunkManager {
      * v47 (1.8) uses ushort blockStates and no compression.
      */
     private void sendChunkToPlayer(ConnectedPlayer player, AlphaChunk chunk) {
+        // Bedrock (CloudburstMC) — uses its own chunk format via BedrockChunkConverter
+        if (player.getBedrockSession() != null) {
+            player.getBedrockSession().sendChunkData(chunk);
+            return;
+        }
+        // Legacy MCPE — uses version-specific codec chunk format
+        if (player.getMcpeSession() != null) {
+            player.getMcpeSession().sendChunkData(serverWorld, chunk.getXPos(), chunk.getZPos());
+            return;
+        }
+
         if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_19)) {
             // v759/v760/v761/v762/v763: Same chunk format as v757 but with 1.19 block state IDs.
             AlphaChunk.V757ChunkData v759Data = chunk.serializeForV759Protocol();
@@ -860,6 +883,10 @@ public class ChunkManager {
      * v47 uses MapChunkPacketV47 with groundUpContinuous=true, primaryBitMask=0.
      */
     private void sendChunkUnload(ConnectedPlayer player, ChunkCoord coord) {
+        // Bedrock/MCPE clients manage their own chunk cache — no explicit unload needed.
+        // Server-side tracking in playerChunks still removes the coord so re-sends work.
+        if (player.getBedrockSession() != null || player.getMcpeSession() != null) return;
+
         if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_9)) {
             // v109: dedicated UnloadChunk packet
             player.sendPacket(new UnloadChunkPacketV109(coord.getX(), coord.getZ()));

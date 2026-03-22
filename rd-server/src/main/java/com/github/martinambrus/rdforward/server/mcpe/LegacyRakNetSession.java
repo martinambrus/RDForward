@@ -1,11 +1,13 @@
 package com.github.martinambrus.rdforward.server.mcpe;
 
+import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 
 import java.net.InetSocketAddress;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Per-client RakNet session state for legacy MCPE (protocol 11).
@@ -32,17 +34,20 @@ public class LegacyRakNetSession {
     /** Timestamp of last received packet (for timeout detection). */
     private long lastPacketTime = System.currentTimeMillis();
 
-    /** Session timeout in ms — disconnect if no packets received for this long. */
-    public static final long SESSION_TIMEOUT_MS = 10_000;
+    /** Session timeout in ms — configurable via keep-alive-timeout in server.properties. */
+    public static long getSessionTimeoutMs() {
+        return ServerProperties.getKeepAliveTimeoutSeconds() * 1000L;
+    }
 
-    // Outgoing sequence number for data packets
-    private int sendSequenceNumber = 0;
+    // Outgoing sequence number for data packets (thread-safe: sendEncapsulated
+    // can be called from both the UDP event loop and TCP handler threads)
+    private final AtomicInteger sendSequenceNumber = new AtomicInteger(0);
     // Outgoing reliable message index
-    private int sendReliableIndex = 0;
+    private final AtomicInteger sendReliableIndex = new AtomicInteger(0);
     // Outgoing ordering index (channel 0)
-    private int sendOrderingIndex = 0;
+    private final AtomicInteger sendOrderingIndex = new AtomicInteger(0);
     // Split packet ID counter (separate from sequence numbers)
-    private int sendSplitId = 0;
+    private final AtomicInteger sendSplitId = new AtomicInteger(0);
 
     // Incoming: highest received sequence number (for ACKs)
     private int receiveSequenceNumber = -1;
@@ -57,8 +62,9 @@ public class LegacyRakNetSession {
     private MCPELoginHandler loginHandler;
     private MCPEGameplayHandler gameplayHandler;
 
-    // Cached ChannelHandlerContext from incoming data packets (for outgoing writes)
-    private io.netty.channel.ChannelHandlerContext cachedCtx;
+    // Cached ChannelHandlerContext from incoming data packets (for outgoing writes).
+    // Volatile: read from broadcast threads (TCP handlers), written from UDP event loop.
+    private volatile io.netty.channel.ChannelHandlerContext cachedCtx;
 
     public LegacyRakNetSession(InetSocketAddress address, long clientGuid, int mtu, long serverGuid) {
         this.address = address;
@@ -80,7 +86,7 @@ public class LegacyRakNetSession {
 
     /** Check if session has timed out (no packets received within timeout window). */
     public boolean isTimedOut() {
-        return System.currentTimeMillis() - lastPacketTime > SESSION_TIMEOUT_MS;
+        return System.currentTimeMillis() - lastPacketTime > getSessionTimeoutMs();
     }
 
     public MCPELoginHandler getLoginHandler() { return loginHandler; }
@@ -97,22 +103,22 @@ public class LegacyRakNetSession {
 
     /** Allocate the next send sequence number. */
     public int nextSendSequenceNumber() {
-        return sendSequenceNumber++;
+        return sendSequenceNumber.getAndIncrement();
     }
 
     /** Allocate the next reliable message index. */
     public int nextReliableIndex() {
-        return sendReliableIndex++;
+        return sendReliableIndex.getAndIncrement();
     }
 
     /** Allocate the next ordering index. */
     public int nextOrderingIndex() {
-        return sendOrderingIndex++;
+        return sendOrderingIndex.getAndIncrement();
     }
 
     /** Allocate the next split packet ID. */
     public int nextSplitId() {
-        return sendSplitId++;
+        return sendSplitId.getAndIncrement();
     }
 
     /** Update the highest received sequence number and return it for ACK. */

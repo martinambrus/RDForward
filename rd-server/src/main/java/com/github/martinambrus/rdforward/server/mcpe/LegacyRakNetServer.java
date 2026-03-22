@@ -162,8 +162,10 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
         }
     }
 
-    /** Periodic check for timed-out sessions (client closed without disconnect packet). */
+    /** Periodic check for timed-out sessions and NAT keepalive pings. */
     private void checkTimeouts() {
+        Channel sendCh = getSendChannel();
+
         for (java.util.Iterator<java.util.Map.Entry<InetSocketAddress, LegacyRakNetSession>> it =
                 sessions.entrySet().iterator(); it.hasNext(); ) {
             LegacyRakNetSession session = it.next().getValue();
@@ -173,8 +175,37 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
                 }
                 session.close();
                 it.remove();
+            } else if (session.getState() == LegacyRakNetSession.State.CONNECTED
+                    && sendCh != null && sendCh.isActive()) {
+                sendConnectedPing(sendCh, session);
             }
         }
+    }
+
+    /**
+     * Send a ConnectedPing (0x00) to a session as an unreliable encapsulated packet.
+     * This keeps NAT mappings alive even when the client is idle.
+     */
+    private void sendConnectedPing(Channel sendCh, LegacyRakNetSession session) {
+        ByteBuf payload = Unpooled.buffer(9);
+        payload.writeByte(0x00); // Connected Ping
+        payload.writeLong(System.currentTimeMillis());
+
+        int payloadLength = payload.readableBytes();
+        int seqNum = session.nextSendSequenceNumber();
+
+        ByteBuf frame = Unpooled.buffer();
+        frame.writeByte(MCPEConstants.DATA_PACKET_MIN);
+        frame.writeByte(seqNum & 0xFF);
+        frame.writeByte((seqNum >> 8) & 0xFF);
+        frame.writeByte((seqNum >> 16) & 0xFF);
+        // Unreliable encapsulation: reliability bits in flags, no reliable/ordering indices
+        frame.writeByte(MCPEConstants.UNRELIABLE << 5);
+        frame.writeShort(payloadLength * 8); // bit length
+        frame.writeBytes(payload);
+        payload.release();
+
+        sendCh.writeAndFlush(new DatagramPacket(frame, session.getAddress()));
     }
 
     @Override
@@ -378,6 +409,14 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
         // Connected Ping — handled for all versions and states
         if (gamePacketId == 0x00) {
             handleConnectedPing(ctx, session, payload);
+            return;
+        }
+
+        // Connected Pong (0x03) — RakNet transport-level response to ConnectedPing.
+        // Must be handled BEFORE v27 disconnect check since V27_DISCONNECT is also 0x03.
+        // ConnectedPong has 16 bytes payload (two longs); a client disconnect has 0.
+        if (gamePacketId == 0x03 && payload.readableBytes() >= 16) {
+            // Consume the pong — no action needed (NAT keepalive confirmation)
             return;
         }
 
@@ -588,13 +627,6 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
 
         int origId = gamePayload.getUnsignedByte(gamePayload.readerIndex());
 
-        // Debug: log outgoing game packet IDs during login (before gameplay handler assigned)
-        if (session.getGameplayHandler() == null && session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34) {
-            System.out.println("[MCPE OUT] Sending packet 0x" + Integer.toHexString(origId)
-                    + " (" + gamePayload.readableBytes() + " bytes)"
-                    + " to v" + session.getMcpeProtocolVersion());
-        }
-
         // v45+: small packets sent standalone as [wrapper][packet], large packets (chunks etc.)
         // batch-wrapped as [wrapper][batchId][compressed data] (ImagicalMine behavior).
         // v45 uses 0x8E wrapper, v81+ uses 0xFE wrapper.
@@ -621,14 +653,6 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
             if (origId != batchId) {
                 gamePayload = wrapInBatch(session, gamePayload);
             }
-        }
-
-        // Debug: log batch-wrapped size and MTU for v34 login
-        if (session.getGameplayHandler() == null
-                && session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34) {
-            System.out.println("[MCPE OUT BATCH] wrapped=" + gamePayload.readableBytes()
-                    + " bytes, MTU=" + session.getMtu()
-                    + ", maxPayload=" + (session.getMtu() - 60));
         }
 
         ChannelHandlerContext useCtx = (cachedCtx != null) ? cachedCtx : sendCh.pipeline().firstContext();
@@ -760,26 +784,28 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
 
         frame.writeBytes(payload);
 
-        // Debug: hex dump first few outgoing data packets during login
-        if (session.getGameplayHandler() == null
-                && session.getMcpeProtocolVersion() >= MCPEConstants.MCPE_PROTOCOL_VERSION_34) {
-            int ridx = frame.readerIndex();
-            StringBuilder hex = new StringBuilder();
-            for (int i = 0; i < Math.min(32, frame.readableBytes()); i++) {
-                hex.append(String.format("%02x ", frame.getByte(ridx + i)));
-            }
-            System.out.println("[MCPE OUT FRAME] " + frame.readableBytes() + " bytes → "
-                    + session.getAddress() + ": " + hex);
-        }
-
-        io.netty.channel.ChannelFuture future = ctx.writeAndFlush(new DatagramPacket(frame, session.getAddress()));
-        if (session.getGameplayHandler() == null) {
-            final int sn = seqNum;
-            future.addListener(f -> {
+        // Ensure the write happens on the UDP event loop thread.
+        // When called from a TCP handler thread (e.g. broadcasting another player's
+        // actions), using ctx.writeAndFlush from the wrong thread can silently fail
+        // on some Netty/NIO configurations.
+        DatagramPacket dgram = new DatagramPacket(frame, session.getAddress());
+        io.netty.channel.EventLoop eventLoop = ctx.channel().eventLoop();
+        if (eventLoop.inEventLoop()) {
+            ctx.writeAndFlush(dgram).addListener(f -> {
                 if (!f.isSuccess()) {
-                    System.err.println("[MCPE WRITE FAIL] seq=" + sn + " to " + session.getAddress()
-                            + ": " + f.cause());
+                    System.err.println("[MCPE WRITE FAIL] seq=" + seqNum + " to "
+                            + session.getAddress() + ": " + f.cause());
                 }
+            });
+        } else {
+            final int sn = seqNum;
+            eventLoop.execute(() -> {
+                ctx.writeAndFlush(dgram).addListener(f -> {
+                    if (!f.isSuccess()) {
+                        System.err.println("[MCPE WRITE FAIL] seq=" + sn + " to "
+                                + session.getAddress() + ": " + f.cause());
+                    }
+                });
             });
         }
     }
@@ -844,7 +870,13 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
             // Payload fragment
             frame.writeBytes(payload, start, length);
 
-            ctx.writeAndFlush(new DatagramPacket(frame, session.getAddress()));
+            DatagramPacket dgram = new DatagramPacket(frame, session.getAddress());
+            io.netty.channel.EventLoop eventLoop = ctx.channel().eventLoop();
+            if (eventLoop.inEventLoop()) {
+                ctx.writeAndFlush(dgram);
+            } else {
+                eventLoop.execute(() -> ctx.writeAndFlush(dgram));
+            }
         }
     }
 

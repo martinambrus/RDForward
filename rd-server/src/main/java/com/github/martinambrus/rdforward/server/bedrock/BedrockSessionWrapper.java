@@ -1,7 +1,12 @@
 package com.github.martinambrus.rdforward.server.bedrock;
 
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
+import com.github.martinambrus.rdforward.server.ServerWorld;
+import com.github.martinambrus.rdforward.world.alpha.AlphaChunk;
+import org.cloudburstmc.math.vector.Vector3i;
 import org.cloudburstmc.protocol.bedrock.BedrockServerSession;
+import org.cloudburstmc.protocol.bedrock.packet.LevelChunkPacket;
+import org.cloudburstmc.protocol.bedrock.packet.NetworkChunkPublisherUpdatePacket;
 
 import java.util.List;
 
@@ -16,11 +21,45 @@ public class BedrockSessionWrapper {
 
     private final BedrockServerSession session;
     private final ClassicToBedrockTranslator translator;
+    private BedrockChunkConverter chunkConverter;
+    private ServerWorld world;
 
     public BedrockSessionWrapper(BedrockServerSession session,
                                   ClassicToBedrockTranslator translator) {
         this.session = session;
         this.translator = translator;
+    }
+
+    /**
+     * Set the chunk converter and world reference for dynamic chunk loading.
+     * Called after construction once the gameplay handler has these references.
+     */
+    public void setChunkSender(BedrockChunkConverter converter, ServerWorld world) {
+        this.chunkConverter = converter;
+        this.world = world;
+    }
+
+    /**
+     * Send a chunk to this Bedrock client.
+     * Called by ChunkManager when a player moves into range of a new chunk.
+     */
+    public void sendChunkData(AlphaChunk chunk) {
+        if (!session.isConnected() || chunkConverter == null) return;
+        LevelChunkPacket chunkPacket = chunkConverter.convertChunk(chunk);
+        session.sendPacket(chunkPacket);
+    }
+
+    /**
+     * Tell the Bedrock client which area to accept chunks for.
+     * Must be sent when the player moves to a new chunk so the client
+     * accepts newly sent chunks outside the original spawn area.
+     */
+    public void sendChunkPublisherUpdate(int blockX, int blockY, int blockZ, int radiusBlocks) {
+        if (!session.isConnected()) return;
+        NetworkChunkPublisherUpdatePacket pkt = new NetworkChunkPublisherUpdatePacket();
+        pkt.setPosition(Vector3i.from(blockX, blockY, blockZ));
+        pkt.setRadius(radiusBlocks);
+        session.sendPacket(pkt);
     }
 
     /**

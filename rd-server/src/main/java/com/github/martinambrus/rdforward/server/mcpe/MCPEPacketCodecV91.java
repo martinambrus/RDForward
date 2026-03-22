@@ -198,9 +198,9 @@ public class MCPEPacketCodecV91 implements MCPEPacketCodec {
         buf.writeLFloat(0); // speedX
         buf.writeLFloat(0); // speedY
         buf.writeLFloat(0); // speedZ
+        buf.writeLFloat(data.pitch);
         buf.writeLFloat(data.yaw);
         buf.writeLFloat(data.yaw);  // headYaw
-        buf.writeLFloat(data.pitch);
         buf.writeSignedVarInt(0); // held item (air)
         writeV91PlayerMetadata(buf, name);
         server.sendGamePacket(session, buf.getBuf());

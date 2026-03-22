@@ -153,9 +153,11 @@ public class ClassicToAlphaTranslator extends ChannelOutboundHandlerAdapter {
             // Classic 0x09 -> Alpha 0x21 EntityLookAndMove
             PositionOrientationUpdatePacket pou = (PositionOrientationUpdatePacket) packet;
             int entityId = pou.getPlayerId() + 1;
+            // Classic yaw 0 = North; Alpha yaw 0 = South. Add 128 (180°) to convert.
+            int alphaYaw = (pou.getYaw() + 128) & 0xFF;
             return new EntityLookAndMovePacket(entityId,
                     pou.getChangeX(), pou.getChangeY(), pou.getChangeZ(),
-                    pou.getYaw(), pou.getPitch());
+                    alphaYaw, pou.getPitch());
         }
 
         if (packet instanceof PositionUpdatePacket) {
@@ -170,7 +172,9 @@ public class ClassicToAlphaTranslator extends ChannelOutboundHandlerAdapter {
             // Classic 0x0B -> Alpha 0x20 EntityLook
             OrientationUpdatePacket ou = (OrientationUpdatePacket) packet;
             int entityId = ou.getPlayerId() + 1;
-            return new EntityLookPacket(entityId, ou.getYaw(), ou.getPitch());
+            // Classic yaw 0 = North; Alpha yaw 0 = South. Add 128 (180°) to convert.
+            int alphaYaw = (ou.getYaw() + 128) & 0xFF;
+            return new EntityLookPacket(entityId, alphaYaw, ou.getPitch());
         }
 
         if (packet instanceof DespawnPlayerPacket) {

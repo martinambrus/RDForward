@@ -111,7 +111,8 @@ public class MCPEGameplayHandler {
     private void handleMovePlayer(ByteBuf payload) {
         MCPEPacketData.MovePlayerData data = codec.readMovePlayer(new MCPEPacketBuffer(payload));
 
-        // MCPE yaw 0=South, internal/Classic yaw 0=North → add 180°
+        // v11+ (0.7.0+) yaw 0=South, internal/Classic yaw 0=North → add 180°
+        // All MCPE versions use 0=South; internal convention is 0=North (Classic). Add 180°.
         // Eye-level codecs (v27+) match internal convention directly;
         // feet-level codecs (v9-v20) need eye height added
         double storeY = data.isEyeLevel ? data.y : data.y + PLAYER_EYE_HEIGHT;

@@ -4,6 +4,7 @@ import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.protocol.packet.classic.PingPacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
 
+import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import com.github.martinambrus.rdforward.server.event.ServerEvents;
 
 import java.util.List;
@@ -13,7 +14,7 @@ import java.util.List;
  * standard server tick rate.
  *
  * Each tick:
- *   1. Sends keep-alive pings to all clients (every 2 seconds = 40 ticks)
+ *   1. Sends keep-alive pings to all clients (interval from keep-alive-interval config)
  *   2. Future: process queued player actions
  *   3. Future: update world state (physics, redstone, etc.)
  *   4. Future: dispatch tick events to mods
@@ -24,7 +25,7 @@ import java.util.List;
 public class ServerTickLoop implements Runnable {
 
     private static final long TICK_MS = 50; // 20 TPS
-    private static final int PING_INTERVAL_TICKS = 40; // Every 2 seconds
+    private final int pingIntervalTicks; // Derived from keep-alive-interval config
     private static final int CHUNK_UPDATE_INTERVAL_TICKS = 5; // Every 250ms
     private static final int TIME_BROADCAST_INTERVAL_TICKS = 20; // Every 1 second
     private static final int SAVE_INTERVAL_TICKS = 6000; // Every 5 minutes
@@ -40,6 +41,7 @@ public class ServerTickLoop implements Runnable {
         this.playerManager = playerManager;
         this.world = world;
         this.chunkManager = chunkManager;
+        this.pingIntervalTicks = Math.max(1, ServerProperties.getKeepAliveIntervalSeconds() * 20);
     }
 
     /**
@@ -109,7 +111,7 @@ public class ServerTickLoop implements Runnable {
         }
 
         // Send keep-alive pings periodically
-        if (tickCount % PING_INTERVAL_TICKS == 0) {
+        if (tickCount % pingIntervalTicks == 0) {
             playerManager.broadcastPacket(new PingPacket());
         }
 
