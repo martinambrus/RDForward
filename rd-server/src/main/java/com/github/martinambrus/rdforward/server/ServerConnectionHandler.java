@@ -289,12 +289,20 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
             byte existingBlock = world.getBlock(x, y, z);
             EventResult result = ServerEvents.BLOCK_BREAK.invoker()
                     .onBlockBreak(player.getUsername(), x, y, z, existingBlock & 0xFF);
-            if (result == EventResult.CANCEL) return;
+            if (result == EventResult.CANCEL) {
+                // Resend existing block so client doesn't show ghost removal
+                ctx.writeAndFlush(new SetBlockServerPacket(x, y, z, existingBlock & 0xFF));
+                return;
+            }
         } else {
             // Placing
             EventResult result = ServerEvents.BLOCK_PLACE.invoker()
                     .onBlockPlace(player.getUsername(), x, y, z, blockType & 0xFF);
-            if (result == EventResult.CANCEL) return;
+            if (result == EventResult.CANCEL) {
+                // Resend air so client doesn't show ghost placement
+                ctx.writeAndFlush(new SetBlockServerPacket(x, y, z, 0));
+                return;
+            }
         }
 
         // Queue for tick loop processing instead of applying immediately.
@@ -367,17 +375,15 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
         if (player != null) {
+            // Remove player first so getPlayerCount() is accurate for event listeners
+            playerManager.removePlayer(ctx.channel());
             System.out.println(player.getUsername() + " disconnected"
-                + " (" + (playerManager.getPlayerCount() - 1) + " online)");
-            // Fire player leave event before cleanup
+                + " (" + playerManager.getPlayerCount() + " online)");
             ServerEvents.PLAYER_LEAVE.invoker().onPlayerLeave(player.getUsername());
-            // Save position before removal so it persists for reconnect
             world.rememberPlayerPosition(player);
-            // Unregister from chunk tracking (unloads chunks no longer needed)
             chunkManager.removePlayer(player);
             playerManager.broadcastChat((byte) 0, player.getUsername() + " left the game");
             playerManager.broadcastPlayerDespawn(player);
-            playerManager.removePlayer(ctx.channel());
         }
         super.channelInactive(ctx);
     }

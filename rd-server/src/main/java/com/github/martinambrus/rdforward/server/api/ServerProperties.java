@@ -65,7 +65,7 @@ public final class ServerProperties {
 
     /** Properties that exist in the file but have no effect yet. */
     private static final Set<String> PLACEHOLDER_KEYS = new HashSet<String>(
-            Arrays.asList("spawn-protection", "pvp", "online-mode", "white-list", "enable-command-block"));
+            Arrays.asList("pvp", "online-mode", "white-list", "enable-command-block"));
 
     private static final Properties props = new Properties();
     private static volatile boolean loaded = false;
@@ -395,22 +395,27 @@ public final class ServerProperties {
     }
 
     public static int getSpawnProtection() {
+        warnIfNotLoaded();
         return Math.max(0, getInt("spawn-protection", 16));
     }
 
     public static boolean isPvp() {
+        warnIfNotLoaded();
         return getBoolean("pvp", true);
     }
 
     public static boolean isOnlineMode() {
+        warnIfNotLoaded();
         return getBoolean("online-mode", false);
     }
 
     public static boolean isWhiteList() {
+        warnIfNotLoaded();
         return getBoolean("white-list", false);
     }
 
     public static boolean isEnableCommandBlock() {
+        warnIfNotLoaded();
         return getBoolean("enable-command-block", false);
     }
 

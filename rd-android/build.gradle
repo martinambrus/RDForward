@@ -26,10 +26,9 @@ description = 'RDForward Android - Android client using libGDX rendering backend
 // Android Gradle Plugin conflicts with the Java plugin). For CI we apply it here.
 apply plugin: 'java'
 
-sourceCompatibility = JavaVersion.VERSION_21
-targetCompatibility = JavaVersion.VERSION_21
-
 java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
     withSourcesJar()
 }
 

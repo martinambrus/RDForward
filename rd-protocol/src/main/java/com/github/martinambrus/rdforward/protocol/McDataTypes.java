@@ -325,27 +325,56 @@ public final class McDataTypes {
         buf.writeShort(-1); // no NBT data
     }
 
+    /** Maximum NBT nesting depth to prevent stack overflow from malformed data. */
+    private static final int MAX_NBT_DEPTH = 512;
+
     /**
-     * Skip an NBT compound tag (starting after the 0x0A compound start byte).
-     * Reads nested tags until TAG_End (0x00) closes the compound.
+     * Skip one root-level named NBT tag: reads the type byte, tag name, and payload.
+     * Used to skip root-level named tags in network NBT (e.g., dimension codec).
      */
-    private static void skipNbtCompound(ByteBuf buf) {
-        // We already read the 0x0A byte. Now skip the compound contents.
+    public static void skipNbtRootTag(ByteBuf buf) {
+        byte type = buf.readByte();
+        if (type == 0) return; // TAG_End
+        int nameLen = buf.readUnsignedShort();
+        buf.skipBytes(nameLen);
+        skipNbtPayload(buf, type, 0);
+    }
+
+    /**
+     * Skip the body of an NBT compound tag (starting after the 0x0A type byte
+     * and name have already been read). Reads children until TAG_End (0x00).
+     */
+    public static void skipNbtCompound(ByteBuf buf) {
+        skipNbtCompound(buf, 0);
+    }
+
+    private static void skipNbtCompound(ByteBuf buf, int depth) {
+        if (depth > MAX_NBT_DEPTH) {
+            throw new IllegalStateException("NBT nesting depth exceeds " + MAX_NBT_DEPTH);
+        }
         while (true) {
             byte tagType = buf.readByte();
             if (tagType == 0) return; // TAG_End
-            // Skip tag name
             int nameLen = buf.readUnsignedShort();
             buf.skipBytes(nameLen);
-            // Skip tag payload
-            skipNbtPayload(buf, tagType);
+            skipNbtPayload(buf, tagType, depth + 1);
         }
     }
 
     /**
      * Skip the payload of an NBT tag by type.
+     *
+     * @param buf  the buffer to read from
+     * @param type NBT tag type ID (1=Byte through 12=Long_Array)
      */
-    private static void skipNbtPayload(ByteBuf buf, byte type) {
+    public static void skipNbtPayload(ByteBuf buf, byte type) {
+        skipNbtPayload(buf, type, 0);
+    }
+
+    private static void skipNbtPayload(ByteBuf buf, byte type, int depth) {
+        if (depth > MAX_NBT_DEPTH) {
+            throw new IllegalStateException("NBT nesting depth exceeds " + MAX_NBT_DEPTH);
+        }
         switch (type) {
             case 1: buf.skipBytes(1); break; // TAG_Byte
             case 2: buf.skipBytes(2); break; // TAG_Short
@@ -353,30 +382,110 @@ public final class McDataTypes {
             case 4: buf.skipBytes(8); break; // TAG_Long
             case 5: buf.skipBytes(4); break; // TAG_Float
             case 6: buf.skipBytes(8); break; // TAG_Double
-            case 7: // TAG_Byte_Array
+            case 7: { // TAG_Byte_Array
                 int baLen = buf.readInt();
+                if (baLen < 0) throw new IllegalStateException("Negative NBT byte array length: " + baLen);
                 buf.skipBytes(baLen);
                 break;
+            }
             case 8: // TAG_String
                 int strLen = buf.readUnsignedShort();
                 buf.skipBytes(strLen);
                 break;
-            case 9: // TAG_List
+            case 9: { // TAG_List
                 byte listType = buf.readByte();
                 int listLen = buf.readInt();
+                if (listLen < 0) throw new IllegalStateException("Negative NBT list length: " + listLen);
                 for (int i = 0; i < listLen; i++) {
-                    skipNbtPayload(buf, listType);
+                    skipNbtPayload(buf, listType, depth + 1);
                 }
                 break;
+            }
             case 10: // TAG_Compound
-                skipNbtCompound(buf);
+                skipNbtCompound(buf, depth + 1);
                 break;
-            case 11: // TAG_Int_Array
+            case 11: { // TAG_Int_Array
                 int iaLen = buf.readInt();
+                if (iaLen < 0) throw new IllegalStateException("Negative NBT int array length: " + iaLen);
                 buf.skipBytes(iaLen * 4);
                 break;
+            }
+            case 12: { // TAG_Long_Array
+                int laLen = buf.readInt();
+                if (laLen < 0) throw new IllegalStateException("Negative NBT long array length: " + laLen);
+                buf.skipBytes(laLen * 8);
+                break;
+            }
             default:
                 throw new IllegalStateException("Unknown NBT tag type: " + type);
+        }
+    }
+
+    /**
+     * Read an NBT text component (TAG_Compound body) and extract the plain text.
+     * Concatenates all "text" and "translate" string values, recursing into
+     * nested compounds and "extra" lists. The compound body starts after the
+     * 0x0A type byte and name have already been read.
+     *
+     * @param buf the buffer positioned at the start of compound children
+     * @return the extracted plain text
+     */
+    public static String readNbtTextComponent(ByteBuf buf) {
+        StringBuilder sb = new StringBuilder();
+        readNbtCompoundText(buf, sb, 0);
+        return sb.toString();
+    }
+
+    private static void readNbtCompoundText(ByteBuf buf, StringBuilder sb, int depth) {
+        if (depth > MAX_NBT_DEPTH) return;
+        while (buf.readableBytes() > 0) {
+            int entryType = buf.readByte();
+            if (entryType == 0x00) break; // TAG_End
+
+            int nameLen = buf.readUnsignedShort();
+            byte[] nameBytes = new byte[nameLen];
+            buf.readBytes(nameBytes);
+            String name = new String(nameBytes, java.nio.charset.StandardCharsets.UTF_8);
+
+            switch (entryType) {
+                case 0x01: buf.readByte(); break;
+                case 0x02: buf.readShort(); break;
+                case 0x03: buf.readInt(); break;
+                case 0x04: buf.readLong(); break;
+                case 0x05: buf.readFloat(); break;
+                case 0x06: buf.readDouble(); break;
+                case 0x07: { int len = buf.readInt(); if (len > 0) buf.skipBytes(len); break; }
+                case 0x08: {
+                    int len = buf.readUnsignedShort();
+                    byte[] bytes = new byte[len];
+                    buf.readBytes(bytes);
+                    String value = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+                    if ("text".equals(name) || "translate".equals(name)) {
+                        sb.append(value);
+                    }
+                    break;
+                }
+                case 0x09: {
+                    byte elemType = buf.readByte();
+                    int count = buf.readInt();
+                    if (count < 0) break;
+                    if (elemType == 0x0A && "extra".equals(name)) {
+                        for (int i = 0; i < count; i++) {
+                            readNbtCompoundText(buf, sb, depth + 1);
+                        }
+                    } else {
+                        // Skip list entries using McDataTypes (handles all types including nested lists)
+                        for (int i = 0; i < count; i++) {
+                            skipNbtPayload(buf, elemType, depth + 1);
+                        }
+                    }
+                    break;
+                }
+                case 0x0A: readNbtCompoundText(buf, sb, depth + 1); break;
+                case 0x0B: { int len = buf.readInt(); if (len > 0) buf.skipBytes(len * 4); break; }
+                case 0x0C: { int len = buf.readInt(); if (len > 0) buf.skipBytes(len * 8); break; }
+                default: return;
+            }
         }
     }
 

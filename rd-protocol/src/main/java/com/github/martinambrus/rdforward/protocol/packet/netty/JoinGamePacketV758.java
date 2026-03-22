@@ -73,8 +73,8 @@ public class JoinGamePacketV758 implements Packet {
         for (int i = 0; i < worldCount; i++) {
             McDataTypes.readVarIntString(buf); // worldName
         }
-        skipNbtCompound(buf); // dimensionCodec
-        skipNbtCompound(buf); // dimensionType
+        McDataTypes.skipNbtRootTag(buf); // dimensionCodec
+        McDataTypes.skipNbtRootTag(buf); // dimensionType
         McDataTypes.readVarIntString(buf); // worldName
         buf.readLong(); // hashedSeed
         maxPlayers = McDataTypes.readVarInt(buf);
@@ -320,46 +320,4 @@ public class JoinGamePacketV758 implements Packet {
         buf.writeInt(count);
     }
 
-    // ========================================================================
-    // NBT reading helpers (for bot decoder)
-    // ========================================================================
-
-    private void skipNbtCompound(ByteBuf buf) {
-        byte type = buf.readByte();
-        if (type == 0) return;
-        int nameLen = buf.readUnsignedShort();
-        buf.skipBytes(nameLen);
-        skipNbtPayload(buf, type);
-    }
-
-    private void skipNbtPayload(ByteBuf buf, byte type) {
-        switch (type) {
-            case 1: buf.skipBytes(1); break;
-            case 2: buf.skipBytes(2); break;
-            case 3: buf.skipBytes(4); break;
-            case 4: buf.skipBytes(8); break;
-            case 5: buf.skipBytes(4); break;
-            case 6: buf.skipBytes(8); break;
-            case 7: { int len = buf.readInt(); buf.skipBytes(len); break; }
-            case 8: { int len = buf.readUnsignedShort(); buf.skipBytes(len); break; }
-            case 9: {
-                byte listType = buf.readByte();
-                int count = buf.readInt();
-                for (int i = 0; i < count; i++) skipNbtPayload(buf, listType);
-                break;
-            }
-            case 10: {
-                while (true) {
-                    byte childType = buf.readByte();
-                    if (childType == 0) break;
-                    int nameLen = buf.readUnsignedShort();
-                    buf.skipBytes(nameLen);
-                    skipNbtPayload(buf, childType);
-                }
-                break;
-            }
-            case 11: { int len = buf.readInt(); buf.skipBytes(len * 4); break; }
-            case 12: { int len = buf.readInt(); buf.skipBytes(len * 8); break; }
-        }
-    }
 }

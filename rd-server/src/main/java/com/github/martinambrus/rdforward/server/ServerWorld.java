@@ -288,8 +288,8 @@ public class ServerWorld {
     }
 
     public void savePlayerPosition(String username) {
-        int cx = ((width / 2) >> 4) * 16 + 8;
-        int cz = ((depth / 2) >> 4) * 16 + 8;
+        int cx = getSpawnX();
+        int cz = getSpawnZ();
         int spawnY = height * 2 / 3 + 1;
         int[] safe = findSafePosition(cx, spawnY, cz, 50);
         short fx = (short) Math.round((safe[0] + 0.5) * 32);
@@ -470,6 +470,12 @@ public class ServerWorld {
     public int getWidth() { return width; }
     public int getHeight() { return height; }
     public int getDepth() { return depth; }
+
+    /** Spawn X coordinate (chunk-aligned world center). */
+    public int getSpawnX() { return ((width / 2) >> 4) * 16 + 8; }
+
+    /** Spawn Z coordinate (chunk-aligned world center). */
+    public int getSpawnZ() { return ((depth / 2) >> 4) * 16 + 8; }
 
     /** A queued block change waiting to be processed. */
     static class PendingBlockChange {

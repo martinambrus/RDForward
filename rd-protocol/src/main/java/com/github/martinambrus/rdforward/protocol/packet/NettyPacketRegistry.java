@@ -2547,6 +2547,9 @@ public class NettyPacketRegistry {
             registerV764S2CReverse(UpdateTagsPacketV764.class, 0x70);
     
             // === V764 S2C PLAY forward map entries (for bot decoder) ===
+            // Shadow stale V762 entries that shifted in V764 (prevent cascade to wrong packets)
+            registerV764S2C(0x23, NO_OP_FACTORY);  // V762: KeepAlive(0x23); V764: InitWorldBorder. KeepAlive moved to 0x24
+            registerV764S2C(0x3C, NO_OP_FACTORY);  // V762: PlayerPosition(0x3C); V764: PlayerAbilities. PlayerPosition moved to 0x3E
             registerV764S2C(0x01, new PacketFactory() { public Packet create() { return new NettySpawnEntityPacketV764(); } });
             registerV764S2C(0x09, new PacketFactory() { public Packet create() { return new NettyBlockChangePacketV477(); } });
             registerV764S2C(0x15, new PacketFactory() { public Packet create() { return new NettySetSlotPacketV756(); } });

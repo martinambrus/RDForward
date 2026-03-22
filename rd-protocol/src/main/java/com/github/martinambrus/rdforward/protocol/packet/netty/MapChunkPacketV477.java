@@ -107,7 +107,7 @@ public class MapChunkPacketV477 implements Packet {
         primaryBitMask = McDataTypes.readVarInt(buf);
 
         // Skip NBT heightmaps (simplified: just skip the compound)
-        skipNbtCompound(buf);
+        McDataTypes.skipNbtRootTag(buf);
 
         int dataSize = McDataTypes.readVarInt(buf);
         data = new byte[dataSize];
@@ -116,70 +116,7 @@ public class MapChunkPacketV477 implements Packet {
         // Skip block entities
         int blockEntityCount = McDataTypes.readVarInt(buf);
         for (int i = 0; i < blockEntityCount; i++) {
-            skipNbtCompound(buf);
-        }
-    }
-
-    /**
-     * Skip a single NBT tag (including the initial type byte) from the buffer.
-     * Handles nested compounds recursively. Used for skipping heightmaps
-     * and block entity data during read().
-     */
-    private void skipNbtCompound(ByteBuf buf) {
-        byte type = buf.readByte();
-        if (type == 0) return; // TAG_End
-        // Skip name
-        int nameLen = buf.readUnsignedShort();
-        buf.skipBytes(nameLen);
-        skipNbtPayload(buf, type);
-    }
-
-    private void skipNbtPayload(ByteBuf buf, byte type) {
-        switch (type) {
-            case 1: buf.skipBytes(1); break; // TAG_Byte
-            case 2: buf.skipBytes(2); break; // TAG_Short
-            case 3: buf.skipBytes(4); break; // TAG_Int
-            case 4: buf.skipBytes(8); break; // TAG_Long
-            case 5: buf.skipBytes(4); break; // TAG_Float
-            case 6: buf.skipBytes(8); break; // TAG_Double
-            case 7: { // TAG_Byte_Array
-                int len = buf.readInt();
-                buf.skipBytes(len);
-                break;
-            }
-            case 8: { // TAG_String
-                int len = buf.readUnsignedShort();
-                buf.skipBytes(len);
-                break;
-            }
-            case 9: { // TAG_List
-                byte listType = buf.readByte();
-                int count = buf.readInt();
-                for (int i = 0; i < count; i++) {
-                    skipNbtPayload(buf, listType);
-                }
-                break;
-            }
-            case 10: { // TAG_Compound
-                while (true) {
-                    byte childType = buf.readByte();
-                    if (childType == 0) break; // TAG_End
-                    int nameLen = buf.readUnsignedShort();
-                    buf.skipBytes(nameLen);
-                    skipNbtPayload(buf, childType);
-                }
-                break;
-            }
-            case 11: { // TAG_Int_Array
-                int len = buf.readInt();
-                buf.skipBytes(len * 4);
-                break;
-            }
-            case 12: { // TAG_Long_Array
-                int len = buf.readInt();
-                buf.skipBytes(len * 8);
-                break;
-            }
+            McDataTypes.skipNbtRootTag(buf);
         }
     }
 

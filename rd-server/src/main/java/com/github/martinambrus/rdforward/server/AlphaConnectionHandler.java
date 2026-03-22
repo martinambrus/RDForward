@@ -929,7 +929,10 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
             EventResult result = ServerEvents.BLOCK_BREAK.invoker()
                     .onBlockBreak(player.getUsername(), x, y, z, existingBlock & 0xFF);
-            if (result == EventResult.CANCEL) return;
+            if (result == EventResult.CANCEL) {
+                sendBlockChange(ctx, x, y, z, existingBlock & 0xFF, 0);
+                return;
+            }
 
             world.queueBlockChange(x, y, z, (byte) 0);
         }
@@ -1041,7 +1044,11 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         EventResult result = ServerEvents.BLOCK_PLACE.invoker()
                 .onBlockPlace(player.getUsername(), targetX, targetY, targetZ, worldBlockType & 0xFF);
-        if (result == EventResult.CANCEL) return;
+        if (result == EventResult.CANCEL) {
+            // Resend air so client doesn't show ghost placement
+            sendBlockChange(ctx, targetX, targetY, targetZ, 0, 0);
+            return;
+        }
 
         // Set block directly in world (bypasses tick queue to avoid double-broadcast)
         if (!world.setBlock(targetX, targetY, targetZ, worldBlockType)) {
@@ -1233,8 +1240,10 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             keepAliveTask.cancel(false);
         }
         if (player != null) {
+            // Remove player first so getPlayerCount() is accurate for event listeners
+            playerManager.removePlayer(ctx.channel());
             System.out.println(player.getUsername() + " disconnected"
-                    + " (" + (playerManager.getPlayerCount() - 1) + " online)");
+                    + " (" + playerManager.getPlayerCount() + " online)");
             ServerEvents.PLAYER_LEAVE.invoker().onPlayerLeave(player.getUsername());
             playerManager.getInventoryAdapter().removePlayer(player.getUsername());
             world.rememberPlayerPosition(player);
@@ -1242,7 +1251,6 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             playerManager.broadcastPlayerListRemove(player);
             playerManager.broadcastChat((byte) 0, player.getUsername() + " left the game");
             playerManager.broadcastPlayerDespawn(player);
-            playerManager.removePlayer(ctx.channel());
         }
         super.channelInactive(ctx);
     }

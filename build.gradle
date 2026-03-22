@@ -217,18 +217,19 @@ subprojects {
     // rd-e2e-agent targets Java 8 (injected into Alpha/Beta client JVMs).
     if (project.name == 'rd-e2e-agent') {
         apply plugin: 'java'
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        java {
+            sourceCompatibility = JavaVersion.VERSION_1_8
+            targetCompatibility = JavaVersion.VERSION_1_8
+        }
         test { useJUnitPlatform() }
         return
     }
 
     apply plugin: 'java'
 
-    sourceCompatibility = JavaVersion.VERSION_21
-    targetCompatibility = JavaVersion.VERSION_21
-
     java {
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
         withSourcesJar()
     }
 

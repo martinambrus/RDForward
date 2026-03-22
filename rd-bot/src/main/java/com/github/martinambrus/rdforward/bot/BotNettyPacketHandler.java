@@ -193,7 +193,6 @@ public class BotNettyPacketHandler extends SimpleChannelInboundHandler<Packet> {
 
         // === PLAY state — KeepAlive ===
         else if (packet instanceof KeepAlivePacketV340 ka) {
-            System.err.println("BotNetty: KeepAlive received (id=" + ka.getKeepAliveId() + "), responding");
             ctx.writeAndFlush(new KeepAlivePacketV340(ka.getKeepAliveId()));
         }
         else if (packet instanceof KeepAlivePacketV47 ka) { ctx.writeAndFlush(new KeepAlivePacketV47(ka.getKeepAliveId())); }

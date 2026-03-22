@@ -80,45 +80,10 @@ public class NettyBlockPlacementPacketV47 implements Packet, BlockPlacementData 
                 // Skip compound contents — reuse McDataTypes internal method
                 // by calling skipV47SlotData indirectly. Since we already read
                 // the compound tag byte, we need to skip the compound body.
-                skipNbtCompoundBody(buf);
+                McDataTypes.skipNbtCompound(buf);
             }
         }
         buf.skipBytes(3); // cursorX, cursorY, cursorZ
-    }
-
-    /**
-     * Skip the body of an NBT compound tag (read until TAG_End 0x00).
-     */
-    private static void skipNbtCompoundBody(ByteBuf buf) {
-        while (true) {
-            byte tagType = buf.readByte();
-            if (tagType == 0) return; // TAG_End
-            // Skip tag name
-            int nameLen = buf.readUnsignedShort();
-            buf.skipBytes(nameLen);
-            // Skip tag payload
-            skipNbtPayload(buf, tagType);
-        }
-    }
-
-    private static void skipNbtPayload(ByteBuf buf, byte type) {
-        switch (type) {
-            case 1: buf.skipBytes(1); break;
-            case 2: buf.skipBytes(2); break;
-            case 3: buf.skipBytes(4); break;
-            case 4: buf.skipBytes(8); break;
-            case 5: buf.skipBytes(4); break;
-            case 6: buf.skipBytes(8); break;
-            case 7: buf.skipBytes(buf.readInt()); break;
-            case 8: buf.skipBytes(buf.readUnsignedShort()); break;
-            case 9:
-                byte listType = buf.readByte();
-                int listLen = buf.readInt();
-                for (int i = 0; i < listLen; i++) skipNbtPayload(buf, listType);
-                break;
-            case 10: skipNbtCompoundBody(buf); break;
-            case 11: buf.skipBytes(buf.readInt() * 4); break;
-        }
     }
 
     @Override

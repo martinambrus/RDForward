@@ -1314,7 +1314,18 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
             EventResult result = ServerEvents.BLOCK_BREAK.invoker()
                     .onBlockBreak(player.getUsername(), x, y, z, existingBlock & 0xFF);
-            if (result == EventResult.CANCEL) return;
+            if (result == EventResult.CANCEL) {
+                // Resend existing block so client doesn't show ghost removal
+                sendBlockChange(ctx, x, y, z, existingBlock & 0xFF, 0);
+                if (packet instanceof PlayerDiggingPacketV759) {
+                    ctx.writeAndFlush(new BlockChangedAckPacketV759(
+                            ((PlayerDiggingPacketV759) packet).getSequence()));
+                } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_15)) {
+                    ctx.writeAndFlush(new AcknowledgePlayerDiggingPacketV573(
+                            x, y, z, existingBlock & 0xFF, packet.getStatus(), false));
+                }
+                return;
+            }
 
             world.queueBlockChange(x, y, z, (byte) 0);
 
@@ -1344,7 +1355,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
             EventResult result = ServerEvents.BLOCK_BREAK.invoker()
                     .onBlockBreak(player.getUsername(), x, y, z, existingBlock & 0xFF);
-            if (result == EventResult.CANCEL) return;
+            if (result == EventResult.CANCEL) {
+                sendBlockChange(ctx, x, y, z, existingBlock & 0xFF, 0);
+                return;
+            }
 
             world.queueBlockChange(x, y, z, (byte) 0);
         }
@@ -1364,7 +1378,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
             EventResult result = ServerEvents.BLOCK_BREAK.invoker()
                     .onBlockBreak(player.getUsername(), x, y, z, existingBlock & 0xFF);
-            if (result == EventResult.CANCEL) return;
+            if (result == EventResult.CANCEL) {
+                sendBlockChange(ctx, x, y, z, existingBlock & 0xFF, 0);
+                return;
+            }
 
             world.queueBlockChange(x, y, z, (byte) 0);
         }
@@ -1425,7 +1442,18 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         EventResult result = ServerEvents.BLOCK_PLACE.invoker()
                 .onBlockPlace(player.getUsername(), targetX, targetY, targetZ, worldBlockType & 0xFF);
-        if (result == EventResult.CANCEL) return;
+        if (result == EventResult.CANCEL) {
+            // Resend air so client doesn't show ghost placement
+            sendBlockChange(ctx, targetX, targetY, targetZ, 0, 0);
+            if (packet instanceof NettyBlockPlacementPacketV768) {
+                ctx.writeAndFlush(new BlockChangedAckPacketV759(
+                        ((NettyBlockPlacementPacketV768) packet).getSequence()));
+            } else if (packet instanceof NettyBlockPlacementPacketV759) {
+                ctx.writeAndFlush(new BlockChangedAckPacketV759(
+                        ((NettyBlockPlacementPacketV759) packet).getSequence()));
+            }
+            return;
+        }
 
         if (!world.setBlock(targetX, targetY, targetZ, worldBlockType)) return;
         chunkManager.setBlock(targetX, targetY, targetZ, worldBlockType);
@@ -1672,8 +1700,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             keepAliveTask.cancel(false);
         }
         if (player != null) {
+            // Remove player first so getPlayerCount() is accurate for event listeners
+            playerManager.removePlayer(ctx.channel());
             System.out.println(player.getUsername() + " disconnected"
-                    + " (" + (playerManager.getPlayerCount() - 1) + " online)");
+                    + " (" + playerManager.getPlayerCount() + " online)");
             ServerEvents.PLAYER_LEAVE.invoker().onPlayerLeave(player.getUsername());
             playerManager.getInventoryAdapter().removePlayer(player.getUsername());
             world.rememberPlayerPosition(player);
@@ -1681,7 +1711,6 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             playerManager.broadcastPlayerListRemove(player);
             playerManager.broadcastChat((byte) 0, player.getUsername() + " left the game");
             playerManager.broadcastPlayerDespawn(player);
-            playerManager.removePlayer(ctx.channel());
         }
         super.channelInactive(ctx);
     }

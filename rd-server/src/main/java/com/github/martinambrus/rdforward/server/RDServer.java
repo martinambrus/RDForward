@@ -20,6 +20,7 @@ import com.github.martinambrus.rdforward.server.mcpe.BedrockOutboundRedirector;
 import com.github.martinambrus.rdforward.server.mcpe.LegacyRakNetServer;
 import com.github.martinambrus.rdforward.server.mcpe.MCPEConstants;
 import com.github.martinambrus.rdforward.server.mcpe.UdpFrontEndHandler;
+import com.github.martinambrus.rdforward.protocol.event.EventResult;
 import com.github.martinambrus.rdforward.server.event.ServerEvents;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.bootstrap.ServerBootstrap;
@@ -179,6 +180,7 @@ public class RDServer {
         BanManager.load(dataDir);
         Scheduler.init();
         registerBuiltInCommands();
+        registerSpawnProtection();
 
         if (!world.load()) {
             System.out.println("Generating world (" + world.getWidth() + "x"
@@ -864,6 +866,63 @@ public class RDServer {
                 ctx.reply(arg + " is not banned.");
             }
         });
+    }
+
+    /**
+     * Register spawn protection event listeners that prevent non-op players
+     * from breaking or placing blocks within the configured radius of spawn.
+     */
+    private void registerSpawnProtection() {
+        int spawnRadius = ServerProperties.getSpawnProtection();
+        if (spawnRadius <= 0) {
+            System.out.println("Spawn protection disabled (spawn-protection=0)");
+            return;
+        }
+
+        int spawnX = world.getSpawnX();
+        int spawnZ = world.getSpawnZ();
+
+        // Warn if the protection area covers the entire world
+        if (spawnRadius >= world.getWidth() / 2 || spawnRadius >= world.getDepth() / 2) {
+            System.out.println("[WARN] spawn-protection=" + spawnRadius
+                    + " covers the entire world — non-op players cannot modify any blocks");
+        }
+
+        java.util.concurrent.ConcurrentHashMap<String, Long> lastNotified =
+                new java.util.concurrent.ConcurrentHashMap<>();
+
+        // Shared check for both break and place — same signature (String, int, int, int, int) -> EventResult
+        ServerEvents.BLOCK_BREAK.register((player, x, y, z, blockType) ->
+                checkSpawnProtection(player, x, z, spawnX, spawnZ, spawnRadius, lastNotified));
+        ServerEvents.BLOCK_PLACE.register((player, x, y, z, blockType) ->
+                checkSpawnProtection(player, x, z, spawnX, spawnZ, spawnRadius, lastNotified));
+
+        // Clean up notification tracking when players leave
+        ServerEvents.PLAYER_LEAVE.register(lastNotified::remove);
+
+        System.out.println("Spawn protection enabled: " + spawnRadius + " blocks around ("
+                + spawnX + ", " + spawnZ + ")");
+    }
+
+    private EventResult checkSpawnProtection(String player, int x, int z,
+            int spawnX, int spawnZ, int spawnRadius,
+            java.util.concurrent.ConcurrentHashMap<String, Long> lastNotified) {
+        if (Math.abs(x - spawnX) <= spawnRadius && Math.abs(z - spawnZ) <= spawnRadius
+                && PermissionManager.getOpLevel(player) < PermissionManager.OP_BYPASS_SPAWN) {
+            long now = System.currentTimeMillis();
+            Long last = lastNotified.get(player);
+            if (last == null || now - last >= 5_000) {
+                lastNotified.put(player, now);
+                System.out.println("[SpawnProtection] Blocked " + player
+                        + " at (" + x + ", " + z + ")");
+                ConnectedPlayer cp = playerManager.getPlayerByName(player);
+                if (cp != null) {
+                    playerManager.sendChat(cp, "You cannot modify blocks in the spawn protection area.");
+                }
+            }
+            return EventResult.CANCEL;
+        }
+        return EventResult.PASS;
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.github.martinambrus.rdforward.protocol.packet.netty;
 
+import com.github.martinambrus.rdforward.protocol.McDataTypes;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import io.netty.buffer.ByteBuf;
 
@@ -42,6 +43,14 @@ public class NettyDisconnectPacketV765 implements Packet {
             byte[] bytes = new byte[len];
             buf.readBytes(bytes);
             plainText = new String(bytes, StandardCharsets.UTF_8);
+        } else if (tagType == 0x0A) { // TAG_Compound
+            plainText = McDataTypes.readNbtTextComponent(buf);
+        } else {
+            // Unknown tag type — skip remaining bytes
+            if (buf.readableBytes() > 0) {
+                buf.skipBytes(buf.readableBytes());
+            }
+            plainText = "";
         }
     }
 

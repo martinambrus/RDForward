@@ -4,6 +4,7 @@ import com.github.martinambrus.rdforward.server.ConnectedPlayer;
 import com.github.martinambrus.rdforward.server.PlayerManager;
 import com.github.martinambrus.rdforward.server.ServerWorld;
 import com.github.martinambrus.rdforward.server.event.ServerEvents;
+import com.github.martinambrus.rdforward.protocol.event.EventResult;
 import com.github.martinambrus.rdforward.world.BlockRegistry;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
@@ -130,6 +131,15 @@ public class MCPEGameplayHandler {
 
         if (!world.inBounds(x, y, z)) return;
 
+        byte existingBlock = world.getBlock(x, y, z);
+        EventResult result = ServerEvents.BLOCK_BREAK.invoker()
+                .onBlockBreak(player.getUsername(), x, y, z, existingBlock & 0xFF);
+        if (result == EventResult.CANCEL) {
+            // Resend existing block so client doesn't show ghost removal
+            sendUpdateBlockConfirm(x, y, z, existingBlock & 0xFF, 0);
+            return;
+        }
+
         // Set block to air
         world.setBlock(x, y, z, (byte) 0);
 
@@ -208,6 +218,14 @@ public class MCPEGameplayHandler {
                 ? BlockRegistry.GRASS
                 : BlockRegistry.COBBLESTONE;
 
+        EventResult result = ServerEvents.BLOCK_PLACE.invoker()
+                .onBlockPlace(player.getUsername(), targetX, targetY, targetZ, blockId);
+        if (result == EventResult.CANCEL) {
+            // Resend air so client doesn't show ghost placement
+            sendUpdateBlockConfirm(targetX, targetY, targetZ, 0, 0);
+            return;
+        }
+
         world.setBlock(targetX, targetY, targetZ, (byte) blockId);
 
         // Suppress arm-swing raycast that accompanies placement (v17-v20 sends
@@ -262,6 +280,14 @@ public class MCPEGameplayHandler {
 
         // Use the block ID from the packet if valid, else fallback
         int blockId = (block >= 1 && block <= 255) ? block : BlockRegistry.COBBLESTONE;
+
+        EventResult result = ServerEvents.BLOCK_PLACE.invoker()
+                .onBlockPlace(player.getUsername(), targetX, targetY, targetZ, blockId);
+        if (result == EventResult.CANCEL) {
+            // Resend air so client doesn't show ghost placement
+            sendUpdateBlockConfirm(targetX, targetY, targetZ, 0, 0);
+            return;
+        }
 
         world.setBlock(targetX, targetY, targetZ, (byte) blockId);
 
@@ -342,6 +368,15 @@ public class MCPEGameplayHandler {
             if (!world.inBounds(x, y, z)) return;
             int oldBlock = world.getBlock(x, y, z);
             if (oldBlock == 0) return; // already air
+
+            EventResult result = ServerEvents.BLOCK_BREAK.invoker()
+                    .onBlockBreak(player.getUsername(), x, y, z, oldBlock);
+            if (result == EventResult.CANCEL) {
+                // Resend existing block so client doesn't show ghost removal
+                sendUpdateBlockConfirm(x, y, z, oldBlock & 0xFF, 0);
+                return;
+            }
+
             lastBreakTime = now;
 
             world.setBlock(x, y, z, (byte) 0);
@@ -380,6 +415,14 @@ public class MCPEGameplayHandler {
             int bx = hit[0], by = hit[1], bz = hit[2];
             int oldBlock = world.getBlock(bx, by, bz);
             if (oldBlock == 0) return;
+
+            EventResult result = ServerEvents.BLOCK_BREAK.invoker()
+                    .onBlockBreak(player.getUsername(), bx, by, bz, oldBlock);
+            if (result == EventResult.CANCEL) {
+                // Resend existing block so client doesn't show ghost removal
+                sendUpdateBlockConfirm(bx, by, bz, oldBlock & 0xFF, 0);
+                return;
+            }
 
             lastBreakTime = now;
 
@@ -487,13 +530,14 @@ public class MCPEGameplayHandler {
         if (disconnected) return;
         disconnected = true;
 
-        System.out.println("[MCPE] " + player.getUsername() + " disconnected");
-
-        playerManager.broadcastChat((byte) 0, player.getUsername() + " left the game");
+        // Remove player first so getPlayerCount() is accurate for event listeners
+        playerManager.removePlayerById(player.getPlayerId());
+        System.out.println("[MCPE] " + player.getUsername() + " disconnected"
+                + " (" + playerManager.getPlayerCount() + " online)");
         ServerEvents.PLAYER_LEAVE.invoker().onPlayerLeave(player.getUsername());
         world.rememberPlayerPosition(player);
+        playerManager.broadcastChat((byte) 0, player.getUsername() + " left the game");
         playerManager.broadcastPlayerDespawn(player);
-        playerManager.removePlayerById(player.getPlayerId());
         pongUpdater.run();
     }
 }

@@ -1,0 +1,1 @@
+Please run code simplifier on the uncommitted changes or if there are no uncommitted changes, run it on full repository, unless specified otherwise after this sentence. $ARGUMENTS

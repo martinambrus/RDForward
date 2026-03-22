@@ -792,7 +792,18 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
 
         EventResult result = ServerEvents.BLOCK_PLACE.invoker()
                 .onBlockPlace(player.getUsername(), targetX, targetY, targetZ, worldBlockType & 0xFF);
-        if (result == EventResult.CANCEL) return;
+        if (result == EventResult.CANCEL) {
+            // Resend air so client doesn't show ghost placement
+            UpdateBlockPacket correction = new UpdateBlockPacket();
+            correction.setBlockPosition(Vector3i.from(targetX, targetY, targetZ));
+            correction.setDefinition(blockMapper.toDefinition(0));
+            correction.setDataLayer(0);
+            correction.getFlags().addAll(java.util.EnumSet.of(
+                    UpdateBlockPacket.Flag.NEIGHBORS,
+                    UpdateBlockPacket.Flag.NETWORK));
+            session.sendPacket(correction);
+            return;
+        }
 
         // Set block directly (bypasses tick queue to avoid double-broadcast)
         if (!world.setBlock(targetX, targetY, targetZ, worldBlockType)) return;
@@ -832,7 +843,18 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
 
         EventResult result = ServerEvents.BLOCK_BREAK.invoker()
                 .onBlockBreak(player.getUsername(), x, y, z, existingBlock & 0xFF);
-        if (result == EventResult.CANCEL) return;
+        if (result == EventResult.CANCEL) {
+            // Resend existing block so client doesn't show ghost removal
+            UpdateBlockPacket correction = new UpdateBlockPacket();
+            correction.setBlockPosition(Vector3i.from(x, y, z));
+            correction.setDefinition(blockMapper.toDefinition(existingBlock & 0xFF));
+            correction.setDataLayer(0);
+            correction.getFlags().addAll(java.util.EnumSet.of(
+                    UpdateBlockPacket.Flag.NEIGHBORS,
+                    UpdateBlockPacket.Flag.NETWORK));
+            session.sendPacket(correction);
+            return;
+        }
 
         // Set block directly (bypasses tick queue for instant creative-mode breaking)
         if (!world.setBlock(x, y, z, (byte) 0)) return;
@@ -1003,14 +1025,15 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         if (player == null || disconnected) return;
         disconnected = true;
 
+        // Remove player first so getPlayerCount() is accurate for event listeners
+        playerManager.removePlayerById(player.getPlayerId());
         System.out.println(player.getUsername() + " disconnected"
-                + " (" + (playerManager.getPlayerCount() - 1) + " online)");
+                + " (" + playerManager.getPlayerCount() + " online)");
         ServerEvents.PLAYER_LEAVE.invoker().onPlayerLeave(player.getUsername());
         world.rememberPlayerPosition(player);
         chunkManager.removePlayer(player);
         playerManager.broadcastChat((byte) 0, player.getUsername() + " left the game");
         playerManager.broadcastPlayerDespawn(player);
-        playerManager.removePlayerById(player.getPlayerId());
         pongUpdater.run();
     }
 
