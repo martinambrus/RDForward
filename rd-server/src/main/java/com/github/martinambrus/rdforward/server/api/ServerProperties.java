@@ -190,7 +190,7 @@ public final class ServerProperties {
             sb.append("# server-version uses launcher-style IDs, e.g.: rd-132211, c0.30, a1.2.6,\n");
             sb.append("#   b1.7.3, 1.8.9, 1.21.4. Set an invalid value and start the server to\n");
             sb.append("#   see a full list of supported version IDs.\n");
-            sb.append("# level-type: flat, rubydung, classic, alpha, terrain\n");
+            sb.append("# level-type: flat, rubydung, classic, alpha\n");
             for (String key : DEFAULTS.keySet()) {
                 if (PLACEHOLDER_KEYS.contains(key)) {
                     sb.append("# (not yet implemented)\n");
@@ -478,7 +478,6 @@ public final class ServerProperties {
             case "classic":
                 return new RubyDungWorldGenerator();
             case "alpha":
-            case "terrain":
                 return new AlphaWorldGenerator();
             case "flat":
             default:

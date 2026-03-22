@@ -293,6 +293,11 @@ public class ChunkManager {
         // If not on disk, generate a fresh chunk
         if (chunk == null && worldGenerator.supportsChunkGeneration()) {
             chunk = worldGenerator.generateChunk(coord.getX(), coord.getZ(), seed);
+        } else if (chunk == null && serverWorld != null) {
+            // Finite-world mode (RubyDung/Classic): generator doesn't support
+            // per-chunk generation, but the full world is in ServerWorld.
+            // Create an empty chunk so overlayServerWorldBlocks can populate it.
+            chunk = new AlphaChunk(coord.getX(), coord.getZ());
         }
 
         // Always overlay ServerWorld data so the authoritative world state
