@@ -436,10 +436,18 @@ public class RDServer {
      */
     private void registerBuiltInCommands() {
         CommandRegistry.register("help", "Show available commands", ctx -> {
+            int myLevel = ctx.isConsole() ? PermissionManager.MAX_OP_LEVEL
+                    : PermissionManager.getOpLevel(ctx.getSenderName());
             ctx.reply("Commands:");
-            for (CommandRegistry.RegisteredCommand cmd : CommandRegistry.getCommands().values()) {
-                ctx.reply("  " + cmd.name + " - " + cmd.description
-                    + (cmd.requiresOp ? " (op)" : ""));
+            java.util.TreeMap<String, CommandRegistry.RegisteredCommand> sorted =
+                    new java.util.TreeMap<>(CommandRegistry.getCommands());
+            for (CommandRegistry.RegisteredCommand cmd : sorted.values()) {
+                if (cmd.requiredOpLevel > 0 && cmd.requiredOpLevel > myLevel) {
+                    continue;
+                }
+                String levelTag = cmd.requiredOpLevel > 0
+                        ? " (op level " + cmd.requiredOpLevel + ")" : "";
+                ctx.reply("  " + cmd.name + " - " + cmd.description + levelTag);
             }
         });
 
@@ -453,52 +461,111 @@ public class RDServer {
             }
         });
 
-        CommandRegistry.register("save", "Save the world to disk", ctx -> {
+        CommandRegistry.registerOp("save", "Save the world to disk", PermissionManager.OP_ADMIN, ctx -> {
             world.save();
             world.savePlayers(playerManager.getAllPlayers());
             chunkManager.saveAllDirty();
             ctx.reply("World saved.");
         });
 
-        CommandRegistry.registerOp("stop", "Save and stop the server", ctx -> {
+        CommandRegistry.registerOp("stop", "Save and stop the server (use: stop confirm)", PermissionManager.OP_ADMIN, ctx -> {
+            if (!ctx.isConsole() && (ctx.getArgs().length == 0 || !ctx.getArgs()[0].equalsIgnoreCase("confirm"))) {
+                ctx.reply("This will shut down the server. Use /stop confirm to proceed.");
+                return;
+            }
+            System.out.println("[INFO] Server stop initiated by " + ctx.getSenderName());
             ctx.reply("Stopping server...");
             stop();
         });
 
-        CommandRegistry.registerOp("op", "Grant operator status to a player", ctx -> {
+        CommandRegistry.registerOp("op", "Grant operator status to a player", PermissionManager.OP_MANAGE, ctx -> {
             if (ctx.getArgs().length == 0) {
-                ctx.reply("Usage: op <player>");
+                ctx.reply("Usage: op <player> [level] (default level: 1)");
                 return;
             }
-            PermissionManager.addOp(ctx.getArgs()[0]);
-            ctx.reply("Made " + ctx.getArgs()[0] + " an operator.");
+            String targetName = ctx.getArgs()[0];
+            int senderLevel = ctx.isConsole() ? PermissionManager.MAX_OP_LEVEL
+                    : PermissionManager.getOpLevel(ctx.getSenderName());
+            int grantLevel;
+            if (ctx.getArgs().length >= 2) {
+                try {
+                    grantLevel = Integer.parseInt(ctx.getArgs()[1]);
+                } catch (NumberFormatException e) {
+                    ctx.reply("Invalid level: " + ctx.getArgs()[1]);
+                    return;
+                }
+                if (grantLevel < 1 || grantLevel > PermissionManager.MAX_OP_LEVEL) {
+                    ctx.reply("Op level must be between 1 and " + PermissionManager.MAX_OP_LEVEL + ".");
+                    return;
+                }
+            } else {
+                grantLevel = ctx.isConsole() ? PermissionManager.MAX_OP_LEVEL
+                        : PermissionManager.OP_BYPASS_SPAWN;
+            }
+            if (!ctx.isConsole() && grantLevel > senderLevel) {
+                ctx.reply("You cannot grant a higher op level than your own (" + senderLevel + ").");
+                return;
+            }
+            int oldLevel = PermissionManager.getOpLevel(targetName);
+            if (playerManager.getPlayerByName(targetName) == null) {
+                ctx.reply("Note: " + targetName + " is not online. Op will take effect when they join.");
+            }
+            PermissionManager.addOp(targetName, grantLevel);
+            if (oldLevel > 0 && oldLevel != grantLevel) {
+                ctx.reply("Changed " + targetName + "'s op level from " + oldLevel + " to " + grantLevel + ".");
+            } else {
+                ctx.reply("Made " + targetName + " an operator (level " + grantLevel + ").");
+            }
+            System.out.println("[AUDIT] " + ctx.getSenderName() + " opped " + targetName
+                    + " at level " + grantLevel + (oldLevel > 0 ? " (was " + oldLevel + ")" : ""));
         });
 
-        CommandRegistry.registerOp("deop", "Revoke operator status from a player", ctx -> {
+        CommandRegistry.registerOp("deop", "Revoke operator status from a player", PermissionManager.OP_MANAGE, ctx -> {
             if (ctx.getArgs().length == 0) {
                 ctx.reply("Usage: deop <player>");
                 return;
             }
-            PermissionManager.removeOp(ctx.getArgs()[0]);
-            ctx.reply("Removed " + ctx.getArgs()[0] + " from operators.");
+            String targetName = ctx.getArgs()[0];
+            int targetLevel = PermissionManager.getOpLevel(targetName);
+            if (targetLevel == 0) {
+                ctx.reply(targetName + " is not an operator.");
+                return;
+            }
+            if (!ctx.isConsole()) {
+                if (targetName.equalsIgnoreCase(ctx.getSenderName())) {
+                    ctx.reply("You cannot deop yourself. Ask another operator or use the console.");
+                    return;
+                }
+                int senderLevel = PermissionManager.getOpLevel(ctx.getSenderName());
+                if (targetLevel > senderLevel) {
+                    ctx.reply("You cannot deop a player with a higher op level than your own.");
+                    return;
+                }
+            }
+            PermissionManager.removeOp(targetName);
+            ctx.reply("Removed " + targetName + " from operators (was level " + targetLevel + ").");
+            System.out.println("[AUDIT] " + ctx.getSenderName() + " deopped " + targetName
+                    + " (was level " + targetLevel + ")");
         });
 
-        CommandRegistry.registerOp("kick", "Kick a player from the server", ctx -> {
+        CommandRegistry.registerOp("kick", "Kick a player from the server", PermissionManager.OP_MANAGE, ctx -> {
             if (ctx.getArgs().length == 0) {
                 ctx.reply("Usage: kick <player> [reason]");
                 return;
             }
+            String target = ctx.getArgs()[0];
             String reason = ctx.getArgs().length > 1
                     ? String.join(" ", java.util.Arrays.copyOfRange(ctx.getArgs(), 1, ctx.getArgs().length))
                     : "Kicked by operator";
-            if (playerManager.kickPlayer(ctx.getArgs()[0], reason, world)) {
-                ctx.reply("Kicked " + ctx.getArgs()[0]);
+            if (playerManager.kickPlayer(target, reason, world)) {
+                ctx.reply("Kicked " + target + " (reason: " + reason + ")");
+                System.out.println("[INFO] " + ctx.getSenderName() + " kicked " + target + ": " + reason);
             } else {
-                ctx.reply("Player not found: " + ctx.getArgs()[0]);
+                ctx.reply("Player not found: " + target);
             }
         });
 
-        CommandRegistry.registerOp("tp", "Teleport players", ctx -> {
+        CommandRegistry.registerOp("tp", "Teleport players", PermissionManager.OP_CHEAT, ctx -> {
             String[] args = ctx.getArgs();
             if (args.length == 1) {
                 // /tp <player> — teleport sender to target
@@ -534,6 +601,28 @@ public class RDServer {
                 playerManager.teleportPlayer(p1, p2.getDoubleX(), p2.getDoubleY(),
                         p2.getDoubleZ(), p2.getFloatYaw(), p2.getFloatPitch(), chunkManager);
                 ctx.reply("Teleported " + p1.getUsername() + " to " + p2.getUsername());
+            } else if (args.length == 3) {
+                // /tp <x> <y> <z> — teleport self to coordinates
+                if (ctx.isConsole()) {
+                    ctx.reply("Cannot tp from console without specifying a player");
+                    return;
+                }
+                ConnectedPlayer sender = playerManager.getPlayerByName(ctx.getSenderName());
+                if (sender == null) {
+                    ctx.reply("Sender not found");
+                    return;
+                }
+                try {
+                    double x = Double.parseDouble(args[0]);
+                    double y = Double.parseDouble(args[1]);
+                    double z = Double.parseDouble(args[2]);
+                    double eyeY = y + (double) 1.62f;
+                    playerManager.teleportPlayer(sender, x, eyeY, z,
+                            sender.getFloatYaw(), sender.getFloatPitch(), chunkManager);
+                    ctx.reply("Teleported to " + args[0] + " " + args[1] + " " + args[2]);
+                } catch (NumberFormatException e) {
+                    ctx.reply("Invalid coordinates");
+                }
             } else if (args.length == 4) {
                 // /tp <player> <x> <y> <z>
                 ConnectedPlayer target = playerManager.getPlayerByName(args[0]);
@@ -554,21 +643,26 @@ public class RDServer {
                     ctx.reply("Invalid coordinates");
                 }
             } else {
-                ctx.reply("Usage: /tp <player> | /tp <player1> <player2> | /tp <player> <x> <y> <z>");
+                ctx.reply("Usage: /tp <player> | /tp <x> <y> <z> | /tp <player1> <player2> | /tp <player> <x> <y> <z>");
             }
         });
 
-        CommandRegistry.registerOp("ban", "Ban a player", ctx -> {
+        CommandRegistry.registerOp("ban", "Ban a player", PermissionManager.OP_MANAGE, ctx -> {
             if (ctx.getArgs().length == 0) {
-                ctx.reply("Usage: ban <player>");
+                ctx.reply("Usage: ban <player> [reason]");
                 return;
             }
-            BanManager.banPlayer(ctx.getArgs()[0]);
-            playerManager.kickPlayer(ctx.getArgs()[0], "Banned", world);
-            ctx.reply("Banned " + ctx.getArgs()[0]);
+            String target = ctx.getArgs()[0];
+            String reason = ctx.getArgs().length > 1
+                    ? String.join(" ", java.util.Arrays.copyOfRange(ctx.getArgs(), 1, ctx.getArgs().length))
+                    : "Banned";
+            BanManager.banPlayer(target);
+            playerManager.kickPlayer(target, reason, world);
+            ctx.reply("Banned " + target + (ctx.getArgs().length > 1 ? " (reason: " + reason + ")" : ""));
+            System.out.println("[INFO] " + ctx.getSenderName() + " banned " + target + ": " + reason);
         });
 
-        CommandRegistry.registerOp("banip", "Ban an IP address", ctx -> {
+        CommandRegistry.registerOp("banip", "Ban an IP address", PermissionManager.OP_MANAGE, ctx -> {
             if (ctx.getArgs().length == 0) {
                 ctx.reply("Usage: banip <player|ip>");
                 return;
@@ -577,16 +671,19 @@ public class RDServer {
             if (arg.contains(".") || arg.contains(":")) {
                 // IP literal
                 BanManager.banIp(arg);
-                // Kick any player with this IP
+                int kicked = 0;
                 for (ConnectedPlayer p : playerManager.getAllPlayers()) {
                     String pip = PlayerManager.extractIp(p);
                     if (arg.equals(pip)) {
                         playerManager.kickPlayer(p.getUsername(), "IP banned", world);
+                        kicked++;
                     }
                 }
-                ctx.reply("Banned IP " + arg);
+                ctx.reply("Banned IP " + arg + (kicked > 0 ? " (" + kicked + " player(s) kicked)" : ""));
+                System.out.println("[INFO] " + ctx.getSenderName() + " banned IP " + arg
+                        + " (" + kicked + " kicked)");
             } else {
-                // Player name — look up their IP
+                // Player name — look up their IP and also name-ban
                 ConnectedPlayer target = playerManager.getPlayerByName(arg);
                 if (target == null) {
                     ctx.reply("Player not found and not a valid IP");
@@ -598,22 +695,25 @@ public class RDServer {
                     return;
                 }
                 BanManager.banIp(ip);
+                BanManager.banPlayer(arg);
                 playerManager.kickPlayer(target.getUsername(), "IP banned", world);
-                ctx.reply("Banned IP " + ip);
+                ctx.reply("Banned IP " + ip + " and player " + arg);
+                System.out.println("[INFO] " + ctx.getSenderName() + " banned IP " + ip
+                        + " + player " + arg);
             }
         });
 
-        CommandRegistry.registerOp("time", "Query or set the world time", ctx -> {
+        CommandRegistry.registerOp("time", "Query or set the world time", PermissionManager.OP_CHEAT, ctx -> {
             String[] args = ctx.getArgs();
             if (args.length == 0) {
                 long time = world.getWorldTime() % 24000;
                 String phase;
-                if (time < 1000) phase = "sunrise";
-                else if (time < 6000) phase = "day";
-                else if (time < 12000) phase = "noon";
-                else if (time < 13000) phase = "sunset";
+                if (time < 1000) phase = "early morning";
+                else if (time < 6000) phase = "morning";
+                else if (time < 12000) phase = "afternoon";
+                else if (time < 13000) phase = "evening";
                 else if (time < 18000) phase = "night";
-                else phase = "midnight";
+                else phase = "late night";
                 ctx.reply("The time is " + world.getWorldTime() + " (" + phase + ")"
                         + (world.isTimeFrozen() ? " [frozen]" : ""));
                 return;
@@ -680,15 +780,15 @@ public class RDServer {
                 playerManager.broadcastTimeUpdate(0, world.getWorldTime());
                 ctx.reply("Time unfrozen");
             } else {
-                ctx.reply("Usage: /time <add|query|set> <value>");
+                ctx.reply("Usage: /time <add|query|set|freeze|unfreeze>");
                 ctx.reply("  /time set <day|noon|sunset|night|midnight|sunrise|ticks>");
                 ctx.reply("  /time add <ticks>");
                 ctx.reply("  /time query <daytime|gametime|day>");
-                ctx.reply("  /time freeze|unfreeze");
+                ctx.reply("  /time freeze | /time unfreeze");
             }
         });
 
-        CommandRegistry.registerOp("weather", "Set the weather", ctx -> {
+        CommandRegistry.registerOp("weather", "Set the weather", PermissionManager.OP_CHEAT, ctx -> {
             String[] args = ctx.getArgs();
             if (args.length == 0) {
                 ctx.reply("Weather: " + world.getWeather().name().toLowerCase());
@@ -728,7 +828,7 @@ public class RDServer {
                     + (durationTicks > 0 ? " for " + (durationTicks / 20) + " seconds" : ""));
         });
 
-        CommandRegistry.registerOp("unban", "Unban a player or IP", ctx -> {
+        CommandRegistry.registerOp("unban", "Unban a player or IP", PermissionManager.OP_MANAGE, ctx -> {
             if (ctx.getArgs().length == 0) {
                 java.util.Set<String> players = BanManager.getBannedPlayers();
                 java.util.Set<String> ips = BanManager.getBannedIps();
@@ -746,12 +846,25 @@ public class RDServer {
                 return;
             }
             String arg = ctx.getArgs()[0];
-            if (arg.contains(".") || arg.contains(":")) {
-                BanManager.unbanIp(arg);
+            boolean wasIp = arg.contains(".") || arg.contains(":");
+            boolean wasBanned;
+            if (wasIp) {
+                wasBanned = BanManager.getBannedIps().contains(arg);
+                if (wasBanned) {
+                    BanManager.unbanIp(arg);
+                }
             } else {
-                BanManager.unbanPlayer(arg);
+                wasBanned = BanManager.getBannedPlayers().contains(arg);
+                if (wasBanned) {
+                    BanManager.unbanPlayer(arg);
+                }
             }
-            ctx.reply("Unbanned " + arg);
+            if (wasBanned) {
+                ctx.reply("Unbanned " + arg);
+                System.out.println("[INFO] " + ctx.getSenderName() + " unbanned " + arg);
+            } else {
+                ctx.reply(arg + " is not banned.");
+            }
         });
     }
 
