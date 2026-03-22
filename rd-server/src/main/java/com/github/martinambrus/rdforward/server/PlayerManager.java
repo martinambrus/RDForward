@@ -219,6 +219,28 @@ public class PlayerManager {
     }
 
     /**
+     * Write a packet to all connected players without flushing.
+     * Use with {@link #flushAll()} for tick-loop batching where
+     * multiple broadcasts should coalesce into a single flush.
+     */
+    public void broadcastWrite(Packet packet) {
+        for (ConnectedPlayer player : playersById.values()) {
+            player.writePacket(packet);
+        }
+    }
+
+    /**
+     * Flush all buffered writes for all connected players.
+     * Call once at the end of the tick loop to coalesce all
+     * writes from the tick into a single network flush per player.
+     */
+    public void flushAll() {
+        for (ConnectedPlayer player : playersById.values()) {
+            player.flushPackets();
+        }
+    }
+
+    /**
      * Broadcast a chat message to all players.
      */
     public void broadcastChat(byte senderId, String message) {
@@ -239,9 +261,24 @@ public class PlayerManager {
      * @param timeOfDay current time of day (0-24000, negative = frozen)
      */
     public void broadcastTimeUpdate(long worldAge, long timeOfDay) {
-        // Pre-1.6.1 clients don't understand negative-means-frozen convention;
-        // negative values wrap to nighttime. Use absolute value for them.
-        // The negative convention was added in 1.6.1 alongside doDaylightCycle.
+        broadcastTimeUpdateInternal(worldAge, timeOfDay, true);
+    }
+
+    /**
+     * Write-only variant of {@link #broadcastTimeUpdate} for tick-loop batching.
+     * Queues time update packets without flushing. Call {@link #flushAll()} afterward.
+     */
+    public void broadcastTimeUpdateWrite(long worldAge, long timeOfDay) {
+        broadcastTimeUpdateInternal(worldAge, timeOfDay, false);
+    }
+
+    /**
+     * Dispatch version-appropriate time update packets to all players.
+     * Pre-1.6.1 clients don't understand negative-means-frozen convention;
+     * negative values wrap to nighttime. Use absolute value for them.
+     * The negative convention was added in 1.6.1 alongside doDaylightCycle.
+     */
+    private void broadcastTimeUpdateInternal(long worldAge, long timeOfDay, boolean flush) {
         TimeUpdatePacket preNetty = new TimeUpdatePacket(Math.abs(timeOfDay));
         TimeUpdatePacketV47 preNettyV47 = new TimeUpdatePacketV47(worldAge, timeOfDay);
         TimeUpdatePacketV47 preNettyV47Abs = new TimeUpdatePacketV47(worldAge, Math.abs(timeOfDay));
@@ -259,17 +296,22 @@ public class PlayerManager {
                     player.getMcpeSession().sendTimeUpdate((int) (Math.abs(timeOfDay) % 24000));
                 }
             } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
-                player.sendPacket(nettyV768);
+                sendOrWrite(player, nettyV768, flush);
             } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_7_2)) {
-                player.sendPacket(netty);
+                sendOrWrite(player, netty, flush);
             } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_6_1)) {
-                player.sendPacket(preNettyV47);
+                sendOrWrite(player, preNettyV47, flush);
             } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_4_2)) {
-                player.sendPacket(preNettyV47Abs);
+                sendOrWrite(player, preNettyV47Abs, flush);
             } else if (v.isAtLeast(ProtocolVersion.ALPHA_1_0_15)) {
-                player.sendPacket(preNetty);
+                sendOrWrite(player, preNetty, flush);
             }
         }
+    }
+
+    /** Send with flush or write-only depending on the flag. */
+    private void sendOrWrite(ConnectedPlayer player, Packet packet, boolean flush) {
+        if (flush) player.sendPacket(packet); else player.writePacket(packet);
     }
 
     /**

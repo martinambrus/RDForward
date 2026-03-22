@@ -188,6 +188,7 @@ public class RDServer {
         BanManager.load(dataDir);
         WhitelistManager.load(dataDir);
         Scheduler.init();
+        chunkManager.initAsyncDelivery();
         registerBuiltInCommands();
         registerSpawnProtection();
 
@@ -509,10 +510,13 @@ public class RDServer {
         System.out.println("Stopping server...");
         tickLoop.stop();
 
+        // Drain any in-flight async saves before the final synchronous save
+        world.shutdownSaveExecutor();
+
         System.out.println("Saving world and player data...");
         world.save();
         world.savePlayers(playerManager.getAllPlayers());
-        chunkManager.saveAllDirty();
+        chunkManager.shutdown();
 
         if (udpFrontEndChannel != null) {
             udpFrontEndChannel.close();

@@ -13,9 +13,14 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
@@ -28,8 +33,11 @@ import java.util.zip.GZIPOutputStream;
  * Uses RubyDung's flat array layout: index = (y * depth + z) * width + x.
  * The world dimensions match the original RubyDung default (256x64x256).
  *
- * Thread safety: block get/set are synchronized so the tick loop and
- * Netty I/O threads can safely access world state.
+ * Thread safety: uses a {@link ReentrantReadWriteLock} so multiple readers
+ * (getBlock, serializeForClassicProtocol, overlay) can proceed concurrently
+ * while writes (setBlock, migrateRubyDungBlocks) get exclusive access.
+ * Saves snapshot the block array under a read lock and write to disk
+ * asynchronously on a dedicated thread, avoiding tick-loop stalls.
  */
 public class ServerWorld {
 
@@ -43,6 +51,16 @@ public class ServerWorld {
     private final File saveFile;
     private final File playersFile;
     private volatile boolean dirty = false;
+
+    /** Read-write lock replacing synchronized for block access. */
+    private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
+
+    /** Single-thread executor for async world and player saves. */
+    private final ExecutorService saveExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "RDForward-WorldSave");
+        t.setDaemon(true);
+        return t;
+    });
 
     // === Day/night cycle and weather ===
     private volatile long worldTime = 6000; // 0=dawn, 6000=noon, 12000=sunset, 18000=midnight
@@ -93,28 +111,71 @@ public class ServerWorld {
      * Get the block type at the given coordinates.
      * Returns AIR (0) if out of bounds.
      */
-    public synchronized byte getBlock(int x, int y, int z) {
+    public byte getBlock(int x, int y, int z) {
         if (!inBounds(x, y, z)) {
             return (byte) BlockRegistry.AIR;
         }
-        return blocks[blockIndex(x, y, z)];
+        rwLock.readLock().lock();
+        try {
+            return blocks[blockIndex(x, y, z)];
+        } finally {
+            rwLock.readLock().unlock();
+        }
     }
 
     /**
      * Set a block at the given coordinates.
      * Returns true if the block was changed, false if out of bounds or same value.
      */
-    public synchronized boolean setBlock(int x, int y, int z, byte blockType) {
+    public boolean setBlock(int x, int y, int z, byte blockType) {
         if (!inBounds(x, y, z)) {
             return false;
         }
-        int index = blockIndex(x, y, z);
-        if (blocks[index] == blockType) {
-            return false;
+        rwLock.writeLock().lock();
+        try {
+            int index = blockIndex(x, y, z);
+            if (blocks[index] == blockType) {
+                return false;
+            }
+            blocks[index] = blockType;
+            dirty = true;
+            return true;
+        } finally {
+            rwLock.writeLock().unlock();
         }
-        blocks[index] = blockType;
-        dirty = true;
-        return true;
+    }
+
+    /**
+     * Copy a rectangular block region into the caller's buffer in a single
+     * lock acquisition. Used by {@code ChunkManager.overlayServerWorldBlocks()}
+     * to avoid 32,768 individual {@link #getBlock} calls per chunk.
+     *
+     * @param startX  world X of the region origin
+     * @param startZ  world Z of the region origin
+     * @param regionWidth  width in X
+     * @param regionDepth  depth in Z
+     * @param maxY    number of Y layers to copy
+     * @param dest    output buffer, filled in order [localX][localZ][y]
+     */
+    public void getBlockRegion(int startX, int startZ, int regionWidth, int regionDepth,
+                               int maxY, byte[] dest) {
+        rwLock.readLock().lock();
+        try {
+            int idx = 0;
+            for (int localX = 0; localX < regionWidth; localX++) {
+                int worldX = startX + localX;
+                for (int localZ = 0; localZ < regionDepth; localZ++) {
+                    int worldZ = startZ + localZ;
+                    boolean inB = worldX >= 0 && worldX < width
+                               && worldZ >= 0 && worldZ < depth;
+                    for (int y = 0; y < maxY; y++) {
+                        dest[idx++] = inB ? blocks[blockIndex(worldX, y, worldZ)] : 0;
+                    }
+                }
+            }
+        } finally {
+            rwLock.readLock().unlock();
+        }
     }
 
     /**
@@ -136,6 +197,14 @@ public class ServerWorld {
      */
     public byte[] serializeForClassicProtocol() throws IOException {
         int volume = width * height * depth;
+        // Snapshot blocks under read lock to prevent reading partial writes
+        byte[] snapshot;
+        rwLock.readLock().lock();
+        try {
+            snapshot = Arrays.copyOf(blocks, blocks.length);
+        } finally {
+            rwLock.readLock().unlock();
+        }
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (GZIPOutputStream gzip = new GZIPOutputStream(baos);
              DataOutputStream dos = new DataOutputStream(gzip)) {
@@ -145,7 +214,7 @@ public class ServerWorld {
             for (int x = 0; x < width; x++) {
                 for (int z = 0; z < depth; z++) {
                     for (int y = 0; y < height; y++) {
-                        dos.writeByte(blocks[blockIndex(x, y, z)]);
+                        dos.writeByte(snapshot[(y * depth + z) * width + x]);
                     }
                 }
             }
@@ -185,42 +254,151 @@ public class ServerWorld {
      * The RD client historically sent Stone (1) when placing blocks.
      * This replaces any Stone blocks with Cobblestone.
      */
-    public synchronized void migrateRubyDungBlocks() {
-        int count = 0;
-        for (int i = 0; i < blocks.length; i++) {
-            if ((blocks[i] & 0xFF) == BlockRegistry.STONE) {
-                blocks[i] = (byte) BlockRegistry.COBBLESTONE;
-                count++;
+    public void migrateRubyDungBlocks() {
+        rwLock.writeLock().lock();
+        try {
+            int count = 0;
+            for (int i = 0; i < blocks.length; i++) {
+                if ((blocks[i] & 0xFF) == BlockRegistry.STONE) {
+                    blocks[i] = (byte) BlockRegistry.COBBLESTONE;
+                    count++;
+                }
             }
-        }
-        if (count > 0) {
-            dirty = true;
-            System.out.println("Migrated " + count + " stone block(s) to cobblestone");
+            if (count > 0) {
+                dirty = true;
+                System.out.println("Migrated " + count + " stone block(s) to cobblestone");
+            }
+        } finally {
+            rwLock.writeLock().unlock();
         }
     }
 
     /**
-     * Save world to disk (GZip compressed).
+     * Save world to disk synchronously. Snapshots the block array under a read
+     * lock (~1ms for 4MB copy) then writes GZip-compressed data outside any lock.
+     * Used at shutdown for a guaranteed-consistent final save.
      */
-    public synchronized void save() {
-        try (DataOutputStream dos = new DataOutputStream(new GZIPOutputStream(new FileOutputStream(saveFile)))) {
-            dos.writeInt(width);
-            dos.writeInt(height);
-            dos.writeInt(depth);
-            dos.write(blocks);
+    public void save() {
+        byte[] snapshot;
+        rwLock.readLock().lock();
+        try {
+            snapshot = Arrays.copyOf(blocks, blocks.length);
             dirty = false;
-            System.out.println("World saved to " + saveFile);
-        } catch (IOException e) {
-            System.err.println("Failed to save world: " + e.getMessage());
+        } finally {
+            rwLock.readLock().unlock();
         }
+        writeSnapshot(snapshot);
     }
 
     /**
-     * Save only if the world has been modified since last save.
+     * Save only if the world has been modified since last save (synchronous).
      */
     public void saveIfDirty() {
         if (dirty) {
             save();
+        }
+    }
+
+    /**
+     * Save the world asynchronously if dirty. Snapshots the block array under
+     * a read lock (~1ms), then submits the GZip+write to a background thread.
+     * The tick loop can continue immediately without waiting for disk I/O.
+     */
+    public void saveIfDirtyAsync() {
+        if (!dirty) return;
+        byte[] snapshot;
+        rwLock.readLock().lock();
+        try {
+            snapshot = Arrays.copyOf(blocks, blocks.length);
+            dirty = false;
+        } finally {
+            rwLock.readLock().unlock();
+        }
+        saveExecutor.submit(() -> writeSnapshot(snapshot));
+    }
+
+    /** Write a block-array snapshot to disk via temp file + atomic rename. */
+    private void writeSnapshot(byte[] snapshot) {
+        File tmp = new File(saveFile.getPath() + ".tmp");
+        try (DataOutputStream dos = new DataOutputStream(
+                new GZIPOutputStream(new FileOutputStream(tmp)))) {
+            dos.writeInt(width);
+            dos.writeInt(height);
+            dos.writeInt(depth);
+            dos.write(snapshot);
+        } catch (IOException e) {
+            dirty = true; // retry on next cycle
+            tmp.delete();
+            System.err.println("Failed to save world: " + e.getMessage());
+            return;
+        }
+        if (!tmp.renameTo(saveFile)) {
+            // renameTo can fail on some platforms; fall back to delete+rename
+            saveFile.delete();
+            if (!tmp.renameTo(saveFile)) {
+                dirty = true;
+                System.err.println("Failed to rename world save " + tmp + " -> " + saveFile);
+                return;
+            }
+        }
+        System.out.println("World saved to " + saveFile);
+    }
+
+    /**
+     * Save player positions asynchronously. Gathers position data on the
+     * calling thread, then submits GZip+write to the background save thread.
+     */
+    public void savePlayersAsync(java.util.Collection<ConnectedPlayer> players) {
+        gatherPlayerPositions(players);
+        if (playerPositionCache.isEmpty()) return;
+        java.util.Map<String, short[]> snapshot = new java.util.HashMap<>(playerPositionCache);
+        saveExecutor.submit(() -> writePlayerSnapshot(snapshot));
+    }
+
+    /** Write player position snapshot to disk via temp file + atomic rename. */
+    private void writePlayerSnapshot(java.util.Map<String, short[]> snapshot) {
+        File tmp = new File(playersFile.getPath() + ".tmp");
+        try (DataOutputStream dos = new DataOutputStream(
+                new GZIPOutputStream(new FileOutputStream(tmp)))) {
+            dos.writeInt(snapshot.size());
+            for (java.util.Map.Entry<String, short[]> entry : snapshot.entrySet()) {
+                dos.writeUTF(entry.getKey());
+                short[] pos = entry.getValue();
+                dos.writeShort(pos[0]);
+                dos.writeShort(pos[1]);
+                dos.writeShort(pos[2]);
+                dos.writeByte(pos[3]);
+                dos.writeByte(pos[4]);
+            }
+        } catch (IOException e) {
+            tmp.delete();
+            System.err.println("Failed to save player data: " + e.getMessage());
+            return;
+        }
+        if (!tmp.renameTo(playersFile)) {
+            playersFile.delete();
+            if (!tmp.renameTo(playersFile)) {
+                System.err.println("Failed to rename player save " + tmp + " -> " + playersFile);
+                return;
+            }
+        }
+        System.out.println("Saved " + snapshot.size() + " player position(s) to " + playersFile);
+    }
+
+    /**
+     * Shutdown the async save executor. Waits for in-flight saves to complete.
+     * Call before final synchronous save at server shutdown.
+     */
+    public void shutdownSaveExecutor() {
+        saveExecutor.shutdown();
+        try {
+            if (!saveExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
+                System.err.println("[ServerWorld] Forcing shutdown of save executor");
+                saveExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            saveExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -238,15 +416,32 @@ public class ServerWorld {
     /**
      * Process all queued block changes. Called by the tick loop.
      * Returns the list of changes that were actually applied (for broadcasting).
+     * Acquires the write lock once for the entire batch to avoid per-block
+     * lock overhead.
      */
     public List<SetBlockServerPacket> processPendingBlockChanges() {
-        List<SetBlockServerPacket> applied = new ArrayList<>();
+        // Drain the queue first (lock-free)
+        List<PendingBlockChange> batch = new ArrayList<>();
         PendingBlockChange change;
         while ((change = pendingBlockChanges.poll()) != null) {
-            boolean ok = setBlock(change.x, change.y, change.z, change.blockType);
-            if (ok) {
-                applied.add(new SetBlockServerPacket(change.x, change.y, change.z, change.blockType));
+            batch.add(change);
+        }
+        if (batch.isEmpty()) return List.of();
+
+        // Apply all changes under a single write lock
+        List<SetBlockServerPacket> applied = new ArrayList<>();
+        rwLock.writeLock().lock();
+        try {
+            for (PendingBlockChange c : batch) {
+                if (!inBounds(c.x, c.y, c.z)) continue;
+                int index = blockIndex(c.x, c.y, c.z);
+                if (blocks[index] == c.blockType) continue;
+                blocks[index] = c.blockType;
+                dirty = true;
+                applied.add(new SetBlockServerPacket(c.x, c.y, c.z, c.blockType));
             }
+        } finally {
+            rwLock.writeLock().unlock();
         }
         return applied;
     }
@@ -256,26 +451,30 @@ public class ServerWorld {
      * Called when a player disconnects so their position survives until the next save.
      */
     public void rememberPlayerPosition(ConnectedPlayer player) {
-        // Use double-precision position with rounding to minimize fixed-point
-        // truncation error. Plain (short)(y*32) always rounds down, which shifts
-        // feet up to 1/32 block below the original surface — causing players to
-        // respawn fractionally inside the block they were standing on.
-        // Classic/RubyDung clients only use short fields (doubleX/Y/Z stay 0.0),
-        // so fall back to the short coordinates for those clients.
-        short fx, fy, fz;
-        if (player.getDoubleX() != 0.0 || player.getDoubleY() != 0.0
-                || player.getDoubleZ() != 0.0) {
-            fx = (short) Math.round(player.getDoubleX() * 32);
-            fy = (short) Math.round(player.getDoubleY() * 32);
-            fz = (short) Math.round(player.getDoubleZ() * 32);
-        } else {
-            fx = player.getX();
-            fy = player.getY();
-            fz = player.getZ();
+        gatherPlayerPositions(java.util.Collections.singletonList(player));
+    }
+
+    /**
+     * Update the in-memory position cache from a collection of online players.
+     * Uses double-precision with rounding for Alpha/Bedrock clients to avoid
+     * fixed-point truncation that shifts Y downward on restore.
+     * Classic/RubyDung clients only use short fields (doubleX/Y/Z stay 0.0),
+     * so fall back to the short coordinates for those clients.
+     */
+    private void gatherPlayerPositions(java.util.Collection<ConnectedPlayer> players) {
+        for (ConnectedPlayer p : players) {
+            short fx, fy, fz;
+            if (p.getDoubleX() != 0 || p.getDoubleY() != 0 || p.getDoubleZ() != 0) {
+                fx = (short) Math.round(p.getDoubleX() * 32);
+                fy = (short) Math.round(p.getDoubleY() * 32);
+                fz = (short) Math.round(p.getDoubleZ() * 32);
+            } else {
+                fx = p.getX(); fy = p.getY(); fz = p.getZ();
+            }
+            playerPositionCache.put(p.getUsername(), new short[]{
+                fx, fy, fz, p.getYaw(), p.getPitch()
+            });
         }
-        playerPositionCache.put(player.getUsername(), new short[]{
-            fx, fy, fz, player.getYaw(), player.getPitch()
-        });
     }
 
     /**
@@ -304,40 +503,9 @@ public class ServerWorld {
      * Format: [int count] then for each player: [UTF name] [short x,y,z] [byte yaw,pitch].
      */
     public void savePlayers(java.util.Collection<ConnectedPlayer> players) {
-        // Update cache with current online player positions.
-        // Use double-precision with rounding for Alpha/Bedrock clients to avoid
-        // fixed-point truncation that shifts Y downward on restore.
-        for (ConnectedPlayer p : players) {
-            short fx, fy, fz;
-            if (p.getDoubleX() != 0 || p.getDoubleY() != 0 || p.getDoubleZ() != 0) {
-                fx = (short) Math.round(p.getDoubleX() * 32);
-                fy = (short) Math.round(p.getDoubleY() * 32);
-                fz = (short) Math.round(p.getDoubleZ() * 32);
-            } else {
-                fx = p.getX(); fy = p.getY(); fz = p.getZ();
-            }
-            playerPositionCache.put(p.getUsername(), new short[]{
-                fx, fy, fz, p.getYaw(), p.getPitch()
-            });
-        }
-
+        gatherPlayerPositions(players);
         if (playerPositionCache.isEmpty()) return;
-
-        try (DataOutputStream dos = new DataOutputStream(new GZIPOutputStream(new FileOutputStream(playersFile)))) {
-            dos.writeInt(playerPositionCache.size());
-            for (java.util.Map.Entry<String, short[]> entry : playerPositionCache.entrySet()) {
-                dos.writeUTF(entry.getKey());
-                short[] pos = entry.getValue();
-                dos.writeShort(pos[0]);
-                dos.writeShort(pos[1]);
-                dos.writeShort(pos[2]);
-                dos.writeByte(pos[3]);
-                dos.writeByte(pos[4]);
-            }
-            System.out.println("Saved " + playerPositionCache.size() + " player position(s) to " + playersFile);
-        } catch (IOException e) {
-            System.err.println("Failed to save player data: " + e.getMessage());
-        }
+        writePlayerSnapshot(new java.util.HashMap<>(playerPositionCache));
     }
 
     /**

@@ -8,10 +8,15 @@ import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import com.github.martinambrus.rdforward.server.event.ServerEvents;
 
 import java.util.List;
+import java.util.concurrent.locks.LockSupport;
 
 /**
  * Server tick loop running at 20 TPS (50ms per tick), matching Minecraft's
- * standard server tick rate.
+ * standard server tick rate. Uses nanosecond-precision fixed-rate scheduling
+ * to prevent cumulative drift: each tick advances the deadline by exactly
+ * 50ms regardless of actual tick duration. If the server falls behind
+ * (e.g. GC pause), it catches up by running ticks back-to-back, capped
+ * at {@link #MAX_CATCH_UP_TICKS} to prevent death spirals.
  *
  * Each tick:
  *   1. Sends keep-alive pings to all clients (interval from keep-alive-interval config)
@@ -24,7 +29,9 @@ import java.util.List;
  */
 public class ServerTickLoop implements Runnable {
 
-    private static final long TICK_MS = 50; // 20 TPS
+    private static final long TICK_NANOS = 50_000_000L; // 50ms = 20 TPS
+    /** Maximum ticks to run back-to-back when catching up after a stall. */
+    private static final int MAX_CATCH_UP_TICKS = 10;
     private final int pingIntervalTicks; // Derived from keep-alive-interval config
     private static final int CHUNK_UPDATE_INTERVAL_TICKS = 5; // Every 250ms
     private static final int TIME_BROADCAST_INTERVAL_TICKS = 20; // Every 1 second
@@ -72,25 +79,36 @@ public class ServerTickLoop implements Runnable {
 
     @Override
     public void run() {
-        long lastTick = System.currentTimeMillis();
+        long nextTick = System.nanoTime();
 
         while (running) {
-            long now = System.currentTimeMillis();
-            long elapsed = now - lastTick;
+            long now = System.nanoTime();
 
-            if (elapsed >= TICK_MS) {
-                lastTick = now;
+            if (now >= nextTick) {
+                // Check how far behind we are and skip if necessary
+                int ticksBehind = (int) ((now - nextTick) / TICK_NANOS);
+                if (ticksBehind > MAX_CATCH_UP_TICKS) {
+                    long skipped = ticksBehind - MAX_CATCH_UP_TICKS;
+                    nextTick += skipped * TICK_NANOS;
+                    System.err.println("[TickLoop] Skipped " + skipped
+                            + " tick(s) - can't keep up!");
+                }
+
                 tick();
+                nextTick += TICK_NANOS;
             } else {
-                // Sleep for the remaining time, but wake up a bit early
-                // to avoid overshooting
-                long sleepTime = TICK_MS - elapsed - 1;
-                if (sleepTime > 0) {
+                // Sleep until the next tick, using appropriate precision
+                long sleepNanos = nextTick - now;
+                if (sleepNanos > 2_000_000L) {
+                    // >2ms remaining: Thread.sleep is accurate enough
                     try {
-                        Thread.sleep(sleepTime);
+                        Thread.sleep(sleepNanos / 1_000_000 - 1);
                     } catch (InterruptedException e) {
                         break;
                     }
+                } else if (sleepNanos > 0) {
+                    // Sub-ms remaining: use LockSupport for finer precision
+                    LockSupport.parkNanos(sleepNanos);
                 }
             }
         }
@@ -105,20 +123,19 @@ public class ServerTickLoop implements Runnable {
         // Process queued block changes and broadcast results
         List<SetBlockServerPacket> blockChanges = world.processPendingBlockChanges();
         for (SetBlockServerPacket sb : blockChanges) {
-            playerManager.broadcastPacket(sb);
-            // Keep Alpha chunk data in sync with ServerWorld
+            playerManager.broadcastWrite(sb);
             chunkManager.setBlock(sb.getX(), sb.getY(), sb.getZ(), (byte) sb.getBlockType());
         }
 
         // Send keep-alive pings periodically
         if (tickCount % pingIntervalTicks == 0) {
-            playerManager.broadcastPacket(new PingPacket());
+            playerManager.broadcastWrite(new PingPacket());
         }
 
         // Broadcast time update periodically
         if (tickCount % TIME_BROADCAST_INTERVAL_TICKS == 0) {
             long timeOfDay = world.isTimeFrozen() ? -world.getWorldTime() : world.getWorldTime();
-            playerManager.broadcastTimeUpdate(tickCount, timeOfDay);
+            playerManager.broadcastTimeUpdateWrite(tickCount, timeOfDay);
         }
 
         // Update chunk loading/unloading for all players periodically
@@ -128,16 +145,23 @@ public class ServerTickLoop implements Runnable {
             }
         }
 
-        // Auto-save world and player positions periodically
+        // Auto-save world and player positions asynchronously.
+        // Snapshots are taken on this thread (fast), disk I/O runs on
+        // the background save thread so the tick loop doesn't stall.
         if (tickCount % SAVE_INTERVAL_TICKS == 0) {
             ServerEvents.WORLD_SAVE.invoker().onWorldSave();
-            world.saveIfDirty();
-            world.savePlayers(playerManager.getAllPlayers());
+            world.saveIfDirtyAsync();
+            world.savePlayersAsync(playerManager.getAllPlayers());
             chunkManager.saveAllDirty();
         }
 
         // Fire tick event for mods
         ServerEvents.SERVER_TICK.invoker().onServerTick(tickCount);
+
+        // Flush all buffered writes for this tick in a single batch.
+        // This coalesces block changes, pings, time updates, and chunk
+        // sends into one network flush per player instead of per-packet.
+        playerManager.flushAll();
     }
 
     public long getTickCount() {
