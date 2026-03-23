@@ -122,6 +122,7 @@ public class RDServer {
                 if (converter == null) {
                     converter = new BedrockChunkConverter(getBedrockBlockMapper());
                     bedrockChunkConverter = converter;
+                    chunkManager.setBedrockChunkConverter(converter);
                 }
             }
         }

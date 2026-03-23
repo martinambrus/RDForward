@@ -2,7 +2,6 @@ package com.github.martinambrus.rdforward.server.bedrock;
 
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.event.EventResult;
-import com.github.martinambrus.rdforward.protocol.packet.classic.PlayerTeleportPacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
 import com.github.martinambrus.rdforward.server.ChunkManager;
 import com.github.martinambrus.rdforward.server.ConnectedPlayer;
@@ -12,7 +11,6 @@ import com.github.martinambrus.rdforward.server.api.CommandRegistry;
 import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import com.github.martinambrus.rdforward.server.event.ServerEvents;
 import com.github.martinambrus.rdforward.world.BlockRegistry;
-import com.github.martinambrus.rdforward.world.alpha.AlphaChunk;
 import org.cloudburstmc.math.vector.Vector2f;
 import org.cloudburstmc.math.vector.Vector3f;
 import org.cloudburstmc.math.vector.Vector3i;
@@ -483,31 +481,6 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         }
     }
 
-
-    private void sendBedrockInitialChunks(int blockX, int blockZ) {
-        int viewDist = chunkManager.getViewDistance();
-        int centerChunkX = blockX >> 4;
-        int centerChunkZ = blockZ >> 4;
-        int sent = 0;
-        int nullChunks = 0;
-
-        for (int dx = -viewDist; dx <= viewDist; dx++) {
-            for (int dz = -viewDist; dz <= viewDist; dz++) {
-                int cx = centerChunkX + dx;
-                int cz = centerChunkZ + dz;
-                AlphaChunk chunk = chunkManager.getOrLoadChunk(
-                        new com.github.martinambrus.rdforward.server.ChunkCoord(cx, cz));
-                if (chunk != null) {
-                    LevelChunkPacket chunkPacket = chunkConverter.convertChunk(chunk);
-                    session.sendPacket(chunkPacket);
-                    sent++;
-                } else {
-                    nullChunks++;
-                }
-            }
-        }
-    }
-
     private void sendAddPlayer(ConnectedPlayer existing) {
         long entityId = existing.getPlayerId() + 1;
         UUID playerUuid = ClassicToBedrockTranslator.resolveBedrockUuid(existing.getUsername());
@@ -612,81 +585,62 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
     @Override
     public PacketSignal handle(MovePlayerPacket packet) {
         if (player == null) return PacketSignal.HANDLED;
-
         Vector3f pos = packet.getPosition();
         Vector3f rot = packet.getRotation();
-        // MovePlayerPacket rotation wire order: (pitch, yaw, headYaw) — same as PlayerAuthInput
-        // rot.getX() = pitch, rot.getY() = yaw
-
-        // MovePlayerPacket C2S position is eye/head level; internal is eye-level
         double eyeY = pos.getY();
-
-        // If player falls below the world, teleport to spawn
         if (eyeY - PLAYER_EYE_HEIGHT < -10) {
             teleportToSpawn(rot.getY());
             return PacketSignal.HANDLED;
         }
-
-        // Convert Bedrock yaw (0=South) to Classic yaw (0=North): subtract 180°
-        float classicYawDeg = (rot.getY() - 180.0f + 360.0f) % 360.0f;
-        player.updatePositionDouble(pos.getX(), eyeY, pos.getZ(), classicYawDeg, rot.getX());
-
-        // Broadcast as Classic PlayerTeleportPacket (eye-level, Classic yaw)
-        short fixedX = (short) (pos.getX() * 32);
-        short fixedY = (short) (eyeY * 32);
-        short fixedZ = (short) (pos.getZ() * 32);
-        byte byteYaw = (byte) ((classicYawDeg / 360.0f) * 256);
-        byte bytePitch = (byte) ((rot.getX() / 360.0f) * 256);
-
-        ServerEvents.PLAYER_MOVE.invoker().onPlayerMove(
-                player.getUsername(), fixedX, fixedY, fixedZ, byteYaw, bytePitch);
-
-        playerManager.broadcastPacketExcept(
-                new PlayerTeleportPacket(player.getPlayerId(),
-                        fixedX, fixedY, fixedZ, byteYaw & 0xFF, bytePitch & 0xFF),
-                player);
-
+        handleMovement(pos.getX(), eyeY, pos.getZ(), rot.getY(), rot.getX());
         return PacketSignal.HANDLED;
     }
 
     @Override
     public PacketSignal handle(PlayerAuthInputPacket packet) {
         if (player == null) return PacketSignal.HANDLED;
-
         Vector3f pos = packet.getPosition();
         Vector3f rot = packet.getRotation();
-
-        // Bedrock AuthInput Y appears to already be eye-level (not feet).
-        // Do NOT add PLAYER_EYE_HEIGHT — that causes a ~1.62 block upward offset
-        // when other clients (Alpha) view this player.
-        double eyeY = pos.getY();
-
-        // If player falls below the world, teleport to spawn
         if (pos.getY() < -10) {
             teleportToSpawn(rot.getY());
             return PacketSignal.HANDLED;
         }
+        handleMovement(pos.getX(), pos.getY(), pos.getZ(), rot.getY(), rot.getX());
+        return PacketSignal.HANDLED;
+    }
 
-        // Convert Bedrock yaw (0=South) to Classic yaw (0=North): subtract 180
-        float classicYawDeg = (rot.getY() - 180.0f + 360.0f) % 360.0f;
-        player.updatePositionDouble(pos.getX(), eyeY, pos.getZ(), classicYawDeg, rot.getX());
+    /**
+     * Shared movement handler for MovePlayerPacket and PlayerAuthInputPacket.
+     * Converts Bedrock yaw to Classic, deduplicates unchanged positions,
+     * fires the move event, and broadcasts via delta compression.
+     */
+    private void handleMovement(double x, double eyeY, double z,
+                                float bedrockYaw, float pitch) {
+        float classicYawDeg = (bedrockYaw - 180.0f + 360.0f) % 360.0f;
 
-        // Broadcast as Classic PlayerTeleportPacket (eye-level, Classic yaw)
-        short fixedX = (short) (pos.getX() * 32);
-        short fixedY = (short) (eyeY * 32);
-        short fixedZ = (short) (pos.getZ() * 32);
-        byte byteYaw = (byte) ((classicYawDeg / 360.0f) * 256);
-        byte bytePitch = (byte) ((rot.getX() / 360.0f) * 256);
+        short oldX = player.getX();
+        short oldY = player.getY();
+        short oldZ = player.getZ();
+        byte oldYaw = player.getYaw();
+        byte oldPitch = player.getPitch();
+
+        player.updatePositionDouble(x, eyeY, z, classicYawDeg, pitch);
+
+        short fixedX = player.getX();
+        short fixedY = player.getY();
+        short fixedZ = player.getZ();
+        byte byteYaw = player.getYaw();
+        byte bytePitch = player.getPitch();
+
+        if (fixedX == oldX && fixedY == oldY && fixedZ == oldZ
+                && byteYaw == oldYaw && bytePitch == oldPitch) {
+            return;
+        }
 
         ServerEvents.PLAYER_MOVE.invoker().onPlayerMove(
                 player.getUsername(), fixedX, fixedY, fixedZ, byteYaw, bytePitch);
 
-        playerManager.broadcastPacketExcept(
-                new PlayerTeleportPacket(player.getPlayerId(),
-                        fixedX, fixedY, fixedZ, byteYaw & 0xFF, bytePitch & 0xFF),
-                player);
-
-        return PacketSignal.HANDLED;
+        playerManager.broadcastPositionUpdate(player, fixedX, fixedY, fixedZ, byteYaw, bytePitch);
     }
 
     /**
@@ -967,25 +921,11 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
             publisherPkt.setRadius(radius * 16);
             session.sendPacket(publisherPkt);
 
-            // Send chunks for full radius — empty chunks for out-of-world areas
-            int maxChunkX = (world.getWidth() - 1) >> 4;
-            int maxChunkZ = (world.getDepth() - 1) >> 4;
-            int sent = 0;
-            int empty = 0;
-            for (int dx = -radius; dx <= radius; dx++) {
-                for (int dz = -radius; dz <= radius; dz++) {
-                    int cx = spawnCX + dx;
-                    int cz = spawnCZ + dz;
-                    if (cx < 0 || cx > maxChunkX || cz < 0 || cz > maxChunkZ) {
-                        sendEmptyChunk(cx, cz);
-                        empty++;
-                    } else {
-                        LevelChunkPacket chunkPkt = chunkConverter.convertWorldColumn(world, cx, cz);
-                        session.sendPacket(chunkPkt);
-                        sent++;
-                    }
-                }
-            }
+            // Async chunk serialization: leverage ChunkManager's async delivery system.
+            // Already-loaded chunks are sent immediately; uncached ones are queued
+            // for async generation on the worker pool and delivered by the tick-driven
+            // drain task. This avoids blocking the network thread on chunk serialization.
+            chunkManager.sendInitialChunks(player, spawnBlockX, spawnBlockZ);
         }
 
         return PacketSignal.HANDLED;

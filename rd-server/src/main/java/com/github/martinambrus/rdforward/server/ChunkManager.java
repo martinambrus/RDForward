@@ -45,6 +45,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import com.github.martinambrus.rdforward.server.bedrock.BedrockChunkConverter;
+
 /**
  * Manages chunk loading, unloading, and per-player chunk tracking
  * for Alpha-style infinite worlds.
@@ -139,6 +141,22 @@ public class ChunkManager {
     /** Max entries in the chunk packet cache before eviction. */
     private static final int MAX_CACHE_SIZE = 2000;
 
+    /** Bedrock chunk converter for cache invalidation on block changes. */
+    private volatile BedrockChunkConverter bedrockChunkConverter;
+
+    /**
+     * Per-chunk block change counter for adaptive batching.
+     * When a chunk accumulates more than {@link #BATCH_RESEND_THRESHOLD}
+     * changes, it is flagged for full resend instead of individual updates.
+     */
+    private final ConcurrentHashMap<ChunkCoord, AtomicInteger> chunkChangeCounts = new ConcurrentHashMap<>();
+
+    /** Chunks that need a full resend due to excessive individual block changes. */
+    private final Set<ChunkCoord> batchResendChunks = ConcurrentHashMap.newKeySet();
+
+    /** Number of individual block changes in a chunk before triggering a full resend. */
+    private static final int BATCH_RESEND_THRESHOLD = 64;
+
     public ChunkManager(WorldGenerator worldGenerator, long seed, File worldDir) {
         this(worldGenerator, seed, worldDir, DEFAULT_VIEW_DISTANCE);
     }
@@ -196,12 +214,25 @@ public class ChunkManager {
     }
 
     /**
+     * Set the Bedrock chunk converter for cache invalidation.
+     * Called from RDServer when the converter is lazily created.
+     */
+    public void setBedrockChunkConverter(BedrockChunkConverter converter) {
+        this.bedrockChunkConverter = converter;
+    }
+
+    /**
      * Invalidate all cached chunk packets for a given chunk coordinate.
      * Called when a block changes in that chunk.
      */
     private void invalidateChunkCache(int chunkX, int chunkZ) {
         for (int bucket = 2; bucket <= 19; bucket++) {
             chunkPacketCache.remove(cacheKey(chunkX, chunkZ, bucket));
+        }
+        // Also invalidate Bedrock chunk cache
+        BedrockChunkConverter converter = bedrockChunkConverter;
+        if (converter != null) {
+            converter.invalidateCache(chunkX, chunkZ);
         }
     }
 
@@ -668,7 +699,62 @@ public class ChunkManager {
         chunk.setBlock(localX, blockY, localZ, blockType & 0xFF);
         dirtyChunks.add(coord);
         invalidateChunkCache(coord.getX(), coord.getZ());
+
+        AtomicInteger counter = chunkChangeCounts.computeIfAbsent(coord, k -> new AtomicInteger());
+        if (counter.incrementAndGet() >= BATCH_RESEND_THRESHOLD) {
+            batchResendChunks.add(coord);
+            counter.set(0);
+        }
+
         return true;
+    }
+
+    /**
+     * Check for chunks that need a full resend due to excessive individual block changes.
+     * Called from the tick loop. When a chunk accumulates more than
+     * {@link #BATCH_RESEND_THRESHOLD} individual block changes, resending the full
+     * chunk is more efficient than many individual UpdateBlockPacket messages.
+     */
+    public void checkBatchResend() {
+        if (batchResendChunks.isEmpty()) return;
+
+        Iterator<ChunkCoord> it = batchResendChunks.iterator();
+        while (it.hasNext()) {
+            ChunkCoord coord = it.next();
+            it.remove();
+            AlphaChunk chunk = loadedChunks.get(coord);
+            if (chunk == null) continue;
+
+            // Resend to all players who have this chunk loaded
+            for (Map.Entry<ConnectedPlayer, Set<ChunkCoord>> entry : playerChunks.entrySet()) {
+                if (entry.getValue().contains(coord)) {
+                    sendChunkToPlayer(entry.getKey(), chunk);
+                    entry.getKey().flushPackets();
+                }
+            }
+        }
+    }
+
+    /**
+     * Reset per-chunk block change counters. Called once per tick to
+     * allow a fresh window of changes before triggering the next batch resend.
+     * Removes entries with zero counts (no changes this tick) to prevent
+     * unbounded growth, while keeping active entries in-place to avoid
+     * ConcurrentHashMap segment rebuild overhead.
+     */
+    public void resetChangeCounters() {
+        if (!chunkChangeCounts.isEmpty()) {
+            Iterator<Map.Entry<ChunkCoord, AtomicInteger>> it =
+                    chunkChangeCounts.entrySet().iterator();
+            while (it.hasNext()) {
+                Map.Entry<ChunkCoord, AtomicInteger> entry = it.next();
+                if (entry.getValue().get() == 0) {
+                    it.remove();
+                } else {
+                    entry.getValue().set(0);
+                }
+            }
+        }
     }
 
     /**

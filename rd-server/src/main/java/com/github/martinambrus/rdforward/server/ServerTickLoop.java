@@ -146,6 +146,11 @@ public class ServerTickLoop implements Runnable {
             }
         }
 
+        // Adaptive block change batching: if any chunk accumulated too many
+        // individual block changes, resend the full chunk to affected players.
+        chunkManager.checkBatchResend();
+        chunkManager.resetChangeCounters();
+
         // Incremental chunk saves: spread disk I/O over time by saving
         // a few dirty chunks every 5 seconds on the worker pool thread.
         // Skip on full-save ticks to avoid racing with saveAllDirty().
