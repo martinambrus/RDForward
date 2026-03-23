@@ -34,6 +34,41 @@ public class AlphaLevelFormat {
     }
 
     /**
+     * Snapshot a chunk's NBT on the calling thread (safe for entity/tileEntity
+     * iteration) and return a Runnable that writes the snapshot to disk.
+     * The returned Runnable can safely run on any thread since it only
+     * touches the pre-built NBT and the filesystem.
+     */
+    public static SaveTask prepareSave(File worldDir, AlphaChunk chunk) {
+        CompoundTag nbt = chunk.toNbt();
+        int xPos = chunk.getXPos();
+        int zPos = chunk.getZPos();
+        return new SaveTask(worldDir, xPos, zPos, nbt);
+    }
+
+    /** A deferred chunk save: NBT already serialized, just needs disk I/O. */
+    public static class SaveTask {
+        private final File worldDir;
+        private final int xPos;
+        private final int zPos;
+        private final CompoundTag nbt;
+
+        SaveTask(File worldDir, int xPos, int zPos, CompoundTag nbt) {
+            this.worldDir = worldDir;
+            this.xPos = xPos;
+            this.zPos = zPos;
+            this.nbt = nbt;
+        }
+
+        /** Write the pre-serialized NBT to disk. */
+        public void writeToDisk() throws IOException {
+            File chunkFile = getChunkFile(worldDir, xPos, zPos);
+            chunkFile.getParentFile().mkdirs();
+            NBTUtil.write(new NamedTag("", nbt), chunkFile);
+        }
+    }
+
+    /**
      * Load a chunk from disk in Alpha format.
      * Returns null if the chunk file doesn't exist.
      */

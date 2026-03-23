@@ -36,6 +36,7 @@ public class ServerTickLoop implements Runnable {
     private static final int CHUNK_UPDATE_INTERVAL_TICKS = 5; // Every 250ms
     private static final int TIME_BROADCAST_INTERVAL_TICKS = 20; // Every 1 second
     private static final int SAVE_INTERVAL_TICKS = 6000; // Every 5 minutes
+    private static final int INCREMENTAL_SAVE_INTERVAL_TICKS = 100; // Every 5 seconds
 
     private final PlayerManager playerManager;
     private final ServerWorld world;
@@ -143,6 +144,14 @@ public class ServerTickLoop implements Runnable {
             for (ConnectedPlayer player : playerManager.getAllPlayers()) {
                 chunkManager.updatePlayerChunks(player);
             }
+        }
+
+        // Incremental chunk saves: spread disk I/O over time by saving
+        // a few dirty chunks every 5 seconds on the worker pool thread.
+        // Skip on full-save ticks to avoid racing with saveAllDirty().
+        if (tickCount % INCREMENTAL_SAVE_INTERVAL_TICKS == 0
+                && tickCount % SAVE_INTERVAL_TICKS != 0) {
+            chunkManager.saveIncrementally();
         }
 
         // Auto-save world and player positions asynchronously.

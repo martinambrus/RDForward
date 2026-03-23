@@ -186,7 +186,10 @@ public class AlphaChunk {
             }
         }
 
-        // Phase 2: BFS flood-fill from sky boundary into underground
+        // Phase 2: BFS flood-fill from sky boundary into underground.
+        // Uses Starlight-style level propagation: light level and incoming direction
+        // are packed into the queue entry, eliminating per-node nibble reads and
+        // skipping the reverse direction (which can never yield a brighter result).
         ArrayDeque<Integer> queue = new ArrayDeque<>();
 
         // Seed: sky-lit blocks whose neighbors include underground transparent blocks.
@@ -218,32 +221,36 @@ public class AlphaChunk {
                     int newLight = 15 - Math.max(1, getLightOpacity(getBlock(x, height - 1, z)));
                     if (newLight > 0) {
                         setNibble(skyLight, blockIndex(x, height - 1, z), newLight);
-                        queue.add(packCoord(x, height - 1, z));
+                        queue.add(packBFS(x, height - 1, z, newLight, DIR_NONE));
                     }
                 }
 
                 // Seed sky-lit blocks in the range that borders taller adjacent columns
                 for (int y = height; y < Math.min(maxAdjacentHeight, HEIGHT); y++) {
-                    queue.add(packCoord(x, y, z));
+                    queue.add(packBFS(x, y, z, 15, DIR_NONE));
                 }
             }
         }
 
-        // BFS: spread light to transparent neighbors, reducing by opacity (min 1)
+        // BFS: spread light to transparent neighbors, reducing by opacity (min 1).
+        // Light level comes from the queue entry (level propagation), not re-read
+        // from the skyLight array (update propagation). Skip the direction we came
+        // from since the source already has higher light.
         while (!queue.isEmpty()) {
             int packed = queue.poll();
-            int x = (packed >> 11) & 0xF;
-            int y = (packed >> 4) & 0x7F;
-            int z = packed & 0xF;
-            int light = getNibble(skyLight, blockIndex(x, y, z));
+            int bx = (packed >> 18) & 0xF;
+            int by = (packed >> 11) & 0x7F;
+            int bz = (packed >> 7) & 0xF;
+            int light = (packed >> 3) & 0xF;
+            int fromDir = packed & 0x7;
             if (light <= 1) continue;
 
-            spreadSkyLight(queue, x - 1, y, z, light);
-            spreadSkyLight(queue, x + 1, y, z, light);
-            spreadSkyLight(queue, x, y - 1, z, light);
-            spreadSkyLight(queue, x, y + 1, z, light);
-            spreadSkyLight(queue, x, y, z - 1, light);
-            spreadSkyLight(queue, x, y, z + 1, light);
+            if (fromDir != DIR_NEG_X) spreadSkyLight(queue, bx - 1, by, bz, light, DIR_POS_X);
+            if (fromDir != DIR_POS_X) spreadSkyLight(queue, bx + 1, by, bz, light, DIR_NEG_X);
+            if (fromDir != DIR_NEG_Y) spreadSkyLight(queue, bx, by - 1, bz, light, DIR_POS_Y);
+            if (fromDir != DIR_POS_Y) spreadSkyLight(queue, bx, by + 1, bz, light, DIR_NEG_Y);
+            if (fromDir != DIR_NEG_Z) spreadSkyLight(queue, bx, by, bz - 1, light, DIR_POS_Z);
+            if (fromDir != DIR_POS_Z) spreadSkyLight(queue, bx, by, bz + 1, light, DIR_NEG_Z);
         }
     }
 
@@ -251,8 +258,12 @@ public class AlphaChunk {
      * Try to spread sky light into a neighboring block. If the neighbor is
      * within bounds, not fully opaque, and would receive more light than it
      * currently has, update it and enqueue for further propagation.
+     *
+     * @param toDir the direction from the neighbor back to the source (us),
+     *              so the BFS loop can skip spreading back in this direction
      */
-    private void spreadSkyLight(ArrayDeque<Integer> queue, int x, int y, int z, int sourceLight) {
+    private void spreadSkyLight(ArrayDeque<Integer> queue, int x, int y, int z,
+                                 int sourceLight, int toDir) {
         if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT || z < 0 || z >= DEPTH) return;
 
         int opacity = getLightOpacity(getBlock(x, y, z));
@@ -265,12 +276,25 @@ public class AlphaChunk {
         if (getNibble(skyLight, idx) >= newLight) return; // Already at least as bright
 
         setNibble(skyLight, idx, newLight);
-        queue.add(packCoord(x, y, z));
+        queue.add(packBFS(x, y, z, newLight, toDir));
     }
 
-    /** Pack local chunk coordinates into a single int (x: 4 bits, y: 7 bits, z: 4 bits). */
-    private static int packCoord(int x, int y, int z) {
-        return (x << 11) | (y << 4) | z;
+    // BFS direction constants: where the light source is relative to this node
+    private static final int DIR_NONE  = 0; // seed (spread in all 6 directions)
+    private static final int DIR_NEG_X = 1;
+    private static final int DIR_POS_X = 2;
+    private static final int DIR_NEG_Y = 3;
+    private static final int DIR_POS_Y = 4;
+    private static final int DIR_NEG_Z = 5;
+    private static final int DIR_POS_Z = 6;
+
+    /**
+     * Pack local chunk coordinates, light level, and incoming direction into a
+     * single int for the BFS queue. Layout (22 bits):
+     * x(4) | y(7) | z(4) | light(4) | fromDir(3)
+     */
+    private static int packBFS(int x, int y, int z, int light, int fromDir) {
+        return (x << 18) | (y << 11) | (z << 7) | (light << 3) | fromDir;
     }
 
     /**

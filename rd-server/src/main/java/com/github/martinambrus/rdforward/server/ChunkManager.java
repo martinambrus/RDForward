@@ -96,6 +96,10 @@ public class ChunkManager {
     /** Tracks which chunks have been modified since last save. */
     private final Set<ChunkCoord> dirtyChunks = ConcurrentHashMap.newKeySet();
 
+    /** Tracks chunks currently being written to disk by a worker thread,
+     *  so saveIncrementally() doesn't pick the same chunk twice. */
+    private final Set<ChunkCoord> savingChunks = ConcurrentHashMap.newKeySet();
+
     /** Reference to the authoritative Classic/RD world for block data overlay. */
     private ServerWorld serverWorld;
 
@@ -103,6 +107,8 @@ public class ChunkManager {
     private static final int MAX_CHUNKS_PER_PLAYER_PER_TICK = 4;
     /** Max total chunk deliveries across all players per tick (bounds worst-case tick time). */
     private static final int MAX_TOTAL_DELIVERIES_PER_TICK = 32;
+    /** Max dirty chunks to save per incremental save call. */
+    private static final int INCREMENTAL_SAVE_BATCH = 4;
 
     /** Worker pool for off-thread chunk generation and disk I/O. */
     private static final AtomicInteger WORKER_ID = new AtomicInteger();
@@ -666,11 +672,53 @@ public class ChunkManager {
     }
 
     /**
-     * Save all dirty chunks to disk.
+     * Save up to {@link #INCREMENTAL_SAVE_BATCH} dirty chunks asynchronously
+     * on the chunk worker pool. Called frequently from the tick loop to spread
+     * disk I/O over time instead of saving everything in one burst.
+     *
+     * NBT serialization (toNbt) happens on the tick thread to avoid
+     * concurrent-modification issues with entity/tileEntity lists.
+     * Only the disk I/O runs on the worker thread.
+     */
+    public void saveIncrementally() {
+        if (dirtyChunks.isEmpty()) return;
+
+        int count = 0;
+        Iterator<ChunkCoord> it = dirtyChunks.iterator();
+        while (it.hasNext() && count < INCREMENTAL_SAVE_BATCH) {
+            ChunkCoord coord = it.next();
+            if (savingChunks.contains(coord)) continue; // already in-flight
+            AlphaChunk chunk = loadedChunks.get(coord);
+            if (chunk != null) {
+                // Snapshot NBT on tick thread (safe: entities/tileEntities not modified concurrently)
+                AlphaLevelFormat.SaveTask saveTask = AlphaLevelFormat.prepareSave(worldDir, chunk);
+                savingChunks.add(coord);
+                chunkWorkerPool.submit(() -> {
+                    try {
+                        saveTask.writeToDisk();
+                        dirtyChunks.remove(coord);
+                    } catch (IOException e) {
+                        System.err.println("Failed to save chunk " + coord + ": " + e.getMessage());
+                    } finally {
+                        savingChunks.remove(coord);
+                    }
+                });
+                count++;
+            } else {
+                it.remove(); // chunk was unloaded, no need to save
+            }
+        }
+    }
+
+    /**
+     * Save all dirty chunks to disk synchronously on the calling thread.
+     * Skips chunks currently being written by an incremental save worker
+     * to avoid concurrent file writes.
      */
     public void saveAllDirty() {
         Set<ChunkCoord> saved = new HashSet<>();
         for (ChunkCoord coord : dirtyChunks) {
+            if (savingChunks.contains(coord)) continue; // in-flight incremental save
             AlphaChunk chunk = loadedChunks.get(coord);
             if (chunk != null) {
                 try {

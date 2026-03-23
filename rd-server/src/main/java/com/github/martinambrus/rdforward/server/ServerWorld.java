@@ -185,9 +185,23 @@ public class ServerWorld {
     }
 
     /**
+     * Return a snapshot of the entire block array under a single read lock.
+     * Callers can read from the snapshot without any locking. The snapshot
+     * is a point-in-time copy; subsequent setBlock calls won't affect it.
+     */
+    public byte[] getBlockSnapshot() {
+        rwLock.readLock().lock();
+        try {
+            return Arrays.copyOf(blocks, blocks.length);
+        } finally {
+            rwLock.readLock().unlock();
+        }
+    }
+
+    /**
      * Check if coordinates are within world bounds.
      */
-    public boolean inBounds(int x, int y, int z) {
+    public final boolean inBounds(int x, int y, int z) {
         return x >= 0 && x < width && y >= 0 && y < height && z >= 0 && z < depth;
     }
 
@@ -203,14 +217,7 @@ public class ServerWorld {
      */
     public byte[] serializeForClassicProtocol() throws IOException {
         int volume = width * height * depth;
-        // Snapshot blocks under read lock to prevent reading partial writes
-        byte[] snapshot;
-        rwLock.readLock().lock();
-        try {
-            snapshot = Arrays.copyOf(blocks, blocks.length);
-        } finally {
-            rwLock.readLock().unlock();
-        }
+        byte[] snapshot = getBlockSnapshot();
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (GZIPOutputStream gzip = new GZIPOutputStream(baos);
              DataOutputStream dos = new DataOutputStream(gzip)) {
@@ -584,6 +591,10 @@ public class ServerWorld {
      * This keeps players near their original position (e.g. in a cave) rather
      * than teleporting them to the surface.
      *
+     * Takes a snapshot of the block array under a single read lock, then
+     * performs all searching lock-free on the snapshot. This replaces up to
+     * millions of individual lock acquire/release cycles with one ~1ms copy.
+     *
      * @param x block X
      * @param y block Y (feet position)
      * @param z block Z
@@ -591,10 +602,11 @@ public class ServerWorld {
      * @return int[3] with safe {x, feetY, z}
      */
     public int[] findSafePosition(int x, int y, int z, int maxRadius) {
+        byte[] snapshot = getBlockSnapshot();
         int startY = Math.max(1, Math.min(y, height - 2));
 
         // First: search straight up from current position
-        int safeY = findSafeYUpward(x, z, startY);
+        int safeY = findSafeYUpward(snapshot, x, z, startY);
         if (safeY >= 0) {
             return new int[]{x, safeY, z};
         }
@@ -607,7 +619,7 @@ public class ServerWorld {
                     int tx = x + dx;
                     int tz = z + dz;
                     if (tx < 0 || tx >= width || tz < 0 || tz >= depth) continue;
-                    safeY = findSafeYUpward(tx, tz, startY);
+                    safeY = findSafeYUpward(snapshot, tx, tz, startY);
                     if (safeY >= 0) {
                         return new int[]{tx, safeY, tz};
                     }
@@ -619,26 +631,32 @@ public class ServerWorld {
         int cx = width / 2;
         int cz = depth / 2;
         for (int testY = height - 2; testY >= 1; testY--) {
-            if (getBlock(cx, testY - 1, cz) != 0
-                    && getBlock(cx, testY, cz) == 0
-                    && getBlock(cx, testY + 1, cz) == 0) {
+            if (getBlockFromSnapshot(snapshot, cx, testY - 1, cz) != 0
+                    && getBlockFromSnapshot(snapshot, cx, testY, cz) == 0
+                    && getBlockFromSnapshot(snapshot, cx, testY + 1, cz) == 0) {
                 return new int[]{cx, testY, cz};
             }
         }
         return new int[]{cx, height * 2 / 3 + 1, cz};
     }
 
+    /** Read a block from a snapshot array without any locking. */
+    private byte getBlockFromSnapshot(byte[] snapshot, int x, int y, int z) {
+        if (!inBounds(x, y, z)) return (byte) BlockRegistry.AIR;
+        return snapshot[blockIndex(x, y, z)];
+    }
+
     /**
-     * Search upward from startY for a safe position: solid ground below
-     * and 2 air blocks for feet and head. Narrow pits (1-wide columns)
-     * are valid — the player may have dug them intentionally.
+     * Search upward from startY for a safe position using a snapshot array.
+     * Solid ground below and 2 air blocks for feet and head. Narrow pits
+     * (1-wide columns) are valid — the player may have dug them intentionally.
      * Returns the feet Y, or -1 if none found.
      */
-    private int findSafeYUpward(int x, int z, int startY) {
+    private int findSafeYUpward(byte[] snapshot, int x, int z, int startY) {
         for (int testY = startY; testY < height - 1; testY++) {
-            if (getBlock(x, testY - 1, z) != 0       // solid ground below
-                    && getBlock(x, testY, z) == 0     // feet in air
-                    && getBlock(x, testY + 1, z) == 0) { // head in air
+            if (getBlockFromSnapshot(snapshot, x, testY - 1, z) != 0       // solid ground below
+                    && getBlockFromSnapshot(snapshot, x, testY, z) == 0     // feet in air
+                    && getBlockFromSnapshot(snapshot, x, testY + 1, z) == 0) { // head in air
                 return testY;
             }
         }

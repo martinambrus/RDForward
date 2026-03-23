@@ -15,6 +15,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelPipeline;
+import io.netty.handler.flush.FlushConsolidationHandler;
 
 /**
  * Detects whether a connecting client uses the Nati-framed protocol
@@ -145,6 +146,12 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
 
             pipeline.replace("encoder", "encoder", new RawPacketEncoder());
 
+            // Consolidate outbound flushes: placed before decoder (head of pipeline)
+            // so in outbound direction it's the last handler before the socket,
+            // catching ALL flushes including mid-tick writeAndFlush() calls.
+            pipeline.addBefore("decoder", "flushConsolidation",
+                    new FlushConsolidationHandler(256, true));
+
             // Add packet prioritizer AFTER encoder in head-to-tail order.
             // In the outbound direction (tail-to-head), the prioritizer
             // buffers writes from the translator and reorders by priority on flush.
@@ -176,6 +183,10 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
             // Replace frame-level codecs
             pipeline.replace("decoder", "decoder", new VarIntFrameDecoder());
             pipeline.replace("encoder", "encoder", new VarIntFrameEncoder());
+
+            // Consolidate outbound flushes (same rationale as Alpha branch)
+            pipeline.addBefore("decoder", "flushConsolidation",
+                    new FlushConsolidationHandler(256, true));
 
             // Add packet-level codecs after frame codecs
             pipeline.addAfter("decoder", "packetDecoder",
