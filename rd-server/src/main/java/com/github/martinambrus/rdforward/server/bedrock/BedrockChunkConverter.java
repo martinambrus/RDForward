@@ -2,6 +2,8 @@ package com.github.martinambrus.rdforward.server.bedrock;
 
 import com.github.martinambrus.rdforward.server.ServerWorld;
 import com.github.martinambrus.rdforward.world.alpha.AlphaChunk;
+import com.github.martinambrus.rdforward.world.alpha.CanonicalChunkData;
+import com.github.martinambrus.rdforward.world.alpha.CanonicalSection;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.Unpooled;
@@ -204,6 +206,119 @@ public class BedrockChunkConverter {
             return entry.toPacket(chunk.getXPos(), chunk.getZPos());
         } finally {
             data.release();
+        }
+    }
+
+    /**
+     * Convert an AlphaChunk to a Bedrock LevelChunkPacket using canonical data.
+     * Reuses the canonical palette and pre-computed palette indices instead of
+     * re-reading blocks from AlphaChunk and rebuilding the HashMap palette.
+     * Returns a cached packet if available, otherwise serializes and caches.
+     */
+    public LevelChunkPacket convertChunkFromCanonical(AlphaChunk chunk) {
+        long key = cacheKey(chunk.getXPos(), chunk.getZPos());
+        CachedChunkData cached = chunkCache.get(key);
+        if (cached != null) {
+            return cached.toPacket(chunk.getXPos(), chunk.getZPos());
+        }
+
+        CanonicalChunkData canonical = chunk.getOrBuildCanonical();
+
+        ByteBuf data = ByteBufAllocator.DEFAULT.buffer();
+        try {
+            // Find highest non-empty sub-chunk from canonical sections
+            int highestNonEmpty = -1;
+            for (int s = 7; s >= 0; s--) {
+                if (!canonical.getSection(s).isEmpty()) {
+                    highestNonEmpty = s;
+                    break;
+                }
+            }
+            int actualWorldSubChunks = Math.max(0, highestNonEmpty + 1);
+            int totalSubChunks = OVERWORLD_Y_OFFSET_CHUNKS + actualWorldSubChunks;
+
+            // Empty sub-chunks for Y=-64 to Y=-1
+            for (int i = 0; i < OVERWORLD_Y_OFFSET_CHUNKS; i++) {
+                writeEmptyAirSubChunk(data);
+            }
+
+            // World data sub-chunks from canonical sections
+            for (int subY = 0; subY < actualWorldSubChunks; subY++) {
+                writeSubChunkFromCanonical(data, canonical.getSection(subY));
+            }
+
+            writeBiomeSections(data);
+            data.writeByte(0);
+
+            CachedChunkData entry = CachedChunkData.fromByteBuf(data, totalSubChunks);
+            cacheInsert(key, entry);
+            return entry.toPacket(chunk.getXPos(), chunk.getZPos());
+        } finally {
+            data.release();
+        }
+    }
+
+    /**
+     * Write a sub-chunk from canonical section data.
+     * Reuses the canonical palette (remapped to Bedrock runtime IDs) and
+     * iterates palette indices in XZY order (Bedrock native) via index remapping
+     * from the canonical YZX-ordered indices.
+     */
+    private void writeSubChunkFromCanonical(ByteBuf buf, CanonicalSection section) {
+        int[] legacyPalette = section.getLegacyPalette();
+        int paletteSize = section.getPaletteSize();
+        int[] paletteIndices = section.getPaletteIndices();
+
+        // Build Bedrock palette: remap legacy block IDs to runtime IDs
+        int[] bedrockPalette = new int[paletteSize];
+        for (int i = 0; i < paletteSize; i++) {
+            bedrockPalette[i] = blockMapper.toRuntimeId(legacyPalette[i]);
+        }
+
+        // Singleton section: use 0-bpb fast path
+        if (paletteSize <= 1) {
+            buf.writeByte(8);  // version 8
+            buf.writeByte(1);  // 1 storage layer
+            buf.writeByte((0 << 1) | 1);  // bpb=0, runtime format
+            VarInts.writeInt(buf, paletteSize == 0 ? airRuntimeId : bedrockPalette[0]);
+            return;
+        }
+
+        // Compute bitsPerBlock for Bedrock format
+        int bitsPerBlock = Integer.SIZE - Integer.numberOfLeadingZeros(paletteSize - 1);
+        bitsPerBlock = padBitsPerBlock(bitsPerBlock);
+
+        buf.writeByte(8);  // version 8
+        buf.writeByte(1);  // 1 storage layer
+        buf.writeByte((bitsPerBlock << 1) | 1);  // palette header
+
+        // Write block indices in XZY order (Bedrock native), reading from YZX canonical indices
+        int blocksPerWord = 32 / bitsPerBlock;
+        int wordsNeeded = (BLOCKS_PER_SUB_CHUNK + blocksPerWord - 1) / blocksPerWord;
+        int mask = (1 << bitsPerBlock) - 1;
+
+        for (int w = 0; w < wordsNeeded; w++) {
+            int word = 0;
+            for (int b = 0; b < blocksPerWord; b++) {
+                int bedrockIdx = w * blocksPerWord + b; // XZY linear index
+                if (bedrockIdx < BLOCKS_PER_SUB_CHUNK) {
+                    // Bedrock XZY: bedrockIdx = (x << 8) | (z << 4) | y
+                    int x = bedrockIdx >> 8;
+                    int z = (bedrockIdx >> 4) & 0xF;
+                    int y = bedrockIdx & 0xF;
+                    // Canonical YZX: canonicalIdx = (y * 16 + z) * 16 + x
+                    int canonicalIdx = (y * 16 + z) * 16 + x;
+                    int palIdx = paletteIndices[canonicalIdx];
+                    word |= (palIdx & mask) << (b * bitsPerBlock);
+                }
+            }
+            buf.writeIntLE(word);
+        }
+
+        // Palette size and entries
+        VarInts.writeInt(buf, paletteSize);
+        for (int i = 0; i < paletteSize; i++) {
+            VarInts.writeInt(buf, bedrockPalette[i]);
         }
     }
 

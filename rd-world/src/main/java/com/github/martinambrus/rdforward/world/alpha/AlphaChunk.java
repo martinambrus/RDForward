@@ -49,6 +49,13 @@ public class AlphaChunk {
     /** Highest non-air Y per XZ column, 256 bytes (16x16) */
     private final byte[] heightMap;
 
+    /**
+     * Cached canonical chunk data (version-independent intermediate form).
+     * Volatile for safe publication across threads. Invalidated (set to null)
+     * on any block change via setBlock()/setBlockData().
+     */
+    private volatile CanonicalChunkData canonicalData;
+
     /** Whether terrain features (trees, ores, etc.) have been generated */
     private boolean terrainPopulated;
 
@@ -99,6 +106,7 @@ public class AlphaChunk {
     public void setBlock(int x, int y, int z, int blockId) {
         blocks[blockIndex(x, y, z)] = (byte) blockId;
         updateHeightMap(x, y, z, blockId);
+        canonicalData = null; // invalidate cached canonical form
     }
 
     /**
@@ -113,6 +121,24 @@ public class AlphaChunk {
      */
     public void setBlockData(int x, int y, int z, int value) {
         setNibble(data, blockIndex(x, y, z), value);
+        canonicalData = null; // invalidate cached canonical form
+    }
+
+    /**
+     * Get or build the canonical intermediate representation for this chunk.
+     * The canonical form is version-independent: it stores legacy palettes and
+     * pre-packed index arrays that can be cheaply transformed into version-specific
+     * chunk packets by remapping only the palette entries (~10-15 lookups per section).
+     *
+     * Thread-safe: multiple concurrent callers may build redundantly (benign race).
+     * Both will produce equivalent immutable results from the same block data.
+     */
+    public CanonicalChunkData getOrBuildCanonical() {
+        CanonicalChunkData data = this.canonicalData;
+        if (data != null) return data;
+        data = CanonicalChunkData.build(this);
+        this.canonicalData = data;
+        return data;
     }
 
     /**

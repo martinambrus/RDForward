@@ -21,13 +21,18 @@ import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacket
 import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacketV735;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacketV755;
 import com.github.martinambrus.rdforward.server.api.ServerProperties;
+import com.github.martinambrus.rdforward.world.ChunkSerializationPool;
 import com.github.martinambrus.rdforward.world.WorldGenerator;
 import com.github.martinambrus.rdforward.world.alpha.AlphaChunk;
 import com.github.martinambrus.rdforward.world.alpha.AlphaLevelFormat;
+import com.github.martinambrus.rdforward.world.alpha.CanonicalChunkData;
+import com.github.martinambrus.rdforward.world.alpha.CanonicalSection;
+import com.github.martinambrus.rdforward.world.alpha.CanonicalSectionWriter;
 
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.server.api.Scheduler;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -177,6 +182,15 @@ public class ChunkManager {
     /** Number of individual block changes in a chunk before triggering a full resend. */
     private static final int BATCH_RESEND_THRESHOLD = 64;
 
+    /** Pre-filled sky light array for empty air sections above terrain (V755 light). */
+    private static final byte[] FULL_SKY_LIGHT = new byte[2048];
+    /** Pre-filled biomes array (plains=1) for V755/V735/V751 chunk packets. */
+    private static final int[] PLAINS_BIOMES_1024 = new int[1024];
+    static {
+        java.util.Arrays.fill(FULL_SKY_LIGHT, (byte) 0xFF);
+        java.util.Arrays.fill(PLAINS_BIOMES_1024, 1);
+    }
+
     public ChunkManager(WorldGenerator worldGenerator, long seed, File worldDir) {
         this(worldGenerator, seed, worldDir, DEFAULT_VIEW_DISTANCE);
     }
@@ -218,6 +232,22 @@ public class ChunkManager {
     static final int BUCKET_V764        = 17; // 1.20.2+
     static final int BUCKET_V766        = 18; // 1.20.5+
     static final int BUCKET_V770        = 19; // 1.21.5+
+
+    /**
+     * Map a protocol bucket to a {@link CanonicalSectionWriter} target constant.
+     * Returns -1 for buckets that don't use the canonical path (Alpha, V28, V39, V47).
+     */
+    static int bucketToTarget(int bucket) {
+        if (bucket >= BUCKET_V770) return CanonicalSectionWriter.TARGET_V770;
+        if (bucket >= BUCKET_V759) return CanonicalSectionWriter.TARGET_V759;
+        if (bucket >= BUCKET_V757) return CanonicalSectionWriter.TARGET_V757;
+        if (bucket >= BUCKET_V755) return CanonicalSectionWriter.TARGET_V755;
+        if (bucket >= BUCKET_V735) return CanonicalSectionWriter.TARGET_V735;
+        if (bucket >= BUCKET_V477) return CanonicalSectionWriter.TARGET_V477;
+        if (bucket >= BUCKET_V393) return CanonicalSectionWriter.TARGET_V393;
+        if (bucket >= BUCKET_V109) return CanonicalSectionWriter.TARGET_V109;
+        return -1; // not a paletted bucket
+    }
 
     /**
      * Encode a cache key from chunk coordinates and protocol bucket.
@@ -1049,362 +1079,22 @@ public class ChunkManager {
      * Build serialized chunk packets for the given protocol bucket.
      * This method is designed to run on the generation pool thread.
      * It reads from immutable chunk data only.
+     *
+     * For paletted versions (V109+), uses the canonical intermediate form:
+     * blocks are iterated once to build version-independent palettes and
+     * pre-packed index arrays, then each version only remaps ~10-15 palette
+     * entries and copies the packed data. This eliminates redundant 32K-block
+     * iterations when multiple protocol versions view the same chunk.
      */
     private Packet[] buildChunkPackets(AlphaChunk chunk, int bucket) {
         List<Packet> collectedPackets = new ArrayList<>();
 
-        if (bucket >= BUCKET_V759) { // 1.19+ (buckets 15-19)
-            // v759/v760/v761/v762/v763: Same chunk format as v757 but with 1.19 block state IDs.
-            AlphaChunk.V757ChunkData v759Data = chunk.serializeForV759Protocol();
-            long[] heightmap = buildHeightmapLongArrayNonSpanning(chunk);
+        int target = bucketToTarget(bucket);
 
-            int skyLightMask = 0;
-            int blockLightMask = 0;
-            java.util.List<byte[]> skyArrays = new java.util.ArrayList<>();
-            java.util.List<byte[]> blockArrays = new java.util.ArrayList<>();
-
-            for (int section = 0; section < 8; section++) {
-                if (v759Data.getSkyLightSections()[section] != null) {
-                    skyLightMask |= (1 << (section + 1));
-                    skyArrays.add(v759Data.getSkyLightSections()[section]);
-                }
-                if (v759Data.getBlockLightSections()[section] != null) {
-                    blockLightMask |= (1 << (section + 1));
-                    blockArrays.add(v759Data.getBlockLightSections()[section]);
-                }
-            }
-
-            int emptySkyLightMask = ~skyLightMask & 0x3FFFF;
-            int emptyBlockLightMask = ~blockLightMask & 0x3FFFF;
-
-            byte[][] skyArr = skyArrays.toArray(new byte[0][]);
-            byte[][] blockArr = blockArrays.toArray(new byte[0][]);
-
-            if (bucket >= BUCKET_V770) { // 1.21.5+
-                // v770: same 24-section padding as v766+, but with v770 serialization
-                // (no VarInt data array length prefixes) and binary heightmaps.
-                AlphaChunk.V757ChunkData v770Data = chunk.serializeForV770Protocol();
-                byte[] rawData = v770Data.getRawData();
-                byte[] emptySection = buildEmptySection770();
-                byte[] adjusted = new byte[4 * emptySection.length + rawData.length + 4 * emptySection.length];
-                int pos = 0;
-                for (int i = 0; i < 4; i++) {
-                    System.arraycopy(emptySection, 0, adjusted, pos, emptySection.length);
-                    pos += emptySection.length;
-                }
-                System.arraycopy(rawData, 0, adjusted, pos, rawData.length);
-                pos += rawData.length;
-                for (int i = 0; i < 4; i++) {
-                    System.arraycopy(emptySection, 0, adjusted, pos, emptySection.length);
-                    pos += emptySection.length;
-                }
-
-                long[] adjustedHeightmap = buildHeightmapForMinY(chunk, 64);
-                int adjustedSkyLightMask = skyLightMask << 4;
-                int adjustedBlockLightMask = blockLightMask << 4;
-                int adjustedEmptySkyLightMask = ~adjustedSkyLightMask & 0x3FFFFFF;
-                int adjustedEmptyBlockLightMask = ~adjustedBlockLightMask & 0x3FFFFFF;
-
-                collectedPackets.add(new MapChunkPacketV770(
-                    chunk.getXPos(), chunk.getZPos(),
-                    adjustedHeightmap, adjustedHeightmap,
-                    adjusted,
-                    adjustedSkyLightMask, adjustedBlockLightMask,
-                    adjustedEmptySkyLightMask, adjustedEmptyBlockLightMask,
-                    skyArr, blockArr));
-            } else if (bucket >= BUCKET_V766) { // 1.20.5+
-                // v766+: built-in overworld has minY=-64, height=384 (24 sections).
-                // Our chunk data has 16 sections for Y 0-255.
-                // Prepend 4 empty sections (Y -64 to -1) and append 4 (Y 256-319).
-                byte[] rawData = v759Data.getRawData();
-                byte[] emptySection = buildEmptySection766();
-                byte[] adjusted = new byte[4 * emptySection.length + rawData.length + 4 * emptySection.length];
-                int pos = 0;
-                for (int i = 0; i < 4; i++) {
-                    System.arraycopy(emptySection, 0, adjusted, pos, emptySection.length);
-                    pos += emptySection.length;
-                }
-                System.arraycopy(rawData, 0, adjusted, pos, rawData.length);
-                pos += rawData.length;
-                for (int i = 0; i < 4; i++) {
-                    System.arraycopy(emptySection, 0, adjusted, pos, emptySection.length);
-                    pos += emptySection.length;
-                }
-
-                // Heightmap: add 64 to each value (minY=-64 offset)
-                long[] adjustedHeightmap = buildHeightmapForMinY(chunk, 64);
-
-                // Light masks: shift left by 4 (our sections 0-7 -> positions 5-12 in 26-bit range)
-                int adjustedSkyLightMask = skyLightMask << 4;
-                int adjustedBlockLightMask = blockLightMask << 4;
-                int adjustedEmptySkyLightMask = ~adjustedSkyLightMask & 0x3FFFFFF;
-                int adjustedEmptyBlockLightMask = ~adjustedBlockLightMask & 0x3FFFFFF;
-
-                collectedPackets.add(new MapChunkPacketV764(
-                    chunk.getXPos(), chunk.getZPos(),
-                    adjustedHeightmap, adjustedHeightmap,
-                    adjusted,
-                    adjustedSkyLightMask, adjustedBlockLightMask,
-                    adjustedEmptySkyLightMask, adjustedEmptyBlockLightMask,
-                    skyArr, blockArr));
-            } else if (bucket >= BUCKET_V764) { // 1.20.2+
-                // v764/v765: network NBT for heightmaps (no root name).
-                collectedPackets.add(new MapChunkPacketV764(
-                    chunk.getXPos(), chunk.getZPos(),
-                    heightmap, heightmap,
-                    v759Data.getRawData(),
-                    skyLightMask, blockLightMask,
-                    emptySkyLightMask, emptyBlockLightMask,
-                    skyArr, blockArr));
-            } else if (bucket >= BUCKET_V763) { // 1.20+
-                // v763: trustEdges boolean removed from combined chunk+light packet.
-                collectedPackets.add(new MapChunkPacketV763(
-                    chunk.getXPos(), chunk.getZPos(),
-                    heightmap, heightmap,
-                    v759Data.getRawData(),
-                    skyLightMask, blockLightMask,
-                    emptySkyLightMask, emptyBlockLightMask,
-                    skyArr, blockArr));
-            } else {
-                collectedPackets.add(new MapChunkPacketV757(
-                    chunk.getXPos(), chunk.getZPos(),
-                    heightmap, heightmap,
-                    v759Data.getRawData(),
-                    skyLightMask, blockLightMask,
-                    emptySkyLightMask, emptyBlockLightMask,
-                    skyArr, blockArr));
-            }
-
-        } else if (bucket >= BUCKET_V757) { // 1.18+
-            // v757: Combined chunk data + update light. All 16 sections present,
-            // biomes as per-section paletted containers, no primaryBitMask.
-            AlphaChunk.V757ChunkData v757Data = chunk.serializeForV757Protocol();
-            long[] heightmap = buildHeightmapLongArrayNonSpanning(chunk);
-
-            // Build light masks from per-section light arrays (same logic as V755)
-            int skyLightMask = 0;
-            int blockLightMask = 0;
-            java.util.List<byte[]> skyArrays = new java.util.ArrayList<>();
-            java.util.List<byte[]> blockArrays = new java.util.ArrayList<>();
-
-            for (int section = 0; section < 8; section++) {
-                if (v757Data.getSkyLightSections()[section] != null) {
-                    skyLightMask |= (1 << (section + 1));
-                    skyArrays.add(v757Data.getSkyLightSections()[section]);
-                }
-                if (v757Data.getBlockLightSections()[section] != null) {
-                    blockLightMask |= (1 << (section + 1));
-                    blockArrays.add(v757Data.getBlockLightSections()[section]);
-                }
-            }
-
-            int emptySkyLightMask = ~skyLightMask & 0x3FFFF;
-            int emptyBlockLightMask = ~blockLightMask & 0x3FFFF;
-
-            // Single combined packet — no separate UpdateLight
-            collectedPackets.add(new MapChunkPacketV757(
-                chunk.getXPos(), chunk.getZPos(),
-                heightmap, heightmap,
-                v757Data.getRawData(),
-                skyLightMask, blockLightMask,
-                emptySkyLightMask, emptyBlockLightMask,
-                skyArrays.toArray(new byte[0][]),
-                blockArrays.toArray(new byte[0][])));
-
-        } else if (bucket >= BUCKET_V755) { // 1.17+
-            // v755: 15-bit global palette with non-spanning packing, 1.17 block state IDs.
-            // Chunk bitmask is BitSet, no fullChunk boolean, UpdateLight masks are BitSet.
-            AlphaChunk.V573ChunkData v755Data = chunk.serializeForV755Protocol();
-            long[] heightmap = buildHeightmapLongArrayNonSpanning(chunk);
-
-            // Build UpdateLight from per-section light arrays
-            int skyLightMask = 0;
-            int blockLightMask = 0;
-            java.util.List<byte[]> skyArrays = new java.util.ArrayList<>();
-            java.util.List<byte[]> blockArrays = new java.util.ArrayList<>();
-
-            for (int section = 0; section < 16; section++) {
-                if (v755Data.getSkyLightSections()[section] != null) {
-                    skyLightMask |= (1 << (section + 1));
-                    skyArrays.add(v755Data.getSkyLightSections()[section]);
-                }
-                if (v755Data.getBlockLightSections()[section] != null) {
-                    blockLightMask |= (1 << (section + 1));
-                    blockArrays.add(v755Data.getBlockLightSections()[section]);
-                }
-            }
-
-            int emptySkyLightMask = ~skyLightMask & 0x3FFFF;
-            int emptyBlockLightMask = ~blockLightMask & 0x3FFFF;
-
-            // 1.15+: send UpdateLight BEFORE chunk data
-            collectedPackets.add(new UpdateLightPacketV755(
-                chunk.getXPos(), chunk.getZPos(),
-                skyLightMask, blockLightMask,
-                emptySkyLightMask, emptyBlockLightMask,
-                skyArrays.toArray(new byte[0][]),
-                blockArrays.toArray(new byte[0][])));
-
-            collectedPackets.add(new MapChunkPacketV755(
-                chunk.getXPos(), chunk.getZPos(),
-                v755Data.getPrimaryBitMask(),
-                heightmap, heightmap,
-                v755Data.getBiomes(),
-                v755Data.getRawData()));
-
-        } else if (bucket >= BUCKET_V735) { // 1.16+ (buckets 11-12)
-            // v735+: 15-bit global palette with non-spanning packing, 1.16 block state IDs
-            AlphaChunk.V573ChunkData v735Data = chunk.serializeForV735Protocol();
-            long[] heightmap = buildHeightmapLongArrayNonSpanning(chunk);
-
-            // Build UpdateLight from per-section light arrays
-            int skyLightMask = 0;
-            int blockLightMask = 0;
-            java.util.List<byte[]> skyArrays = new java.util.ArrayList<>();
-            java.util.List<byte[]> blockArrays = new java.util.ArrayList<>();
-
-            for (int section = 0; section < 8; section++) {
-                if (v735Data.getSkyLightSections()[section] != null) {
-                    skyLightMask |= (1 << (section + 1));
-                    skyArrays.add(v735Data.getSkyLightSections()[section]);
-                }
-                if (v735Data.getBlockLightSections()[section] != null) {
-                    blockLightMask |= (1 << (section + 1));
-                    blockArrays.add(v735Data.getBlockLightSections()[section]);
-                }
-            }
-
-            int emptySkyLightMask = ~skyLightMask & 0x3FFFF;
-            int emptyBlockLightMask = ~blockLightMask & 0x3FFFF;
-
-            // 1.15+: send UpdateLight BEFORE chunk data
-            collectedPackets.add(new UpdateLightPacketV735(
-                chunk.getXPos(), chunk.getZPos(),
-                skyLightMask, blockLightMask,
-                emptySkyLightMask, emptyBlockLightMask,
-                skyArrays.toArray(new byte[0][]),
-                blockArrays.toArray(new byte[0][])));
-
-            // v751 (1.16.2): removed ignoreOldLightData, biomes use VarInt array
-            if (bucket >= BUCKET_V751) { // 1.16.2+
-                collectedPackets.add(new MapChunkPacketV751(
-                    chunk.getXPos(), chunk.getZPos(), true,
-                    v735Data.getPrimaryBitMask(),
-                    heightmap, heightmap,
-                    v735Data.getBiomes(),
-                    v735Data.getRawData()));
-            } else {
-                collectedPackets.add(new MapChunkPacketV735(
-                    chunk.getXPos(), chunk.getZPos(), true,
-                    v735Data.getPrimaryBitMask(),
-                    heightmap, heightmap,
-                    v735Data.getBiomes(),
-                    v735Data.getRawData()));
-            }
-
-        } else if (bucket >= BUCKET_V573) { // 1.15+
-            // v573: biomes are a separate field (not inside data array), int[1024] 3D biomes
-            AlphaChunk.V573ChunkData v573Data = chunk.serializeForV573Protocol();
-            long[] heightmap = buildHeightmapLongArray(chunk);
-
-            // Build UpdateLight from per-section light arrays
-            int skyLightMask = 0;
-            int blockLightMask = 0;
-            java.util.List<byte[]> skyArrays = new java.util.ArrayList<>();
-            java.util.List<byte[]> blockArrays = new java.util.ArrayList<>();
-
-            for (int section = 0; section < 8; section++) {
-                if (v573Data.getSkyLightSections()[section] != null) {
-                    skyLightMask |= (1 << (section + 1));
-                    skyArrays.add(v573Data.getSkyLightSections()[section]);
-                }
-                if (v573Data.getBlockLightSections()[section] != null) {
-                    blockLightMask |= (1 << (section + 1));
-                    blockArrays.add(v573Data.getBlockLightSections()[section]);
-                }
-            }
-
-            int emptySkyLightMask = ~skyLightMask & 0x3FFFF;
-            int emptyBlockLightMask = ~blockLightMask & 0x3FFFF;
-
-            // 1.15+: send UpdateLight BEFORE chunk data. The 1.15 client's
-            // ChunkRenderDispatcher requires light to be present before it
-            // schedules chunk meshing; without it, the chunk is skipped.
-            collectedPackets.add(new UpdateLightPacketV477(
-                chunk.getXPos(), chunk.getZPos(),
-                skyLightMask, blockLightMask,
-                emptySkyLightMask, emptyBlockLightMask,
-                skyArrays.toArray(new byte[0][]),
-                blockArrays.toArray(new byte[0][])));
-
-            collectedPackets.add(new MapChunkPacketV573(
-                chunk.getXPos(), chunk.getZPos(), true,
-                v573Data.getPrimaryBitMask(),
-                heightmap, heightmap,
-                v573Data.getBiomes(),
-                v573Data.getRawData()));
-
-        } else if (bucket >= BUCKET_V477) { // 1.14+
-            // v477: heightmaps NBT, no light in sections, blockCount per section
-            AlphaChunk.V477ChunkData v477Data = chunk.serializeForV477Protocol();
-            long[] heightmap = buildHeightmapLongArray(chunk);
-
-            collectedPackets.add(new MapChunkPacketV477(
-                chunk.getXPos(), chunk.getZPos(), true,
-                v477Data.getPrimaryBitMask(),
-                heightmap, heightmap,
-                v477Data.getRawData()));
-
-            // Build UpdateLight from per-section light arrays
-            int skyLightMask = 0;
-            int blockLightMask = 0;
-            java.util.List<byte[]> skyArrays = new java.util.ArrayList<>();
-            java.util.List<byte[]> blockArrays = new java.util.ArrayList<>();
-
-            for (int section = 0; section < 8; section++) {
-                if (v477Data.getSkyLightSections()[section] != null) {
-                    // bit 0 = section -1, bit 1 = section 0, etc.
-                    skyLightMask |= (1 << (section + 1));
-                    skyArrays.add(v477Data.getSkyLightSections()[section]);
-                }
-                if (v477Data.getBlockLightSections()[section] != null) {
-                    blockLightMask |= (1 << (section + 1));
-                    blockArrays.add(v477Data.getBlockLightSections()[section]);
-                }
-            }
-
-            // Empty masks: sections not in the data masks (18-bit range)
-            int emptySkyLightMask = ~skyLightMask & 0x3FFFF;
-            int emptyBlockLightMask = ~blockLightMask & 0x3FFFF;
-
-            collectedPackets.add(new UpdateLightPacketV477(
-                chunk.getXPos(), chunk.getZPos(),
-                skyLightMask, blockLightMask,
-                emptySkyLightMask, emptyBlockLightMask,
-                skyArrays.toArray(new byte[0][]),
-                blockArrays.toArray(new byte[0][])));
-
-        } else if (bucket >= BUCKET_V393) { // 1.13+
-            // v393: same wire structure as v109 but with 1.13 global block state IDs,
-            // 14-bit global palette, and int[256] biomes
-            AlphaChunk.V109ChunkData v393Data = chunk.serializeForV393Protocol();
-            collectedPackets.add(new MapChunkPacketV109(
-                chunk.getXPos(), chunk.getZPos(), true,
-                v393Data.getPrimaryBitMask(),
-                v393Data.getRawData(),
-                true // writeBlockEntityCount (always for 1.9.4+)
-            ));
-        } else if (bucket >= BUCKET_V109) { // 1.9+ (buckets 6-7)
-            // v109: paletted sections, VarInt primaryBitMask
-            // v110 (1.9.4) adds block entity count at end; v107-v109 do not
-            AlphaChunk.V109ChunkData v109Data = chunk.serializeForV109Protocol();
-            boolean writeBlockEntityCount = (bucket >= BUCKET_V110); // 1.9.4+
-            collectedPackets.add(new MapChunkPacketV109(
-                chunk.getXPos(), chunk.getZPos(), true,
-                v109Data.getPrimaryBitMask(),
-                v109Data.getRawData(),
-                writeBlockEntityCount
-            ));
+        if (target >= 0) {
+            // === Canonical path for all paletted versions (V109 through V770) ===
+            CanonicalChunkData canonical = chunk.getOrBuildCanonical();
+            buildCanonicalChunkPackets(chunk, bucket, target, canonical, collectedPackets);
         } else if (bucket >= BUCKET_V47) { // 1.8+
             // v47: ushort blockStates, raw (uncompressed), VarInt data size
             AlphaChunk.V47ChunkData v47Data = chunk.serializeForV47Protocol();
@@ -1461,6 +1151,275 @@ public class ChunkManager {
         }
 
         return collectedPackets.toArray(new Packet[0]);
+    }
+
+    /**
+     * Build chunk packets using canonical data for paletted versions (V109 through V770).
+     * Sections are serialized via CanonicalSectionWriter which only remaps the small
+     * palette (~10-15 entries) and copies pre-packed long arrays.
+     */
+    private void buildCanonicalChunkPackets(AlphaChunk chunk, int bucket, int target,
+                                             CanonicalChunkData canonical,
+                                             List<Packet> collectedPackets) {
+        int chunkX = chunk.getXPos();
+        int chunkZ = chunk.getZPos();
+
+        // --- Build light masks from canonical sections (for V477+ which need separate light) ---
+        int skyLightMask = 0;
+        int blockLightMask = 0;
+        List<byte[]> skyArrays = new ArrayList<>();
+        List<byte[]> blockArrays = new ArrayList<>();
+
+        // Light data comes from populated sections (0-7)
+        for (int section = 0; section < 8; section++) {
+            CanonicalSection cs = canonical.getSection(section);
+            if (cs.getSkyLight() != null) {
+                skyLightMask |= (1 << (section + 1));
+                skyArrays.add(cs.getSkyLight());
+            }
+            if (cs.getBlockLight() != null) {
+                blockLightMask |= (1 << (section + 1));
+                blockArrays.add(cs.getBlockLight());
+            }
+        }
+
+        int emptySkyLightMask = ~skyLightMask & 0x3FFFF;
+        int emptyBlockLightMask = ~blockLightMask & 0x3FFFF;
+        byte[][] skyArr = skyArrays.toArray(new byte[0][]);
+        byte[][] blockArr = blockArrays.toArray(new byte[0][]);
+
+        // --- Build section data bytes using CanonicalSectionWriter ---
+        ByteArrayOutputStream baos = ChunkSerializationPool.borrowBAOS();
+        try {
+            boolean needs16Sections = (target >= CanonicalSectionWriter.TARGET_V755);
+
+            if (needs16Sections) {
+                // 1.17+: all 16 sections must be present
+                for (int section = 0; section < 16; section++) {
+                    if (section < 8 && !canonical.getSection(section).isEmpty()) {
+                        CanonicalSectionWriter.writePopulatedSection(baos, canonical.getSection(section), target);
+                    } else {
+                        CanonicalSectionWriter.writeEmptySection(baos, target);
+                    }
+                }
+            } else {
+                // Pre-1.17: only sections with non-air blocks
+                for (int section = 0; section < 8; section++) {
+                    if ((canonical.getPrimaryBitMask() & (1 << section)) != 0) {
+                        CanonicalSectionWriter.writePopulatedSection(baos, canonical.getSection(section), target);
+                    }
+                }
+            }
+
+            // Append biomes to section data for versions that include them inline.
+            // Must check bucket (not target) because v573 (1.15) shares TARGET_V477's
+            // section format but sends biomes as a separate packet field.
+            if (bucket <= BUCKET_V110) {
+                // v109/v110 (1.9-1.12): byte[256] biomes appended after sections
+                byte[] biomes = new byte[256];
+                java.util.Arrays.fill(biomes, (byte) 1);
+                baos.write(biomes, 0, 256);
+            } else if (bucket == BUCKET_V393 || bucket == BUCKET_V477) {
+                // v393/v477 (1.13-1.14): int[256] biomes appended after sections
+                for (int i = 0; i < 256; i++) {
+                    baos.write(0); baos.write(0); baos.write(0); baos.write(1); // big-endian int = 1
+                }
+            }
+
+            byte[] sectionData = baos.toByteArray();
+
+            // --- Construct version-specific packets ---
+            if (bucket >= BUCKET_V759) {
+                // 1.19+ (combined chunk+light, heightmap non-spanning)
+                long[] heightmap = buildHeightmapLongArrayNonSpanning(chunk);
+
+                if (bucket >= BUCKET_V770) {
+                    // v770: binary heightmaps, 24-section world
+                    byte[] adjusted = build24SectionData(sectionData, target);
+                    long[] adjustedHeightmap = buildHeightmapForMinY(chunk, 64);
+                    int adjSkyMask = skyLightMask << 4;
+                    int adjBlockMask = blockLightMask << 4;
+                    collectedPackets.add(new MapChunkPacketV770(
+                        chunkX, chunkZ, adjustedHeightmap, adjustedHeightmap,
+                        adjusted,
+                        adjSkyMask, adjBlockMask,
+                        ~adjSkyMask & 0x3FFFFFF, ~adjBlockMask & 0x3FFFFFF,
+                        skyArr, blockArr));
+                } else if (bucket >= BUCKET_V766) {
+                    // v766+: 24-section world
+                    byte[] adjusted = build24SectionData(sectionData, target);
+                    long[] adjustedHeightmap = buildHeightmapForMinY(chunk, 64);
+                    int adjSkyMask = skyLightMask << 4;
+                    int adjBlockMask = blockLightMask << 4;
+                    collectedPackets.add(new MapChunkPacketV764(
+                        chunkX, chunkZ, adjustedHeightmap, adjustedHeightmap,
+                        adjusted,
+                        adjSkyMask, adjBlockMask,
+                        ~adjSkyMask & 0x3FFFFFF, ~adjBlockMask & 0x3FFFFFF,
+                        skyArr, blockArr));
+                } else if (bucket >= BUCKET_V764) {
+                    collectedPackets.add(new MapChunkPacketV764(
+                        chunkX, chunkZ, heightmap, heightmap,
+                        sectionData,
+                        skyLightMask, blockLightMask,
+                        emptySkyLightMask, emptyBlockLightMask,
+                        skyArr, blockArr));
+                } else if (bucket >= BUCKET_V763) {
+                    collectedPackets.add(new MapChunkPacketV763(
+                        chunkX, chunkZ, heightmap, heightmap,
+                        sectionData,
+                        skyLightMask, blockLightMask,
+                        emptySkyLightMask, emptyBlockLightMask,
+                        skyArr, blockArr));
+                } else {
+                    collectedPackets.add(new MapChunkPacketV757(
+                        chunkX, chunkZ, heightmap, heightmap,
+                        sectionData,
+                        skyLightMask, blockLightMask,
+                        emptySkyLightMask, emptyBlockLightMask,
+                        skyArr, blockArr));
+                }
+
+            } else if (bucket >= BUCKET_V757) {
+                // 1.18: combined chunk+light
+                long[] heightmap = buildHeightmapLongArrayNonSpanning(chunk);
+                collectedPackets.add(new MapChunkPacketV757(
+                    chunkX, chunkZ, heightmap, heightmap,
+                    sectionData,
+                    skyLightMask, blockLightMask,
+                    emptySkyLightMask, emptyBlockLightMask,
+                    skyArr, blockArr));
+
+            } else if (bucket >= BUCKET_V755) {
+                // 1.17: separate UpdateLight + MapChunk
+                long[] heightmap = buildHeightmapLongArrayNonSpanning(chunk);
+
+                // For v755, light sections include empty air sections above terrain
+                int v755SkyMask = skyLightMask;
+                int v755BlockMask = blockLightMask;
+                List<byte[]> v755SkyArrays = new ArrayList<>(skyArrays);
+                List<byte[]> v755BlockArrays = new ArrayList<>(blockArrays);
+                // Add full-sky-light for empty air sections above terrain (8-15)
+                for (int section = 8; section < 16; section++) {
+                    v755SkyMask |= (1 << (section + 1));
+                    v755SkyArrays.add(FULL_SKY_LIGHT);
+                }
+                int v755EmptySkyMask = ~v755SkyMask & 0x3FFFF;
+                int v755EmptyBlockMask = ~v755BlockMask & 0x3FFFF;
+
+                collectedPackets.add(new UpdateLightPacketV755(
+                    chunkX, chunkZ,
+                    v755SkyMask, v755BlockMask,
+                    v755EmptySkyMask, v755EmptyBlockMask,
+                    v755SkyArrays.toArray(new byte[0][]),
+                    v755BlockArrays.toArray(new byte[0][])));
+
+                collectedPackets.add(new MapChunkPacketV755(
+                    chunkX, chunkZ,
+                    0xFFFF, // all 16 sections present in the data stream
+                    heightmap, heightmap,
+                    PLAINS_BIOMES_1024, sectionData));
+
+            } else if (bucket >= BUCKET_V735) {
+                // 1.16+: separate UpdateLight + MapChunk
+                long[] heightmap = buildHeightmapLongArrayNonSpanning(chunk);
+
+                if (bucket >= BUCKET_V751) {
+                    collectedPackets.add(new UpdateLightPacketV735(
+                        chunkX, chunkZ,
+                        skyLightMask, blockLightMask,
+                        emptySkyLightMask, emptyBlockLightMask,
+                        skyArr, blockArr));
+                    collectedPackets.add(new MapChunkPacketV751(
+                        chunkX, chunkZ, true,
+                        canonical.getPrimaryBitMask(),
+                        heightmap, heightmap,
+                        PLAINS_BIOMES_1024, sectionData));
+                } else {
+                    collectedPackets.add(new UpdateLightPacketV735(
+                        chunkX, chunkZ,
+                        skyLightMask, blockLightMask,
+                        emptySkyLightMask, emptyBlockLightMask,
+                        skyArr, blockArr));
+                    collectedPackets.add(new MapChunkPacketV735(
+                        chunkX, chunkZ, true,
+                        canonical.getPrimaryBitMask(),
+                        heightmap, heightmap,
+                        PLAINS_BIOMES_1024, sectionData));
+                }
+
+            } else if (bucket >= BUCKET_V573) {
+                // 1.15: separate UpdateLight + MapChunk, biomes separate int[1024]
+                long[] heightmap = buildHeightmapLongArray(chunk);
+
+                collectedPackets.add(new UpdateLightPacketV477(
+                    chunkX, chunkZ,
+                    skyLightMask, blockLightMask,
+                    emptySkyLightMask, emptyBlockLightMask,
+                    skyArr, blockArr));
+
+                collectedPackets.add(new MapChunkPacketV573(
+                    chunkX, chunkZ, true,
+                    canonical.getPrimaryBitMask(),
+                    heightmap, heightmap,
+                    PLAINS_BIOMES_1024, sectionData));
+
+            } else if (bucket >= BUCKET_V477) {
+                // 1.14: MapChunk + separate UpdateLight, biomes in data
+                long[] heightmap = buildHeightmapLongArray(chunk);
+
+                collectedPackets.add(new MapChunkPacketV477(
+                    chunkX, chunkZ, true,
+                    canonical.getPrimaryBitMask(),
+                    heightmap, heightmap,
+                    sectionData));
+
+                collectedPackets.add(new UpdateLightPacketV477(
+                    chunkX, chunkZ,
+                    skyLightMask, blockLightMask,
+                    emptySkyLightMask, emptyBlockLightMask,
+                    skyArr, blockArr));
+
+            } else if (bucket >= BUCKET_V393) {
+                // 1.13: MapChunk only (light in sections, biomes in data)
+                collectedPackets.add(new MapChunkPacketV109(
+                    chunkX, chunkZ, true,
+                    canonical.getPrimaryBitMask(),
+                    sectionData,
+                    true)); // writeBlockEntityCount for 1.9.4+
+
+            } else {
+                // 1.9-1.9.4: MapChunk only (light in sections, biomes in data)
+                boolean writeBlockEntityCount = (bucket >= BUCKET_V110);
+                collectedPackets.add(new MapChunkPacketV109(
+                    chunkX, chunkZ, true,
+                    canonical.getPrimaryBitMask(),
+                    sectionData,
+                    writeBlockEntityCount));
+            }
+        } finally {
+            ChunkSerializationPool.returnBAOS(baos);
+        }
+    }
+
+    /**
+     * Build 24-section data for 1.20.5+ worlds (minY=-64, height=384).
+     * Prepends 4 empty sections (Y -64 to -1) and appends 4 (Y 256-319)
+     * to the 16-section data.
+     */
+    private byte[] build24SectionData(byte[] sixteenSectionData, int target) {
+        // Write empty sections directly into the output stream to avoid
+        // intermediate byte[] allocation + System.arraycopy overhead.
+        ByteArrayOutputStream out = new ByteArrayOutputStream(
+                sixteenSectionData.length + 512); // rough estimate for 8 empty sections
+        for (int i = 0; i < 4; i++) {
+            CanonicalSectionWriter.writeEmptySection(out, target);
+        }
+        out.write(sixteenSectionData, 0, sixteenSectionData.length);
+        for (int i = 0; i < 4; i++) {
+            CanonicalSectionWriter.writeEmptySection(out, target);
+        }
+        return out.toByteArray();
     }
 
     /**

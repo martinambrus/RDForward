@@ -45,7 +45,7 @@ public class BedrockSessionWrapper {
      */
     public void sendChunkData(AlphaChunk chunk) {
         if (!session.isConnected() || chunkConverter == null) return;
-        LevelChunkPacket chunkPacket = chunkConverter.convertChunk(chunk);
+        LevelChunkPacket chunkPacket = chunkConverter.convertChunkFromCanonical(chunk);
         session.sendPacket(chunkPacket);
     }
 
