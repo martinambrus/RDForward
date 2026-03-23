@@ -64,11 +64,49 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
         Packet translated = translate(packet);
 
         if (translated != null) {
-            super.write(ctx, translated, promise);
+            // Send EntityHeadRotation after any packet that includes entity yaw,
+            // so the client's head yaw stays in sync with the body yaw.
+            EntityHeadRotationPacket headRotation = buildHeadRotation(packet);
+            if (headRotation != null) {
+                super.write(ctx, translated, ctx.voidPromise());
+                super.write(ctx, headRotation, promise);
+            } else {
+                super.write(ctx, translated, promise);
+            }
         } else {
             // Packet was dropped
             promise.setSuccess();
         }
+    }
+
+    /**
+     * Build an EntityHeadRotation packet for Classic packets that contain entity yaw.
+     * Returns null if the packet doesn't need head rotation (e.g. position-only updates).
+     */
+    private EntityHeadRotationPacket buildHeadRotation(Packet classicPacket) {
+        if (classicPacket instanceof com.github.martinambrus.rdforward.protocol.packet.classic.SpawnPlayerPacket sp) {
+            if (sp.getPlayerId() == -1) return null;
+            int entityId = sp.getPlayerId() + 1;
+            int alphaYaw = (sp.getYaw() + 128) & 0xFF;
+            return new EntityHeadRotationPacket(entityId, alphaYaw);
+        }
+        if (classicPacket instanceof PlayerTeleportPacket pt) {
+            if (pt.getPlayerId() == -1) return null;
+            int entityId = pt.getPlayerId() + 1;
+            int alphaYaw = (pt.getYaw() + 128) & 0xFF;
+            return new EntityHeadRotationPacket(entityId, alphaYaw);
+        }
+        if (classicPacket instanceof PositionOrientationUpdatePacket pou) {
+            int entityId = pou.getPlayerId() + 1;
+            int alphaYaw = (pou.getYaw() + 128) & 0xFF;
+            return new EntityHeadRotationPacket(entityId, alphaYaw);
+        }
+        if (classicPacket instanceof OrientationUpdatePacket ou) {
+            int entityId = ou.getPlayerId() + 1;
+            int alphaYaw = (ou.getYaw() + 128) & 0xFF;
+            return new EntityHeadRotationPacket(entityId, alphaYaw);
+        }
+        return null;
     }
 
     private Packet translate(Packet packet) {

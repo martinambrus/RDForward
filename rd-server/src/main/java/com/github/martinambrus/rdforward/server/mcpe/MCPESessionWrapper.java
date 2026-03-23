@@ -98,9 +98,11 @@ public class MCPESessionWrapper {
         entityPositions.put(pkt.getPlayerId(), new EntityPosition(
                 pkt.getX(), pkt.getY(), pkt.getZ(), pkt.getYaw(), pkt.getPitch()));
 
-        // Classic uses fixed-point (x32), MCPE uses float
+        // Classic uses fixed-point (x32), MCPE uses float.
+        // Internal Y is eye-level. AddPlayer expects feet-level for all versions.
         float x = pkt.getX() / 32.0f;
-        float y = pkt.getY() / 32.0f - (float) PLAYER_EYE_HEIGHT; // feet-level for AddPlayer
+        float eyeY = pkt.getY() / 32.0f;
+        float y = eyeY - (float) PLAYER_EYE_HEIGHT; // feet-level for AddPlayer
         float z = pkt.getZ() / 32.0f;
         float yaw = classicYawToMcpeDegrees(pkt.getYaw());
         float pitch = classicPitchToMcpeDegrees(pkt.getPitch());

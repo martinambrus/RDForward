@@ -177,6 +177,7 @@ public class RDServer {
         System.out.println("[RDServer] ChunkManager viewDistance="
                 + ChunkManager.DEFAULT_VIEW_DISTANCE);
         this.chunkManager.setServerWorld(world);
+        this.world.setIOThread(chunkManager.getIOThread());
         this.tickLoop = new ServerTickLoop(playerManager, world, chunkManager);
     }
 
@@ -510,9 +511,6 @@ public class RDServer {
 
         System.out.println("Stopping server...");
         tickLoop.stop();
-
-        // Drain any in-flight async saves before the final synchronous save
-        world.shutdownSaveExecutor();
 
         System.out.println("Saving world and player data...");
         world.save();

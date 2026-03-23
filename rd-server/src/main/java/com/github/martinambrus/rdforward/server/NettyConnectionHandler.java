@@ -1048,6 +1048,11 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                                 existingEntityId, existingUuid, ex, ey, ez,
                                 alphaYaw, pitch));
                     }
+                    // SpawnPlayer (pre-1.20.2) doesn't set head yaw — send EntityHeadRotation
+                    // so the client doesn't default head to 0. V764+ SpawnEntity includes headYaw.
+                    if (!isV764) {
+                        ctx.writeAndFlush(new EntityHeadRotationPacket(existingEntityId, alphaYaw));
+                    }
                 } else if (isV47) {
                     // 1.8: PlayerListItem ADD before SpawnPlayer (fixed-point coords)
                     int existingFeetY = (int) existing.getY() - PLAYER_EYE_HEIGHT_FIXED;
@@ -1057,6 +1062,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                             existingEntityId, existingUuid,
                             (int) existing.getX(), existingFeetY, (int) existing.getZ(),
                             alphaYaw, pitch, (short) 0));
+                    ctx.writeAndFlush(new EntityHeadRotationPacket(existingEntityId, alphaYaw));
                 } else {
                     int existingFeetY = (int) existing.getY() - PLAYER_EYE_HEIGHT_FIXED;
                     Packet spawnPacket = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_7_6)
@@ -1069,6 +1075,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                                     (int) existing.getX(), existingFeetY, (int) existing.getZ(),
                                     alphaYaw, pitch, (short) 0);
                     ctx.writeAndFlush(spawnPacket);
+                    ctx.writeAndFlush(new EntityHeadRotationPacket(existingEntityId, alphaYaw));
                 }
             }
         }

@@ -1,5 +1,7 @@
 package com.github.martinambrus.rdforward.world.alpha;
 
+import com.github.martinambrus.rdforward.world.ChunkSerializationPool;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.ArrayDeque;
@@ -627,7 +629,10 @@ public class AlphaChunk {
             }
         }
 
-        ByteArrayOutputStream baos = new ByteArrayOutputStream(16384);
+        ByteArrayOutputStream baos = ChunkSerializationPool.borrowBAOS();
+        long[] dataArray = ChunkSerializationPool.borrowLongArray();
+        int[] blockStates = ChunkSerializationPool.borrowBlockStateArray();
+        try {
 
         for (int section = 0; section < 8; section++) {
             if ((primaryBitMask & (1 << section)) == 0) continue;
@@ -639,9 +644,8 @@ public class AlphaChunk {
             // the server can't know the exact registry size the client uses, so global
             // palette's readLongArray may create a mismatched-length array that gets lost.
             IndirectPaletteResult paletteResult = buildIndirectPalette(baseY,
-                    (blockId, meta) -> (blockId << 4) | (meta & 0x0F));
+                    (blockId, meta) -> (blockId << 4) | (meta & 0x0F), blockStates);
             LinkedHashMap<Integer, Integer> paletteMap = paletteResult.paletteMap;
-            int[] blockStates = paletteResult.blockStates;
 
             int paletteSize = paletteMap.size();
 
@@ -668,7 +672,7 @@ public class AlphaChunk {
             // 1.9-1.12: spanning packing (entries CAN cross long boundaries).
             int totalBits = 4096 * bitsPerBlock;
             int longsNeeded = (totalBits + 63) / 64;
-            long[] dataArray = new long[longsNeeded];
+            Arrays.fill(dataArray, 0, longsNeeded, 0L); // zero used portion for this section
 
             long mask = (1L << bitsPerBlock) - 1;
             for (int i = 0; i < 4096; i++) {
@@ -701,6 +705,12 @@ public class AlphaChunk {
         baos.write(biomes, 0, 256);
 
         return new V109ChunkData(baos.toByteArray(), primaryBitMask);
+
+        } finally {
+            ChunkSerializationPool.returnBAOS(baos);
+            ChunkSerializationPool.returnLongArray(dataArray);
+            ChunkSerializationPool.returnBlockStateArray(blockStates);
+        }
     }
 
     /** Write a VarInt to a ByteArrayOutputStream (for chunk serialization). */
@@ -804,11 +814,13 @@ public class AlphaChunk {
      * Build an indirect palette for a 16x16x16 section starting at baseY.
      * The stateMapper receives (blockId, metadata) and returns the block state ID
      * appropriate for the target protocol version.
+     *
+     * @param blockStates pre-allocated int[4096] array to fill with block state IDs
+     *                    (caller is responsible for lifecycle, e.g. pooling)
      */
     IndirectPaletteResult buildIndirectPalette(int baseY,
-            BiFunction<Integer, Integer, Integer> stateMapper) {
+            BiFunction<Integer, Integer, Integer> stateMapper, int[] blockStates) {
         LinkedHashMap<Integer, Integer> paletteMap = new LinkedHashMap<>();
-        int[] blockStates = new int[4096];
         for (int ly = 0; ly < 16; ly++) {
             for (int z = 0; z < DEPTH; z++) {
                 for (int x = 0; x < WIDTH; x++) {
@@ -862,7 +874,10 @@ public class AlphaChunk {
             }
         }
 
-        ByteArrayOutputStream baos = new ByteArrayOutputStream(16384);
+        ByteArrayOutputStream baos = ChunkSerializationPool.borrowBAOS();
+        long[] dataArray = ChunkSerializationPool.borrowLongArray();
+        int[] sectionStatesArray = ChunkSerializationPool.borrowBlockStateArray();
+        try {
 
         for (int section = 0; section < 8; section++) {
             if ((primaryBitMask & (1 << section)) == 0) continue;
@@ -873,7 +888,7 @@ public class AlphaChunk {
             // palette is both more compact and avoids 1.13 global palette edge cases.
             IndirectPaletteResult paletteResult = buildIndirectPalette(baseY,
                     (blockId, meta) -> com.github.martinambrus.rdforward.protocol
-                            .BlockStateMapper.toV393BlockState(blockId));
+                            .BlockStateMapper.toV393BlockState(blockId), sectionStatesArray);
             LinkedHashMap<Integer, Integer> paletteMap = paletteResult.paletteMap;
             int[] sectionStates = paletteResult.blockStates;
 
@@ -908,7 +923,7 @@ public class AlphaChunk {
             // 1.13 uses spanning packing (entries CAN cross long boundaries).
             int totalBits = 4096 * bitsPerBlock;
             int longsNeeded = (totalBits + 63) / 64;
-            long[] dataArray = new long[longsNeeded];
+            Arrays.fill(dataArray, 0, longsNeeded, 0L); // zero used portion for this section
 
             long mask = (1L << bitsPerBlock) - 1;
             for (int i = 0; i < 4096; i++) {
@@ -947,6 +962,12 @@ public class AlphaChunk {
         }
 
         return new V109ChunkData(baos.toByteArray(), primaryBitMask);
+
+        } finally {
+            ChunkSerializationPool.returnBAOS(baos);
+            ChunkSerializationPool.returnLongArray(dataArray);
+            ChunkSerializationPool.returnBlockStateArray(sectionStatesArray);
+        }
     }
 
     /**
@@ -971,7 +992,9 @@ public class AlphaChunk {
             }
         }
 
-        ByteArrayOutputStream baos = new ByteArrayOutputStream(16384);
+        ByteArrayOutputStream baos = ChunkSerializationPool.borrowBAOS();
+        long[] dataArray = ChunkSerializationPool.borrowLongArray();
+        try {
 
         byte[][] skyLightSections = new byte[8][];
         byte[][] blockLightSections = new byte[8][];
@@ -990,7 +1013,7 @@ public class AlphaChunk {
 
             int totalBits = 4096 * bitsPerBlock;
             int longsNeeded = (totalBits + 63) / 64;
-            long[] dataArray = new long[longsNeeded];
+            Arrays.fill(dataArray, 0, longsNeeded, 0L); // zero used portion for this section
 
             long mask = (1L << bitsPerBlock) - 1;
             for (int ly = 0; ly < 16; ly++) {
@@ -1032,6 +1055,11 @@ public class AlphaChunk {
 
         return new V477ChunkData(baos.toByteArray(), primaryBitMask,
                 skyLightSections, blockLightSections);
+
+        } finally {
+            ChunkSerializationPool.returnBAOS(baos);
+            ChunkSerializationPool.returnLongArray(dataArray);
+        }
     }
 
     /**
@@ -1055,7 +1083,9 @@ public class AlphaChunk {
             }
         }
 
-        ByteArrayOutputStream baos = new ByteArrayOutputStream(16384);
+        ByteArrayOutputStream baos = ChunkSerializationPool.borrowBAOS();
+        long[] dataArray = ChunkSerializationPool.borrowLongArray();
+        try {
 
         byte[][] skyLightSections = new byte[8][];
         byte[][] blockLightSections = new byte[8][];
@@ -1074,7 +1104,7 @@ public class AlphaChunk {
 
             int totalBits = 4096 * bitsPerBlock;
             int longsNeeded = (totalBits + 63) / 64;
-            long[] dataArray = new long[longsNeeded];
+            Arrays.fill(dataArray, 0, longsNeeded, 0L); // zero used portion for this section
 
             long mask = (1L << bitsPerBlock) - 1;
             for (int ly = 0; ly < 16; ly++) {
@@ -1118,6 +1148,11 @@ public class AlphaChunk {
 
         return new V573ChunkData(baos.toByteArray(), primaryBitMask,
                 skyLightSections, blockLightSections, biomes);
+
+        } finally {
+            ChunkSerializationPool.returnBAOS(baos);
+            ChunkSerializationPool.returnLongArray(dataArray);
+        }
     }
 
     /**
@@ -1146,7 +1181,9 @@ public class AlphaChunk {
             }
         }
 
-        ByteArrayOutputStream baos = new ByteArrayOutputStream(16384);
+        ByteArrayOutputStream baos = ChunkSerializationPool.borrowBAOS();
+        long[] dataArray = ChunkSerializationPool.borrowLongArray();
+        try {
 
         byte[][] skyLightSections = new byte[8][];
         byte[][] blockLightSections = new byte[8][];
@@ -1166,7 +1203,7 @@ public class AlphaChunk {
             // Non-spanning packing: entries do NOT cross long boundaries.
             int entriesPerLong = 64 / bitsPerBlock; // 4 for 15-bit
             int longsNeeded = (4096 + entriesPerLong - 1) / entriesPerLong; // 1024
-            long[] dataArray = new long[longsNeeded];
+            Arrays.fill(dataArray, 0, longsNeeded, 0L); // zero used portion for this section
 
             long mask = (1L << bitsPerBlock) - 1;
             for (int ly = 0; ly < 16; ly++) {
@@ -1204,6 +1241,11 @@ public class AlphaChunk {
 
         return new V573ChunkData(baos.toByteArray(), primaryBitMask,
                 skyLightSections, blockLightSections, biomes);
+
+        } finally {
+            ChunkSerializationPool.returnBAOS(baos);
+            ChunkSerializationPool.returnLongArray(dataArray);
+        }
     }
 
     /**
@@ -1229,7 +1271,9 @@ public class AlphaChunk {
         // All 16 sections are present in the bitmask
         primaryBitMask = 0xFFFF;
 
-        ByteArrayOutputStream baos = new ByteArrayOutputStream(16384);
+        ByteArrayOutputStream baos = ChunkSerializationPool.borrowBAOS();
+        long[] dataArray = ChunkSerializationPool.borrowLongArray();
+        try {
 
         byte[][] skyLightSections = new byte[numSections][];
         byte[][] blockLightSections = new byte[numSections][];
@@ -1246,7 +1290,7 @@ public class AlphaChunk {
 
                 int entriesPerLong = 64 / bitsPerBlock; // 4 for 15-bit
                 int longsNeeded = (4096 + entriesPerLong - 1) / entriesPerLong; // 1024
-                long[] dataArray = new long[longsNeeded];
+                Arrays.fill(dataArray, 0, longsNeeded, 0L); // zero used portion for this section
 
                 long mask = (1L << bitsPerBlock) - 1;
                 for (int ly = 0; ly < 16; ly++) {
@@ -1298,6 +1342,11 @@ public class AlphaChunk {
 
         return new V573ChunkData(baos.toByteArray(), primaryBitMask,
                 skyLightSections, blockLightSections, biomes);
+
+        } finally {
+            ChunkSerializationPool.returnBAOS(baos);
+            ChunkSerializationPool.returnLongArray(dataArray);
+        }
     }
 
     /**
@@ -1341,7 +1390,9 @@ public class AlphaChunk {
      * @return V757ChunkData containing raw section data and light arrays
      */
     public V757ChunkData serializeForV757Protocol() {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream(16384);
+        ByteArrayOutputStream baos = ChunkSerializationPool.borrowBAOS();
+        long[] dataArray = ChunkSerializationPool.borrowLongArray();
+        try {
 
         byte[][] skyLightSections = new byte[8][];
         byte[][] blockLightSections = new byte[8][];
@@ -1363,7 +1414,7 @@ public class AlphaChunk {
 
                 int entriesPerLong = 64 / bitsPerBlock; // 4
                 int longsNeeded = (4096 + entriesPerLong - 1) / entriesPerLong; // 1024
-                long[] dataArray = new long[longsNeeded];
+                Arrays.fill(dataArray, 0, longsNeeded, 0L); // zero used portion for this section
 
                 long mask = (1L << bitsPerBlock) - 1;
                 for (int ly = 0; ly < 16; ly++) {
@@ -1413,6 +1464,11 @@ public class AlphaChunk {
 
         byte[] finalData = baos.toByteArray();
         return new V757ChunkData(finalData, skyLightSections, blockLightSections);
+
+        } finally {
+            ChunkSerializationPool.returnBAOS(baos);
+            ChunkSerializationPool.returnLongArray(dataArray);
+        }
     }
 
     /**
@@ -1424,7 +1480,9 @@ public class AlphaChunk {
      * @return V757ChunkData containing raw section data and light arrays
      */
     public V757ChunkData serializeForV759Protocol() {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream(16384);
+        ByteArrayOutputStream baos = ChunkSerializationPool.borrowBAOS();
+        long[] dataArray = ChunkSerializationPool.borrowLongArray();
+        try {
 
         byte[][] skyLightSections = new byte[8][];
         byte[][] blockLightSections = new byte[8][];
@@ -1446,7 +1504,7 @@ public class AlphaChunk {
 
                 int entriesPerLong = 64 / bitsPerBlock; // 4
                 int longsNeeded = (4096 + entriesPerLong - 1) / entriesPerLong; // 1024
-                long[] dataArray = new long[longsNeeded];
+                Arrays.fill(dataArray, 0, longsNeeded, 0L); // zero used portion for this section
 
                 long mask = (1L << bitsPerBlock) - 1;
                 for (int ly = 0; ly < 16; ly++) {
@@ -1496,6 +1554,11 @@ public class AlphaChunk {
 
         byte[] finalData = baos.toByteArray();
         return new V757ChunkData(finalData, skyLightSections, blockLightSections);
+
+        } finally {
+            ChunkSerializationPool.returnBAOS(baos);
+            ChunkSerializationPool.returnLongArray(dataArray);
+        }
     }
 
     /**
@@ -1504,7 +1567,9 @@ public class AlphaChunk {
      * Both block data array and biome data array omit the VarInt(longsNeeded)/VarInt(0).
      */
     public V757ChunkData serializeForV770Protocol() {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream(16384);
+        ByteArrayOutputStream baos = ChunkSerializationPool.borrowBAOS();
+        long[] dataArray = ChunkSerializationPool.borrowLongArray();
+        try {
 
         byte[][] skyLightSections = new byte[8][];
         byte[][] blockLightSections = new byte[8][];
@@ -1526,7 +1591,7 @@ public class AlphaChunk {
 
                 int entriesPerLong = 64 / bitsPerBlock; // 4
                 int longsNeeded = (4096 + entriesPerLong - 1) / entriesPerLong; // 1024
-                long[] dataArray = new long[longsNeeded];
+                Arrays.fill(dataArray, 0, longsNeeded, 0L); // zero used portion for this section
 
                 long mask = (1L << bitsPerBlock) - 1;
                 for (int ly = 0; ly < 16; ly++) {
@@ -1576,6 +1641,11 @@ public class AlphaChunk {
 
         byte[] finalData = baos.toByteArray();
         return new V757ChunkData(finalData, skyLightSections, blockLightSections);
+
+        } finally {
+            ChunkSerializationPool.returnBAOS(baos);
+            ChunkSerializationPool.returnLongArray(dataArray);
+        }
     }
 
     /**

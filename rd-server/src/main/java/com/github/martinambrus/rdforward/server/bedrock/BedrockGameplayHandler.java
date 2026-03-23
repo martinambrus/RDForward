@@ -226,6 +226,20 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         spawnStatus.setStatus(PlayStatusPacket.Status.PLAYER_SPAWN);
         session.sendPacket(spawnStatus);
 
+        // 7b. MovePlayerPacket — confirms initial rotation after spawn.
+        //     StartGamePacket sets position/rotation, but the client needs an explicit
+        //     MovePlayer to finalize the camera pitch/yaw. Without it, the camera
+        //     defaults to looking at the ground.
+        MovePlayerPacket spawnMove = new MovePlayerPacket();
+        spawnMove.setRuntimeEntityId(entityId);
+        spawnMove.setPosition(Vector3f.from((float) spawnX, (float) spawnY, (float) spawnZ));
+        // Rotation Vector3f wire order: (pitch, yaw, headYaw)
+        spawnMove.setRotation(Vector3f.from(spawnPitch, bedrockYaw, bedrockYaw));
+        spawnMove.setMode(MovePlayerPacket.Mode.TELEPORT);
+        spawnMove.setTeleportationCause(MovePlayerPacket.TeleportationCause.UNKNOWN);
+        spawnMove.setOnGround(true);
+        session.sendPacket(spawnMove);
+
         // 8. Post-spawn packets: abilities, attributes, game rules
         sendUpdateAbilities(entityId);
         sendPlayerEntityData(entityId);

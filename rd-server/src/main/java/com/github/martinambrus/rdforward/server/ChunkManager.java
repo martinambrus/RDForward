@@ -80,6 +80,13 @@ public class ChunkManager {
     /** Chunks loaded in memory, keyed by coordinate. */
     private final Map<ChunkCoord, AlphaChunk> loadedChunks = new ConcurrentHashMap<>();
 
+    /**
+     * Unified chunk lifecycle holders (Phase 6). Provides a single point of
+     * truth for chunk status, player tracking, dirty state, and packet cache.
+     * Coexists with the legacy maps during incremental migration.
+     */
+    private final ConcurrentHashMap<ChunkCoord, ChunkHolder> chunkHolders = new ConcurrentHashMap<>();
+
     /** Which chunks each player currently has loaded (sent to their client). */
     private final Map<ConnectedPlayer, Set<ChunkCoord>> playerChunks = new ConcurrentHashMap<>();
 
@@ -98,10 +105,6 @@ public class ChunkManager {
     /** Tracks which chunks have been modified since last save. */
     private final Set<ChunkCoord> dirtyChunks = ConcurrentHashMap.newKeySet();
 
-    /** Tracks chunks currently being written to disk by a worker thread,
-     *  so saveIncrementally() doesn't pick the same chunk twice. */
-    private final Set<ChunkCoord> savingChunks = ConcurrentHashMap.newKeySet();
-
     /** Reference to the authoritative Classic/RD world for block data overlay. */
     private ServerWorld serverWorld;
 
@@ -112,13 +115,22 @@ public class ChunkManager {
     /** Max dirty chunks to save per incremental save call. */
     private static final int INCREMENTAL_SAVE_BATCH = 4;
 
-    /** Worker pool for off-thread chunk generation and disk I/O. */
+    /** Worker pool for CPU-bound chunk generation and skylight computation. */
     private static final AtomicInteger WORKER_ID = new AtomicInteger();
-    private final ExecutorService chunkWorkerPool = Executors.newFixedThreadPool(4, r -> {
-        Thread t = new Thread(r, "chunk-worker-" + WORKER_ID.incrementAndGet());
+    private final ExecutorService generationPool = Executors.newFixedThreadPool(2, r -> {
+        Thread t = new Thread(r, "chunk-gen-" + WORKER_ID.incrementAndGet());
         t.setDaemon(true);
         return t;
     });
+
+    /** Dedicated I/O thread for all disk reads/writes (MPSC lock-free queue). */
+    private final ChunkIOThread ioThread = new ChunkIOThread();
+
+    /** Expose the I/O thread so ServerWorld can route its saves through it. */
+    public ChunkIOThread getIOThread() { return ioThread; }
+
+    /** Fine-grained per-chunk locking for concurrent operations. */
+    private final ChunkLockManager chunkLocks = new ChunkLockManager();
 
     /** Tracks in-flight generation tasks to prevent duplicate work. */
     private final ConcurrentHashMap<ChunkCoord, CompletableFuture<AlphaChunk>> pendingChunks =
@@ -136,10 +148,18 @@ public class ChunkManager {
      * Eliminates redundant serialization+compression when multiple players of the
      * same protocol version need the same chunk. Invalidated when blocks change.
      */
-    private final ConcurrentHashMap<Long, Packet[]> chunkPacketCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, FutureChunkPackets> chunkPacketCache = new ConcurrentHashMap<>();
 
     /** Max entries in the chunk packet cache before eviction. */
     private static final int MAX_CACHE_SIZE = 2000;
+
+    /** Cache hit/miss counters for observability (reset on stats log). */
+    private final AtomicInteger cacheHits = new AtomicInteger();
+    private final AtomicInteger cacheMisses = new AtomicInteger();
+
+    /** Tick counter for periodic stats logging. */
+    private int statsTicks = 0;
+    private static final int STATS_LOG_INTERVAL_TICKS = 6000; // ~5 minutes at 20 TPS
 
     /** Bedrock chunk converter for cache invalidation on block changes. */
     private volatile BedrockChunkConverter bedrockChunkConverter;
@@ -173,8 +193,31 @@ public class ChunkManager {
      * {@link Scheduler#init()} during server startup.
      */
     public void initAsyncDelivery() {
+        ioThread.start();
         deliveryTask = Scheduler.runRepeating(0, 1, this::deliverReadyChunks);
     }
+
+    // --- Protocol bucket constants ---
+    // Each constant maps to exactly one serialization path in buildChunkPackets().
+    // Must be kept in sync with protocolBucket().
+    static final int BUCKET_ALPHA       = 2;  // Pre-1.2.1 (Alpha/Beta flat format)
+    static final int BUCKET_V28         = 3;  // 1.2.1+ (section-based, PreChunk required)
+    static final int BUCKET_V39         = 4;  // 1.3.1+ (no PreChunk)
+    static final int BUCKET_V47         = 5;  // 1.8+
+    static final int BUCKET_V109        = 6;  // 1.9+ (paletted, no block entity count)
+    static final int BUCKET_V110        = 7;  // 1.9.4+ (with block entity count)
+    static final int BUCKET_V393        = 8;  // 1.13+
+    static final int BUCKET_V477        = 9;  // 1.14+
+    static final int BUCKET_V573        = 10; // 1.15+
+    static final int BUCKET_V735        = 11; // 1.16+
+    static final int BUCKET_V751        = 12; // 1.16.2+
+    static final int BUCKET_V755        = 13; // 1.17+
+    static final int BUCKET_V757        = 14; // 1.18+
+    static final int BUCKET_V759        = 15; // 1.19+
+    static final int BUCKET_V763        = 16; // 1.20+
+    static final int BUCKET_V764        = 17; // 1.20.2+
+    static final int BUCKET_V766        = 18; // 1.20.5+
+    static final int BUCKET_V770        = 19; // 1.21.5+
 
     /**
      * Encode a cache key from chunk coordinates and protocol bucket.
@@ -193,24 +236,24 @@ public class ChunkManager {
      */
     static int protocolBucket(ProtocolVersion v) {
         if (v == ProtocolVersion.BEDROCK) return 0; // Bedrock uses separate path
-        if (v.isAtLeast(ProtocolVersion.RELEASE_1_21_5)) return 19;
-        if (v.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) return 18;
-        if (v.isAtLeast(ProtocolVersion.RELEASE_1_20_2)) return 17; // MapChunkPacketV764
-        if (v.isAtLeast(ProtocolVersion.RELEASE_1_20)) return 16;   // MapChunkPacketV763
-        if (v.isAtLeast(ProtocolVersion.RELEASE_1_19)) return 15;   // MapChunkPacketV757
-        if (v.isAtLeast(ProtocolVersion.RELEASE_1_18)) return 14;
-        if (v.isAtLeast(ProtocolVersion.RELEASE_1_17)) return 13;
-        if (v.isAtLeast(ProtocolVersion.RELEASE_1_16_2)) return 12;
-        if (v.isAtLeast(ProtocolVersion.RELEASE_1_16)) return 11;
-        if (v.isAtLeast(ProtocolVersion.RELEASE_1_15)) return 10;
-        if (v.isAtLeast(ProtocolVersion.RELEASE_1_14)) return 9;
-        if (v.isAtLeast(ProtocolVersion.RELEASE_1_13)) return 8;
-        if (v.isAtLeast(ProtocolVersion.RELEASE_1_9_4)) return 7;   // writeBlockEntityCount=true
-        if (v.isAtLeast(ProtocolVersion.RELEASE_1_9)) return 6;     // writeBlockEntityCount=false
-        if (v.isAtLeast(ProtocolVersion.RELEASE_1_8)) return 5;
-        if (v.isAtLeast(ProtocolVersion.RELEASE_1_3_1)) return 4;
-        if (v.isAtLeast(ProtocolVersion.RELEASE_1_2_1)) return 3;
-        return 2; // Alpha/Beta
+        if (v.isAtLeast(ProtocolVersion.RELEASE_1_21_5)) return BUCKET_V770;
+        if (v.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) return BUCKET_V766;
+        if (v.isAtLeast(ProtocolVersion.RELEASE_1_20_2)) return BUCKET_V764;
+        if (v.isAtLeast(ProtocolVersion.RELEASE_1_20))   return BUCKET_V763;
+        if (v.isAtLeast(ProtocolVersion.RELEASE_1_19))   return BUCKET_V759;
+        if (v.isAtLeast(ProtocolVersion.RELEASE_1_18))   return BUCKET_V757;
+        if (v.isAtLeast(ProtocolVersion.RELEASE_1_17))   return BUCKET_V755;
+        if (v.isAtLeast(ProtocolVersion.RELEASE_1_16_2)) return BUCKET_V751;
+        if (v.isAtLeast(ProtocolVersion.RELEASE_1_16))   return BUCKET_V735;
+        if (v.isAtLeast(ProtocolVersion.RELEASE_1_15))   return BUCKET_V573;
+        if (v.isAtLeast(ProtocolVersion.RELEASE_1_14))   return BUCKET_V477;
+        if (v.isAtLeast(ProtocolVersion.RELEASE_1_13))   return BUCKET_V393;
+        if (v.isAtLeast(ProtocolVersion.RELEASE_1_9_4))  return BUCKET_V110;
+        if (v.isAtLeast(ProtocolVersion.RELEASE_1_9))    return BUCKET_V109;
+        if (v.isAtLeast(ProtocolVersion.RELEASE_1_8))    return BUCKET_V47;
+        if (v.isAtLeast(ProtocolVersion.RELEASE_1_3_1))  return BUCKET_V39;
+        if (v.isAtLeast(ProtocolVersion.RELEASE_1_2_1))  return BUCKET_V28;
+        return BUCKET_ALPHA;
     }
 
     /**
@@ -226,8 +269,9 @@ public class ChunkManager {
      * Called when a block changes in that chunk.
      */
     private void invalidateChunkCache(int chunkX, int chunkZ) {
-        for (int bucket = 2; bucket <= 19; bucket++) {
-            chunkPacketCache.remove(cacheKey(chunkX, chunkZ, bucket));
+        for (int bucket = BUCKET_ALPHA; bucket <= BUCKET_V770; bucket++) {
+            FutureChunkPackets entry = chunkPacketCache.remove(cacheKey(chunkX, chunkZ, bucket));
+            if (entry != null) entry.invalidate(); // signal in-flight serialization to discard
         }
         // Also invalidate Bedrock chunk cache
         BedrockChunkConverter converter = bedrockChunkConverter;
@@ -243,6 +287,16 @@ public class ChunkManager {
      */
     public void setServerWorld(ServerWorld serverWorld) {
         this.serverWorld = serverWorld;
+    }
+
+    /** Get or create a ChunkHolder for the given coordinate. */
+    private ChunkHolder getOrCreateHolder(ChunkCoord coord) {
+        return chunkHolders.computeIfAbsent(coord, ChunkHolder::new);
+    }
+
+    /** Get the ChunkHolder for a coordinate, or null if none exists. */
+    public ChunkHolder getHolder(ChunkCoord coord) {
+        return chunkHolders.get(coord);
     }
 
     /**
@@ -263,6 +317,9 @@ public class ChunkManager {
         if (chunks == null) return;
 
         for (ChunkCoord coord : chunks) {
+            // Remove player from ChunkHolder tracking
+            ChunkHolder holder = chunkHolders.get(coord);
+            if (holder != null) holder.removeTracker(player);
             if (!isChunkNeededByAnyPlayer(coord)) {
                 unloadChunk(coord);
             }
@@ -289,24 +346,29 @@ public class ChunkManager {
             return existing; // Another request already started this chunk
         }
 
-        chunkWorkerPool.submit(() -> {
-            try {
+        // Create/update ChunkHolder lifecycle
+        ChunkHolder holder = getOrCreateHolder(coord);
+        holder.setStatus(ChunkStatus.LOADING);
+        holder.setCurrentTransition(future);
+
+        // Phase 1: Load from disk on the I/O thread
+        ioThread.submitLoad(worldDir, coord).thenAcceptAsync(diskChunk -> {
+            try (LockToken lock = chunkLocks.acquire(coord, Usage.WORLDGEN)) {
+                holder.setStatus(ChunkStatus.GENERATING);
+
                 // Double-check cache (may have been loaded between our check and task start)
-                AlphaChunk chunk = loadedChunks.get(coord);
-                if (chunk != null) {
+                AlphaChunk alreadyLoaded = loadedChunks.get(coord);
+                if (alreadyLoaded != null) {
                     pendingChunks.remove(coord);
-                    future.complete(chunk);
+                    holder.setChunk(alreadyLoaded);
+                    holder.setStatus(ChunkStatus.READY);
+                    future.complete(alreadyLoaded);
                     return;
                 }
 
-                // Try loading from disk
-                try {
-                    chunk = AlphaLevelFormat.loadChunk(worldDir, coord.getX(), coord.getZ());
-                } catch (IOException e) {
-                    System.err.println("Failed to load chunk " + coord + ": " + e.getMessage());
-                }
+                AlphaChunk chunk = diskChunk;
 
-                // Generate if not on disk
+                // Generate if not on disk (CPU-bound, runs on generation pool)
                 if (chunk == null && worldGenerator.supportsChunkGeneration()) {
                     chunk = worldGenerator.generateChunk(coord.getX(), coord.getZ(), seed);
                 } else if (chunk == null && serverWorld != null) {
@@ -317,8 +379,11 @@ public class ChunkManager {
 
                 if (chunk != null) {
                     overlayServerWorldBlocks(chunk);
+                    holder.setStatus(ChunkStatus.LIT);
                     chunk.generateSkylightMap();
                     loadedChunks.put(coord, chunk);
+                    holder.setChunk(chunk);
+                    holder.setStatus(ChunkStatus.READY);
                 }
 
                 pendingChunks.remove(coord);
@@ -327,6 +392,13 @@ public class ChunkManager {
                 pendingChunks.remove(coord);
                 future.completeExceptionally(e);
             }
+        }, generationPool).exceptionally(ex -> {
+            // Handle RejectedExecutionException from pool shutdown
+            if (!future.isDone()) {
+                pendingChunks.remove(coord);
+                future.completeExceptionally(ex);
+            }
+            return null;
         });
 
         return future;
@@ -338,6 +410,29 @@ public class ChunkManager {
      * per player per tick.
      */
     private void deliverReadyChunks() {
+        // Periodic stats logging
+        if (++statsTicks >= STATS_LOG_INTERVAL_TICKS) {
+            statsTicks = 0;
+            int hits = cacheHits.getAndSet(0);
+            int misses = cacheMisses.getAndSet(0);
+            int total = hits + misses;
+            int hitRate = total > 0 ? (hits * 100 / total) : 0;
+            System.out.println("[ChunkManager] Stats: loaded=" + loadedChunks.size()
+                    + " cached=" + chunkPacketCache.size()
+                    + " cacheHitRate=" + hitRate + "% (" + hits + "/" + total + ")"
+                    + " ioTasks=" + ioThread.getTasksProcessed());
+        }
+
+        // Evict stale cache entries on the tick thread (avoids contention with async serialization)
+        if (chunkPacketCache.size() >= MAX_CACHE_SIZE) {
+            int toEvict = MAX_CACHE_SIZE / 2;
+            Iterator<Long> cacheIt = chunkPacketCache.keySet().iterator();
+            while (cacheIt.hasNext() && toEvict-- > 0) {
+                cacheIt.next();
+                cacheIt.remove();
+            }
+        }
+
         int totalSent = 0;
         Iterator<Map.Entry<ConnectedPlayer, Queue<ChunkCoord>>> outerIt =
                 pendingSendsPerPlayer.entrySet().iterator();
@@ -352,24 +447,30 @@ public class ChunkManager {
                 continue;
             }
 
-            int sent = 0;
-            int perPlayerLimit = Math.min(MAX_CHUNKS_PER_PLAYER_PER_TICK,
+            int playerBudget = player.getChunkSendBudget();
+            int perPlayerLimit = Math.min(playerBudget,
                     MAX_TOTAL_DELIVERIES_PER_TICK - totalSent);
+            int sent = 0;
             Iterator<ChunkCoord> it = pending.iterator();
             while (it.hasNext() && sent < perPlayerLimit) {
                 ChunkCoord coord = it.next();
                 AlphaChunk chunk = loadedChunks.get(coord);
                 if (chunk != null) {
                     if (isInViewDistance(player, coord)) {
-                        sendChunkToPlayer(player, chunk);
-                        current.add(coord);
+                        if (sendChunkToPlayer(player, chunk)) {
+                            current.add(coord);
+                            it.remove();
+                            sent++;
+                        }
+                        // else: async serialization in flight, leave in queue
+                    } else {
+                        it.remove(); // out of view distance, discard
                     }
-                    it.remove();
-                    sent++;
                 } else if (!pendingChunks.containsKey(coord)) {
                     it.remove();
                 }
             }
+            player.updateChunkSendRate(sent);
             totalSent += sent;
 
             if (pending.isEmpty()) {
@@ -391,24 +492,35 @@ public class ChunkManager {
     }
 
     /**
-     * Shutdown the chunk worker pool. Waits for in-flight generation tasks,
-     * cancels pending deliveries, and saves dirty chunks.
+     * Shutdown the chunk worker pool. Waits for in-flight generation tasks
+     * to complete before saving dirty chunks and stopping the I/O thread.
+     *
+     * Order matters: generationPool must fully drain first because in-flight
+     * generation tasks may submit saves to ioThread. Shutting ioThread before
+     * the pool drains would reject those saves.
      */
     public void shutdown() {
-        chunkWorkerPool.shutdown();
+        // 1. Stop accepting new generation/serialization tasks
+        generationPool.shutdown();
         if (deliveryTask != null) deliveryTask.cancel();
+
+        // 2. Wait for all in-flight generation + serialization to finish
         try {
-            if (!chunkWorkerPool.awaitTermination(5, TimeUnit.SECONDS)) {
-                System.err.println("[ChunkManager] Forcing shutdown of chunk worker pool");
-                chunkWorkerPool.shutdownNow();
+            if (!generationPool.awaitTermination(10, TimeUnit.SECONDS)) {
+                System.err.println("[ChunkManager] Forcing shutdown of generation pool");
+                generationPool.shutdownNow();
+                generationPool.awaitTermination(5, TimeUnit.SECONDS);
             }
         } catch (InterruptedException e) {
-            chunkWorkerPool.shutdownNow();
+            generationPool.shutdownNow();
             Thread.currentThread().interrupt();
         }
+
+        // 3. Now safe to save + stop I/O thread (no more gen tasks will submit saves)
         pendingSendsPerPlayer.clear();
         pendingChunks.clear();
         saveAllDirty();
+        ioThread.shutdown();
     }
 
     /**
@@ -438,19 +550,17 @@ public class ChunkManager {
         int centerChunkX = blockX >> 4;
         int centerChunkZ = blockZ >> 4;
 
-        // Calculate desired chunk set within view distance
-        Set<ChunkCoord> desired = new HashSet<>();
-        for (int dx = -viewDistance; dx <= viewDistance; dx++) {
-            for (int dz = -viewDistance; dz <= viewDistance; dz++) {
-                desired.add(new ChunkCoord(centerChunkX + dx, centerChunkZ + dz));
-            }
-        }
-
-        // Find chunks to load (in desired but not in current)
+        // Build desired set and load list using pre-computed spiral order
+        // (closest chunks first, no per-player sort needed)
+        ChunkCoord[] spiral = SpiralIterator.computeOffsets(viewDistance);
+        Set<ChunkCoord> desired = new HashSet<>(spiral.length * 2);
         List<ChunkCoord> toLoad = new ArrayList<>();
-        for (ChunkCoord coord : desired) {
+        for (ChunkCoord offset : spiral) {
+            ChunkCoord coord = new ChunkCoord(centerChunkX + offset.getX(),
+                    centerChunkZ + offset.getZ());
+            desired.add(coord);
             if (!current.contains(coord)) {
-                toLoad.add(coord);
+                toLoad.add(coord); // already in spiral (closest-first) order
             }
         }
 
@@ -462,24 +572,21 @@ public class ChunkManager {
             }
         }
 
-
-
-        // Sort chunks to load by distance from player (closest first)
-        toLoad.sort((a, b) -> {
-            int distA = (a.getX() - centerChunkX) * (a.getX() - centerChunkX)
-                      + (a.getZ() - centerChunkZ) * (a.getZ() - centerChunkZ);
-            int distB = (b.getX() - centerChunkX) * (b.getX() - centerChunkX)
-                      + (b.getZ() - centerChunkZ) * (b.getZ() - centerChunkZ);
-            return Integer.compare(distA, distB);
-        });
-
         // Unload chunks that left view distance
         for (ChunkCoord coord : toUnload) {
             sendChunkUnload(player, coord);
             current.remove(coord);
+            // Update ChunkHolder tracker
+            ChunkHolder holder = chunkHolders.get(coord);
+            if (holder != null) holder.removeTracker(player);
             if (!isChunkNeededByAnyPlayer(coord)) {
                 unloadChunk(coord);
             }
+        }
+
+        // Update ChunkHolder trackers for desired chunks
+        for (ChunkCoord coord : desired) {
+            getOrCreateHolder(coord).addTracker(player);
         }
 
         // For Bedrock clients, update the chunk publisher area before sending new chunks
@@ -532,20 +639,13 @@ public class ChunkManager {
         int centerChunkX = blockX >> 4;
         int centerChunkZ = blockZ >> 4;
 
-        // Build sorted list of chunks to send (closest first)
-        List<ChunkCoord> toSend = new ArrayList<>();
-        for (int dx = -viewDistance; dx <= viewDistance; dx++) {
-            for (int dz = -viewDistance; dz <= viewDistance; dz++) {
-                toSend.add(new ChunkCoord(centerChunkX + dx, centerChunkZ + dz));
-            }
+        // Build chunk list in spiral order (closest first, no sort needed)
+        ChunkCoord[] spiral = SpiralIterator.computeOffsets(viewDistance);
+        List<ChunkCoord> toSend = new ArrayList<>(spiral.length);
+        for (ChunkCoord offset : spiral) {
+            toSend.add(new ChunkCoord(centerChunkX + offset.getX(),
+                    centerChunkZ + offset.getZ()));
         }
-        toSend.sort((a, b) -> {
-            int distA = (a.getX() - centerChunkX) * (a.getX() - centerChunkX)
-                      + (a.getZ() - centerChunkZ) * (a.getZ() - centerChunkZ);
-            int distB = (b.getX() - centerChunkX) * (b.getX() - centerChunkX)
-                      + (b.getZ() - centerChunkZ) * (b.getZ() - centerChunkZ);
-            return Integer.compare(distA, distB);
-        });
 
         int[] counts = sendOrQueueChunks(player, toSend, current);
         player.flushPackets();
@@ -565,9 +665,17 @@ public class ChunkManager {
         for (ChunkCoord coord : coords) {
             AlphaChunk cached = loadedChunks.get(coord);
             if (cached != null) {
-                sendChunkToPlayer(player, cached);
-                current.add(coord);
-                sentCount++;
+                if (sendChunkToPlayer(player, cached)) {
+                    current.add(coord);
+                    sentCount++;
+                } else {
+                    // Async serialization started — queue for delivery next tick
+                    if (pendingQueue == null) {
+                        pendingQueue = pendingSendsPerPlayer.computeIfAbsent(
+                                player, k -> new ConcurrentLinkedQueue<>());
+                    }
+                    pendingQueue.add(coord);
+                }
             } else {
                 getOrLoadChunkAsync(coord);
                 if (pendingQueue == null) {
@@ -698,6 +806,12 @@ public class ChunkManager {
         }
         chunk.setBlock(localX, blockY, localZ, blockType & 0xFF);
         dirtyChunks.add(coord);
+        // Update ChunkHolder state
+        ChunkHolder holder = chunkHolders.get(coord);
+        if (holder != null) {
+            holder.markDirty();
+            holder.invalidatePacketCache();
+        }
         invalidateChunkCache(coord.getX(), coord.getZ());
 
         AtomicInteger counter = chunkChangeCounts.computeIfAbsent(coord, k -> new AtomicInteger());
@@ -773,21 +887,21 @@ public class ChunkManager {
         Iterator<ChunkCoord> it = dirtyChunks.iterator();
         while (it.hasNext() && count < INCREMENTAL_SAVE_BATCH) {
             ChunkCoord coord = it.next();
-            if (savingChunks.contains(coord)) continue; // already in-flight
+            if (ioThread.isSaveInFlight(coord)) continue; // already in-flight
             AlphaChunk chunk = loadedChunks.get(coord);
             if (chunk != null) {
-                // Snapshot NBT on tick thread (safe: entities/tileEntities not modified concurrently)
-                AlphaLevelFormat.SaveTask saveTask = AlphaLevelFormat.prepareSave(worldDir, chunk);
-                savingChunks.add(coord);
-                chunkWorkerPool.submit(() -> {
-                    try {
-                        saveTask.writeToDisk();
+                // Snapshot NBT on tick thread under SAVE lock
+                AlphaLevelFormat.SaveTask saveTask;
+                try (LockToken lock = chunkLocks.acquire(coord, Usage.SAVE)) {
+                    saveTask = AlphaLevelFormat.prepareSave(worldDir, chunk);
+                }
+                ioThread.submitSave(coord, saveTask).whenComplete((v, ex) -> {
+                    if (ex != null) {
+                        System.err.println("Failed to save chunk " + coord + ": " + ex.getMessage());
+                    } else {
                         dirtyChunks.remove(coord);
-                    } catch (IOException e) {
-                        System.err.println("Failed to save chunk " + coord + ": " + e.getMessage());
-                    } finally {
-                        savingChunks.remove(coord);
                     }
+                    ioThread.completeSave(coord);
                 });
                 count++;
             } else {
@@ -802,22 +916,31 @@ public class ChunkManager {
      * to avoid concurrent file writes.
      */
     public void saveAllDirty() {
-        Set<ChunkCoord> saved = new HashSet<>();
+        if (dirtyChunks.isEmpty()) return;
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
         for (ChunkCoord coord : dirtyChunks) {
-            if (savingChunks.contains(coord)) continue; // in-flight incremental save
+            if (ioThread.isSaveInFlight(coord)) continue; // in-flight incremental save
             AlphaChunk chunk = loadedChunks.get(coord);
             if (chunk != null) {
-                try {
-                    AlphaLevelFormat.saveChunk(worldDir, chunk);
-                    saved.add(coord);
-                } catch (IOException e) {
-                    System.err.println("Failed to save chunk " + coord + ": " + e.getMessage());
+                AlphaLevelFormat.SaveTask saveTask;
+                try (LockToken lock = chunkLocks.acquire(coord, Usage.SAVE)) {
+                    saveTask = AlphaLevelFormat.prepareSave(worldDir, chunk);
                 }
+                CompletableFuture<Void> f = ioThread.submitSave(coord, saveTask);
+                f.whenComplete((v, ex) -> {
+                    if (ex != null) {
+                        System.err.println("Failed to save chunk " + coord + ": " + ex.getMessage());
+                    } else {
+                        dirtyChunks.remove(coord);
+                    }
+                    ioThread.completeSave(coord);
+                });
+                futures.add(f);
             }
         }
-        dirtyChunks.removeAll(saved);
-        if (!saved.isEmpty()) {
-            System.out.println("Saved " + saved.size() + " dirty chunk(s) to " + worldDir);
+        if (!futures.isEmpty()) {
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+            System.out.println("Saved " + futures.size() + " dirty chunk(s) to " + worldDir);
         }
     }
 
@@ -842,36 +965,95 @@ public class ChunkManager {
      * Send a chunk to a player via PreChunkPacket + MapChunkPacket.
      * Uses a per-protocol-bucket packet cache to avoid redundant serialization
      * when multiple players of the same version need the same chunk.
-     * WARNING: version branches here must match protocolBucket() — each bucket
-     * must correspond to exactly one serialization path below.
+     *
+     * Returns true if packets were sent, false if serialization is pending
+     * (the chunk stays in the player's pending queue for the next tick).
+     *
+     * WARNING: version branches in buildChunkPackets() must match protocolBucket()
+     * — each bucket must correspond to exactly one serialization path.
      */
-    private void sendChunkToPlayer(ConnectedPlayer player, AlphaChunk chunk) {
+    private boolean sendChunkToPlayer(ConnectedPlayer player, AlphaChunk chunk) {
         // Bedrock (CloudburstMC) — uses its own chunk format via BedrockChunkConverter
         if (player.getBedrockSession() != null) {
             player.getBedrockSession().sendChunkData(chunk);
-            return;
+            return true;
         }
         // Legacy MCPE — uses version-specific codec chunk format
         if (player.getMcpeSession() != null) {
             player.getMcpeSession().sendChunkData(serverWorld, chunk.getXPos(), chunk.getZPos());
-            return;
+            return true;
         }
 
         // Check chunk packet cache for TCP clients
         int bucket = protocolBucket(player.getProtocolVersion());
         long key = cacheKey(chunk.getXPos(), chunk.getZPos(), bucket);
-        Packet[] cachedPackets = chunkPacketCache.get(key);
-        if (cachedPackets != null) {
-            for (Packet p : cachedPackets) {
-                player.writePacket(p);
+        FutureChunkPackets cached = chunkPacketCache.get(key);
+
+        if (cached != null && cached != FutureChunkPackets.EMPTY) {
+            if (cached.isReady()) {
+                cacheHits.incrementAndGet();
+                for (Packet p : cached.getPackets()) {
+                    player.writePacket(p);
+                }
+                return true;
             }
-            return;
+            // Serialization in flight — not ready yet
+            return false;
         }
 
-        // Cache miss — serialize normally but collect packets for caching
+        cacheMisses.incrementAndGet();
+        FutureChunkPackets future = new FutureChunkPackets();
+        FutureChunkPackets existing = chunkPacketCache.putIfAbsent(key, future);
+        if (existing != null && existing != FutureChunkPackets.EMPTY) {
+            // Another thread beat us — check if it's already ready
+            if (existing.isReady()) {
+                for (Packet p : existing.getPackets()) {
+                    player.writePacket(p);
+                }
+                return true;
+            }
+            return false; // in-flight from other thread
+        }
+
+        // Submit serialization to the generation pool
+        FutureChunkPackets toComplete = (existing == null) ? future : existing;
+        try {
+            generationPool.submit(() -> {
+                try {
+                    if (toComplete.isInvalidated()) return; // chunk was modified, discard
+                    Packet[] packets = buildChunkPackets(chunk, bucket);
+                    if (!toComplete.isInvalidated()) {
+                        toComplete.complete(packets);
+                    }
+                } catch (Exception e) {
+                    System.err.println("[ChunkManager] Async serialization failed for chunk ("
+                            + chunk.getXPos() + ", " + chunk.getZPos() + ") bucket " + bucket
+                            + ": " + e.getMessage());
+                    chunkPacketCache.remove(key); // allow retry
+                }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            // Pool is shutting down — fall back to synchronous serialization
+            chunkPacketCache.remove(key);
+            Packet[] packets = buildChunkPackets(chunk, bucket);
+            toComplete.complete(packets);
+            for (Packet p : packets) {
+                player.writePacket(p);
+            }
+            return true;
+        }
+        return false; // will be delivered next tick
+    }
+
+    /**
+     * Build serialized chunk packets for the given protocol bucket.
+     * This method is designed to run on the generation pool thread.
+     * It reads from immutable chunk data only.
+     */
+    private Packet[] buildChunkPackets(AlphaChunk chunk, int bucket) {
         List<Packet> collectedPackets = new ArrayList<>();
 
-        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_19)) {
+        if (bucket >= BUCKET_V759) { // 1.19+ (buckets 15-19)
             // v759/v760/v761/v762/v763: Same chunk format as v757 but with 1.19 block state IDs.
             AlphaChunk.V757ChunkData v759Data = chunk.serializeForV759Protocol();
             long[] heightmap = buildHeightmapLongArrayNonSpanning(chunk);
@@ -898,7 +1080,7 @@ public class ChunkManager {
             byte[][] skyArr = skyArrays.toArray(new byte[0][]);
             byte[][] blockArr = blockArrays.toArray(new byte[0][]);
 
-            if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_21_5)) {
+            if (bucket >= BUCKET_V770) { // 1.21.5+
                 // v770: same 24-section padding as v766+, but with v770 serialization
                 // (no VarInt data array length prefixes) and binary heightmaps.
                 AlphaChunk.V757ChunkData v770Data = chunk.serializeForV770Protocol();
@@ -930,7 +1112,7 @@ public class ChunkManager {
                     adjustedSkyLightMask, adjustedBlockLightMask,
                     adjustedEmptySkyLightMask, adjustedEmptyBlockLightMask,
                     skyArr, blockArr));
-            } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
+            } else if (bucket >= BUCKET_V766) { // 1.20.5+
                 // v766+: built-in overworld has minY=-64, height=384 (24 sections).
                 // Our chunk data has 16 sections for Y 0-255.
                 // Prepend 4 empty sections (Y -64 to -1) and append 4 (Y 256-319).
@@ -965,7 +1147,7 @@ public class ChunkManager {
                     adjustedSkyLightMask, adjustedBlockLightMask,
                     adjustedEmptySkyLightMask, adjustedEmptyBlockLightMask,
                     skyArr, blockArr));
-            } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_20_2)) {
+            } else if (bucket >= BUCKET_V764) { // 1.20.2+
                 // v764/v765: network NBT for heightmaps (no root name).
                 collectedPackets.add(new MapChunkPacketV764(
                     chunk.getXPos(), chunk.getZPos(),
@@ -974,7 +1156,7 @@ public class ChunkManager {
                     skyLightMask, blockLightMask,
                     emptySkyLightMask, emptyBlockLightMask,
                     skyArr, blockArr));
-            } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_20)) {
+            } else if (bucket >= BUCKET_V763) { // 1.20+
                 // v763: trustEdges boolean removed from combined chunk+light packet.
                 collectedPackets.add(new MapChunkPacketV763(
                     chunk.getXPos(), chunk.getZPos(),
@@ -993,7 +1175,7 @@ public class ChunkManager {
                     skyArr, blockArr));
             }
 
-        } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_18)) {
+        } else if (bucket >= BUCKET_V757) { // 1.18+
             // v757: Combined chunk data + update light. All 16 sections present,
             // biomes as per-section paletted containers, no primaryBitMask.
             AlphaChunk.V757ChunkData v757Data = chunk.serializeForV757Protocol();
@@ -1029,7 +1211,7 @@ public class ChunkManager {
                 skyArrays.toArray(new byte[0][]),
                 blockArrays.toArray(new byte[0][])));
 
-        } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_17)) {
+        } else if (bucket >= BUCKET_V755) { // 1.17+
             // v755: 15-bit global palette with non-spanning packing, 1.17 block state IDs.
             // Chunk bitmask is BitSet, no fullChunk boolean, UpdateLight masks are BitSet.
             AlphaChunk.V573ChunkData v755Data = chunk.serializeForV755Protocol();
@@ -1070,7 +1252,7 @@ public class ChunkManager {
                 v755Data.getBiomes(),
                 v755Data.getRawData()));
 
-        } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_16)) {
+        } else if (bucket >= BUCKET_V735) { // 1.16+ (buckets 11-12)
             // v735+: 15-bit global palette with non-spanning packing, 1.16 block state IDs
             AlphaChunk.V573ChunkData v735Data = chunk.serializeForV735Protocol();
             long[] heightmap = buildHeightmapLongArrayNonSpanning(chunk);
@@ -1104,7 +1286,7 @@ public class ChunkManager {
                 blockArrays.toArray(new byte[0][])));
 
             // v751 (1.16.2): removed ignoreOldLightData, biomes use VarInt array
-            if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_16_2)) {
+            if (bucket >= BUCKET_V751) { // 1.16.2+
                 collectedPackets.add(new MapChunkPacketV751(
                     chunk.getXPos(), chunk.getZPos(), true,
                     v735Data.getPrimaryBitMask(),
@@ -1120,7 +1302,7 @@ public class ChunkManager {
                     v735Data.getRawData()));
             }
 
-        } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_15)) {
+        } else if (bucket >= BUCKET_V573) { // 1.15+
             // v573: biomes are a separate field (not inside data array), int[1024] 3D biomes
             AlphaChunk.V573ChunkData v573Data = chunk.serializeForV573Protocol();
             long[] heightmap = buildHeightmapLongArray(chunk);
@@ -1162,7 +1344,7 @@ public class ChunkManager {
                 v573Data.getBiomes(),
                 v573Data.getRawData()));
 
-        } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_14)) {
+        } else if (bucket >= BUCKET_V477) { // 1.14+
             // v477: heightmaps NBT, no light in sections, blockCount per section
             AlphaChunk.V477ChunkData v477Data = chunk.serializeForV477Protocol();
             long[] heightmap = buildHeightmapLongArray(chunk);
@@ -1202,7 +1384,7 @@ public class ChunkManager {
                 skyArrays.toArray(new byte[0][]),
                 blockArrays.toArray(new byte[0][])));
 
-        } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_13)) {
+        } else if (bucket >= BUCKET_V393) { // 1.13+
             // v393: same wire structure as v109 but with 1.13 global block state IDs,
             // 14-bit global palette, and int[256] biomes
             AlphaChunk.V109ChunkData v393Data = chunk.serializeForV393Protocol();
@@ -1212,19 +1394,18 @@ public class ChunkManager {
                 v393Data.getRawData(),
                 true // writeBlockEntityCount (always for 1.9.4+)
             ));
-        } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_9)) {
+        } else if (bucket >= BUCKET_V109) { // 1.9+ (buckets 6-7)
             // v109: paletted sections, VarInt primaryBitMask
             // v110 (1.9.4) adds block entity count at end; v107-v109 do not
             AlphaChunk.V109ChunkData v109Data = chunk.serializeForV109Protocol();
-            boolean writeBlockEntityCount = player.getProtocolVersion()
-                    .isAtLeast(ProtocolVersion.RELEASE_1_9_4);
+            boolean writeBlockEntityCount = (bucket >= BUCKET_V110); // 1.9.4+
             collectedPackets.add(new MapChunkPacketV109(
                 chunk.getXPos(), chunk.getZPos(), true,
                 v109Data.getPrimaryBitMask(),
                 v109Data.getRawData(),
                 writeBlockEntityCount
             ));
-        } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+        } else if (bucket >= BUCKET_V47) { // 1.8+
             // v47: ushort blockStates, raw (uncompressed), VarInt data size
             AlphaChunk.V47ChunkData v47Data = chunk.serializeForV47Protocol();
             collectedPackets.add(new MapChunkPacketV47(
@@ -1232,7 +1413,7 @@ public class ChunkManager {
                 v47Data.getPrimaryBitMask() & 0xFFFF,
                 v47Data.getRawData()
             ));
-        } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
+        } else if (bucket >= BUCKET_V39) { // 1.3.1+
             // v39+: no PreChunk, use MapChunkPacketV39 (no unused int)
             try {
                 AlphaChunk.V28ChunkData v28Data = chunk.serializeForV28Protocol();
@@ -1243,9 +1424,9 @@ public class ChunkManager {
                 ));
             } catch (IOException e) {
                 System.err.println("Failed to serialize v39 chunk (" + chunk.getXPos() + ", " + chunk.getZPos()
-                    + ") for player " + player.getUsername() + ": " + e.getMessage());
+                    + ") bucket " + bucket + ": " + e.getMessage());
             }
-        } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_2_1)) {
+        } else if (bucket >= BUCKET_V28) { // 1.2.1+
             // v28/v29: PreChunk required + section-based chunk format with unused int
             collectedPackets.add(new PreChunkPacket(chunk.getXPos(), chunk.getZPos(), true));
             try {
@@ -1257,7 +1438,7 @@ public class ChunkManager {
                 ));
             } catch (IOException e) {
                 System.err.println("Failed to serialize v28 chunk (" + chunk.getXPos() + ", " + chunk.getZPos()
-                    + ") for player " + player.getUsername() + ": " + e.getMessage());
+                    + ") bucket " + bucket + ": " + e.getMessage());
             }
         } else {
             // Pre-v28: PreChunk required + flat chunk format
@@ -1275,29 +1456,11 @@ public class ChunkManager {
                 ));
             } catch (IOException e) {
                 System.err.println("Failed to serialize chunk (" + chunk.getXPos() + ", " + chunk.getZPos()
-                    + ") for player " + player.getUsername() + ": " + e.getMessage());
+                    + ") bucket " + bucket + ": " + e.getMessage());
             }
         }
 
-        // Cache the built packets and send them.
-        // Simple eviction: clear oldest half when the cache is full.
-        if (!collectedPackets.isEmpty()) {
-            if (chunkPacketCache.size() >= MAX_CACHE_SIZE) {
-                // Evict ~half of entries to make room for new chunks.
-                // ConcurrentHashMap iteration order is arbitrary, which
-                // provides roughly random eviction — good enough for a cache.
-                int toEvict = MAX_CACHE_SIZE / 2;
-                Iterator<Long> cacheIt = chunkPacketCache.keySet().iterator();
-                while (cacheIt.hasNext() && toEvict-- > 0) {
-                    cacheIt.next();
-                    cacheIt.remove();
-                }
-            }
-            chunkPacketCache.put(key, collectedPackets.toArray(new Packet[0]));
-        }
-        for (Packet p : collectedPackets) {
-            player.writePacket(p);
-        }
+        return collectedPackets.toArray(new Packet[0]);
     }
 
     /**
@@ -1344,12 +1507,20 @@ public class ChunkManager {
     private void unloadChunk(ChunkCoord coord) {
         AlphaChunk chunk = loadedChunks.remove(coord);
         invalidateChunkCache(coord.getX(), coord.getZ());
+        // Update ChunkHolder lifecycle
+        ChunkHolder holder = chunkHolders.remove(coord);
+        if (holder != null) holder.setStatus(ChunkStatus.UNLOADING);
         if (chunk != null && dirtyChunks.remove(coord)) {
-            try {
-                AlphaLevelFormat.saveChunk(worldDir, chunk);
-            } catch (IOException e) {
-                System.err.println("Failed to save chunk " + coord + " during unload: " + e.getMessage());
+            AlphaLevelFormat.SaveTask saveTask;
+            try (LockToken lock = chunkLocks.acquire(coord, Usage.SAVE)) {
+                saveTask = AlphaLevelFormat.prepareSave(worldDir, chunk);
             }
+            ioThread.submitSave(coord, saveTask).whenComplete((v, ex) -> {
+                if (ex != null) {
+                    System.err.println("Failed to save chunk " + coord + " during unload: " + ex.getMessage());
+                }
+                ioThread.completeSave(coord);
+            });
         }
     }
 

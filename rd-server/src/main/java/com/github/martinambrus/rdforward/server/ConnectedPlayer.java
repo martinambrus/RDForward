@@ -50,6 +50,7 @@ public class ConnectedPlayer {
     private volatile long rttMillis = 0;
     private volatile long keepAliveSentNanos = 0;
     private volatile long lastKeepAliveResponseTime = System.currentTimeMillis();
+    private volatile int lastRttTier = 0;
 
     // Delta compression — last broadcast position (fixed-point)
     private volatile short lastBroadcastX;
@@ -61,6 +62,9 @@ public class ConnectedPlayer {
 
     // RTT-based entity update throttling
     private volatile int entityUpdateThrottleCounter = 0;
+
+    // Adaptive chunk send rate (EMA, alpha=0.1). Starts at 4 chunks/tick.
+    private volatile double chunkSendRate = 4.0;
 
     public ConnectedPlayer(byte playerId, String username, String uuid, Channel channel, ProtocolVersion protocolVersion) {
         this.playerId = playerId;
@@ -203,11 +207,25 @@ public class ConnectedPlayer {
     /**
      * Update RTT using exponential moving average (weight 7/8 old, 1/8 new).
      * Call with the nanoTime recorded when the keep-alive was sent.
+     * Logs tier transitions for observability.
      */
     public void updateRtt(long sentNanos) {
         long measured = (System.nanoTime() - sentNanos) / 1_000_000;
         if (measured < 0) measured = 0;
         rttMillis = (rttMillis == 0) ? measured : (rttMillis * 7 + measured) / 8;
+
+        int newTier = getRttTier();
+        int oldTier = lastRttTier;
+        if (newTier != oldTier) {
+            lastRttTier = newTier;
+            if (newTier > oldTier) {
+                System.out.println("[RTT] " + username + " degraded to tier " + newTier
+                        + " (rtt=" + rttMillis + "ms)");
+            } else {
+                System.out.println("[RTT] " + username + " recovered to tier " + newTier
+                        + " (rtt=" + rttMillis + "ms)");
+            }
+        }
     }
 
     public long getRttMillis() { return rttMillis; }
@@ -221,6 +239,30 @@ public class ConnectedPlayer {
         if (rtt >= 500) return 2;
         if (rtt >= 150) return 1;
         return 0;
+    }
+
+    // --- Adaptive chunk send rate ---
+
+    /**
+     * Get the chunk send budget for this tick based on RTT tier and EMA rate.
+     * Tier 0 (normal): up to 8, driven by EMA.
+     * Tier 1 (degraded): half the EMA, minimum 1.
+     * Tier 2 (critical): 0 (skip sending).
+     */
+    public int getChunkSendBudget() {
+        int tier = getRttTier();
+        if (tier >= 2) return 0;
+        int ema = (int) chunkSendRate;
+        if (tier == 1) return Math.max(1, ema / 2);
+        return Math.min(8, ema);
+    }
+
+    /**
+     * Update the chunk send rate EMA based on how many chunks were actually
+     * sent this tick. Alpha=0.1 for smooth adaptation.
+     */
+    public void updateChunkSendRate(int sentThisTick) {
+        chunkSendRate = chunkSendRate * 0.9 + sentThisTick * 0.1;
     }
 
     // --- Delta compression (last broadcast position) ---

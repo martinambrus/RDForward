@@ -23,9 +23,6 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
@@ -61,12 +58,12 @@ public class ServerWorld {
     /** Read-write lock replacing synchronized for block access. */
     private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
 
-    /** Single-thread executor for async world and player saves. */
-    private final ExecutorService saveExecutor = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "RDForward-WorldSave");
-        t.setDaemon(true);
-        return t;
-    });
+    /**
+     * Shared I/O thread for async world and player saves.
+     * Set via {@link #setIOThread(ChunkIOThread)} before the tick loop starts.
+     * When null (e.g. in unit tests), saves fall back to synchronous execution.
+     */
+    private volatile ChunkIOThread ioThread;
 
     // === Day/night cycle and weather ===
     private volatile long worldTime = 6000; // 0=dawn, 6000=noon, 12000=sunset, 18000=midnight
@@ -82,6 +79,11 @@ public class ServerWorld {
     /** In-memory cache of all known player positions (online + disconnected). */
     private final ConcurrentHashMap<String, short[]> playerPositionCache =
             new ConcurrentHashMap<>();
+
+    /** Set the shared I/O thread for async saves. Call before tick loop starts. */
+    public void setIOThread(ChunkIOThread ioThread) {
+        this.ioThread = ioThread;
+    }
 
     public ServerWorld(int width, int height, int depth) {
         this(width, height, depth, null);
@@ -327,7 +329,13 @@ public class ServerWorld {
         } finally {
             rwLock.readLock().unlock();
         }
-        saveExecutor.submit(() -> writeSnapshot(snapshot));
+        ChunkIOThread io = this.ioThread;
+        if (io != null) {
+            io.submitWrite(() -> writeSnapshot(snapshot));
+        } else {
+            // Fallback for unit tests or early startup
+            writeSnapshot(snapshot);
+        }
     }
 
     /** Write a block-array snapshot to disk via temp file + atomic rename. */
@@ -365,7 +373,12 @@ public class ServerWorld {
         gatherPlayerPositions(players);
         if (playerPositionCache.isEmpty()) return;
         Map<String, short[]> snapshot = new HashMap<>(playerPositionCache);
-        saveExecutor.submit(() -> writePlayerSnapshot(snapshot));
+        ChunkIOThread io = this.ioThread;
+        if (io != null) {
+            io.submitWrite(() -> writePlayerSnapshot(snapshot));
+        } else {
+            writePlayerSnapshot(snapshot);
+        }
     }
 
     /** Write player position snapshot to disk via temp file + atomic rename. */
@@ -398,22 +411,6 @@ public class ServerWorld {
         System.out.println("Saved " + snapshot.size() + " player position(s) to " + playersFile);
     }
 
-    /**
-     * Shutdown the async save executor. Waits for in-flight saves to complete.
-     * Call before final synchronous save at server shutdown.
-     */
-    public void shutdownSaveExecutor() {
-        saveExecutor.shutdown();
-        try {
-            if (!saveExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
-                System.err.println("[ServerWorld] Forcing shutdown of save executor");
-                saveExecutor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            saveExecutor.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-    }
 
     private int blockIndex(int x, int y, int z) {
         return (y * depth + z) * width + x;
