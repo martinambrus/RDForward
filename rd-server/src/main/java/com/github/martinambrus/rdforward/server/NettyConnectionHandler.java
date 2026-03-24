@@ -970,115 +970,26 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                     spawnX, spawnY, spawnZ, alphaSpawnYaw, spawnPitch, false));
         }
 
-        // Send existing players — for 1.8+, PlayerListItem ADD must precede SpawnPlayer
-        // because the client resolves player name from tab list by UUID.
-        for (ConnectedPlayer existing : playerManager.getAllPlayers()) {
-            if (existing != player) {
-                int existingEntityId = existing.getPlayerId() + 1;
-                int alphaYaw = (existing.getYaw() + 128) & 0xFF;
-                int pitch = existing.getPitch() & 0xFF;
-                String existingUuid = existing.getUuid();
-
-                if (isV109) {
-                    // 1.9: PlayerListItem ADD before SpawnPlayer (double coords)
-                    double ex = existing.getX() / 32.0;
-                    double ey = (existing.getY() - PLAYER_EYE_HEIGHT_FIXED) / 32.0;
-                    double ez = existing.getZ() / 32.0;
-                    // 1.19.3+: PlayerInfoUpdate replaces PlayerListItem
-                    // 1.19+: PlayerListItem ADD gains Optional ProfilePublicKey
-                    if (isV761) {
-                        ctx.writeAndFlush(NettyPlayerInfoUpdatePacketV761.addPlayer(
-                                existingUuid, existing.getUsername(), 1, 0));
-                    } else {
-                        ctx.writeAndFlush(isV759
-                                ? NettyPlayerListItemPacketV759.addPlayer(
-                                        existingUuid, existing.getUsername(), 1, 0)
-                                : NettyPlayerListItemPacketV47.addPlayer(
-                                        existingUuid, existing.getUsername(), 1, 0));
-                    }
-                    // 1.21.5: lingering_potion inserted (player: 147 -> 148)
-                    // 1.21.4: creaking_transient removed (player: 148 -> 147)
-                    // 1.21.2: entity type IDs shifted (player: 128 -> 148)
-                    // 1.20.2: SpawnPlayer removed, use generic SpawnEntity
-                    // 1.20.5: entity type IDs shifted (player: 122 -> 128)
-                    // 1.15 removed entity metadata entirely from SpawnPlayer
-                    // 1.14 used 0xFF metadata terminator (empty metadata)
-                    if (isV774) {
-                        ctx.writeAndFlush(new NettySpawnEntityPacketV774(
-                                existingEntityId, existingUuid, ex, ey, ez,
-                                alphaYaw, pitch));
-                    } else if (isV773) {
-                        ctx.writeAndFlush(new NettySpawnEntityPacketV773(
-                                existingEntityId, existingUuid, ex, ey, ez,
-                                alphaYaw, pitch));
-                    } else if (isV771) {
-                        ctx.writeAndFlush(new NettySpawnEntityPacketV771(
-                                existingEntityId, existingUuid, ex, ey, ez,
-                                alphaYaw, pitch));
-                    } else if (isV770) {
-                        ctx.writeAndFlush(new NettySpawnEntityPacketV770(
-                                existingEntityId, existingUuid, ex, ey, ez,
-                                alphaYaw, pitch));
-                    } else if (isV769) {
-                        ctx.writeAndFlush(new NettySpawnEntityPacketV769(
-                                existingEntityId, existingUuid, ex, ey, ez,
-                                alphaYaw, pitch));
-                    } else if (isV768) {
-                        ctx.writeAndFlush(new NettySpawnEntityPacketV768(
-                                existingEntityId, existingUuid, ex, ey, ez,
-                                alphaYaw, pitch));
-                    } else if (isV766) {
-                        ctx.writeAndFlush(new NettySpawnEntityPacketV766(
-                                existingEntityId, existingUuid, ex, ey, ez,
-                                alphaYaw, pitch));
-                    } else if (isV764) {
-                        ctx.writeAndFlush(new NettySpawnEntityPacketV764(
-                                existingEntityId, existingUuid, ex, ey, ez,
-                                alphaYaw, pitch));
-                    } else if (isV573) {
-                        ctx.writeAndFlush(new NettySpawnPlayerPacketV573(
-                                existingEntityId, existingUuid, ex, ey, ez,
-                                alphaYaw, pitch));
-                    } else if (isV477) {
-                        ctx.writeAndFlush(new NettySpawnPlayerPacketV477(
-                                existingEntityId, existingUuid, ex, ey, ez,
-                                alphaYaw, pitch));
-                    } else {
-                        ctx.writeAndFlush(new NettySpawnPlayerPacketV109(
-                                existingEntityId, existingUuid, ex, ey, ez,
-                                alphaYaw, pitch));
-                    }
-                    // SpawnPlayer (pre-1.20.2) doesn't set head yaw — send EntityHeadRotation
-                    // so the client doesn't default head to 0. V764+ SpawnEntity includes headYaw.
-                    if (!isV764) {
-                        ctx.writeAndFlush(new EntityHeadRotationPacket(existingEntityId, alphaYaw));
-                    }
-                } else if (isV47) {
-                    // 1.8: PlayerListItem ADD before SpawnPlayer (fixed-point coords)
-                    int existingFeetY = (int) existing.getY() - PLAYER_EYE_HEIGHT_FIXED;
-                    ctx.writeAndFlush(NettyPlayerListItemPacketV47.addPlayer(
-                            existingUuid, existing.getUsername(), 1, 0));
-                    ctx.writeAndFlush(new NettySpawnPlayerPacketV47(
-                            existingEntityId, existingUuid,
-                            (int) existing.getX(), existingFeetY, (int) existing.getZ(),
-                            alphaYaw, pitch, (short) 0));
-                    ctx.writeAndFlush(new EntityHeadRotationPacket(existingEntityId, alphaYaw));
-                } else {
-                    int existingFeetY = (int) existing.getY() - PLAYER_EYE_HEIGHT_FIXED;
-                    Packet spawnPacket = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_7_6)
-                            ? new NettySpawnPlayerPacketV5(
-                                    existingEntityId, existingUuid, existing.getUsername(),
-                                    (int) existing.getX(), existingFeetY, (int) existing.getZ(),
-                                    alphaYaw, pitch, (short) 0)
-                            : new NettySpawnPlayerPacket(
-                                    existingEntityId, existingUuid, existing.getUsername(),
-                                    (int) existing.getX(), existingFeetY, (int) existing.getZ(),
-                                    alphaYaw, pitch, (short) 0);
-                    ctx.writeAndFlush(spawnPacket);
-                    ctx.writeAndFlush(new EntityHeadRotationPacket(existingEntityId, alphaYaw));
-                }
-            }
-        }
+        // Send existing players — deferred by 1 second so the tick loop can deliver
+        // async chunks first. Clients (especially 1.8) silently discard SpawnPlayer
+        // packets for entities in chunks that haven't been loaded yet. The tick loop
+        // delivers ~4-8 chunks per tick (20 TPS), so 1 second covers ~80-160 chunks,
+        // more than enough for the initial 121.
+        // Capture version flags for the scheduled lambda.
+        final boolean fIsV109 = isV109, fIsV47 = isV47;
+        final boolean fIsV477 = isV477, fIsV573 = isV573, fIsV764 = isV764;
+        final boolean fIsV766 = isV766, fIsV768 = isV768, fIsV769 = isV769;
+        final boolean fIsV770 = isV770, fIsV771 = isV771, fIsV773 = isV773, fIsV774 = isV774;
+        final boolean fIsV759 = isV759, fIsV761 = isV761;
+        final ConnectedPlayer fPlayer = player;
+        final ProtocolVersion fClientVersion = clientVersion;
+        ctx.channel().eventLoop().schedule(() -> {
+            if (!ctx.channel().isActive()) return;
+            spawnExistingPlayersForNetty(ctx, fPlayer, fClientVersion,
+                    fIsV774, fIsV773, fIsV771, fIsV770, fIsV769, fIsV768,
+                    fIsV766, fIsV764, fIsV573, fIsV477, fIsV109, fIsV47,
+                    fIsV761, fIsV759);
+        }, 1, TimeUnit.SECONDS);
 
         // Configure translator with client version BEFORE broadcasts —
         // broadcastPlayerListAdd sends to ALL players including this one,
@@ -1088,8 +999,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         if (translator != null) {
             translator.setClientVersion(clientVersion);
         }
-        // Broadcast new player spawn to everyone else
-        // PlayerListItem ADD is broadcast before spawn (handled by translator for v47 clients)
+        // Broadcast new player spawn to everyone else (immediate — other clients have chunks)
         playerManager.broadcastPlayerListAdd(player);
         playerManager.broadcastPlayerSpawn(player);
 
@@ -1286,6 +1196,101 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 || packet instanceof ChunkBatchReceivedPacket
                 || packet instanceof NoOpPacket) {
             // Silently accept
+        }
+    }
+
+    /**
+     * Spawn existing players for a newly connected Netty client.
+     * Deferred from login to give the tick loop time to deliver async chunks,
+     * preventing the client from silently discarding entities in unloaded chunks.
+     */
+    private void spawnExistingPlayersForNetty(ChannelHandlerContext ctx, ConnectedPlayer self,
+            ProtocolVersion clientVer,
+            boolean isV774, boolean isV773, boolean isV771, boolean isV770,
+            boolean isV769, boolean isV768, boolean isV766, boolean isV764,
+            boolean isV573, boolean isV477, boolean isV109, boolean isV47,
+            boolean isV761, boolean isV759) {
+        for (ConnectedPlayer existing : playerManager.getAllPlayers()) {
+            if (existing == self) continue;
+            int existingEntityId = existing.getPlayerId() + 1;
+            int alphaYaw = (existing.getYaw() + 128) & 0xFF;
+            int pitch = existing.getPitch() & 0xFF;
+            String existingUuid = existing.getUuid();
+
+            if (isV109) {
+                double ex = existing.getX() / 32.0;
+                double ey = (existing.getY() - PLAYER_EYE_HEIGHT_FIXED) / 32.0;
+                double ez = existing.getZ() / 32.0;
+                if (isV761) {
+                    ctx.writeAndFlush(NettyPlayerInfoUpdatePacketV761.addPlayer(
+                            existingUuid, existing.getUsername(), 1, 0));
+                } else {
+                    ctx.writeAndFlush(isV759
+                            ? NettyPlayerListItemPacketV759.addPlayer(
+                                    existingUuid, existing.getUsername(), 1, 0)
+                            : NettyPlayerListItemPacketV47.addPlayer(
+                                    existingUuid, existing.getUsername(), 1, 0));
+                }
+                if (isV774) {
+                    ctx.writeAndFlush(new NettySpawnEntityPacketV774(
+                            existingEntityId, existingUuid, ex, ey, ez, alphaYaw, pitch));
+                } else if (isV773) {
+                    ctx.writeAndFlush(new NettySpawnEntityPacketV773(
+                            existingEntityId, existingUuid, ex, ey, ez, alphaYaw, pitch));
+                } else if (isV771) {
+                    ctx.writeAndFlush(new NettySpawnEntityPacketV771(
+                            existingEntityId, existingUuid, ex, ey, ez, alphaYaw, pitch));
+                } else if (isV770) {
+                    ctx.writeAndFlush(new NettySpawnEntityPacketV770(
+                            existingEntityId, existingUuid, ex, ey, ez, alphaYaw, pitch));
+                } else if (isV769) {
+                    ctx.writeAndFlush(new NettySpawnEntityPacketV769(
+                            existingEntityId, existingUuid, ex, ey, ez, alphaYaw, pitch));
+                } else if (isV768) {
+                    ctx.writeAndFlush(new NettySpawnEntityPacketV768(
+                            existingEntityId, existingUuid, ex, ey, ez, alphaYaw, pitch));
+                } else if (isV766) {
+                    ctx.writeAndFlush(new NettySpawnEntityPacketV766(
+                            existingEntityId, existingUuid, ex, ey, ez, alphaYaw, pitch));
+                } else if (isV764) {
+                    ctx.writeAndFlush(new NettySpawnEntityPacketV764(
+                            existingEntityId, existingUuid, ex, ey, ez, alphaYaw, pitch));
+                } else if (isV573) {
+                    ctx.writeAndFlush(new NettySpawnPlayerPacketV573(
+                            existingEntityId, existingUuid, ex, ey, ez, alphaYaw, pitch));
+                } else if (isV477) {
+                    ctx.writeAndFlush(new NettySpawnPlayerPacketV477(
+                            existingEntityId, existingUuid, ex, ey, ez, alphaYaw, pitch));
+                } else {
+                    ctx.writeAndFlush(new NettySpawnPlayerPacketV109(
+                            existingEntityId, existingUuid, ex, ey, ez, alphaYaw, pitch));
+                }
+                if (!isV764) {
+                    ctx.writeAndFlush(new com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket(existingEntityId, alphaYaw));
+                }
+            } else if (isV47) {
+                int existingFeetY = (int) existing.getY() - PLAYER_EYE_HEIGHT_FIXED;
+                ctx.writeAndFlush(NettyPlayerListItemPacketV47.addPlayer(
+                        existingUuid, existing.getUsername(), 1, 0));
+                ctx.writeAndFlush(new NettySpawnPlayerPacketV47(
+                        existingEntityId, existingUuid,
+                        (int) existing.getX(), existingFeetY, (int) existing.getZ(),
+                        alphaYaw, pitch, (short) 0));
+                ctx.writeAndFlush(new com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket(existingEntityId, alphaYaw));
+            } else {
+                int existingFeetY = (int) existing.getY() - PLAYER_EYE_HEIGHT_FIXED;
+                Packet spawnPacket = clientVer.isAtLeast(ProtocolVersion.RELEASE_1_7_6)
+                        ? new NettySpawnPlayerPacketV5(
+                                existingEntityId, existingUuid, existing.getUsername(),
+                                (int) existing.getX(), existingFeetY, (int) existing.getZ(),
+                                alphaYaw, pitch, (short) 0)
+                        : new NettySpawnPlayerPacket(
+                                existingEntityId, existingUuid, existing.getUsername(),
+                                (int) existing.getX(), existingFeetY, (int) existing.getZ(),
+                                alphaYaw, pitch, (short) 0);
+                ctx.writeAndFlush(spawnPacket);
+                ctx.writeAndFlush(new com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket(existingEntityId, alphaYaw));
+            }
         }
     }
 
