@@ -228,7 +228,7 @@ public class NettyPacketRegistry {
         registerS2CReverse(EntityLookPacketV47.class, 0x16);
         registerS2CReverse(EntityLookAndMovePacketV47.class, 0x17);
         registerS2CReverse(EntityTeleportPacketV47.class, 0x18);
-        registerS2CReverse(EntityHeadRotationPacket.class, 0x19); // Set Head Rotation
+        registerS2CReverse(com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket.class, 0x19); // Set Head Rotation
         registerS2CReverse(NettyEntityPropertiesPacketV47.class, 0x20);
         registerS2CReverse(MapChunkPacketV47.class, 0x21);
         registerS2CReverse(NettyBlockChangePacketV47.class, 0x23);
@@ -479,7 +479,7 @@ public class NettyPacketRegistry {
             registerV109S2CReverse(PlayerAbilitiesPacketV73.class, 0x2B);
             registerV109S2CReverse(NettyPlayerListItemPacketV47.class, 0x2D);
             registerV109S2CReverse(NettyDestroyEntitiesPacketV47.class, 0x30);
-            registerV109S2CReverse(EntityHeadRotationPacket.class, 0x34);
+            registerV109S2CReverse(com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket.class, 0x34);
             registerV109S2CReverse(SpawnPositionPacketV47.class, 0x43);
             registerV109S2CReverse(NettyEntityPropertiesPacketV47.class, 0x4B);
             registerV109S2CReverse(NettyTimeUpdatePacket.class, 0x44);
@@ -647,7 +647,7 @@ public class NettyPacketRegistry {
             registerV335S2CReverse(EntityRelativeMovePacketV109.class, 0x26);  // was 0x25
             registerV335S2CReverse(EntityLookAndMovePacketV109.class, 0x27);   // was 0x26
             registerV335S2CReverse(EntityLookPacketV47.class, 0x28);           // was 0x27
-            registerV335S2CReverse(EntityHeadRotationPacket.class, 0x35);
+            registerV335S2CReverse(com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket.class, 0x35);
             registerV335S2CReverse(NettyDestroyEntitiesPacketV47.class, 0x31); // was 0x30
             registerV335S2CReverse(SpawnPositionPacketV47.class, 0x45);        // was 0x43
             registerV335S2CReverse(EntityTeleportPacketV109.class, 0x4B);      // was 0x49
@@ -718,7 +718,7 @@ public class NettyPacketRegistry {
             registerV338S2CReverse(PlayerAbilitiesPacketV73.class, 0x2C);          // was 0x2B
             registerV338S2CReverse(NettyPlayerListItemPacketV47.class, 0x2E);      // was 0x2D
             registerV338S2CReverse(NettyDestroyEntitiesPacketV47.class, 0x32);     // was 0x31
-            registerV338S2CReverse(EntityHeadRotationPacket.class, 0x36);       // was 0x35
+            registerV338S2CReverse(com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket.class, 0x36);       // was 0x35
             registerV338S2CReverse(SpawnPositionPacketV47.class, 0x46);            // was 0x45
             registerV338S2CReverse(EntityTeleportPacketV109.class, 0x4C);          // was 0x4B
             registerV338S2CReverse(NettyEntityPropertiesPacketV47.class, 0x4E);    // was 0x4D
@@ -853,7 +853,7 @@ public class NettyPacketRegistry {
             registerV393S2CReverse(EntityRelativeMovePacketV109.class, 0x28);
             registerV393S2CReverse(EntityLookAndMovePacketV109.class, 0x29);
             registerV393S2CReverse(EntityLookPacketV47.class, 0x2A);
-            registerV393S2CReverse(EntityHeadRotationPacket.class, 0x39);
+            registerV393S2CReverse(com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket.class, 0x39);
             registerV393S2CReverse(PlayerAbilitiesPacketV73.class, 0x2E);
             registerV393S2CReverse(NettyPlayerListItemPacketV47.class, 0x30);
             registerV393S2CReverse(NettyPlayerPositionS2CPacketV109.class, 0x32);
@@ -979,7 +979,7 @@ public class NettyPacketRegistry {
             registerV477S2CReverse(EntityRelativeMovePacketV109.class, 0x28);
             registerV477S2CReverse(EntityLookAndMovePacketV109.class, 0x29);
             registerV477S2CReverse(EntityLookPacketV47.class, 0x2A);
-            registerV477S2CReverse(EntityHeadRotationPacket.class, 0x3B);
+            registerV477S2CReverse(com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket.class, 0x3B);
             registerV477S2CReverse(PlayerAbilitiesPacketV73.class, 0x31);
             registerV477S2CReverse(NettyPlayerListItemPacketV47.class, 0x33);
             registerV477S2CReverse(NettyPlayerPositionS2CPacketV109.class, 0x35);
@@ -1085,7 +1085,7 @@ public class NettyPacketRegistry {
             registerV573S2CReverse(EntityRelativeMovePacketV109.class, 0x29);
             registerV573S2CReverse(EntityLookAndMovePacketV109.class, 0x2A);
             registerV573S2CReverse(EntityLookPacketV47.class, 0x2B);
-            registerV573S2CReverse(EntityHeadRotationPacket.class, 0x3C);
+            registerV573S2CReverse(com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket.class, 0x3C);
             registerV573S2CReverse(PlayerAbilitiesPacketV73.class, 0x32);
             registerV573S2CReverse(NettyPlayerListItemPacketV47.class, 0x34);
             registerV573S2CReverse(NettyPlayerPositionS2CPacketV109.class, 0x36);
@@ -1194,7 +1194,7 @@ public class NettyPacketRegistry {
             registerV735S2CReverse(EntityRelativeMovePacketV109.class, 0x28);
             registerV735S2CReverse(EntityLookAndMovePacketV109.class, 0x29);
             registerV735S2CReverse(EntityLookPacketV47.class, 0x2A);
-            registerV735S2CReverse(EntityHeadRotationPacket.class, 0x3B);
+            registerV735S2CReverse(com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket.class, 0x3B);
             registerV735S2CReverse(PlayerAbilitiesPacketV73.class, 0x31);
             registerV735S2CReverse(NettyPlayerListItemPacketV47.class, 0x33);
             registerV735S2CReverse(NettyPlayerPositionS2CPacketV109.class, 0x35);
@@ -1367,7 +1367,7 @@ public class NettyPacketRegistry {
             registerV751S2CReverse(EntityRelativeMovePacketV109.class, 0x27);
             registerV751S2CReverse(EntityLookAndMovePacketV109.class, 0x28);
             registerV751S2CReverse(EntityLookPacketV47.class, 0x29);
-            registerV751S2CReverse(EntityHeadRotationPacket.class, 0x3A);
+            registerV751S2CReverse(com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket.class, 0x3A);
             registerV751S2CReverse(PlayerAbilitiesPacketV73.class, 0x30);
             registerV751S2CReverse(NettyPlayerListItemPacketV47.class, 0x32);
             registerV751S2CReverse(NettyPlayerPositionS2CPacketV109.class, 0x34);
@@ -1509,7 +1509,7 @@ public class NettyPacketRegistry {
             registerV755S2CReverse(EntityRelativeMovePacketV109.class, 0x29);
             registerV755S2CReverse(EntityLookAndMovePacketV109.class, 0x2A);
             registerV755S2CReverse(EntityLookPacketV47.class, 0x2B);
-            registerV755S2CReverse(EntityHeadRotationPacket.class, 0x3E);
+            registerV755S2CReverse(com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket.class, 0x3E);
             registerV755S2CReverse(PlayerAbilitiesPacketV73.class, 0x32);
             registerV755S2CReverse(NettyPlayerListItemPacketV47.class, 0x36);
             registerV755S2CReverse(NettyPlayerPositionS2CPacketV755.class, 0x38);
@@ -1752,7 +1752,7 @@ public class NettyPacketRegistry {
             registerV759S2CReverse(EntityRelativeMovePacketV109.class, 0x26);
             registerV759S2CReverse(EntityLookAndMovePacketV109.class, 0x27);
             registerV759S2CReverse(EntityLookPacketV47.class, 0x28);
-            registerV759S2CReverse(EntityHeadRotationPacket.class, 0x3C);
+            registerV759S2CReverse(com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket.class, 0x3C);
             registerV759S2CReverse(PlayerAbilitiesPacketV73.class, 0x2F);
             registerV759S2CReverse(NettyPlayerListItemPacketV759.class, 0x34);
             registerV759S2CReverse(NettyPlayerPositionS2CPacketV755.class, 0x36);
@@ -1923,7 +1923,7 @@ public class NettyPacketRegistry {
             registerV760S2CReverse(EntityRelativeMovePacketV109.class, 0x28);
             registerV760S2CReverse(EntityLookAndMovePacketV109.class, 0x29);
             registerV760S2CReverse(EntityLookPacketV47.class, 0x2A);
-            registerV760S2CReverse(EntityHeadRotationPacket.class, 0x3F);
+            registerV760S2CReverse(com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket.class, 0x3F);
             registerV760S2CReverse(PlayerAbilitiesPacketV73.class, 0x31);
             registerV760S2CReverse(NettyPlayerListItemPacketV759.class, 0x37);
             registerV760S2CReverse(NettyPlayerPositionS2CPacketV755.class, 0x39);
@@ -2097,7 +2097,7 @@ public class NettyPacketRegistry {
             registerV761S2CReverse(EntityRelativeMovePacketV109.class, 0x27);
             registerV761S2CReverse(EntityLookAndMovePacketV109.class, 0x28);
             registerV761S2CReverse(EntityLookPacketV47.class, 0x29);
-            registerV761S2CReverse(EntityHeadRotationPacket.class, 0x3E);
+            registerV761S2CReverse(com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket.class, 0x3E);
             registerV761S2CReverse(PlayerAbilitiesPacketV73.class, 0x30);
             registerV761S2CReverse(NettyPlayerInfoRemovePacketV761.class, 0x35);
             registerV761S2CReverse(NettyPlayerInfoUpdatePacketV761.class, 0x36);
@@ -2283,7 +2283,7 @@ public class NettyPacketRegistry {
             registerV762S2CReverse(EntityRelativeMovePacketV109.class, 0x2B);
             registerV762S2CReverse(EntityLookAndMovePacketV109.class, 0x2C);
             registerV762S2CReverse(EntityLookPacketV47.class, 0x2D);
-            registerV762S2CReverse(EntityHeadRotationPacket.class, 0x42);
+            registerV762S2CReverse(com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket.class, 0x42);
             registerV762S2CReverse(PlayerAbilitiesPacketV73.class, 0x34);
             registerV762S2CReverse(NettyPlayerInfoRemovePacketV761.class, 0x39);
             registerV762S2CReverse(NettyPlayerInfoUpdatePacketV761.class, 0x3A);
@@ -2545,7 +2545,7 @@ public class NettyPacketRegistry {
             registerV764S2CReverse(EntityRelativeMovePacketV109.class, 0x2C);
             registerV764S2CReverse(EntityLookAndMovePacketV109.class, 0x2D);
             registerV764S2CReverse(EntityLookPacketV47.class, 0x2E);
-            registerV764S2CReverse(EntityHeadRotationPacket.class, 0x44);
+            registerV764S2CReverse(com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket.class, 0x44);
             registerV764S2CReverse(PlayerAbilitiesPacketV73.class, 0x36);
             registerV764S2CReverse(NettyPlayerInfoRemovePacketV761.class, 0x3B);
             registerV764S2CReverse(NettyPlayerInfoUpdatePacketV761.class, 0x3C);
@@ -2882,7 +2882,7 @@ public class NettyPacketRegistry {
             registerV766S2CReverse(EntityRelativeMovePacketV109.class, 0x2E);
             registerV766S2CReverse(EntityLookAndMovePacketV109.class, 0x2F);
             registerV766S2CReverse(EntityLookPacketV47.class, 0x30);
-            registerV766S2CReverse(EntityHeadRotationPacket.class, 0x48);
+            registerV766S2CReverse(com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket.class, 0x48);
             registerV766S2CReverse(PlayerAbilitiesPacketV73.class, 0x38);
             registerV766S2CReverse(NettyPlayerInfoRemovePacketV761.class, 0x3D);
             registerV766S2CReverse(NettyPlayerInfoUpdatePacketV761.class, 0x3E);
@@ -3096,7 +3096,7 @@ public class NettyPacketRegistry {
             registerV768S2CReverse(EntityRelativeMovePacketV109.class, 0x2F);
             registerV768S2CReverse(EntityLookAndMovePacketV109.class, 0x30);
             registerV768S2CReverse(EntityLookPacketV47.class, 0x32);
-            registerV768S2CReverse(EntityHeadRotationPacket.class, 0x4D);
+            registerV768S2CReverse(com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket.class, 0x4D);
             registerV768S2CReverse(PlayerAbilitiesPacketV73.class, 0x3A);
             registerV768S2CReverse(NettyPlayerInfoRemovePacketV761.class, 0x3F);
             registerV768S2CReverse(NettyPlayerInfoUpdatePacketV761.class, 0x40);
@@ -3395,7 +3395,7 @@ public class NettyPacketRegistry {
             registerV770S2CReverse(EntityRelativeMovePacketV109.class, 0x2E);
             registerV770S2CReverse(EntityLookAndMovePacketV109.class, 0x2F);
             registerV770S2CReverse(EntityLookPacketV47.class, 0x31);
-            registerV770S2CReverse(EntityHeadRotationPacket.class, 0x4C);
+            registerV770S2CReverse(com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket.class, 0x4C);
             registerV770S2CReverse(PlayerAbilitiesPacketV73.class, 0x39);
             registerV770S2CReverse(NettyPlayerInfoRemovePacketV761.class, 0x3E);
             registerV770S2CReverse(NettyPlayerInfoUpdatePacketV761.class, 0x3F);
@@ -3708,7 +3708,7 @@ public class NettyPacketRegistry {
             registerV773S2CReverse(EntityRelativeMovePacketV109.class, 0x33); // was 0x2E, +5
             registerV773S2CReverse(EntityLookAndMovePacketV109.class, 0x34); // was 0x2F, +5
             registerV773S2CReverse(EntityLookPacketV47.class, 0x36);         // was 0x31, +5
-            registerV773S2CReverse(EntityHeadRotationPacket.class, 0x51); // was 0x4C, +5
+            registerV773S2CReverse(com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket.class, 0x51); // was 0x4C, +5
             registerV773S2CReverse(PlayerAbilitiesPacketV73.class, 0x3E);    // was 0x39, +5
             registerV773S2CReverse(NettyPlayerInfoRemovePacketV761.class, 0x43); // was 0x3E, +5
             registerV773S2CReverse(NettyPlayerInfoUpdatePacketV761.class, 0x44); // was 0x3F, +5

@@ -54,7 +54,7 @@ banned-ips.txt
 ops.txt
 
 # World data (created by server or client)
-world/
+/world/
 **/level.dat
 
 # Root-level build artifacts
