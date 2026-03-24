@@ -3,6 +3,7 @@ package com.github.martinambrus.rdforward.server.mcpe;
 import com.github.martinambrus.rdforward.server.ServerWorld;
 
 import java.io.ByteArrayOutputStream;
+import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 
 /**
@@ -299,6 +300,10 @@ public class MCPEPacketCodecLegacy implements MCPEPacketCodec {
 
     /**
      * v17+ FullChunkDataPacket — zlib-compressed column data.
+     * Binary analysis of FullChunkDataPacket::read confirms: client decompresses first,
+     * then reads chunkX/chunkZ from the decompressed stream.
+     * Terrain format (from deserializeTerrain): blockIDs(32768) + metadata(16384)
+     * + skylight(16384) + blocklight(16384) + heightMap(256) + biomeColors(1024).
      */
     private void sendFullChunkDataV17(LegacyRakNetServer server, LegacyRakNetSession session,
                                       ServerWorld world, int chunkX, int chunkZ) {
@@ -350,6 +355,10 @@ public class MCPEPacketCodecLegacy implements MCPEPacketCodec {
 
         byte[] blockLight = new byte[16384];
 
+        // Biome IDs: 256 bytes (all plains = 1). This field sits between blockLight
+        // and biomeColors in the terrain stream. The client reads it into the heightMap
+        // struct field but recalcHeightmap() overwrites it immediately after, so the
+        // content doesn't affect rendering. PocketMine fills it with biome IDs.
         byte[] biomeIds = new byte[256];
         java.util.Arrays.fill(biomeIds, (byte) 1);
 
@@ -386,7 +395,8 @@ public class MCPEPacketCodecLegacy implements MCPEPacketCodec {
         byte[] compressed;
         try {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            DeflaterOutputStream dos = new DeflaterOutputStream(baos);
+            DeflaterOutputStream dos = new DeflaterOutputStream(baos,
+                    new Deflater(Deflater.DEFAULT_COMPRESSION));
             dos.write(uncompressed);
             dos.finish();
             dos.close();

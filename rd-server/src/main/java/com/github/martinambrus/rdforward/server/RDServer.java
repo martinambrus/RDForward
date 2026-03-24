@@ -457,6 +457,7 @@ public class RDServer {
                 .option(RakChannelOption.RAK_SUPPORTED_PROTOCOLS, new int[]{11})
                 .option(RakChannelOption.RAK_ADVERTISEMENT, initialPong.toByteBuf())
                 .childOption(RakChannelOption.RAK_PROTOCOL_VERSION, 11)
+                .childOption(RakChannelOption.RAK_SESSION_TIMEOUT, 30000L)
                 .childHandler(new BedrockServerInitializer() {
                     @Override
                     protected void initSession(BedrockServerSession session) {

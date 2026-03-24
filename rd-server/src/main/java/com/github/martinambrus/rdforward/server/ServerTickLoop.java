@@ -5,7 +5,9 @@ import com.github.martinambrus.rdforward.protocol.packet.classic.PingPacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
 
 import com.github.martinambrus.rdforward.server.api.ServerProperties;
+import com.github.martinambrus.rdforward.server.bedrock.BedrockSessionWrapper;
 import com.github.martinambrus.rdforward.server.event.ServerEvents;
+import org.cloudburstmc.protocol.bedrock.packet.NetworkStackLatencyPacket;
 
 import java.util.List;
 import java.util.concurrent.locks.LockSupport;
@@ -35,6 +37,7 @@ public class ServerTickLoop implements Runnable {
     private final int pingIntervalTicks; // Derived from keep-alive-interval config
     private static final int CHUNK_UPDATE_INTERVAL_TICKS = 5; // Every 250ms
     private static final int TIME_BROADCAST_INTERVAL_TICKS = 20; // Every 1 second
+    private static final int BEDROCK_PROBE_INTERVAL_TICKS = 100; // Every 5 seconds
     private static final int SAVE_INTERVAL_TICKS = 6000; // Every 5 minutes
     private static final int INCREMENTAL_SAVE_INTERVAL_TICKS = 100; // Every 5 seconds
 
@@ -131,6 +134,24 @@ public class ServerTickLoop implements Runnable {
         // Send keep-alive pings periodically
         if (tickCount % pingIntervalTicks == 0) {
             playerManager.broadcastWrite(new PingPacket());
+        }
+
+        // Bedrock clients need server-initiated NetworkStackLatencyPacket probes.
+        // The Classic PingPacket is dropped by ClassicToBedrockTranslator (RakNet
+        // handles connection-level keep-alive), but the Bedrock client's application
+        // layer times out without periodic server probes. Sent every 5 seconds,
+        // well within the 10-second default RakNet session timeout.
+        if (tickCount % BEDROCK_PROBE_INTERVAL_TICKS == 0) {
+            long timestamp = System.currentTimeMillis();
+            for (ConnectedPlayer player : playerManager.getAllPlayers()) {
+                BedrockSessionWrapper bsw = player.getBedrockSession();
+                if (bsw != null) {
+                    NetworkStackLatencyPacket probe = new NetworkStackLatencyPacket();
+                    probe.setTimestamp(timestamp);
+                    probe.setFromServer(true);
+                    bsw.sendDirect(probe);
+                }
+            }
         }
 
         // Broadcast time update periodically

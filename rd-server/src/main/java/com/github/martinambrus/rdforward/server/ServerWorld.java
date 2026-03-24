@@ -13,6 +13,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -242,7 +244,23 @@ public class ServerWorld {
      */
     public boolean load() {
         if (!saveFile.exists()) {
-            return false;
+            // Recover from a crash during save: if the .tmp file exists,
+            // the rename was interrupted after the old file was deleted.
+            File tmp = new File(saveFile.getPath() + ".tmp");
+            if (tmp.exists()) {
+                System.out.println("[ServerWorld] Recovering world from interrupted save (" + tmp.getName() + ")...");
+                try {
+                    Files.move(tmp.toPath(), saveFile.toPath(), StandardCopyOption.ATOMIC_MOVE);
+                } catch (IOException e) {
+                    // ATOMIC_MOVE may not be supported; fall back
+                    if (!tmp.renameTo(saveFile)) {
+                        System.err.println("[ServerWorld] Failed to recover " + tmp + ": " + e.getMessage());
+                        return false;
+                    }
+                }
+            } else {
+                return false;
+            }
         }
         try (DataInputStream dis = new DataInputStream(new GZIPInputStream(new FileInputStream(saveFile)))) {
             int savedWidth = dis.readInt();
@@ -353,12 +371,16 @@ public class ServerWorld {
             System.err.println("Failed to save world: " + e.getMessage());
             return;
         }
-        if (!tmp.renameTo(saveFile)) {
-            // renameTo can fail on some platforms; fall back to delete+rename
-            saveFile.delete();
-            if (!tmp.renameTo(saveFile)) {
+        try {
+            Files.move(tmp.toPath(), saveFile.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            // ATOMIC_MOVE not supported (e.g. cross-filesystem); try REPLACE_EXISTING alone
+            try {
+                Files.move(tmp.toPath(), saveFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException e2) {
                 dirty = true;
-                System.err.println("Failed to rename world save " + tmp + " -> " + saveFile);
+                System.err.println("Failed to rename world save " + tmp + " -> " + saveFile + ": " + e2.getMessage());
                 return;
             }
         }

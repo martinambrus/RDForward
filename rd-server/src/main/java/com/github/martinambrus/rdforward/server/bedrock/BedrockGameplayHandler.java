@@ -571,6 +571,15 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         mpp.setTeleportationCause(MovePlayerPacket.TeleportationCause.UNKNOWN);
         mpp.setOnGround(true);
         session.sendPacket(mpp);
+
+        // 4. Register entity position in the translator so that subsequent
+        //    delta movement packets (PositionOrientationUpdatePacket) can be
+        //    resolved to absolute positions. Without this, the translator
+        //    drops all delta updates because entityPositions has no entry.
+        sessionWrapper.getTranslator().registerEntityPosition(
+                existing.getPlayerId(),
+                existing.getX(), existing.getY(), existing.getZ(),
+                existing.getYaw() & 0xFF, existing.getPitch() & 0xFF);
     }
 
     /**
@@ -942,6 +951,13 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
             chunkManager.sendInitialChunks(player, spawnBlockX, spawnBlockZ);
         }
 
+        return PacketSignal.HANDLED;
+    }
+
+    @Override
+    public PacketSignal handle(NetworkStackLatencyPacket packet) {
+        // Application-level latency measurement — silently consume.
+        // RakNet handles connection-level keep-alive automatically.
         return PacketSignal.HANDLED;
     }
 

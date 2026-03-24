@@ -5,8 +5,11 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 
 import java.net.InetSocketAddress;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -54,6 +57,11 @@ public class LegacyRakNetSession {
 
     // Split packet reassembly: splitId -> (splitIndex -> data)
     private final Map<Integer, SplitAssembly> splitAssemblies = new HashMap<>();
+
+    // Sent frame buffer for NACK retransmission: seqNum -> raw frame bytes.
+    // ConcurrentHashMap because sends may come from TCP handler threads while
+    // ACK/NACK processing happens on the UDP event loop.
+    private final ConcurrentHashMap<Integer, byte[]> sentFrames = new ConcurrentHashMap<>();
 
     // MCPE protocol version (0 = unknown/pre-login, set to actual version during login)
     private int mcpeProtocolVersion = 0;
@@ -129,6 +137,39 @@ public class LegacyRakNetSession {
         return seqNum;
     }
 
+    /** Store a sent frame for potential NACK retransmission. */
+    public void storeSentFrame(int seqNum, byte[] frameBytes) {
+        sentFrames.put(seqNum, frameBytes);
+        // Limit buffer size to prevent unbounded growth — keep last 512 frames
+        if (sentFrames.size() > 512) {
+            int oldest = seqNum - 512;
+            for (int i = oldest - 16; i <= oldest; i++) {
+                sentFrames.remove(i);
+            }
+        }
+    }
+
+    /** Retrieve a stored frame for retransmission. Returns null if not found. */
+    public byte[] getSentFrame(int seqNum) {
+        return sentFrames.get(seqNum);
+    }
+
+    /** Remove acknowledged frames from the retransmission buffer. */
+    public void acknowledgeSentFrame(int seqNum) {
+        sentFrames.remove(seqNum);
+    }
+
+    /** Get all sequence numbers that need retransmission from a NACK range. */
+    public List<Integer> getNackedSequences(int start, int end) {
+        List<Integer> result = new ArrayList<>();
+        for (int seq = start; seq <= end; seq++) {
+            if (sentFrames.containsKey(seq)) {
+                result.add(seq);
+            }
+        }
+        return result;
+    }
+
     /**
      * Process a split packet fragment. Returns the reassembled ByteBuf when all
      * fragments are received, or null if still waiting for more.
@@ -159,6 +200,7 @@ public class LegacyRakNetSession {
     public void close() {
         state = State.DISCONNECTED;
         splitAssemblies.clear();
+        sentFrames.clear();
     }
 
     private static class SplitAssembly {

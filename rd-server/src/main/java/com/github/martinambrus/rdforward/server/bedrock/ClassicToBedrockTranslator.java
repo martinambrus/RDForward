@@ -89,6 +89,22 @@ public class ClassicToBedrockTranslator {
     }
 
     /**
+     * Register an entity's absolute position for delta-to-absolute reconstruction.
+     * Must be called when spawning existing players directly (bypassing translateAll)
+     * so that subsequent delta movement packets can be resolved.
+     *
+     * @param playerId Classic player ID (signed byte)
+     * @param x        fixed-point X (eye-level convention)
+     * @param y        fixed-point Y (eye-level convention)
+     * @param z        fixed-point Z (eye-level convention)
+     * @param yaw      Classic yaw (0-255)
+     * @param pitch    Classic pitch (0-255)
+     */
+    public void registerEntityPosition(int playerId, short x, short y, short z, int yaw, int pitch) {
+        entityPositions.put(playerId, new EntityPosition(x, y, z, yaw, pitch));
+    }
+
+    /**
      * Translate a Classic packet to one or more Bedrock packets.
      * Some translations (like SpawnPlayer) produce multiple packets
      * (PlayerListPacket + AddPlayerPacket). Returns empty list if dropped.

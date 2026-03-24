@@ -128,27 +128,50 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
         session.touch();
 
         if (packetId == (MCPEConstants.ACK & 0xFF)) {
-            // ACK — just consume the bytes (sequence numbers parsed but not used yet)
+            // ACK — remove acknowledged frames from retransmission buffer
             int ackCount = buf.readUnsignedShort();
             for (int i = 0; i < ackCount && buf.isReadable(); i++) {
                 boolean single = buf.readBoolean();
-                buf.skipBytes(3); // start sequence (3-byte LE)
-                if (!single) {
-                    buf.skipBytes(3); // end sequence (3-byte LE)
+                int startSeq = (buf.readByte() & 0xFF)
+                        | ((buf.readByte() & 0xFF) << 8)
+                        | ((buf.readByte() & 0xFF) << 16);
+                if (single) {
+                    session.acknowledgeSentFrame(startSeq);
+                } else {
+                    int endSeq = (buf.readByte() & 0xFF)
+                            | ((buf.readByte() & 0xFF) << 8)
+                            | ((buf.readByte() & 0xFF) << 16);
+                    for (int seq = startSeq; seq <= endSeq; seq++) {
+                        session.acknowledgeSentFrame(seq);
+                    }
                 }
             }
             return;
         }
         if (packetId == (MCPEConstants.NACK & 0xFF)) {
-            // NACK — consume bytes (retransmission not implemented yet)
+            // NACK — retransmit requested frames
             if (buf.readableBytes() >= 2) {
                 int nackCount = buf.readUnsignedShort();
                 for (int i = 0; i < nackCount && buf.isReadable(); i++) {
                     boolean single = buf.readBoolean();
-                    buf.skipBytes(3); // start sequence
-                    if (!single) {
-                        buf.skipBytes(3); // end sequence
+                    int startSeq = (buf.readByte() & 0xFF)
+                            | ((buf.readByte() & 0xFF) << 8)
+                            | ((buf.readByte() & 0xFF) << 16);
+                    int endSeq = single ? startSeq
+                            : ((buf.readByte() & 0xFF)
+                                | ((buf.readByte() & 0xFF) << 8)
+                                | ((buf.readByte() & 0xFF) << 16));
+                    int retransmitted = 0;
+                    for (int seq = startSeq; seq <= endSeq; seq++) {
+                        byte[] frameBytes = session.getSentFrame(seq);
+                        if (frameBytes != null) {
+                            ByteBuf retransmit = Unpooled.wrappedBuffer(frameBytes);
+                            ctx.writeAndFlush(new DatagramPacket(retransmit, session.getAddress()));
+                            retransmitted++;
+                        }
                     }
+                    System.out.println("[MCPE NACK] range=" + startSeq + "-" + endSeq
+                            + " retransmitted=" + retransmitted + " to " + session.getAddress());
                 }
             }
             return;
@@ -784,6 +807,11 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
 
         frame.writeBytes(payload);
 
+        // Store frame bytes for NACK retransmission before sending
+        byte[] frameBytes = new byte[frame.readableBytes()];
+        frame.getBytes(frame.readerIndex(), frameBytes);
+        session.storeSentFrame(seqNum, frameBytes);
+
         // Ensure the write happens on the UDP event loop thread.
         // When called from a TCP handler thread (e.g. broadcasting another player's
         // actions), using ctx.writeAndFlush from the wrong thread can silently fail
@@ -869,6 +897,11 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
 
             // Payload fragment
             frame.writeBytes(payload, start, length);
+
+            // Store frame bytes for NACK retransmission
+            byte[] frameBytes = new byte[frame.readableBytes()];
+            frame.getBytes(frame.readerIndex(), frameBytes);
+            session.storeSentFrame(seqNum, frameBytes);
 
             DatagramPacket dgram = new DatagramPacket(frame, session.getAddress());
             io.netty.channel.EventLoop eventLoop = ctx.channel().eventLoop();
