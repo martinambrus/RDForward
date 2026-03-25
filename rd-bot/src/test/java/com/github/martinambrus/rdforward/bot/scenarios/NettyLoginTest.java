@@ -62,7 +62,8 @@ class NettyLoginTest {
             "RELEASE_1_21_2", // v768 (PlayerPosition rewrite, JoinGame seaLevel)
             "RELEASE_1_21_5", // v770 (animal variant registries)
             "RELEASE_1_21_9", // v773 (major S2C ID shifts)
-            "RELEASE_1_21_11" // v774 (latest supported)
+            "RELEASE_1_21_11", // v774
+            "RELEASE_26_1"    // v775 (26.1 "Tiny Takeover")
     })
     void nettyLoginSucceeds(ProtocolVersion version) throws Exception {
         BotClient bot = testServer.createBot(version, "Netty_" + version.name());

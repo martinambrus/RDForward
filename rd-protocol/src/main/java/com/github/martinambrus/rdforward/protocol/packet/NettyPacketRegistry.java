@@ -3756,6 +3756,20 @@ public class NettyPacketRegistry {
             // Total: 141 S2C (0x00-0x8C), 69 C2S (0x00-0x44).
             // ====================================================================
 
+            // --- S2C PLAY forward map (for bot decoder) ---
+            registerV775S2C(0x01, new PacketFactory() { public Packet create() { return new NettySpawnEntityPacketV774(); } });
+            registerV775S2C(0x08, new PacketFactory() { public Packet create() { return new NettyBlockChangePacketV477(); } });
+            registerV775S2C(0x14, new PacketFactory() { public Packet create() { return new NettySetSlotPacketV766(); } });
+            registerV775S2C(0x18, NO_OP_FACTORY); // PluginMessage
+            registerV775S2C(0x20, new PacketFactory() { public Packet create() { return new NettyDisconnectPacketV765(); } });
+            registerV775S2C(0x2C, new PacketFactory() { public Packet create() { return new KeepAlivePacketV340(); } });        // +1
+            registerV775S2C(0x2D, new PacketFactory() { public Packet create() { return new MapChunkPacketV770(); } });          // +1
+            registerV775S2C(0x31, new PacketFactory() { public Packet create() { return new JoinGamePacketV768(); } });          // +1
+            registerV775S2C(0x48, new PacketFactory() { public Packet create() { return new NettyPlayerPositionS2CPacketV768(); } }); // +2
+            registerV775S2C(0x4D, new PacketFactory() { public Packet create() { return new NettyDestroyEntitiesPacketV47(); } }); // +2
+            registerV775S2C(0x79, new PacketFactory() { public Packet create() { return new SystemChatPacketV765(); } });        // +2
+            registerV775S2C(0x86, new PacketFactory() { public Packet create() { return new UpdateTagsPacketV775(); } });        // +2
+
             // --- S2C PLAY reverse map ---
 
             // V775-specific classes
@@ -3929,6 +3943,10 @@ public class NettyPacketRegistry {
 
         private static void registerV775C2S(int packetId, PacketFactory factory) {
             REGISTRY.put(key(ConnectionState.PLAY, PacketDirection.CLIENT_TO_SERVER, packetId), factory);
+        }
+
+        private static void registerV775S2C(int packetId, PacketFactory factory) {
+            REGISTRY.put(key(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT, packetId), factory);
         }
     }
 

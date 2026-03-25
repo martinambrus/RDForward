@@ -39,7 +39,8 @@ class CrossVersionSpawnTest {
             ProtocolVersion.RELEASE_1_13,     // 1.13 (The Flattening)
             ProtocolVersion.RELEASE_1_16,     // 1.16 (binary UUID, dimension codec)
             ProtocolVersion.RELEASE_1_20_2,   // 1.20.2 (CONFIGURATION state)
-            ProtocolVersion.RELEASE_1_21_11,  // 1.21.11 (latest)
+            ProtocolVersion.RELEASE_1_21_11,  // 1.21.11
+            ProtocolVersion.RELEASE_26_1,     // 26.1 (latest)
     };
 
     @BeforeAll

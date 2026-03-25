@@ -216,6 +216,14 @@ class CapabilityTest {
     }
 
     @Test
+    void allCapabilitiesAvailableInRelease261() {
+        for (Capability cap : Capability.values()) {
+            assertTrue(cap.isAvailableIn(ProtocolVersion.RELEASE_26_1),
+                    cap.name() + " should be available in Release 26.1 (v775)");
+        }
+    }
+
+    @Test
     void allCapabilitiesAvailableInBedrock() {
         for (Capability cap : Capability.values()) {
             assertTrue(cap.isAvailableIn(ProtocolVersion.BEDROCK),
@@ -348,6 +356,12 @@ class CapabilityTest {
     }
 
     @Test
+    void fromNumberResolvesV775ToRelease261() {
+        assertEquals(ProtocolVersion.RELEASE_26_1,
+                ProtocolVersion.fromNumber(775, ProtocolVersion.Family.RELEASE));
+    }
+
+    @Test
     void eachCapabilityHasUniqueId() {
         Capability[] caps = Capability.values();
         for (int i = 0; i < caps.length; i++) {
@@ -381,7 +395,8 @@ class CapabilityTest {
         assertTrue(ProtocolVersion.BETA_1_7_3.isAtLeast(ProtocolVersion.BETA_1_7));
         assertTrue(ProtocolVersion.BETA_1_8.isAtLeast(ProtocolVersion.BETA_1_7_3));
         assertTrue(ProtocolVersion.RELEASE_1_0.isAtLeast(ProtocolVersion.BETA_1_8));
-        assertTrue(ProtocolVersion.BEDROCK.isAtLeast(ProtocolVersion.RELEASE_1_0));
+        assertTrue(ProtocolVersion.RELEASE_26_1.isAtLeast(ProtocolVersion.RELEASE_1_0));
+        assertTrue(ProtocolVersion.BEDROCK.isAtLeast(ProtocolVersion.RELEASE_26_1));
 
         // v6 is chronologically AFTER v14 (post-rewrite), even though 6 < 14
         assertTrue(ProtocolVersion.ALPHA_1_2_5.isAtLeast(ProtocolVersion.ALPHA_1_0_16));
