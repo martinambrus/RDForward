@@ -1630,6 +1630,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         boolean isV760 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_1);
         boolean isV759 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19);
         boolean isV735 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16);
+        boolean isV47 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8);
         boolean handled = CommandRegistry.dispatch(command, player.getUsername(), false,
                 reply -> {
                     if (isV765) {
@@ -1650,6 +1651,8 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                             player.sendPacket(new SystemChatPacketV759(json, 0));
                         } else if (isV735) {
                             player.sendPacket(new NettyChatS2CPacketV735(json, (byte) 0, 0L, 0L));
+                        } else if (isV47) {
+                            player.sendPacket(new NettyChatS2CPacketV47(json, (byte) 0));
                         } else {
                             player.sendPacket(new NettyChatS2CPacket(json));
                         }
@@ -1675,6 +1678,8 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                     player.sendPacket(new SystemChatPacketV759(json, 0));
                 } else if (isV735) {
                     player.sendPacket(new NettyChatS2CPacketV735(json, (byte) 0, 0L, 0L));
+                } else if (isV47) {
+                    player.sendPacket(new NettyChatS2CPacketV47(json, (byte) 0));
                 } else {
                     player.sendPacket(new NettyChatS2CPacket(json));
                 }
