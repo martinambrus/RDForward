@@ -1,10 +1,10 @@
 # Bedrock Chunk Encoding Research
 
-## Block Palette (v924 / MC Bedrock 1.26.0)
+## Block Palette (v944 / MC Bedrock 1.26.10)
 
 ### File Source
-- `rd-server/src/main/resources/bedrock/block_palette.nbt` is byte-for-byte identical to CloudburstMC/Data for v924
-- 15,845 block state entries
+- `rd-server/src/main/resources/bedrock/block_palette.nbt` is from CloudburstMC/Data for v944
+- ~15,850 block state entries (golden dandelion + related states added in v944)
 - File is sorted by FNV1-64 hash of block name (pre-computed in `name_hash` field)
 - Index 0 = `minecraft:cyan_terracotta`, NOT `minecraft:air`
 - Air is at index 12530, stone at 2532, cobblestone at 5088, grass_block at 11062
@@ -16,7 +16,7 @@
 
 ### Palette NOT sent in StartGamePacket (v419+)
 - Starting from protocol v419, the Bedrock client has the block palette BUILT IN
-- The StartGamePacket does NOT contain the block palette for v924
+- The StartGamePacket does NOT contain the block palette for v944
 - The `blockProperties` field (in StartGamePacket) is for CUSTOM block overrides only
 - The `SimpleDefinitionRegistry<BlockDefinition>` set on codec helper is only for server-side runtime ID lookups, NOT sent to client
 - Client and server must agree on palette order — since client has it built-in, server must match

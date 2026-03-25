@@ -4,7 +4,7 @@ import org.cloudburstmc.nbt.NBTInputStream;
 import org.cloudburstmc.nbt.NbtMap;
 import org.cloudburstmc.nbt.NbtType;
 import org.cloudburstmc.protocol.bedrock.codec.BedrockCodec;
-import org.cloudburstmc.protocol.bedrock.codec.v924.Bedrock_v924;
+import org.cloudburstmc.protocol.bedrock.codec.v944.Bedrock_v944;
 import org.cloudburstmc.protocol.bedrock.data.definitions.BlockDefinition;
 import org.cloudburstmc.protocol.bedrock.data.definitions.ItemDefinition;
 import org.cloudburstmc.protocol.bedrock.data.definitions.SimpleBlockDefinition;
@@ -27,11 +27,11 @@ import java.util.zip.GZIPInputStream;
 public final class BedrockProtocolConstants {
 
     /**
-     * The Bedrock codec version used by this server (1.26.0).
-     * Uses the standard v924 codec — BiomeDefinitionListPacket is NOT sent
+     * The Bedrock codec version used by this server (1.26.10).
+     * Uses the standard v944 codec — BiomeDefinitionListPacket is NOT sent
      * (the client has built-in biome definitions).
      */
-    public static final BedrockCodec CODEC = Bedrock_v924.CODEC;
+    public static final BedrockCodec CODEC = Bedrock_v944.CODEC;
 
     /** Default Bedrock Edition port (UDP/RakNet). Shared with legacy MCPE via UdpFrontEndHandler. */
     public static final int DEFAULT_PORT = 19132;

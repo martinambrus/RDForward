@@ -802,12 +802,12 @@ public enum ProtocolVersion {
     RELEASE_1_21_11(774, 81, Family.RELEASE, "Release 1.21.11 (v774)", 94, "1.21.11"),
 
     /**
-     * Minecraft Bedrock Edition (1.26.0+).
+     * Minecraft Bedrock Edition (1.26.10+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
-     * Protocol version 924 matches the CloudburstMC codec for 1.26.0.
+     * Protocol version 944 matches the CloudburstMC codec for 1.26.10.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(924, 82, Family.BEDROCK, "Bedrock", 92, "bedrock-1.26.0");
+    BEDROCK(944, 82, Family.BEDROCK, "Bedrock", 92, "bedrock-1.26.10");
 
     /**
      * Protocol family grouping. Used to show relevant supported versions

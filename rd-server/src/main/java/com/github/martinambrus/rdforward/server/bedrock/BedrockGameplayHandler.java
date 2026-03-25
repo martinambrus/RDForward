@@ -192,7 +192,7 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         // Internal yaw was stored as Classic byte -> degrees. Bedrock 0=South, Classic 0=North.
         float bedrockYaw = (spawnYaw + 180.0f) % 360.0f;
 
-        // === Spawn sequence (BiomeDefinitionListPacket omitted — causes v924 client crash) ===
+        // === Spawn sequence (BiomeDefinitionListPacket omitted — causes v944 client crash) ===
 
         // 1. StartGamePacket — position is eye-level (same convention as MovePlayerPacket).
         //    Sending feet Y causes the client to subtract eye height again, sinking into ground.

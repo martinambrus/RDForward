@@ -20,6 +20,7 @@
 
 ## Workflow Preferences
 - [feedback_restart_server.md](feedback_restart_server.md): Rebuild and restart the server proactively after code changes
+- [feedback_server_start.md](feedback_server_start.md): Use plain Bash & to start the server, never run_in_background
 
 ## E2E Test Rules
 - NEVER run two Gradle test suites in parallel. They share the Gradle daemon and will conflict/kill each other. Always run sequentially.
@@ -47,6 +48,7 @@
 - **Bedrock protocol**: See sections below + `memory/bedrock-chunks.md`
 - **MCPE 0.6.1 (protocol 9)**: See `memory/mcpe-v9-protocol.md`
 - **MCPE 0.7.x (protocol 11)**: See `memory/mcpe-protocol.md`
+- **MCPE 0.11.0 (protocol 27)**: See `memory/mcpe-v27-protocol.md`
 - **MCPE 0.14.0 (protocol 45)**: See `memory/mcpe-v45-protocol.md`
 - **MCPE 0.15.0 (protocol 81)**: See `memory/mcpe-v81-protocol.md`
 - **MCPE 0.16.0 (protocol 91)**: See `memory/mcpe-v91-protocol.md`
@@ -70,7 +72,7 @@
 - **Alpha S2C 0x0D field order**: x, y, stance, z (NO swap).
 
 ## Bedrock Support
-- CloudburstMC Protocol library `bedrock-connection:3.0.0.Beta12-SNAPSHOT`, codec v924 (MC 1.26.0)
+- CloudburstMC Protocol library `bedrock-connection:3.0.0.Beta12-SNAPSHOT`, codec v944 (MC 1.26.10)
 - `BedrockServerInitializer` + `RakChannelFactory.server(NioDatagramChannel.class)` for bootstrap
 - `PlayerManager` uses `playersById` as primary storage (Bedrock players have no Netty channel)
 - Block palette: 15845 entries from `block_palette.nbt`, sequential indices as runtime IDs
