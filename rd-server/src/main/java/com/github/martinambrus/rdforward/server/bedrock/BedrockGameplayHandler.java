@@ -79,6 +79,9 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
     private boolean disconnected = false;
     private long lastPlacementTime = 0;
 
+    /** True while the player is stuck at an unloaded chunk boundary. */
+    private boolean stuckAtUnloadedChunk = false;
+
     public BedrockGameplayHandler(BedrockServerSession session, ServerWorld world,
                                   PlayerManager playerManager, ChunkManager chunkManager,
                                   BedrockBlockMapper blockMapper, BedrockChunkConverter chunkConverter,
@@ -640,6 +643,32 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
     private void handleMovement(double x, double eyeY, double z,
                                 float bedrockYaw, float pitch) {
         float classicYawDeg = (bedrockYaw - 180.0f + 360.0f) % 360.0f;
+
+        // Reject movement into chunks not yet sent to this client.
+        int destChunkX = (int) Math.floor(x) >> 4;
+        int destChunkZ = (int) Math.floor(z) >> 4;
+        if (!chunkManager.isChunkSentToPlayer(player, destChunkX, destChunkZ)) {
+            if (stuckAtUnloadedChunk) {
+                return; // Already sent teleport-back, don't spam
+            }
+            stuckAtUnloadedChunk = true;
+
+            // Teleport back to last known good position
+            double lastX = player.getDoubleX();
+            double lastEyeY = player.getDoubleY();
+            double lastZ = player.getDoubleZ();
+            MovePlayerPacket teleportBack = new MovePlayerPacket();
+            teleportBack.setRuntimeEntityId(player.getPlayerId() + 1);
+            teleportBack.setPosition(Vector3f.from(
+                    (float) lastX, (float) lastEyeY, (float) lastZ));
+            teleportBack.setRotation(Vector3f.from(pitch, bedrockYaw, bedrockYaw));
+            teleportBack.setMode(MovePlayerPacket.Mode.TELEPORT);
+            teleportBack.setTeleportationCause(MovePlayerPacket.TeleportationCause.UNKNOWN);
+            teleportBack.setOnGround(true);
+            session.sendPacket(teleportBack);
+            return;
+        }
+        stuckAtUnloadedChunk = false;
 
         short oldX = player.getX();
         short oldY = player.getY();

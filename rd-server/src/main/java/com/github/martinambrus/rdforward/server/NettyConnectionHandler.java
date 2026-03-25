@@ -93,6 +93,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     // the tick loop reading player.getX()/getZ()).
     private boolean awaitingTeleportConfirm = false;
 
+    /** True while the player is stuck at an unloaded chunk boundary. */
+    private boolean stuckAtUnloadedChunk = false;
+
 
     public NettyConnectionHandler(ProtocolVersion serverVersion, ServerWorld world,
                                    PlayerManager playerManager, ChunkManager chunkManager) {
@@ -1333,6 +1336,50 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             respawnToSafePosition(ctx, yaw);
             return;
         }
+
+        // Reject movement into chunks not yet sent to this client.
+        int destChunkX = (int) Math.floor(x) >> 4;
+        int destChunkZ = (int) Math.floor(z) >> 4;
+        if (!chunkManager.isChunkSentToPlayer(player, destChunkX, destChunkZ)) {
+            if (stuckAtUnloadedChunk) {
+                return; // Already sent teleport-back, don't spam
+            }
+            stuckAtUnloadedChunk = true;
+
+            // Teleport back to last known good position
+            double lastX = player.getDoubleX();
+            double lastEyeY = player.getDoubleY();
+            double lastZ = player.getDoubleZ();
+            double lastFeetY = lastEyeY - PLAYER_EYE_HEIGHT;
+            float alphaYaw = (yaw + 180.0f) % 360.0f;
+
+            if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
+                awaitingTeleportConfirm = true;
+                ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV768(
+                        lastX, lastFeetY, lastZ, alphaYaw, pitch, ++nextTeleportId));
+            } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_4)) {
+                awaitingTeleportConfirm = true;
+                ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV762(
+                        lastX, lastFeetY, lastZ, alphaYaw, pitch, ++nextTeleportId));
+            } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17)) {
+                awaitingTeleportConfirm = true;
+                ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV755(
+                        lastX, lastFeetY, lastZ, alphaYaw, pitch, ++nextTeleportId));
+            } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_9)) {
+                awaitingTeleportConfirm = true;
+                ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV109(
+                        lastX, lastFeetY, lastZ, alphaYaw, pitch, ++nextTeleportId));
+            } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+                ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV47(
+                        lastX, lastFeetY, lastZ, alphaYaw, pitch));
+            } else {
+                // 1.7.2: S2C Y is eye-level
+                ctx.writeAndFlush(new NettyPlayerPositionS2CPacket(
+                        lastX, lastEyeY, lastZ, alphaYaw, pitch, false));
+            }
+            return;
+        }
+        stuckAtUnloadedChunk = false;
 
         short fixedX = toFixedPoint(x);
         short fixedY = toFixedPoint(eyeY);

@@ -1519,6 +1519,20 @@ public class ChunkManager {
     }
 
     /**
+     * Check whether a specific chunk has been sent to a player.
+     * O(1) lookup into the player's ConcurrentHashMap-backed set.
+     *
+     * @param player the player to check
+     * @param chunkX chunk X coordinate (block >> 4)
+     * @param chunkZ chunk Z coordinate (block >> 4)
+     * @return true if the chunk is in the player's sent set
+     */
+    public boolean isChunkSentToPlayer(ConnectedPlayer player, int chunkX, int chunkZ) {
+        Set<ChunkCoord> chunks = playerChunks.get(player);
+        return chunks != null && chunks.contains(new ChunkCoord(chunkX, chunkZ));
+    }
+
+    /**
      * Build a heightmap long array for 1.14+ chunk packets.
      *
      * Each heightmap stores 256 values (16x16 columns) at 9 bits per entry,

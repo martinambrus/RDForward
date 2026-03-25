@@ -107,6 +107,9 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
      * inventory sync packets (0x05) from the client. Used to calculate how
      * many to give back when replenishing (top up to 64).
      */
+    /** True while the player is stuck at an unloaded chunk boundary. */
+    private boolean stuckAtUnloadedChunk = false;
+
     private int trackedCobblestone = 0;
     private java.util.concurrent.ScheduledFuture<?> replenishTask;
     private java.util.concurrent.ScheduledFuture<?> keepAliveTask;
@@ -863,6 +866,29 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             respawnToSafePosition(ctx, yaw);
             return;
         }
+
+        // Reject movement into chunks not yet sent to this client.
+        int destChunkX = (int) Math.floor(x) >> 4;
+        int destChunkZ = (int) Math.floor(z) >> 4;
+        if (!chunkManager.isChunkSentToPlayer(player, destChunkX, destChunkZ)) {
+            if (stuckAtUnloadedChunk) {
+                return; // Already sent teleport-back, don't spam
+            }
+            stuckAtUnloadedChunk = true;
+
+            // Teleport back to last known good position
+            double lastX = player.getDoubleX();
+            double lastEyeY = player.getDoubleY();
+            double lastZ = player.getDoubleZ();
+            double lastFeetY = lastEyeY - PLAYER_EYE_HEIGHT;
+            // Internal yaw is Classic (0=North); Alpha wire is 0=South → add 180°
+            float alphaYaw = (yaw + 180.0f) % 360.0f;
+            ctx.writeAndFlush(new PlayerPositionAndLookS2CPacket(
+                    lastX, lastEyeY, lastFeetY, lastZ,
+                    alphaYaw, pitch, true));
+            return;
+        }
+        stuckAtUnloadedChunk = false;
 
         // Convert to fixed-point for Classic broadcast (eye-level)
         short fixedX = toFixedPoint(x);
