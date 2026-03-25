@@ -549,11 +549,14 @@ public class BedrockChunkConverter {
         int lastBlockType = -1;
         int lastPaletteIdx = -1;
 
+        // Loop order x/z/y: y-inner produces sequential XZY indices ((x<<8)|(z<<4)|y)
+        // and sequential reads from AlphaChunk XZY storage. Also improves last-value
+        // cache hit rate since vertical runs (stone columns, dirt columns) are common.
         for (int x = 0; x < 16; x++) {
-            for (int y = 0; y < SUB_CHUNK_HEIGHT; y++) {
-                for (int z = 0; z < 16; z++) {
+            for (int z = 0; z < 16; z++) {
+                for (int y = 0; y < SUB_CHUNK_HEIGHT; y++) {
                     int blockType = getter.getBlock(x, y, z);
-                    int idx = (x << 8) | (z << 4) | y; // XZY order
+                    int idx = (x << 8) | (z << 4) | y; // XZY order — sequential with y-inner
 
                     if (blockType == lastBlockType) {
                         indices[idx] = lastPaletteIdx;

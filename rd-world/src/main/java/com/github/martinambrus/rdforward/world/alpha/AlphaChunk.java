@@ -804,10 +804,14 @@ public class AlphaChunk {
     byte[][] packLightNibbles(int baseY) {
         byte[] sectionSkyLight = new byte[2048];
         byte[] sectionBlockLight = new byte[2048];
-        int lightIdx = 0;
-        for (int ly = 0; ly < 16; ly++) {
+        // Loop order x/z/ly matches XZY storage for sequential reads from light arrays.
+        // Output index computed explicitly to maintain YZX wire order.
+        for (int x = 0; x < WIDTH; x += 2) {
             for (int z = 0; z < DEPTH; z++) {
-                for (int x = 0; x < WIDTH; x += 2) {
+                for (int ly = 0; ly < 16; ly++) {
+                    // YZX nibble index: pairs of adjacent x blocks packed into one byte
+                    int lightIdx = (ly * DEPTH + z) * (WIDTH / 2) + (x / 2);
+
                     int skyLow = getSkyLight(x, baseY + ly, z) & 0x0F;
                     int skyHigh = getSkyLight(x + 1, baseY + ly, z) & 0x0F;
                     sectionSkyLight[lightIdx] = (byte) (skyLow | (skyHigh << 4));
@@ -815,8 +819,6 @@ public class AlphaChunk {
                     int blkLow = getBlockLight(x, baseY + ly, z) & 0x0F;
                     int blkHigh = getBlockLight(x + 1, baseY + ly, z) & 0x0F;
                     sectionBlockLight[lightIdx] = (byte) (blkLow | (blkHigh << 4));
-
-                    lightIdx++;
                 }
             }
         }
@@ -847,9 +849,11 @@ public class AlphaChunk {
     IndirectPaletteResult buildIndirectPalette(int baseY,
             BiFunction<Integer, Integer, Integer> stateMapper, int[] blockStates) {
         LinkedHashMap<Integer, Integer> paletteMap = new LinkedHashMap<>();
-        for (int ly = 0; ly < 16; ly++) {
+        // Loop order x/z/ly matches XZY storage for sequential reads from block arrays.
+        // Output index computed explicitly to maintain YZX order.
+        for (int x = 0; x < WIDTH; x++) {
             for (int z = 0; z < DEPTH; z++) {
-                for (int x = 0; x < WIDTH; x++) {
+                for (int ly = 0; ly < 16; ly++) {
                     int blockId = getBlock(x, baseY + ly, z);
                     int metadata = getBlockData(x, baseY + ly, z);
                     int stateId = stateMapper.apply(blockId, metadata);
