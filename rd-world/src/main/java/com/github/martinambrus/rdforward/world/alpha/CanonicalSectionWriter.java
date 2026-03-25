@@ -1,6 +1,7 @@
 package com.github.martinambrus.rdforward.world.alpha;
 
 import com.github.martinambrus.rdforward.protocol.BlockStateMapper;
+import com.github.martinambrus.rdforward.world.ChunkSerializationPool;
 
 import java.io.ByteArrayOutputStream;
 
@@ -112,10 +113,8 @@ public final class CanonicalSectionWriter {
             writeVarInt(baos, longsCount);
         }
 
-        // 6. Packed longs (big-endian)
-        for (int i = 0; i < longsCount; i++) {
-            writeLong(baos, longs[i]);
-        }
+        // 6. Packed longs (big-endian) — bulk write to reduce per-byte method calls
+        writeLongs(baos, longs, longsCount);
 
         // 7. Light data embedded in section (1.9-1.13 only)
         if (hasLightInSection) {
@@ -203,14 +202,30 @@ public final class CanonicalSectionWriter {
         out.write(value & 0xFF);
     }
 
-    static void writeLong(ByteArrayOutputStream out, long value) {
-        out.write((int) (value >> 56) & 0xFF);
-        out.write((int) (value >> 48) & 0xFF);
-        out.write((int) (value >> 40) & 0xFF);
-        out.write((int) (value >> 32) & 0xFF);
-        out.write((int) (value >> 24) & 0xFF);
-        out.write((int) (value >> 16) & 0xFF);
-        out.write((int) (value >> 8) & 0xFF);
-        out.write((int) value & 0xFF);
+    /**
+     * Bulk-write an array of longs as big-endian bytes.
+     * Converts to a pooled byte[] buffer first, then does a single baos.write() call
+     * instead of 8 * longsCount individual write() calls.
+     */
+    static void writeLongs(ByteArrayOutputStream out, long[] longs, int count) {
+        if (count == 0) return;
+        byte[] buf = ChunkSerializationPool.borrowLongWriteBuf();
+        try {
+            int pos = 0;
+            for (int i = 0; i < count; i++) {
+                long v = longs[i];
+                buf[pos++] = (byte) (v >> 56);
+                buf[pos++] = (byte) (v >> 48);
+                buf[pos++] = (byte) (v >> 40);
+                buf[pos++] = (byte) (v >> 32);
+                buf[pos++] = (byte) (v >> 24);
+                buf[pos++] = (byte) (v >> 16);
+                buf[pos++] = (byte) (v >> 8);
+                buf[pos++] = (byte) v;
+            }
+            out.write(buf, 0, pos);
+        } finally {
+            ChunkSerializationPool.returnLongWriteBuf(buf);
+        }
     }
 }

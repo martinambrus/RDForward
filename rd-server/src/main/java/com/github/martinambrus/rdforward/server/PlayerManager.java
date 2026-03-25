@@ -288,12 +288,13 @@ public class PlayerManager {
      * The negative convention was added in 1.6.1 alongside doDaylightCycle.
      */
     private void broadcastTimeUpdateInternal(long worldAge, long timeOfDay, boolean flush) {
-        TimeUpdatePacket preNetty = new TimeUpdatePacket(Math.abs(timeOfDay));
-        TimeUpdatePacketV47 preNettyV47 = new TimeUpdatePacketV47(worldAge, timeOfDay);
-        TimeUpdatePacketV47 preNettyV47Abs = new TimeUpdatePacketV47(worldAge, Math.abs(timeOfDay));
-        NettyTimeUpdatePacket netty = new NettyTimeUpdatePacket(worldAge, timeOfDay);
-        NettyTimeUpdatePacketV768 nettyV768 = new NettyTimeUpdatePacketV768(worldAge, timeOfDay);
-        NettyTimeUpdatePacketV775 nettyV775 = new NettyTimeUpdatePacketV775(worldAge, timeOfDay);
+        // Lazy packet creation: only allocate for version ranges that have connected players
+        TimeUpdatePacket preNetty = null;
+        TimeUpdatePacketV47 preNettyV47 = null;
+        TimeUpdatePacketV47 preNettyV47Abs = null;
+        NettyTimeUpdatePacket netty = null;
+        NettyTimeUpdatePacketV768 nettyV768 = null;
+        NettyTimeUpdatePacketV775 nettyV775 = null;
 
         for (ConnectedPlayer player : playersById.values()) {
             ProtocolVersion v = player.getProtocolVersion();
@@ -306,16 +307,22 @@ public class PlayerManager {
                     player.getMcpeSession().sendTimeUpdate((int) (Math.abs(timeOfDay) % 24000));
                 }
             } else if (v.isAtLeast(ProtocolVersion.RELEASE_26_1)) {
+                if (nettyV775 == null) nettyV775 = new NettyTimeUpdatePacketV775(worldAge, timeOfDay);
                 sendOrWrite(player, nettyV775, flush);
             } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
+                if (nettyV768 == null) nettyV768 = new NettyTimeUpdatePacketV768(worldAge, timeOfDay);
                 sendOrWrite(player, nettyV768, flush);
             } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_7_2)) {
+                if (netty == null) netty = new NettyTimeUpdatePacket(worldAge, timeOfDay);
                 sendOrWrite(player, netty, flush);
             } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_6_1)) {
+                if (preNettyV47 == null) preNettyV47 = new TimeUpdatePacketV47(worldAge, timeOfDay);
                 sendOrWrite(player, preNettyV47, flush);
             } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_4_2)) {
+                if (preNettyV47Abs == null) preNettyV47Abs = new TimeUpdatePacketV47(worldAge, Math.abs(timeOfDay));
                 sendOrWrite(player, preNettyV47Abs, flush);
             } else if (v.isAtLeast(ProtocolVersion.ALPHA_1_0_15)) {
+                if (preNetty == null) preNetty = new TimeUpdatePacket(Math.abs(timeOfDay));
                 sendOrWrite(player, preNetty, flush);
             }
         }

@@ -35,6 +35,7 @@ import com.github.martinambrus.rdforward.server.api.Scheduler;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -112,6 +113,11 @@ public class ChunkManager {
 
     /** Reference to the authoritative Classic/RD world for block data overlay. */
     private ServerWorld serverWorld;
+
+    /** Reusable per-thread collections for updatePlayerChunks to avoid allocation churn. */
+    private static final ThreadLocal<Set<ChunkCoord>> TL_DESIRED = ThreadLocal.withInitial(() -> new HashSet<>(256));
+    private static final ThreadLocal<List<ChunkCoord>> TL_TO_LOAD = ThreadLocal.withInitial(() -> new ArrayList<>(128));
+    private static final ThreadLocal<List<ChunkCoord>> TL_TO_UNLOAD = ThreadLocal.withInitial(() -> new ArrayList<>(32));
 
     /** Max chunks to deliver per player per tick (pacing). */
     private static final int MAX_CHUNKS_PER_PLAYER_PER_TICK = 4;
@@ -349,15 +355,29 @@ public class ChunkManager {
      */
     public void removePlayer(ConnectedPlayer player) {
         Set<ChunkCoord> chunks = playerChunks.remove(player);
-        pendingSendsPerPlayer.remove(player);
-        if (chunks == null) return;
+        Queue<ChunkCoord> pending = pendingSendsPerPlayer.remove(player);
+        if (chunks == null && pending == null) return;
 
-        for (ChunkCoord coord : chunks) {
-            // Remove player from ChunkHolder tracking
-            ChunkHolder holder = chunkHolders.get(coord);
-            if (holder != null) holder.removeTracker(player);
-            if (!isChunkNeededByAnyPlayer(coord)) {
-                unloadChunk(coord);
+        // Remove trackers for delivered chunks (in playerChunks)
+        if (chunks != null) {
+            for (ChunkCoord coord : chunks) {
+                ChunkHolder holder = chunkHolders.get(coord);
+                if (holder != null) holder.removeTracker(player);
+                if (!isChunkNeededByAnyPlayer(coord)) {
+                    unloadChunk(coord);
+                }
+            }
+        }
+
+        // Remove trackers for pending (not-yet-delivered) chunks
+        if (pending != null) {
+            for (ChunkCoord coord : pending) {
+                if (chunks != null && chunks.contains(coord)) continue; // already handled
+                ChunkHolder holder = chunkHolders.get(coord);
+                if (holder != null) holder.removeTracker(player);
+                if (!isChunkNeededByAnyPlayer(coord)) {
+                    unloadChunk(coord);
+                }
             }
         }
     }
@@ -495,15 +515,20 @@ public class ChunkManager {
                     if (isInViewDistance(player, coord)) {
                         if (sendChunkToPlayer(player, chunk)) {
                             current.add(coord);
+                            getOrCreateHolder(coord).addTracker(player);
                             it.remove();
                             sent++;
                         }
                         // else: async serialization in flight, leave in queue
                     } else {
                         it.remove(); // out of view distance, discard
+                        ChunkHolder h = chunkHolders.get(coord);
+                        if (h != null) h.removeTracker(player);
                     }
                 } else if (!pendingChunks.containsKey(coord)) {
                     it.remove();
+                    ChunkHolder h = chunkHolders.get(coord);
+                    if (h != null) h.removeTracker(player);
                 }
             }
             player.updateChunkSendRate(sent);
@@ -587,10 +612,15 @@ public class ChunkManager {
         int centerChunkZ = blockZ >> 4;
 
         // Build desired set and load list using pre-computed spiral order
-        // (closest chunks first, no per-player sort needed)
+        // (closest chunks first, no per-player sort needed).
+        // Reuse thread-local collections to avoid allocation churn (called every 250ms per player).
         ChunkCoord[] spiral = SpiralIterator.computeOffsets(viewDistance);
-        Set<ChunkCoord> desired = new HashSet<>(spiral.length * 2);
-        List<ChunkCoord> toLoad = new ArrayList<>();
+        Set<ChunkCoord> desired = TL_DESIRED.get();
+        List<ChunkCoord> toLoad = TL_TO_LOAD.get();
+        List<ChunkCoord> toUnload = TL_TO_UNLOAD.get();
+        desired.clear();
+        toLoad.clear();
+        toUnload.clear();
         for (ChunkCoord offset : spiral) {
             ChunkCoord coord = new ChunkCoord(centerChunkX + offset.getX(),
                     centerChunkZ + offset.getZ());
@@ -601,7 +631,6 @@ public class ChunkManager {
         }
 
         // Find chunks to unload (in current but not in desired)
-        List<ChunkCoord> toUnload = new ArrayList<>();
         for (ChunkCoord coord : current) {
             if (!desired.contains(coord)) {
                 toUnload.add(coord);
@@ -620,8 +649,8 @@ public class ChunkManager {
             }
         }
 
-        // Update ChunkHolder trackers for desired chunks
-        for (ChunkCoord coord : desired) {
+        // Add ChunkHolder trackers only for newly-visible chunks
+        for (ChunkCoord coord : toLoad) {
             getOrCreateHolder(coord).addTracker(player);
         }
 
@@ -703,9 +732,12 @@ public class ChunkManager {
             if (cached != null) {
                 if (sendChunkToPlayer(player, cached)) {
                     current.add(coord);
+                    getOrCreateHolder(coord).addTracker(player);
                     sentCount++;
                 } else {
-                    // Async serialization started — queue for delivery next tick
+                    // Async serialization started — queue for delivery next tick.
+                    // Add tracker now so the chunk isn't unloaded while pending.
+                    getOrCreateHolder(coord).addTracker(player);
                     if (pendingQueue == null) {
                         pendingQueue = pendingSendsPerPlayer.computeIfAbsent(
                                 player, k -> new ConcurrentLinkedQueue<>());
@@ -714,6 +746,8 @@ public class ChunkManager {
                 }
             } else {
                 getOrLoadChunkAsync(coord);
+                // Add tracker now so the chunk isn't unloaded while pending.
+                getOrCreateHolder(coord).addTracker(player);
                 if (pendingQueue == null) {
                     pendingQueue = pendingSendsPerPlayer.computeIfAbsent(
                             player, k -> new ConcurrentLinkedQueue<>());
@@ -1173,26 +1207,27 @@ public class ChunkManager {
         // --- Build light masks from canonical sections (for V477+ which need separate light) ---
         int skyLightMask = 0;
         int blockLightMask = 0;
-        List<byte[]> skyArrays = new ArrayList<>();
-        List<byte[]> blockArrays = new ArrayList<>();
+        byte[][] skyBuf = new byte[8][];
+        byte[][] blockBuf = new byte[8][];
+        int skyCount = 0, blockCount = 0;
 
         // Light data comes from populated sections (0-7)
         for (int section = 0; section < 8; section++) {
             CanonicalSection cs = canonical.getSection(section);
             if (cs.getSkyLight() != null) {
                 skyLightMask |= (1 << (section + 1));
-                skyArrays.add(cs.getSkyLight());
+                skyBuf[skyCount++] = cs.getSkyLight();
             }
             if (cs.getBlockLight() != null) {
                 blockLightMask |= (1 << (section + 1));
-                blockArrays.add(cs.getBlockLight());
+                blockBuf[blockCount++] = cs.getBlockLight();
             }
         }
 
         int emptySkyLightMask = ~skyLightMask & 0x3FFFF;
         int emptyBlockLightMask = ~blockLightMask & 0x3FFFF;
-        byte[][] skyArr = skyArrays.toArray(new byte[0][]);
-        byte[][] blockArr = blockArrays.toArray(new byte[0][]);
+        byte[][] skyArr = Arrays.copyOf(skyBuf, skyCount);
+        byte[][] blockArr = Arrays.copyOf(blockBuf, blockCount);
 
         // --- Build section data bytes using CanonicalSectionWriter ---
         ByteArrayOutputStream baos = ChunkSerializationPool.borrowBAOS();
@@ -1301,12 +1336,12 @@ public class ChunkManager {
                 // For v755, light sections include empty air sections above terrain
                 int v755SkyMask = skyLightMask;
                 int v755BlockMask = blockLightMask;
-                List<byte[]> v755SkyArrays = new ArrayList<>(skyArrays);
-                List<byte[]> v755BlockArrays = new ArrayList<>(blockArrays);
-                // Add full-sky-light for empty air sections above terrain (8-15)
+                // Build extended sky light array: original sections + full sky for empty air (8-15)
+                byte[][] v755SkyArr = new byte[skyCount + 8][];
+                System.arraycopy(skyArr, 0, v755SkyArr, 0, skyCount);
                 for (int section = 8; section < 16; section++) {
                     v755SkyMask |= (1 << (section + 1));
-                    v755SkyArrays.add(FULL_SKY_LIGHT);
+                    v755SkyArr[skyCount + section - 8] = FULL_SKY_LIGHT;
                 }
                 int v755EmptySkyMask = ~v755SkyMask & 0x3FFFF;
                 int v755EmptyBlockMask = ~v755BlockMask & 0x3FFFF;
@@ -1315,8 +1350,7 @@ public class ChunkManager {
                     chunkX, chunkZ,
                     v755SkyMask, v755BlockMask,
                     v755EmptySkyMask, v755EmptyBlockMask,
-                    v755SkyArrays.toArray(new byte[0][]),
-                    v755BlockArrays.toArray(new byte[0][])));
+                    v755SkyArr, blockArr));
 
                 collectedPackets.add(new MapChunkPacketV755(
                     chunkX, chunkZ,
@@ -1491,12 +1525,8 @@ public class ChunkManager {
      * Check if any player currently needs a chunk loaded.
      */
     private boolean isChunkNeededByAnyPlayer(ChunkCoord coord) {
-        for (Set<ChunkCoord> chunks : playerChunks.values()) {
-            if (chunks.contains(coord)) {
-                return true;
-            }
-        }
-        return false;
+        ChunkHolder holder = chunkHolders.get(coord);
+        return holder != null && holder.isNeeded();
     }
 
     /**

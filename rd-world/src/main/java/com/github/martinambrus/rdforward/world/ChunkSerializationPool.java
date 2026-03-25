@@ -83,6 +83,25 @@ public final class ChunkSerializationPool {
         }
     }
 
+    // --- byte[8192] pool (bulk long write buffers for CanonicalSectionWriter) ---
+
+    private static final ThreadLocal<ArrayDeque<byte[]>> LONG_WRITE_BUF_POOL =
+            ThreadLocal.withInitial(ArrayDeque::new);
+
+    /** Borrow a byte[8192] for bulk long-to-byte conversion (max 1024 longs * 8 bytes). */
+    public static byte[] borrowLongWriteBuf() {
+        byte[] buf = LONG_WRITE_BUF_POOL.get().pollFirst();
+        return buf != null ? buf : new byte[8192];
+    }
+
+    public static void returnLongWriteBuf(byte[] buf) {
+        if (buf == null || buf.length != 8192) return;
+        ArrayDeque<byte[]> pool = LONG_WRITE_BUF_POOL.get();
+        if (pool.size() < POOL_CAPACITY) {
+            pool.addFirst(buf);
+        }
+    }
+
     // --- int[4096] pool (per-section block state arrays for palette building) ---
 
     private static final ThreadLocal<ArrayDeque<int[]>> INT_ARRAY_POOL =
