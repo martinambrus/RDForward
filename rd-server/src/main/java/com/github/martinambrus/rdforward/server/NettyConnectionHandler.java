@@ -201,7 +201,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void handleStatusRequest(ChannelHandlerContext ctx) {
         String versionName;
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_11)) {
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_26_1)) {
+            versionName = "26.1";
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_11)) {
             versionName = "1.21.11";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_9)) {
             versionName = "1.21.9";
@@ -483,7 +485,11 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
             // V766+: SelectKnownPacks round-trip before sending registry data.
             // Send SelectKnownPacks S2C, then wait for client response.
-            ctx.writeAndFlush(new SelectKnownPacksS2CPacket());
+            // 26.1 clients only confirm "26.1" pack (not older ones), so send
+            // only that pack to avoid unconfirmed-pack entry resolution failures.
+            ctx.writeAndFlush(clientVersion.isAtLeast(ProtocolVersion.RELEASE_26_1)
+                    ? new SelectKnownPacksS2CPacketV775()
+                    : new SelectKnownPacksS2CPacket());
         } else {
             // V764/V765: Send registry data directly — single CompoundTag in network NBT.
             ctx.writeAndFlush(RegistryDataPacketV764.create(ctx.alloc().buffer()));
@@ -515,6 +521,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     }
 
     private void handleSelectKnownPacks(ChannelHandlerContext ctx) {
+        boolean isV775 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_26_1);
         boolean isV774 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_11);
         boolean isV773 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_9);
         boolean isV772 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_7);
@@ -524,6 +531,13 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         boolean isV768 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_2);
         boolean isV767 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21);
 
+        // 26.1 added world_clock registry; dimension_type built-in data references it,
+        // so it must be sent BEFORE dimension_type to satisfy cross-references.
+        if (isV775) {
+            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
+                    "minecraft:world_clock",
+                    "minecraft:overworld", "minecraft:the_end"));
+        }
         // Use createBuiltIn() for dimension_type — client uses its built-in overworld
         // (minY=-64, height=384 = 24 sections). Chunk serialization is adjusted to match.
         ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
@@ -533,7 +547,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Biome: need the_void at index 0, plains at index 1 to match chunk biome palette value 1.
         // 1.21 wolf variants (built-in) reference biomes by registry ID. Without them,
         // the client errors: "Unbound values in registry minecraft:worldgen/biome".
-        if (isV767) {
+        // 26.1 clients only confirm "26.1" pack — must send full biome list (65 entries).
+        if (isV775) {
+            ctx.writeAndFlush(RegistryDataPacketV766.createBiomeV775(ctx.alloc().buffer()));
+        } else if (isV767) {
             ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
                     "minecraft:worldgen/biome",
                     "minecraft:the_void", "minecraft:plains",
@@ -546,9 +563,12 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                     "minecraft:the_void", "minecraft:plains"));
         }
         ctx.writeAndFlush(RegistryDataPacketV766.createChatType(ctx.alloc().buffer()));
-        // 1.21.2 added ender_pearl + mace_smash damage types (47 entries)
+        // Damage types: 26.1 added spear + wind_charge (50 entries)
+        // 1.21.2 added ender_pearl + mace_smash damage types (48 entries)
         // 1.21 added minecraft:campfire damage type (45 entries vs 44)
-        ctx.writeAndFlush(isV768
+        ctx.writeAndFlush(isV775
+                ? RegistryDataPacketV766.createDamageTypeV775(ctx.alloc().buffer())
+                : isV768
                 ? RegistryDataPacketV766.createDamageTypeV768(ctx.alloc().buffer())
                 : isV767
                 ? RegistryDataPacketV766.createDamageTypeV767(ctx.alloc().buffer())
@@ -557,8 +577,14 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         ctx.writeAndFlush(isV767
                 ? RegistryDataPacketV766.createTrimPatternV767(ctx.alloc().buffer())
                 : RegistryDataPacketV766.createTrimPattern(ctx.alloc().buffer()));
-        ctx.writeAndFlush(RegistryDataPacketV766.createTrimMaterial(ctx.alloc().buffer()));
-        ctx.writeAndFlush(RegistryDataPacketV766.createBannerPattern(ctx.alloc().buffer()));
+        // 26.1 added resin trim material (11 entries)
+        ctx.writeAndFlush(isV775
+                ? RegistryDataPacketV766.createTrimMaterialV775(ctx.alloc().buffer())
+                : RegistryDataPacketV766.createTrimMaterial(ctx.alloc().buffer()));
+        // 26.1 added flow + guster banner patterns (43 entries)
+        ctx.writeAndFlush(isV775
+                ? RegistryDataPacketV766.createBannerPatternV775(ctx.alloc().buffer())
+                : RegistryDataPacketV766.createBannerPattern(ctx.alloc().buffer()));
         // 1.21 has 9 wolf variants (all built-in); 1.20.5 had 1 (pale with data)
         ctx.writeAndFlush(isV767
                 ? RegistryDataPacketV766.createWolfVariantV767(ctx.alloc().buffer())
@@ -566,13 +592,18 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // 1.21 added painting_variant, enchantment, and jukebox_song as synchronized registries.
         // Without these RegistryData packets, 1.21 clients hang during CONFIG phase.
         if (isV767) {
-            // 1.21.7 added minecraft:dennis painting (31 entries vs 30)
-            ctx.writeAndFlush(isV772
+            // 26.1 added 20 new paintings (51 total), new jukebox song (tears), lunge enchantment
+            ctx.writeAndFlush(isV775
+                    ? RegistryDataPacketV766.createPaintingVariantV775(ctx.alloc().buffer())
+                    : isV772
                     ? RegistryDataPacketV766.createPaintingVariantV772(ctx.alloc().buffer())
                     : RegistryDataPacketV766.createPaintingVariant(ctx.alloc().buffer()));
-            ctx.writeAndFlush(RegistryDataPacketV766.createEnchantment(ctx.alloc().buffer()));
-            // 1.21.7 added minecraft:lava_chicken jukebox song (20 entries vs 19)
-            ctx.writeAndFlush(isV772
+            ctx.writeAndFlush(isV775
+                    ? RegistryDataPacketV766.createEnchantmentV775(ctx.alloc().buffer())
+                    : RegistryDataPacketV766.createEnchantment(ctx.alloc().buffer()));
+            ctx.writeAndFlush(isV775
+                    ? RegistryDataPacketV766.createJukeboxSongV775(ctx.alloc().buffer())
+                    : isV772
                     ? RegistryDataPacketV766.createJukeboxSongV772(ctx.alloc().buffer())
                     : RegistryDataPacketV766.createJukeboxSong(ctx.alloc().buffer()));
         }
@@ -594,6 +625,21 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                     "minecraft:day", "minecraft:early_game",
                     "minecraft:moon", "minecraft:villager_schedule"));
         }
+        // 26.1 added 4 new sound variant registries
+        if (isV775) {
+            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
+                    "minecraft:cat_sound_variant",
+                    "minecraft:classic", "minecraft:royal"));
+            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
+                    "minecraft:chicken_sound_variant",
+                    "minecraft:classic", "minecraft:picky"));
+            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
+                    "minecraft:cow_sound_variant",
+                    "minecraft:classic", "minecraft:moody"));
+            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
+                    "minecraft:pig_sound_variant",
+                    "minecraft:classic", "minecraft:mini", "minecraft:big"));
+        }
         // 1.21.5 added 6 new variant registries (all built-in)
         if (isV770) {
             ctx.writeAndFlush(RegistryDataPacketV766.createPigVariant(ctx.alloc().buffer()));
@@ -609,7 +655,8 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // 1.21 added minecraft:enchantment tag registry (7 registries vs 6)
         // 1.21.2 added minecraft:worldgen/biome tag registry (8 registries vs 7) —
         // required for enchantment built-in data parsing (references biome tags)
-        ctx.writeAndFlush(isV774 ? new UpdateTagsPacketV774()
+        ctx.writeAndFlush(isV775 ? new UpdateTagsPacketV775()
+                        : isV774 ? new UpdateTagsPacketV774()
                         : isV773 ? new UpdateTagsPacketV773()
                         : isV771 ? new UpdateTagsPacketV771()
                         : isV770 ? new UpdateTagsPacketV770()
@@ -660,6 +707,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
+        boolean isV775 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_26_1);
         boolean isV774 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_11);
         boolean isV773 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_9);
         boolean isV771 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_6);
@@ -901,9 +949,12 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
 
         // Send initial time update
+        // v775: worldAge removed (handled by world_clock/timeline system)
         // v768: doDaylightCycle boolean replaces negative-timeOfDay trick
         long timeOfDay = world.isTimeFrozen() ? -world.getWorldTime() : world.getWorldTime();
-        if (isV768) {
+        if (isV775) {
+            ctx.writeAndFlush(new NettyTimeUpdatePacketV775(0, timeOfDay));
+        } else if (isV768) {
             ctx.writeAndFlush(new NettyTimeUpdatePacketV768(0, timeOfDay));
         } else {
             ctx.writeAndFlush(new NettyTimeUpdatePacket(0, timeOfDay));
@@ -1756,8 +1807,11 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private void sendBlockChange(ChannelHandlerContext ctx, int x, int y, int z,
                                   int blockType, int metadata) {
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19)) {
-            // V759, V760, and V761 share the same block state IDs
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_26_1)) {
+            ctx.writeAndFlush(new NettyBlockChangePacketV477(x, y, z,
+                    BlockStateMapper.toV775BlockState(blockType)));
+        } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19)) {
+            // V759-V774 share the same block state IDs
             ctx.writeAndFlush(new NettyBlockChangePacketV477(x, y, z,
                     BlockStateMapper.toV759BlockState(blockType)));
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_17)) {

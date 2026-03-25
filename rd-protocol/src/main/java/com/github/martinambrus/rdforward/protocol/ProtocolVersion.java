@@ -802,12 +802,24 @@ public enum ProtocolVersion {
     RELEASE_1_21_11(774, 81, Family.RELEASE, "Release 1.21.11 (v774)", 94, "1.21.11"),
 
     /**
+     * Minecraft 26.1 "Tiny Takeover" (March 2026).
+     * New versioning scheme (year.drop). No S2C/C2S packet ID changes from v774.
+     * +202 block states: note_block gains 4 trumpet instruments (+200),
+     * golden_dandelion (+1), potted_golden_dandelion (+1).
+     * +1 item: golden_dandelion at item ID 230.
+     * No new entity types (player stays at 155).
+     * New block/item/entity_type/fluid tags. No new registries.
+     * Netty protocol version 775.
+     */
+    RELEASE_26_1(775, 82, Family.RELEASE, "Release 26.1 (v775)", 94, "26.1"),
+
+    /**
      * Minecraft Bedrock Edition (1.26.10+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 944 matches the CloudburstMC codec for 1.26.10.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(944, 82, Family.BEDROCK, "Bedrock", 92, "bedrock-1.26.10");
+    BEDROCK(944, 83, Family.BEDROCK, "Bedrock", 92, "bedrock-1.26.10");
 
     /**
      * Protocol family grouping. Used to show relevant supported versions

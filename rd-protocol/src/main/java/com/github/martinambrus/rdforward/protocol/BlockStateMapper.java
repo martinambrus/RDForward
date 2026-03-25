@@ -506,6 +506,108 @@ public final class BlockStateMapper {
         }
     }
 
+    /**
+     * 26.1 (v775) block state mappings.
+     * IDs sourced from ViaVersion mappings (mapping-1.21.11.json → mapping-26.1.json).
+     * Delta zones from v774: IDs 0-1380 unchanged, 1381-2121 +200 (note_block trumpet expansion),
+     * 2122-10440 +201 (golden_dandelion inserted), 10441+ +202 (potted_golden_dandelion).
+     * Item IDs: cobblestone=35 is before golden_dandelion insertion at 230, so reuse V765.
+     */
+    private static class V775Holder {
+        static final int[] LEGACY_TO_STATE = new int[256];
+
+        static {
+            for (int i = 0; i < 256; i++) {
+                LEGACY_TO_STATE[i] = 1; // stone (default)
+            }
+
+            // IDs sourced from official 26.1 server jar block report (blocks.json).
+            // Unchanged zone (same as v774)
+            LEGACY_TO_STATE[0]  = 0;     // air
+            LEGACY_TO_STATE[1]  = 1;     // stone
+            LEGACY_TO_STATE[2]  = 9;     // grass_block (snowy=false)
+            LEGACY_TO_STATE[3]  = 10;    // dirt
+            LEGACY_TO_STATE[4]  = 14;    // cobblestone
+            LEGACY_TO_STATE[5]  = 15;    // oak_planks
+            LEGACY_TO_STATE[6]  = 29;    // oak_sapling (stage=0)
+            LEGACY_TO_STATE[7]  = 85;    // bedrock
+            LEGACY_TO_STATE[8]  = 86;    // flowing_water -> water (level=0)
+            LEGACY_TO_STATE[9]  = 86;    // still_water -> water (level=0)
+            LEGACY_TO_STATE[10] = 102;   // flowing_lava -> lava (level=0)
+            LEGACY_TO_STATE[11] = 102;   // still_lava -> lava (level=0)
+            LEGACY_TO_STATE[12] = 118;   // sand
+            LEGACY_TO_STATE[13] = 124;   // gravel
+            LEGACY_TO_STATE[14] = 129;   // gold_ore
+            LEGACY_TO_STATE[15] = 131;   // iron_ore
+            LEGACY_TO_STATE[16] = 133;   // coal_ore
+            LEGACY_TO_STATE[17] = 137;   // oak_log (axis=y)
+            LEGACY_TO_STATE[18] = 279;   // oak_leaves (distance=7, persistent=false, waterlogged=false)
+            LEGACY_TO_STATE[19] = 560;   // sponge
+            LEGACY_TO_STATE[20] = 562;   // glass
+            LEGACY_TO_STATE[21] = 563;   // lapis_ore
+            LEGACY_TO_STATE[22] = 565;   // lapis_block
+            LEGACY_TO_STATE[23] = 567;   // dispenser (facing=north, triggered=false)
+            LEGACY_TO_STATE[24] = 578;   // sandstone
+            LEGACY_TO_STATE[25] = 582;   // note_block (instrument=harp, note=0, powered=false)
+            // Shifted zone (+200/+201/+202 from note_block trumpets + golden_dandelion)
+            LEGACY_TO_STATE[31] = 2248;  // short_grass
+            LEGACY_TO_STATE[35] = 2293;  // white_wool
+            LEGACY_TO_STATE[37] = 2321;  // dandelion
+            LEGACY_TO_STATE[38] = 2324;  // poppy
+            LEGACY_TO_STATE[39] = 2336;  // brown_mushroom
+            LEGACY_TO_STATE[40] = 2337;  // red_mushroom
+            LEGACY_TO_STATE[41] = 2338;  // gold_block
+            LEGACY_TO_STATE[42] = 2339;  // iron_block
+            LEGACY_TO_STATE[44] = 13399; // stone_slab (type=bottom, waterlogged=false)
+            LEGACY_TO_STATE[45] = 2340;  // bricks
+            LEGACY_TO_STATE[46] = 2342;  // tnt (unstable=false)
+            LEGACY_TO_STATE[47] = 2343;  // bookshelf
+            LEGACY_TO_STATE[48] = 3368;  // mossy_cobblestone
+            LEGACY_TO_STATE[49] = 3369;  // obsidian
+            LEGACY_TO_STATE[50] = 3370;  // torch (floor)
+            LEGACY_TO_STATE[51] = 3406;  // fire (age=0, all directions=false)
+            LEGACY_TO_STATE[52] = 3888;  // spawner
+            LEGACY_TO_STATE[53] = 3918;  // oak_stairs (facing=north, half=bottom, shape=straight, waterlogged=false)
+            LEGACY_TO_STATE[54] = 3988;  // chest (facing=north, type=single, waterlogged=false)
+            LEGACY_TO_STATE[55] = 5171;  // redstone_wire (all=none, power=0)
+            LEGACY_TO_STATE[56] = 5307;  // diamond_ore
+            LEGACY_TO_STATE[57] = 5309;  // diamond_block
+            LEGACY_TO_STATE[58] = 5310;  // crafting_table
+            LEGACY_TO_STATE[59] = 5311;  // wheat (age=0)
+            LEGACY_TO_STATE[60] = 5319;  // farmland (moisture=0)
+            LEGACY_TO_STATE[61] = 5328;  // furnace (facing=north, lit=false)
+            LEGACY_TO_STATE[62] = 5328;  // lit_furnace -> furnace
+            LEGACY_TO_STATE[63] = 5336;  // oak_sign (rotation=0, waterlogged=false)
+            LEGACY_TO_STATE[64] = 5666;  // oak_door (facing=north, half=lower, hinge=left, open=false, powered=false)
+            LEGACY_TO_STATE[65] = 5720;  // ladder (facing=north, waterlogged=false)
+            LEGACY_TO_STATE[66] = 5728;  // rail (shape=north_south, waterlogged=false)
+            LEGACY_TO_STATE[67] = 5758;  // cobblestone_stairs (facing=north, half=bottom, shape=straight, waterlogged=false)
+            LEGACY_TO_STATE[68] = 5828;  // oak_wall_sign (facing=north, waterlogged=false)
+            LEGACY_TO_STATE[69] = 6780;  // lever (face=wall, facing=north, powered=false)
+            LEGACY_TO_STATE[70] = 6796;  // stone_pressure_plate (powered=false)
+            LEGACY_TO_STATE[71] = 6808;  // iron_door (facing=north, half=lower, hinge=left, open=false, powered=false)
+            LEGACY_TO_STATE[72] = 6862;  // oak_pressure_plate (powered=false)
+            LEGACY_TO_STATE[73] = 6882;  // redstone_ore (lit=false)
+            LEGACY_TO_STATE[74] = 6882;  // lit_redstone_ore -> redstone_ore
+            LEGACY_TO_STATE[75] = 6887;  // redstone_wall_torch (facing=north, lit=true)
+            LEGACY_TO_STATE[76] = 6885;  // redstone_torch (lit=true)
+            LEGACY_TO_STATE[77] = 6904;  // stone_button (face=wall, facing=north, powered=false)
+            LEGACY_TO_STATE[78] = 6919;  // snow (layers=1)
+            LEGACY_TO_STATE[79] = 6927;  // ice
+            LEGACY_TO_STATE[80] = 6928;  // snow_block
+            LEGACY_TO_STATE[81] = 6929;  // cactus (age=0)
+            LEGACY_TO_STATE[82] = 6946;  // clay
+            LEGACY_TO_STATE[83] = 6947;  // sugar_cane (age=0)
+            LEGACY_TO_STATE[84] = 6964;  // jukebox (has_record=false)
+            LEGACY_TO_STATE[85] = 6996;  // oak_fence (all false, waterlogged=false)
+            LEGACY_TO_STATE[86] = 8332;  // pumpkin
+            LEGACY_TO_STATE[87] = 6997;  // netherrack
+            LEGACY_TO_STATE[88] = 6998;  // soul_sand
+            LEGACY_TO_STATE[89] = 7016;  // glowstone
+            LEGACY_TO_STATE[98] = 7754;  // stone_bricks
+        }
+    }
+
     private BlockStateMapper() {}
 
     /**
@@ -605,5 +707,16 @@ public final class BlockStateMapper {
             return -1;
         }
         return V765Holder.LEGACY_TO_ITEM[legacyItemId];
+    }
+
+    /**
+     * Convert a legacy block ID (meta=0) to its 26.1 (v775) global block state ID.
+     * Used for chunk palette entries and BlockChange packets for v775+ clients.
+     */
+    public static int toV775BlockState(int legacyBlockId) {
+        if (legacyBlockId < 0 || legacyBlockId >= 256) {
+            return 1; // stone
+        }
+        return V775Holder.LEGACY_TO_STATE[legacyBlockId];
     }
 }

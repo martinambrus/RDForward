@@ -110,6 +110,7 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
     }
 
     private Packet translate(Packet packet) {
+        boolean isV775 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_26_1);
         boolean isV774 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_11);
         boolean isV773 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_9);
         boolean isV771 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_6);
@@ -173,8 +174,12 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
 
         if (packet instanceof SetBlockServerPacket) {
             SetBlockServerPacket sb = (SetBlockServerPacket) packet;
+            if (isV775) {
+                return new NettyBlockChangePacketV477(sb.getX(), sb.getY(), sb.getZ(),
+                        BlockStateMapper.toV775BlockState(sb.getBlockType()));
+            }
             if (isV759) {
-                // V759+ share the same block state IDs (through v764)
+                // V759-V774 share the same block state IDs
                 return new NettyBlockChangePacketV477(sb.getX(), sb.getY(), sb.getZ(),
                         BlockStateMapper.toV759BlockState(sb.getBlockType()));
             }

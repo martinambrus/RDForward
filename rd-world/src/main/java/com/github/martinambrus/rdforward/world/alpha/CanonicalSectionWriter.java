@@ -40,8 +40,11 @@ public final class CanonicalSectionWriter {
     /** 1.19-1.21.4: non-spanning, v759 state IDs, blockCount, biome container, no light. */
     public static final int TARGET_V759 = 7;
 
-    /** 1.21.5: non-spanning, v759 state IDs, blockCount, biome container, no VarInt lengths. */
+    /** 1.21.5-1.21.11: non-spanning, v759 state IDs, blockCount, biome container, no VarInt lengths. */
     public static final int TARGET_V770 = 8;
+
+    /** 26.1: non-spanning, v775 state IDs, blockCount, biome container, no VarInt lengths. */
+    public static final int TARGET_V775 = 9;
 
     /**
      * Write a populated (non-empty) section to the output stream.
@@ -54,11 +57,17 @@ public final class CanonicalSectionWriter {
         boolean spanning = (target <= TARGET_V477);
         boolean hasLightInSection = (target <= TARGET_V393);
         boolean hasBiomeContainer = (target >= TARGET_V757);
-        boolean hasDataArrayLength = (target != TARGET_V770);
+        boolean hasDataArrayLength = (target != TARGET_V770 && target != TARGET_V775);
+        boolean hasFluidCount = (target >= TARGET_V775);
 
         // 1. blockCount (short, big-endian) for 1.14+
         if (hasBlockCount) {
             writeShort(baos, section.getNonAirCount());
+        }
+
+        // 1b. fluidCount (short, big-endian) for 26.1+
+        if (hasFluidCount) {
+            writeShort(baos, 0);
         }
 
         // 2. bitsPerBlock
@@ -115,10 +124,15 @@ public final class CanonicalSectionWriter {
      */
     public static void writeEmptySection(ByteArrayOutputStream baos, int target) {
         boolean hasBiomeContainer = (target >= TARGET_V757);
-        boolean hasDataArrayLength = (target != TARGET_V770);
+        boolean hasDataArrayLength = (target != TARGET_V770 && target != TARGET_V775);
+        boolean hasFluidCount = (target >= TARGET_V775);
 
         // blockCount = 0
         writeShort(baos, 0);
+        // fluidCount = 0 (26.1+)
+        if (hasFluidCount) {
+            writeShort(baos, 0);
+        }
         // bitsPerBlock = 0 (single-valued palette)
         baos.write(0);
         // palette entry: air = 0
@@ -156,6 +170,8 @@ public final class CanonicalSectionWriter {
             case TARGET_V759:
             case TARGET_V770:
                 return BlockStateMapper.toV759BlockState(legacyId);
+            case TARGET_V775:
+                return BlockStateMapper.toV775BlockState(legacyId);
             default:
                 throw new IllegalArgumentException("Unknown CanonicalSectionWriter target: " + target);
         }

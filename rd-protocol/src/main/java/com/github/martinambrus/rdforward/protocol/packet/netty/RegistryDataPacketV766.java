@@ -432,6 +432,169 @@ public class RegistryDataPacketV766 implements Packet {
     }
 
     // ========================================================================
+    // 26.1 (V775) registries — entries added or changed from 1.21.11
+    // ========================================================================
+
+    public static RegistryDataPacketV766 createTrimMaterialV775(ByteBuf alloc) {
+        return createBuiltIn(alloc, "minecraft:trim_material",
+                "minecraft:amethyst", "minecraft:copper", "minecraft:diamond",
+                "minecraft:emerald", "minecraft:gold", "minecraft:iron",
+                "minecraft:lapis", "minecraft:netherite", "minecraft:quartz",
+                "minecraft:redstone", "minecraft:resin");
+    }
+
+    public static RegistryDataPacketV766 createBannerPatternV775(ByteBuf alloc) {
+        return createBuiltIn(alloc, "minecraft:banner_pattern",
+                "minecraft:base", "minecraft:square_bottom_left",
+                "minecraft:square_bottom_right", "minecraft:square_top_left",
+                "minecraft:square_top_right", "minecraft:stripe_bottom",
+                "minecraft:stripe_top", "minecraft:stripe_left",
+                "minecraft:stripe_right", "minecraft:stripe_center",
+                "minecraft:stripe_middle", "minecraft:stripe_downright",
+                "minecraft:stripe_downleft", "minecraft:small_stripes",
+                "minecraft:cross", "minecraft:straight_cross",
+                "minecraft:triangle_bottom", "minecraft:triangle_top",
+                "minecraft:triangles_bottom", "minecraft:triangles_top",
+                "minecraft:diagonal_left", "minecraft:diagonal_up_right",
+                "minecraft:diagonal_up_left", "minecraft:diagonal_right",
+                "minecraft:circle", "minecraft:rhombus",
+                "minecraft:half_vertical", "minecraft:half_horizontal",
+                "minecraft:half_vertical_right", "minecraft:half_horizontal_bottom",
+                "minecraft:border", "minecraft:curly_border",
+                "minecraft:gradient", "minecraft:gradient_up",
+                "minecraft:bricks", "minecraft:globe",
+                "minecraft:creeper", "minecraft:skull",
+                "minecraft:flower", "minecraft:mojang",
+                "minecraft:piglin", "minecraft:flow", "minecraft:guster");
+    }
+
+    public static RegistryDataPacketV766 createPaintingVariantV775(ByteBuf alloc) {
+        return createBuiltIn(alloc, "minecraft:painting_variant",
+                "minecraft:kebab", "minecraft:aztec", "minecraft:alban",
+                "minecraft:aztec2", "minecraft:bomb", "minecraft:plant",
+                "minecraft:wasteland", "minecraft:pool", "minecraft:courbet",
+                "minecraft:sea", "minecraft:sunset", "minecraft:creebet",
+                "minecraft:wanderer", "minecraft:graham", "minecraft:match",
+                "minecraft:bust", "minecraft:stage", "minecraft:void",
+                "minecraft:skull_and_roses", "minecraft:wither",
+                "minecraft:fighters", "minecraft:pointer", "minecraft:pigscene",
+                "minecraft:burning_skull", "minecraft:skeleton",
+                "minecraft:donkey_kong",
+                "minecraft:earth", "minecraft:wind",
+                "minecraft:water", "minecraft:fire",
+                "minecraft:dennis",
+                "minecraft:backyard", "minecraft:baroque", "minecraft:bouquet",
+                "minecraft:cavebird", "minecraft:changing", "minecraft:cotan",
+                "minecraft:endboss", "minecraft:fern", "minecraft:finding",
+                "minecraft:humble", "minecraft:lowmist", "minecraft:meditative",
+                "minecraft:orb", "minecraft:owlemons", "minecraft:passage",
+                "minecraft:pond", "minecraft:prairie_ride", "minecraft:sunflowers",
+                "minecraft:tides", "minecraft:unpacked");
+    }
+
+    public static RegistryDataPacketV766 createJukeboxSongV775(ByteBuf alloc) {
+        return createBuiltIn(alloc, "minecraft:jukebox_song",
+                "minecraft:11", "minecraft:13", "minecraft:5",
+                "minecraft:blocks", "minecraft:cat", "minecraft:chirp",
+                "minecraft:creator", "minecraft:creator_music_box",
+                "minecraft:far", "minecraft:lava_chicken",
+                "minecraft:mall", "minecraft:mellohi",
+                "minecraft:otherside", "minecraft:pigstep",
+                "minecraft:precipice", "minecraft:relic",
+                "minecraft:stal", "minecraft:strad", "minecraft:tears",
+                "minecraft:wait", "minecraft:ward");
+    }
+
+    public static RegistryDataPacketV766 createDamageTypeV775(ByteBuf alloc) {
+        return createBuiltIn(alloc, "minecraft:damage_type",
+                "minecraft:arrow", "minecraft:bad_respawn_point", "minecraft:cactus",
+                "minecraft:campfire",
+                "minecraft:cramming", "minecraft:dragon_breath", "minecraft:drown",
+                "minecraft:dry_out", "minecraft:ender_pearl",
+                "minecraft:explosion", "minecraft:fall",
+                "minecraft:falling_anvil", "minecraft:falling_block",
+                "minecraft:falling_stalactite", "minecraft:fireball",
+                "minecraft:fireworks", "minecraft:fly_into_wall", "minecraft:freeze",
+                "minecraft:generic", "minecraft:generic_kill", "minecraft:hot_floor",
+                "minecraft:in_fire", "minecraft:in_wall", "minecraft:indirect_magic",
+                "minecraft:lava", "minecraft:lightning_bolt", "minecraft:mace_smash",
+                "minecraft:magic",
+                "minecraft:mob_attack", "minecraft:mob_attack_no_aggro",
+                "minecraft:mob_projectile", "minecraft:on_fire",
+                "minecraft:out_of_world", "minecraft:outside_border",
+                "minecraft:player_attack", "minecraft:player_explosion",
+                "minecraft:sonic_boom", "minecraft:spear",
+                "minecraft:spit", "minecraft:stalagmite",
+                "minecraft:starve", "minecraft:sting", "minecraft:sweet_berry_bush",
+                "minecraft:thorns", "minecraft:thrown", "minecraft:trident",
+                "minecraft:unattributed_fireball", "minecraft:wind_charge",
+                "minecraft:wither", "minecraft:wither_skull");
+    }
+
+    public static RegistryDataPacketV766 createBiomeV775(ByteBuf alloc) {
+        return createBuiltIn(alloc, "minecraft:worldgen/biome",
+                "minecraft:the_void", "minecraft:plains",
+                "minecraft:badlands", "minecraft:bamboo_jungle",
+                "minecraft:basalt_deltas", "minecraft:beach",
+                "minecraft:birch_forest", "minecraft:cherry_grove",
+                "minecraft:cold_ocean", "minecraft:crimson_forest",
+                "minecraft:dark_forest", "minecraft:deep_cold_ocean",
+                "minecraft:deep_dark", "minecraft:deep_frozen_ocean",
+                "minecraft:deep_lukewarm_ocean", "minecraft:deep_ocean",
+                "minecraft:desert", "minecraft:dripstone_caves",
+                "minecraft:end_barrens", "minecraft:end_highlands",
+                "minecraft:end_midlands", "minecraft:eroded_badlands",
+                "minecraft:flower_forest", "minecraft:forest",
+                "minecraft:frozen_ocean", "minecraft:frozen_peaks",
+                "minecraft:frozen_river", "minecraft:grove",
+                "minecraft:ice_spikes", "minecraft:jagged_peaks",
+                "minecraft:jungle", "minecraft:lukewarm_ocean",
+                "minecraft:lush_caves", "minecraft:mangrove_swamp",
+                "minecraft:meadow", "minecraft:mushroom_fields",
+                "minecraft:nether_wastes", "minecraft:ocean",
+                "minecraft:old_growth_birch_forest", "minecraft:old_growth_pine_taiga",
+                "minecraft:old_growth_spruce_taiga", "minecraft:pale_garden",
+                "minecraft:river", "minecraft:savanna",
+                "minecraft:savanna_plateau", "minecraft:small_end_islands",
+                "minecraft:snowy_beach", "minecraft:snowy_plains",
+                "minecraft:snowy_slopes", "minecraft:snowy_taiga",
+                "minecraft:soul_sand_valley", "minecraft:sparse_jungle",
+                "minecraft:stony_peaks", "minecraft:stony_shore",
+                "minecraft:sunflower_plains", "minecraft:swamp",
+                "minecraft:taiga", "minecraft:the_end",
+                "minecraft:warm_ocean", "minecraft:warped_forest",
+                "minecraft:windswept_forest", "minecraft:windswept_gravelly_hills",
+                "minecraft:windswept_hills", "minecraft:windswept_savanna",
+                "minecraft:wooded_badlands");
+    }
+
+    public static RegistryDataPacketV766 createEnchantmentV775(ByteBuf alloc) {
+        return createBuiltIn(alloc, "minecraft:enchantment",
+                "minecraft:protection", "minecraft:fire_protection",
+                "minecraft:feather_falling", "minecraft:blast_protection",
+                "minecraft:projectile_protection", "minecraft:respiration",
+                "minecraft:aqua_affinity", "minecraft:thorns",
+                "minecraft:depth_strider", "minecraft:frost_walker",
+                "minecraft:binding_curse", "minecraft:soul_speed",
+                "minecraft:swift_sneak", "minecraft:sharpness",
+                "minecraft:smite", "minecraft:bane_of_arthropods",
+                "minecraft:knockback", "minecraft:fire_aspect",
+                "minecraft:looting", "minecraft:sweeping_edge",
+                "minecraft:efficiency", "minecraft:silk_touch",
+                "minecraft:unbreaking", "minecraft:fortune",
+                "minecraft:power", "minecraft:punch",
+                "minecraft:flame", "minecraft:infinity",
+                "minecraft:luck_of_the_sea", "minecraft:lure",
+                "minecraft:loyalty", "minecraft:impaling",
+                "minecraft:riptide", "minecraft:channeling",
+                "minecraft:multishot", "minecraft:quick_charge",
+                "minecraft:piercing", "minecraft:density",
+                "minecraft:breach", "minecraft:wind_burst",
+                "minecraft:mending", "minecraft:vanishing_curse",
+                "minecraft:lunge");
+    }
+
+    // ========================================================================
     // Dimension element helper
     // ========================================================================
 

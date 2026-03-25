@@ -232,12 +232,14 @@ public class ChunkManager {
     static final int BUCKET_V764        = 17; // 1.20.2+
     static final int BUCKET_V766        = 18; // 1.20.5+
     static final int BUCKET_V770        = 19; // 1.21.5+
+    static final int BUCKET_V775        = 20; // 26.1+
 
     /**
      * Map a protocol bucket to a {@link CanonicalSectionWriter} target constant.
      * Returns -1 for buckets that don't use the canonical path (Alpha, V28, V39, V47).
      */
     static int bucketToTarget(int bucket) {
+        if (bucket >= BUCKET_V775) return CanonicalSectionWriter.TARGET_V775;
         if (bucket >= BUCKET_V770) return CanonicalSectionWriter.TARGET_V770;
         if (bucket >= BUCKET_V759) return CanonicalSectionWriter.TARGET_V759;
         if (bucket >= BUCKET_V757) return CanonicalSectionWriter.TARGET_V757;
@@ -266,6 +268,7 @@ public class ChunkManager {
      */
     static int protocolBucket(ProtocolVersion v) {
         if (v == ProtocolVersion.BEDROCK) return 0; // Bedrock uses separate path
+        if (v.isAtLeast(ProtocolVersion.RELEASE_26_1))   return BUCKET_V775;
         if (v.isAtLeast(ProtocolVersion.RELEASE_1_21_5)) return BUCKET_V770;
         if (v.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) return BUCKET_V766;
         if (v.isAtLeast(ProtocolVersion.RELEASE_1_20_2)) return BUCKET_V764;
@@ -299,7 +302,7 @@ public class ChunkManager {
      * Called when a block changes in that chunk.
      */
     private void invalidateChunkCache(int chunkX, int chunkZ) {
-        for (int bucket = BUCKET_ALPHA; bucket <= BUCKET_V770; bucket++) {
+        for (int bucket = BUCKET_ALPHA; bucket <= BUCKET_V775; bucket++) {
             FutureChunkPackets entry = chunkPacketCache.remove(cacheKey(chunkX, chunkZ, bucket));
             if (entry != null) entry.invalidate(); // signal in-flight serialization to discard
         }
