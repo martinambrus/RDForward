@@ -280,8 +280,11 @@ public class MCPEGameplayHandler {
             return;
         }
 
-        // Use the block ID from the packet if valid, else fallback
-        int blockId = (block >= 1 && block <= 255) ? block : BlockRegistry.COBBLESTONE;
+        // RubyDung palette: always place cobblestone (grass at surface layer)
+        int surfaceY = world.getHeight() * 2 / 3;
+        int blockId = (targetY == surfaceY)
+                ? BlockRegistry.GRASS
+                : BlockRegistry.COBBLESTONE;
 
         EventResult result = ServerEvents.BLOCK_PLACE.invoker()
                 .onBlockPlace(player.getUsername(), targetX, targetY, targetZ, blockId);

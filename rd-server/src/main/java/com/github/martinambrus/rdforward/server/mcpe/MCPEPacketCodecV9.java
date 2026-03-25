@@ -134,7 +134,7 @@ public class MCPEPacketCodecV9 implements MCPEPacketCodec {
         buf.writeInt(z);
         buf.writeByte(y);
         buf.writeByte(blockId);
-        buf.writeByte((meta & 0x0F));
+        buf.writeByte((meta & 0x0F) | ((flags & 0x0F) << 4));
     }
 
     @Override
@@ -152,7 +152,7 @@ public class MCPEPacketCodecV9 implements MCPEPacketCodec {
         buf.writeInt(z);
         buf.writeByte(y);
         buf.writeByte(blockType);
-        buf.writeByte(0); // meta=0, flags=0
+        buf.writeByte(MCPEConstants.FLAG_ALL_PRIORITY << 4); // meta=0, flags=FLAG_ALL_PRIORITY
     }
 
     @Override
