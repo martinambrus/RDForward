@@ -719,4 +719,25 @@ public final class BlockStateMapper {
         }
         return V775Holder.LEGACY_TO_STATE[legacyBlockId];
     }
+
+    // -----------------------------------------------------------------------
+    // Raw remap tables for CanonicalSectionWriter palette remapping.
+    // Direct array indexing without bounds checks (callers guarantee 0-255).
+    // Lazily loaded via JVM inner-class holder pattern.
+    // -----------------------------------------------------------------------
+
+    /** Raw 1.13 block state remap table (index = legacy block ID). */
+    public static int[] getV393RemapTable() { return LEGACY_TO_STATE; }
+
+    /** Raw 1.16 block state remap table (index = legacy block ID). */
+    public static int[] getV735RemapTable() { return V735Holder.LEGACY_TO_STATE; }
+
+    /** Raw 1.17 block state remap table (index = legacy block ID). */
+    public static int[] getV755RemapTable() { return V755Holder.LEGACY_TO_STATE; }
+
+    /** Raw 1.19 block state remap table (index = legacy block ID). */
+    public static int[] getV759RemapTable() { return V759Holder.LEGACY_TO_STATE; }
+
+    /** Raw 26.1 block state remap table (index = legacy block ID). */
+    public static int[] getV775RemapTable() { return V775Holder.LEGACY_TO_STATE; }
 }

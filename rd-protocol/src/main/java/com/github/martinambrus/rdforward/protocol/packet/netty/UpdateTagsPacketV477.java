@@ -3,6 +3,7 @@ package com.github.martinambrus.rdforward.protocol.packet.netty;
 import com.github.martinambrus.rdforward.protocol.McDataTypes;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 
 /**
  * 1.14 Play state, S2C packet 0x5B: Update Tags.
@@ -19,11 +20,26 @@ import io.netty.buffer.ByteBuf;
  */
 public class UpdateTagsPacketV477 implements Packet {
 
+    public static final UpdateTagsPacketV477 INSTANCE = new UpdateTagsPacketV477();
+
+    private static final byte[] SERIALIZED;
+    static {
+        ByteBuf tmp = Unpooled.buffer();
+        serializePayload(tmp);
+        SERIALIZED = new byte[tmp.readableBytes()];
+        tmp.readBytes(SERIALIZED);
+        tmp.release();
+    }
+
     @Override
     public int getPacketId() { return 0x5B; }
 
     @Override
     public void write(ByteBuf buf) {
+        buf.writeBytes(SERIALIZED);
+    }
+
+    private static void serializePayload(ByteBuf buf) {
         McDataTypes.writeVarInt(buf, 0); // 0 block tags
         McDataTypes.writeVarInt(buf, 0); // 0 item tags
         McDataTypes.writeVarInt(buf, 0); // 0 fluid tags

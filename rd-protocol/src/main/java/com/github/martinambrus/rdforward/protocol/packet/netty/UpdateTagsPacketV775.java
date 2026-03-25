@@ -3,6 +3,7 @@ package com.github.martinambrus.rdforward.protocol.packet.netty;
 import com.github.martinambrus.rdforward.protocol.McDataTypes;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -25,6 +26,8 @@ import java.util.List;
  * - Biome, game_event, damage_type, enchantment, dialog, timeline: unchanged from V774.
  */
 public class UpdateTagsPacketV775 implements Packet {
+
+    public static final UpdateTagsPacketV775 INSTANCE = new UpdateTagsPacketV775();
 
     private static final String[] BLOCK_TAGS;
     static {
@@ -160,8 +163,21 @@ public class UpdateTagsPacketV775 implements Packet {
         "minecraft:placeable"
     };
 
+    private static final byte[] SERIALIZED;
+    static {
+        ByteBuf tmp = Unpooled.buffer();
+        serializePayload(tmp);
+        SERIALIZED = new byte[tmp.readableBytes()];
+        tmp.readBytes(SERIALIZED);
+        tmp.release();
+    }
+
     @Override
     public void write(ByteBuf buf) {
+        buf.writeBytes(SERIALIZED);
+    }
+
+    private static void serializePayload(ByteBuf buf) {
         // 13 registries: 10 from V774 + 3 new in 26.1 (banner_pattern, instrument,
         // painting_variant). Tags for point_of_interest_type, potion, villager_trade
         // omitted since those registries aren't sent via RegistryData.

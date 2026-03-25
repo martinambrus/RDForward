@@ -3,6 +3,7 @@ package com.github.martinambrus.rdforward.protocol.packet.netty;
 import com.github.martinambrus.rdforward.protocol.McDataTypes;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 
 /**
  * 1.19.4 Play state, S2C packet 0x6E: Update Tags.
@@ -15,6 +16,8 @@ import io.netty.buffer.ByteBuf;
  * - Fluid/game event tags: unchanged from V761.
  */
 public class UpdateTagsPacketV762 implements Packet {
+
+    public static final UpdateTagsPacketV762 INSTANCE = new UpdateTagsPacketV762();
 
     private static final String[] BLOCK_TAGS = {
         "minecraft:acacia_logs", "minecraft:all_signs",
@@ -212,11 +215,24 @@ public class UpdateTagsPacketV762 implements Packet {
         "minecraft:wither_immune_to"
     };
 
+    private static final byte[] SERIALIZED;
+    static {
+        ByteBuf tmp = Unpooled.buffer();
+        serializePayload(tmp);
+        SERIALIZED = new byte[tmp.readableBytes()];
+        tmp.readBytes(SERIALIZED);
+        tmp.release();
+    }
+
     @Override
     public int getPacketId() { return 0x6E; }
 
     @Override
     public void write(ByteBuf buf) {
+        buf.writeBytes(SERIALIZED);
+    }
+
+    private static void serializePayload(ByteBuf buf) {
         // 6 registries: block, item, fluid, entity_type, game_event, damage_type
         McDataTypes.writeVarInt(buf, 6);
 

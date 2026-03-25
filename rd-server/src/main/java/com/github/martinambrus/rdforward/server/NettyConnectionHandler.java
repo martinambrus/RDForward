@@ -524,9 +524,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
             // Send UpdateTags
             if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_3)) {
-                ctx.writeAndFlush(new UpdateTagsPacketV765());
+                ctx.writeAndFlush(UpdateTagsPacketV765.INSTANCE);
             } else {
-                ctx.writeAndFlush(new UpdateTagsPacketV764());
+                ctx.writeAndFlush(UpdateTagsPacketV764.INSTANCE);
             }
 
             // Signal end of Configuration phase
@@ -680,15 +680,15 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // 1.21 added minecraft:enchantment tag registry (7 registries vs 6)
         // 1.21.2 added minecraft:worldgen/biome tag registry (8 registries vs 7) —
         // required for enchantment built-in data parsing (references biome tags)
-        ctx.writeAndFlush(isV775 ? new UpdateTagsPacketV775()
-                        : isV774 ? new UpdateTagsPacketV774()
-                        : isV773 ? new UpdateTagsPacketV773()
-                        : isV771 ? new UpdateTagsPacketV771()
-                        : isV770 ? new UpdateTagsPacketV770()
-                        : isV769 ? new UpdateTagsPacketV769()
-                        : isV768 ? new UpdateTagsPacketV768()
-                        : isV767 ? new UpdateTagsPacketV767()
-                        : new UpdateTagsPacketV766());
+        ctx.writeAndFlush(isV775 ? UpdateTagsPacketV775.INSTANCE
+                        : isV774 ? UpdateTagsPacketV774.INSTANCE
+                        : isV773 ? UpdateTagsPacketV773.INSTANCE
+                        : isV771 ? UpdateTagsPacketV771.INSTANCE
+                        : isV770 ? UpdateTagsPacketV770.INSTANCE
+                        : isV769 ? UpdateTagsPacketV769.INSTANCE
+                        : isV768 ? UpdateTagsPacketV768.INSTANCE
+                        : isV767 ? UpdateTagsPacketV767.INSTANCE
+                        : UpdateTagsPacketV766.INSTANCE);
 
         ctx.writeAndFlush(new ConfigFinishS2CPacket());
     }
@@ -856,17 +856,17 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 // 1.14 added entity_types as a 4th tag category
                 // 1.16 requires essential fluid tags (water/lava) or client crashes during rendering
                 // 1.16.2 removed minecraft:furnace_materials from item tags
-                ctx.writeAndFlush(isV763 ? new UpdateTagsPacketV763()
-                        : isV762 ? new UpdateTagsPacketV762()
-                        : isV761 ? new UpdateTagsPacketV761()
-                        : isV760 ? new UpdateTagsPacketV759()
-                        : isV759 ? new UpdateTagsPacketV759()
-                        : isV758 ? new UpdateTagsPacketV758()
-                        : isV757 ? new UpdateTagsPacketV757()
-                        : isV755 ? new UpdateTagsPacketV755()
-                        : isV751 ? new UpdateTagsPacketV751()
-                        : isV735 ? new UpdateTagsPacketV735()
-                        : isV477 ? new UpdateTagsPacketV477() : new UpdateTagsPacketV393());
+                ctx.writeAndFlush(isV763 ? UpdateTagsPacketV763.INSTANCE
+                        : isV762 ? UpdateTagsPacketV762.INSTANCE
+                        : isV761 ? UpdateTagsPacketV761.INSTANCE
+                        : isV760 ? UpdateTagsPacketV759.INSTANCE
+                        : isV759 ? UpdateTagsPacketV759.INSTANCE
+                        : isV758 ? UpdateTagsPacketV758.INSTANCE
+                        : isV757 ? UpdateTagsPacketV757.INSTANCE
+                        : isV755 ? UpdateTagsPacketV755.INSTANCE
+                        : isV751 ? UpdateTagsPacketV751.INSTANCE
+                        : isV735 ? UpdateTagsPacketV735.INSTANCE
+                        : isV477 ? UpdateTagsPacketV477.INSTANCE : UpdateTagsPacketV393.INSTANCE);
             }
             // Brand plugin message — 1.13 client NPEs without it
             byte[] brand = "RDForward".getBytes(java.nio.charset.StandardCharsets.UTF_8);

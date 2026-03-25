@@ -186,9 +186,12 @@ public class ChunkManager {
     private static final byte[] FULL_SKY_LIGHT = new byte[2048];
     /** Pre-filled biomes array (plains=1) for V755/V735/V751 chunk packets. */
     private static final int[] PLAINS_BIOMES_1024 = new int[1024];
+    /** Pre-filled byte biomes (plains=1) for v109/v110 (1.9-1.12) chunk packets. */
+    private static final byte[] PLAINS_BIOMES_256 = new byte[256];
     static {
         java.util.Arrays.fill(FULL_SKY_LIGHT, (byte) 0xFF);
         java.util.Arrays.fill(PLAINS_BIOMES_1024, 1);
+        java.util.Arrays.fill(PLAINS_BIOMES_256, (byte) 1);
     }
 
     public ChunkManager(WorldGenerator worldGenerator, long seed, File worldDir) {
@@ -1219,9 +1222,7 @@ public class ChunkManager {
             // section format but sends biomes as a separate packet field.
             if (bucket <= BUCKET_V110) {
                 // v109/v110 (1.9-1.12): byte[256] biomes appended after sections
-                byte[] biomes = new byte[256];
-                java.util.Arrays.fill(biomes, (byte) 1);
-                baos.write(biomes, 0, 256);
+                baos.write(PLAINS_BIOMES_256, 0, 256);
             } else if (bucket == BUCKET_V393 || bucket == BUCKET_V477) {
                 // v393/v477 (1.13-1.14): int[256] biomes appended after sections
                 for (int i = 0; i < 256; i++) {

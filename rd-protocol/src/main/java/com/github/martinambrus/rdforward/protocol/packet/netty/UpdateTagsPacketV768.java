@@ -3,6 +3,7 @@ package com.github.martinambrus.rdforward.protocol.packet.netty;
 import com.github.martinambrus.rdforward.protocol.McDataTypes;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 
 /**
  * 1.21.2 Configuration/Play state, S2C packet.
@@ -20,6 +21,8 @@ import io.netty.buffer.ByteBuf;
  *   unchanged from V767.
  */
 public class UpdateTagsPacketV768 implements Packet {
+
+    public static final UpdateTagsPacketV768 INSTANCE = new UpdateTagsPacketV768();
 
     // Reuse V767's tag arrays for the 7 unchanged registries
     private static final String[] BLOCK_TAGS = {
@@ -361,11 +364,24 @@ public class UpdateTagsPacketV768 implements Packet {
         "minecraft:without_zombie_sieges"
     };
 
+    private static final byte[] SERIALIZED;
+    static {
+        ByteBuf tmp = Unpooled.buffer();
+        serializePayload(tmp);
+        SERIALIZED = new byte[tmp.readableBytes()];
+        tmp.readBytes(SERIALIZED);
+        tmp.release();
+    }
+
     @Override
     public int getPacketId() { return 0x7F; }
 
     @Override
     public void write(ByteBuf buf) {
+        buf.writeBytes(SERIALIZED);
+    }
+
+    private static void serializePayload(ByteBuf buf) {
         // 8 registries: block, item, fluid, entity_type, game_event, damage_type, enchantment, worldgen/biome
         McDataTypes.writeVarInt(buf, 8);
 

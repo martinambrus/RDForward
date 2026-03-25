@@ -46,6 +46,11 @@ public final class CanonicalSectionWriter {
     /** 26.1: non-spanning, v775 state IDs, blockCount, biome container, no VarInt lengths. */
     public static final int TARGET_V775 = 9;
 
+    /** Pre-serialized single-valued biome container (plains) for targets with data array length. */
+    private static final byte[] BIOME_SINGLE_PLAINS_WITH_LENGTH = {0x00, 0x01, 0x00};
+    /** Pre-serialized single-valued biome container (plains) for v770/v775 (no data array length). */
+    private static final byte[] BIOME_SINGLE_PLAINS_NO_LENGTH = {0x00, 0x01};
+
     /**
      * Write a populated (non-empty) section to the output stream.
      * Remaps only the palette entries, then copies pre-packed long array directly.
@@ -74,12 +79,21 @@ public final class CanonicalSectionWriter {
         baos.write(section.getBitsPerBlock());
 
         // 3. Palette: VarInt(paletteSize) + VarInt[] remapped entries
-        writeVarInt(baos, section.getPaletteSize());
+        int paletteSize = section.getPaletteSize();
+        writeVarInt(baos, paletteSize);
         int[] legacyPalette = section.getLegacyPalette();
-        int[] legacyMeta = section.getLegacyPaletteMeta();
-        for (int i = 0; i < section.getPaletteSize(); i++) {
-            int stateId = remapToVersionState(legacyPalette[i], legacyMeta[i], target);
-            writeVarInt(baos, stateId);
+        if (target == TARGET_V109) {
+            // Pre-1.13: state = (blockId << 4) | metadata
+            int[] legacyMeta = section.getLegacyPaletteMeta();
+            for (int i = 0; i < paletteSize; i++) {
+                writeVarInt(baos, (legacyPalette[i] << 4) | (legacyMeta[i] & 0xF));
+            }
+        } else {
+            // 1.13+: direct table lookup (no switch, no bounds check)
+            int[] remapTable = getRemapTable(target);
+            for (int i = 0; i < paletteSize; i++) {
+                writeVarInt(baos, remapTable[legacyPalette[i]]);
+            }
         }
 
         // 4. Pick pre-packed longs based on packing style
@@ -111,11 +125,8 @@ public final class CanonicalSectionWriter {
 
         // 8. Biome PalettedContainer (1.18+ only)
         if (hasBiomeContainer) {
-            baos.write(0);              // bitsPerEntry = 0 (single-valued)
-            writeVarInt(baos, 1);       // biome value: plains
-            if (hasDataArrayLength) {
-                writeVarInt(baos, 0);   // data array length: 0
-            }
+            byte[] biome = hasDataArrayLength ? BIOME_SINGLE_PLAINS_WITH_LENGTH : BIOME_SINGLE_PLAINS_NO_LENGTH;
+            baos.write(biome, 0, biome.length);
         }
     }
 
@@ -144,34 +155,31 @@ public final class CanonicalSectionWriter {
 
         // Biome container (1.18+)
         if (hasBiomeContainer) {
-            baos.write(0);              // bitsPerEntry = 0
-            writeVarInt(baos, 1);       // biome value: plains
-            if (hasDataArrayLength) {
-                writeVarInt(baos, 0);   // data array length: 0
-            }
+            byte[] biome = hasDataArrayLength ? BIOME_SINGLE_PLAINS_WITH_LENGTH : BIOME_SINGLE_PLAINS_NO_LENGTH;
+            baos.write(biome, 0, biome.length);
         }
     }
 
     /**
-     * Remap a legacy block ID + metadata to the version-specific block state ID.
+     * Get the pre-computed remap table for a version target (1.13+).
+     * Returns a int[256] where index = legacy block ID, value = version-specific state ID.
+     * Lazily loaded via JVM inner-class holders in BlockStateMapper.
      */
-    static int remapToVersionState(int legacyId, int meta, int target) {
+    private static int[] getRemapTable(int target) {
         switch (target) {
-            case TARGET_V109:
-                return (legacyId << 4) | (meta & 0xF);
             case TARGET_V393:
             case TARGET_V477:
-                return BlockStateMapper.toV393BlockState(legacyId);
+                return BlockStateMapper.getV393RemapTable();
             case TARGET_V735:
-                return BlockStateMapper.toV735BlockState(legacyId);
+                return BlockStateMapper.getV735RemapTable();
             case TARGET_V755:
             case TARGET_V757:
-                return BlockStateMapper.toV755BlockState(legacyId);
+                return BlockStateMapper.getV755RemapTable();
             case TARGET_V759:
             case TARGET_V770:
-                return BlockStateMapper.toV759BlockState(legacyId);
+                return BlockStateMapper.getV759RemapTable();
             case TARGET_V775:
-                return BlockStateMapper.toV775BlockState(legacyId);
+                return BlockStateMapper.getV775RemapTable();
             default:
                 throw new IllegalArgumentException("Unknown CanonicalSectionWriter target: " + target);
         }

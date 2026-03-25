@@ -3,6 +3,7 @@ package com.github.martinambrus.rdforward.protocol.packet.netty;
 import com.github.martinambrus.rdforward.protocol.McDataTypes;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 
 /**
  * 1.21.9 Configuration/Play state, S2C packet.
@@ -19,6 +20,8 @@ import io.netty.buffer.ByteBuf;
  * - Fluid, game_event, damage_type, enchantment, biome, dialog: unchanged from V771.
  */
 public class UpdateTagsPacketV773 implements Packet {
+
+    public static final UpdateTagsPacketV773 INSTANCE = new UpdateTagsPacketV773();
 
     private static final String[] BLOCK_TAGS;
     static {
@@ -83,6 +86,10 @@ public class UpdateTagsPacketV773 implements Packet {
 
     @Override
     public void write(ByteBuf buf) {
+        buf.writeBytes(SERIALIZED);
+    }
+
+    private static void serializePayload(ByteBuf buf) {
         // 9 registries: block, item, fluid, entity_type, game_event, damage_type, enchantment, worldgen/biome, dialog
         McDataTypes.writeVarInt(buf, 9);
 
@@ -162,4 +169,13 @@ public class UpdateTagsPacketV773 implements Packet {
     static String[] getBlockTags() { return BLOCK_TAGS; }
     static String[] getItemTags() { return ITEM_TAGS; }
     static String[] getEntityTypeTags() { return ENTITY_TYPE_TAGS; }
+
+    private static final byte[] SERIALIZED;
+    static {
+        ByteBuf tmp = Unpooled.buffer();
+        serializePayload(tmp);
+        SERIALIZED = new byte[tmp.readableBytes()];
+        tmp.readBytes(SERIALIZED);
+        tmp.release();
+    }
 }

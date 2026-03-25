@@ -1,6 +1,6 @@
 package com.github.martinambrus.rdforward.world.alpha;
 
-import java.util.LinkedHashMap;
+import java.util.Arrays;
 
 /**
  * Immutable, version-independent chunk data built once from an {@link AlphaChunk}.
@@ -63,7 +63,11 @@ public final class CanonicalChunkData {
         // for sequential reads. Writes to paletteIndices (16KB) and packed longs (2KB) are scattered
         // but L1-resident.
         int[] paletteIndices = new int[BLOCKS_PER_SECTION];
-        LinkedHashMap<Integer, Integer> paletteMap = new LinkedHashMap<>();
+        // Flat array palette: avoids LinkedHashMap + Integer boxing overhead.
+        // Alpha sections typically have <10 unique block types, so linear scan
+        // on a small array is faster than hashing.
+        int[] paletteKeys = new int[16];
+        int paletteSize = 0;
         int nonAirCount = 0;
 
         // Start with bitsPerBlock=4 (supports 16 palette entries). Alpha sections typically
@@ -91,10 +95,19 @@ public final class CanonicalChunkData {
                     if (blockId != 0) nonAirCount++;
 
                     int paletteKey = (blockId << 4) | (meta & 0xF);
-                    Integer palIdx = paletteMap.get(paletteKey);
-                    if (palIdx == null) {
-                        palIdx = paletteMap.size();
-                        paletteMap.put(paletteKey, palIdx);
+
+                    // Linear scan for palette index (typically <10 entries)
+                    int palIdx = -1;
+                    for (int p = 0; p < paletteSize; p++) {
+                        if (paletteKeys[p] == paletteKey) { palIdx = p; break; }
+                    }
+                    if (palIdx == -1) {
+                        palIdx = paletteSize;
+                        if (palIdx >= paletteKeys.length) {
+                            paletteKeys = Arrays.copyOf(paletteKeys, paletteKeys.length * 2);
+                        }
+                        paletteKeys[palIdx] = paletteKey;
+                        paletteSize++;
 
                         // Palette exceeded current bitsPerBlock capacity — grow and repack
                         if (palIdx >= capacity) {
@@ -139,16 +152,12 @@ public final class CanonicalChunkData {
             }
         }
 
-        int paletteSize = paletteMap.size();
-
-        // Extract legacy palette arrays from the map
+        // Extract legacy palette arrays from the flat key array
         int[] legacyPalette = new int[paletteSize];
         int[] legacyPaletteMeta = new int[paletteSize];
-        int idx = 0;
-        for (int key : paletteMap.keySet()) {
-            legacyPalette[idx] = key >> 4;
-            legacyPaletteMeta[idx] = key & 0xF;
-            idx++;
+        for (int idx = 0; idx < paletteSize; idx++) {
+            legacyPalette[idx] = paletteKeys[idx] >> 4;
+            legacyPaletteMeta[idx] = paletteKeys[idx] & 0xF;
         }
 
         // Pack light nibbles (shared across all versions)

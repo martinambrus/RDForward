@@ -3,6 +3,7 @@ package com.github.martinambrus.rdforward.protocol.packet.netty;
 import com.github.martinambrus.rdforward.protocol.McDataTypes;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 
 /**
  * 1.21.4 Configuration/Play state, S2C packet.
@@ -18,6 +19,8 @@ import io.netty.buffer.ByteBuf;
  *   unchanged from V768.
  */
 public class UpdateTagsPacketV769 implements Packet {
+
+    public static final UpdateTagsPacketV769 INSTANCE = new UpdateTagsPacketV769();
 
     private static final String[] BLOCK_TAGS = {
         "minecraft:acacia_logs", "minecraft:all_hanging_signs", "minecraft:all_signs",
@@ -237,11 +240,24 @@ public class UpdateTagsPacketV769 implements Packet {
     private static final String[] ENCHANTMENT_TAGS = UpdateTagsPacketV768.getEnchantmentTags();
     private static final String[] BIOME_TAGS = UpdateTagsPacketV768.getBiomeTags();
 
+    private static final byte[] SERIALIZED;
+    static {
+        ByteBuf tmp = Unpooled.buffer();
+        serializePayload(tmp);
+        SERIALIZED = new byte[tmp.readableBytes()];
+        tmp.readBytes(SERIALIZED);
+        tmp.release();
+    }
+
     @Override
     public int getPacketId() { return 0x7F; }
 
     @Override
     public void write(ByteBuf buf) {
+        buf.writeBytes(SERIALIZED);
+    }
+
+    private static void serializePayload(ByteBuf buf) {
         // 8 registries: block, item, fluid, entity_type, game_event, damage_type, enchantment, worldgen/biome
         McDataTypes.writeVarInt(buf, 8);
 

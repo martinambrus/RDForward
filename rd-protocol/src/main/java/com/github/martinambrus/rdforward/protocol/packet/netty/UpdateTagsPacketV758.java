@@ -3,6 +3,7 @@ package com.github.martinambrus.rdforward.protocol.packet.netty;
 import com.github.martinambrus.rdforward.protocol.McDataTypes;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 
 /**
  * 1.18.2 Play state, S2C packet 0x67: Update Tags.
@@ -11,6 +12,8 @@ import io.netty.buffer.ByteBuf;
  * Total block tags: 113 (was 112 in V757).
  */
 public class UpdateTagsPacketV758 implements Packet {
+
+    public static final UpdateTagsPacketV758 INSTANCE = new UpdateTagsPacketV758();
 
     private static final String[] BLOCK_TAGS = {
         "minecraft:acacia_logs", "minecraft:animals_spawnable_on",
@@ -143,11 +146,24 @@ public class UpdateTagsPacketV758 implements Packet {
         "minecraft:raiders", "minecraft:skeletons"
     };
 
+    private static final byte[] SERIALIZED;
+    static {
+        ByteBuf tmp = Unpooled.buffer();
+        serializePayload(tmp);
+        SERIALIZED = new byte[tmp.readableBytes()];
+        tmp.readBytes(SERIALIZED);
+        tmp.release();
+    }
+
     @Override
     public int getPacketId() { return 0x67; }
 
     @Override
     public void write(ByteBuf buf) {
+        buf.writeBytes(SERIALIZED);
+    }
+
+    private static void serializePayload(ByteBuf buf) {
         // 5 registries: block, item, fluid, entity_type, game_event
         McDataTypes.writeVarInt(buf, 5);
 
