@@ -3,6 +3,8 @@ package com.github.martinambrus.rdforward.server;
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.codec.NettyPacketDecoder;
 import com.github.martinambrus.rdforward.protocol.codec.NettyPacketEncoder;
+import com.github.martinambrus.rdforward.protocol.codec.PacketCompressEncoder;
+import com.github.martinambrus.rdforward.protocol.codec.PacketDecompressDecoder;
 import com.github.martinambrus.rdforward.protocol.crypto.CipherDecoder;
 import com.github.martinambrus.rdforward.protocol.crypto.CipherEncoder;
 import com.github.martinambrus.rdforward.protocol.crypto.MinecraftCipher;
@@ -332,14 +334,37 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
     }
 
+    /** Compression threshold in bytes. Packets smaller than this are sent uncompressed. */
+    private static final int COMPRESSION_THRESHOLD = 256;
+
     /**
      * Send LoginSuccess and transition to PLAY (or CONFIGURATION for v764+).
      * Called after encryption completes or directly for offline-mode logins.
+     *
+     * For 1.8+ clients, sends Set Compression before LoginSuccess to enable
+     * zlib packet compression. 1.7.x clients do not support compression.
      */
     private void completeLogin(ChannelHandlerContext ctx) {
         // Remove login timeout
         if (ctx.pipeline().get("loginTimeout") != null) {
             ctx.pipeline().remove("loginTimeout");
+        }
+
+        // Enable compression for 1.8+ clients (protocol 47+).
+        // SetCompression MUST be sent before LoginSuccess.
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+            ctx.writeAndFlush(new SetCompressionPacket(COMPRESSION_THRESHOLD));
+
+            // Insert compress/decompress handlers into the pipeline.
+            // Inbound (head-to-tail): decoder -> decompress -> packetDecoder
+            // Outbound (tail-to-head): packetEncoder -> compress -> encoder
+            // addBefore in head-to-tail means AFTER in outbound direction.
+            ctx.pipeline().addAfter("decoder", "decompress",
+                    new PacketDecompressDecoder(COMPRESSION_THRESHOLD));
+            ctx.pipeline().addBefore("packetEncoder", "compress",
+                    new PacketCompressEncoder(COMPRESSION_THRESHOLD));
+            System.out.println("[Netty] Compression enabled (threshold=" + COMPRESSION_THRESHOLD
+                    + ") for " + pendingUsername);
         }
 
         // Send LoginSuccess — use Mojang UUID in online mode, offline UUID otherwise

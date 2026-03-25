@@ -69,6 +69,9 @@ public class NettyPacketRegistry {
         registerS2C(ConnectionState.LOGIN, 0x02, new PacketFactory() {
             public Packet create() { return new LoginSuccessPacket(); }
         }, LoginSuccessPacket.class);
+        registerS2C(ConnectionState.LOGIN, 0x03, new PacketFactory() {
+            public Packet create() { return new SetCompressionPacket(); }
+        }, SetCompressionPacket.class);
 
         // === PLAY state: S2C ===
         registerS2C(ConnectionState.PLAY, 0x00, new PacketFactory() {

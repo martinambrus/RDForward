@@ -3,6 +3,8 @@ package com.github.martinambrus.rdforward.bot;
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.codec.NettyPacketDecoder;
 import com.github.martinambrus.rdforward.protocol.codec.NettyPacketEncoder;
+import com.github.martinambrus.rdforward.protocol.codec.PacketCompressEncoder;
+import com.github.martinambrus.rdforward.protocol.codec.PacketDecompressDecoder;
 import com.github.martinambrus.rdforward.protocol.crypto.CipherDecoder;
 import com.github.martinambrus.rdforward.protocol.crypto.CipherEncoder;
 import com.github.martinambrus.rdforward.protocol.crypto.MinecraftCipher;
@@ -89,6 +91,16 @@ public class BotNettyPacketHandler extends SimpleChannelInboundHandler<Packet> {
         // Base EncryptionRequest (short-length byte arrays)
         else if (packet instanceof NettyEncryptionRequestPacket encReq) {
             handleEncryptionRequest(ctx, encReq.getPublicKey(), encReq.getVerifyToken(), false);
+        }
+        // SetCompression — enable zlib compression on the pipeline
+        else if (packet instanceof SetCompressionPacket) {
+            int threshold = ((SetCompressionPacket) packet).getThreshold();
+            if (threshold >= 0) {
+                ctx.pipeline().addAfter("frameDecoder", "decompress",
+                        new PacketDecompressDecoder(threshold));
+                ctx.pipeline().addBefore("encoder", "compress",
+                        new PacketCompressEncoder(threshold));
+            }
         }
         // LoginSuccess — all variants (no inheritance, order irrelevant)
         else if (packet instanceof LoginSuccessPacketV768

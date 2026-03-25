@@ -182,7 +182,7 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
 
             // Replace frame-level codecs
             pipeline.replace("decoder", "decoder", new VarIntFrameDecoder());
-            pipeline.replace("encoder", "encoder", new VarIntFrameEncoder());
+            pipeline.replace("encoder", "encoder", VarIntFrameEncoder.INSTANCE);
 
             // Consolidate outbound flushes (same rationale as Alpha branch)
             pipeline.addBefore("decoder", "flushConsolidation",

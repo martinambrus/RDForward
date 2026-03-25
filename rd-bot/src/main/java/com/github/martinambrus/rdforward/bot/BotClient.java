@@ -88,7 +88,7 @@ public class BotClient {
                     packetDecoder.setProtocolVersion(version.getVersionNumber());
                     packetDecoder.setLenient(true);
                     pipeline.addLast("decoder", packetDecoder);
-                    pipeline.addLast("frameEncoder", new VarIntFrameEncoder());
+                    pipeline.addLast("frameEncoder", VarIntFrameEncoder.INSTANCE);
                     NettyPacketEncoder encoder = new NettyPacketEncoder(
                             ConnectionState.HANDSHAKING, PacketDirection.CLIENT_TO_SERVER);
                     encoder.setProtocolVersion(version.getVersionNumber());

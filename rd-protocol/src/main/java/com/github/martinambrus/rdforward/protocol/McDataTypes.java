@@ -282,11 +282,14 @@ public final class McDataTypes {
     /**
      * Write a VarInt-prefixed UTF-8 string (1.7.2+ format).
      * Wire format: [VarInt byteLength] [byteLength bytes UTF-8]
+     *
+     * Uses ByteBufUtil.utf8Bytes for length calculation and writeCharSequence
+     * for writing, avoiding an intermediate byte[] allocation.
      */
     public static void writeVarIntString(ByteBuf buf, String value) {
-        byte[] bytes = value.getBytes(UTF_8);
-        writeVarInt(buf, bytes.length);
-        buf.writeBytes(bytes);
+        int utf8Bytes = io.netty.buffer.ByteBufUtil.utf8Bytes(value);
+        writeVarInt(buf, utf8Bytes);
+        buf.writeCharSequence(value, UTF_8);
     }
 
     /**
@@ -621,15 +624,28 @@ public final class McDataTypes {
 
     /**
      * Write a VarInt (LEB128-like encoding, max 5 bytes).
+     * Optimized: peels 1-byte and 2-byte cases (the most common for packet IDs
+     * and lengths) into single writeByte/writeShort calls to reduce Netty write
+     * call overhead. Derived from Velocity/Krypton.
      */
     public static void writeVarInt(ByteBuf buf, int value) {
-        while (true) {
-            if ((value & ~0x7F) == 0) {
-                buf.writeByte(value);
-                return;
-            }
-            buf.writeByte((value & 0x7F) | 0x80);
-            value >>>= 7;
+        if ((value & (0xFFFFFFFF << 7)) == 0) {
+            buf.writeByte(value);
+        } else if ((value & (0xFFFFFFFF << 14)) == 0) {
+            int w = (value & 0x7F | 0x80) << 8 | (value >>> 7);
+            buf.writeShort(w);
+        } else if ((value & (0xFFFFFFFF << 21)) == 0) {
+            int w = (value & 0x7F | 0x80) << 16 | ((value >>> 7) & 0x7F | 0x80) << 8 | (value >>> 14);
+            buf.writeMedium(w);
+        } else if ((value & (0xFFFFFFFF << 28)) == 0) {
+            int w = (value & 0x7F | 0x80) << 24 | (((value >>> 7) & 0x7F | 0x80) << 16)
+                    | ((value >>> 14) & 0x7F | 0x80) << 8 | (value >>> 21);
+            buf.writeInt(w);
+        } else {
+            int w = (value & 0x7F | 0x80) << 24 | ((value >>> 7) & 0x7F | 0x80) << 16
+                    | ((value >>> 14) & 0x7F | 0x80) << 8 | ((value >>> 21) & 0x7F | 0x80);
+            buf.writeInt(w);
+            buf.writeByte(value >>> 28);
         }
     }
 

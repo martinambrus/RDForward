@@ -63,6 +63,15 @@ import java.util.Collection;
  */
 public class RDServer {
 
+    static {
+        // Reduce Netty's PooledByteBufAllocator arena size from 16MiB (default maxOrder=11)
+        // to 4MiB (maxOrder=9). MC's max packet size is 2MiB, so 16MiB arenas waste memory.
+        // User can still override via -Dio.netty.allocator.maxOrder=N on the command line.
+        if (System.getProperty("io.netty.allocator.maxOrder") == null) {
+            System.setProperty("io.netty.allocator.maxOrder", "9");
+        }
+    }
+
     /** Default world dimensions matching RubyDung's original size.
      *  These must stay in sync with ServerProperties.DEFAULTS. */
     public static final int DEFAULT_WORLD_WIDTH = 256;
