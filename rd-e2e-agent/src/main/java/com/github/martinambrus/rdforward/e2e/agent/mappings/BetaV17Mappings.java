@@ -314,6 +314,24 @@ public class BetaV17Mappings implements FieldMappings {
         return "on";
     }
 
+    // on.g = currentScroll (float, 0.0-1.0)
+    @Override
+    public String creativeScrollFieldName() {
+        return "g";
+    }
+
+    // em.d = Container (inherited from GuiContainer)
+    @Override
+    public String guiContainerFieldName() {
+        return "d";
+    }
+
+    // li.a = List<ItemStack> (all creative items)
+    @Override
+    public String creativeItemListFieldName() {
+        return "a";
+    }
+
     // abd = GuiInventory (survival)
     @Override
     public String guiInventoryClassName() {

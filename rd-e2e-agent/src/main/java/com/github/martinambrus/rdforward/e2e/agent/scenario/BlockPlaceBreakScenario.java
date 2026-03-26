@@ -331,23 +331,44 @@ public class BlockPlaceBreakScenario implements Scenario {
             if (input.isRubyDung()) {
                 input.lookAtBlock(targetBX, targetBY + 2, targetBZ);
             }
-            if (ticks < 80) return false;
 
             // RD placed pillar up to targetBY+2; Alpha/Beta at ground level
             int checkY = McTestAgent.inputController.isRubyDung() ? targetBY + 2 : targetBY;
             int blockId = gs.getBlockId(targetBX, checkY, targetBZ);
 
-            System.out.println("[McTestAgent] Block at target after place (tick " + ticks + "): " + blockId);
+            // Pre-1.13 clients: specifically verify grass (2) after server
+            // converts placed cobblestone. 1.13+ uses block state IDs that
+            // differ per version, so we just check non-air there.
+            boolean preFlattening = McTestAgent.mappings == null || !McTestAgent.mappings.isLwjgl3();
 
-            if (blockId == 0) {
-                throw new RuntimeException("Block still air after placement — server rejected it");
+            if (preFlattening) {
+                if (blockId == 0) {
+                    if (ticks >= 80) {
+                        throw new RuntimeException("Block still air after placement — server rejected it");
+                    }
+                    return false;
+                }
+                if (blockId == 4) {
+                    // Cobblestone not yet converted to grass — keep waiting
+                    if (ticks < 160) return false;
+                    System.out.println("[McTestAgent] Warning: block still cobblestone (4) after "
+                            + ticks + " ticks — conversion may not apply for this position");
+                } else if (blockId == 2) {
+                    System.out.println("[McTestAgent] Grass conversion confirmed at tick " + ticks);
+                } else {
+                    System.out.println("[McTestAgent] Unexpected blockId=" + blockId + " at tick " + ticks);
+                }
+            } else {
+                // 1.13+: block state IDs vary by version, just check non-air
+                if (blockId == 0) {
+                    if (ticks >= 80) {
+                        throw new RuntimeException("Block still air after placement — server rejected it");
+                    }
+                    return false;
+                }
+                System.out.println("[McTestAgent] Block confirmed at tick " + ticks
+                        + ": stateId=" + blockId);
             }
-
-            // Block is present — server accepted the placement (and likely already
-            // converted cobblestone to grass). Block IDs vary by version so we just
-            // verify non-air.
-            System.out.println("[McTestAgent] Block confirmed at tick " + ticks
-                    + ": blockId=" + blockId);
 
             if (!screenshotTaken) {
                 File file = new File(statusDir, "block_placed.png");

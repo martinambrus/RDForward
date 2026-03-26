@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class BetaCreativeBlockPaletteTest {
 
-    private static final long TIMEOUT_MS = 600_000;
+    private static final long TIMEOUT_MS = 1_200_000; // 20 min — full creative inventory (~234 items)
 
     private static E2ETestServer server;
     private static HeadlessDisplay display;

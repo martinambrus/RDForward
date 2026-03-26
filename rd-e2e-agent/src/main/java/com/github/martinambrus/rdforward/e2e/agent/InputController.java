@@ -1969,6 +1969,110 @@ public class InputController {
                 + " button=" + button);
     }
 
+    // --- Creative inventory scroll support ---
+    private Field creativeScrollField;
+    private Field guiContainerField;
+    private Field creativeItemListField;
+    private java.lang.reflect.Method creativeScrollMethod;
+    private boolean creativeScrollInitialized;
+
+    /**
+     * Return the total number of items in the creative inventory, or -1
+     * if scroll support is unavailable for this version.
+     * Must be called while the creative inventory screen is open.
+     */
+    public int getCreativeItemCount() {
+        if (mappings.creativeScrollFieldName() == null) return -1;
+        Object screen = gameState.getCurrentScreen();
+        if (screen == null) return -1;
+        try {
+            ensureCreativeScrollFields(screen);
+            Object container = guiContainerField.get(screen);
+            Object itemList = creativeItemListField.get(container);
+            return ((java.util.List<?>) itemList).size();
+        } catch (Exception e) {
+            System.err.println("[McTestAgent] getCreativeItemCount error: " + e.getMessage());
+            return -1;
+        }
+    }
+
+    /**
+     * Scroll the creative inventory so that the given global item index
+     * is visible in the grid, then return the grid slot index to click.
+     * Must be called while the creative inventory screen is open.
+     *
+     * @param globalIndex the absolute item index (0-based) in the full item list
+     * @param totalItems  total items from getCreativeItemCount()
+     * @return the grid slot index to pass to clickCreativeGridSlot, or -1 on error
+     */
+    public int scrollCreativeToItem(int globalIndex, int totalItems) {
+        if (mappings.creativeScrollFieldName() == null) return globalIndex; // no scroll
+        Object screen = gameState.getCurrentScreen();
+        if (screen == null) return -1;
+        try {
+            ensureCreativeScrollFields(screen);
+
+            int totalRows = totalItems / 8;
+            int maxScrollRows = totalRows - 8 + 1;
+            if (maxScrollRows < 1) maxScrollRows = 1;
+
+            int targetScrollRow = globalIndex / 8;
+            if (targetScrollRow > maxScrollRows) targetScrollRow = maxScrollRows;
+
+            float scrollFloat = (float) targetScrollRow / maxScrollRows;
+            if (scrollFloat > 1.0f) scrollFloat = 1.0f;
+
+            // Set scroll field and update container
+            creativeScrollField.setFloat(screen, scrollFloat);
+            Object container = guiContainerField.get(screen);
+            creativeScrollMethod.invoke(container, scrollFloat);
+
+            // Compute grid slot: item's row offset from scroll position
+            int visibleRow = globalIndex / 8 - targetScrollRow;
+            int col = globalIndex % 8;
+            return visibleRow * 8 + col;
+        } catch (Exception e) {
+            System.err.println("[McTestAgent] scrollCreativeToItem error: " + e.getMessage());
+            return -1;
+        }
+    }
+
+    private void ensureCreativeScrollFields(Object screen) throws Exception {
+        if (creativeScrollInitialized) return;
+
+        Class<?> cls = screen.getClass();
+        // Scroll float field on the creative screen
+        creativeScrollField = cls.getDeclaredField(mappings.creativeScrollFieldName());
+        creativeScrollField.setAccessible(true);
+
+        // Container field on GuiContainer parent
+        Class<?> parent = cls;
+        while (parent != null && parent != Object.class) {
+            try {
+                guiContainerField = parent.getDeclaredField(mappings.guiContainerFieldName());
+                guiContainerField.setAccessible(true);
+                break;
+            } catch (NoSuchFieldException ignored) {}
+            parent = parent.getSuperclass();
+        }
+        if (guiContainerField == null) {
+            throw new RuntimeException("Container field '" + mappings.guiContainerFieldName()
+                    + "' not found on " + cls.getName());
+        }
+
+        // Item list field on the container
+        Object container = guiContainerField.get(screen);
+        Class<?> containerClass = container.getClass();
+        creativeItemListField = containerClass.getDeclaredField(mappings.creativeItemListFieldName());
+        creativeItemListField.setAccessible(true);
+
+        // Scroll method a(float) on the container
+        creativeScrollMethod = containerClass.getDeclaredMethod("a", float.class);
+        creativeScrollMethod.setAccessible(true);
+
+        creativeScrollInitialized = true;
+    }
+
     /**
      * Click outside the inventory to drop items from cursor.
      * Uses coordinates outside the container bounds.

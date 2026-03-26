@@ -183,6 +183,15 @@ public interface FieldMappings {
     /** Obfuscated class name for creative inventory GUI (null = no creative inventory). */
     default String creativeInventoryClassName() { return null; }
 
+    /** Field name for scroll position (float) on creative inventory GUI. Null = no scroll support. */
+    default String creativeScrollFieldName() { return null; }
+
+    /** Field name for the Container on GuiContainer (the parent of creative GUI). */
+    default String guiContainerFieldName() { return null; }
+
+    /** Field name for the item List on the creative Container. */
+    default String creativeItemListFieldName() { return null; }
+
     /** Obfuscated class name for survival inventory GUI. Alpha: "ne", Beta: "abd". */
     default String guiInventoryClassName() { return null; }
 

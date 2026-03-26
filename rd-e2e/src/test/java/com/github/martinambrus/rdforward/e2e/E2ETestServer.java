@@ -4,7 +4,10 @@ import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.server.RDServer;
 import com.github.martinambrus.rdforward.world.FlatWorldGenerator;
 
+import com.github.martinambrus.rdforward.server.api.ServerProperties;
+
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 
@@ -41,6 +44,9 @@ public class E2ETestServer {
         } catch (IOException e) {
             throw new RuntimeException("Failed to create temp data directory", e);
         }
+        // Disable spawn protection so E2E agents can break/place blocks at spawn
+        writeServerProperties(dataDir);
+        ServerProperties.load(dataDir);
         server = new RDServer(0, ProtocolVersion.RUBYDUNG,
                 new FlatWorldGenerator(), 0L, 256, worldHeight, 256, dataDir);
         server.setBedrockPort(0);
@@ -98,6 +104,14 @@ public class E2ETestServer {
             try { Thread.sleep(50); } catch (InterruptedException e) { return false; }
         }
         return false;
+    }
+
+    private void writeServerProperties(File dir) {
+        try (FileOutputStream fos = new FileOutputStream(new File(dir, "server.properties"))) {
+            fos.write("spawn-protection=0\n".getBytes());
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to write server.properties", e);
+        }
     }
 
     private void deleteDir(File dir) {

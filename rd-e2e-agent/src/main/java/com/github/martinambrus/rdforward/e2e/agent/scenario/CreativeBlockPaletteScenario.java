@@ -18,24 +18,26 @@ import java.util.List;
  * places them in a row on the ground, verifies each placement, then captures
  * a screenshot from on top of the first placed block.
  *
- * Beta 1.8 creative inventory has a scrollable grid of ~198 items.
- * We iterate through the first 45 grid slots (8 columns, ~6 rows).
+ * When scroll support is available (Beta 1.8), iterates through ALL creative
+ * inventory items (~234). Otherwise falls back to one visible page (72 slots).
  *
- * Layout: blocks placed in a row along +X, offset +2 in Z from spawn.
+ * Layout: blocks placed in a serpentine pattern along +X, offset +2 in Z.
  * Player walks along spawn Z (clear of placed blocks) then places sideways.
- * Row wrapping at 80 blocks (start new row 3 blocks further in +Z).
+ * Row wrapping at MAX_PER_ROW blocks (start new row 3 blocks further in +Z).
  *
- * Verification per placement:
- * - Block items should convert to cobblestone (server converts)
+ * Verification per placement (pre-1.13):
+ * - Block items should convert to cobblestone (4) by the server
  * - Non-block items disappear after at most 4s (80 ticks)
  * - Items that can't be placed are OK (bow, sword, etc.)
  *
- * Final: walk to first placed block, face +X, jump on it, screenshot.
+ * Final: walk to first placed block, face +X, screenshot.
  */
 public class CreativeBlockPaletteScenario implements Scenario {
 
-    // Total creative inventory grid slots to test (one full visible page)
-    private static final int ITEMS_TO_PLACE = 45;
+    // Upper bound when scroll is available (covers Beta 1.8's ~234 items)
+    private static final int MAX_ITEMS_WITH_SCROLL = 250;
+    // Visible grid slots when no scroll (9 rows x 8 columns)
+    private static final int VISIBLE_GRID_SLOTS = 72;
     // Serpentine layout: 10 blocks per row, alternating +X/-X direction.
     // Keeps the player within ~22x15 blocks of spawn, avoiding map-edge
     // falls and reducing per-step walk distance to ~2 blocks.
@@ -55,6 +57,11 @@ public class CreativeBlockPaletteScenario implements Scenario {
     private int firstPlacedY;
     private int firstPlacedZ;
 
+    // Runtime state: actual item count (set when first opening inventory)
+    private int totalCreativeItems = -1;
+    // Set true once all items have been placed; remaining steps skip instantly
+    private boolean allItemsPlaced;
+
     @Override
     public String getName() {
         return "creative_block_palette";
@@ -62,13 +69,17 @@ public class CreativeBlockPaletteScenario implements Scenario {
 
     @Override
     public List<ScenarioStep> getSteps() {
+        boolean hasScroll = McTestAgent.mappings != null
+                && McTestAgent.mappings.creativeScrollFieldName() != null;
+        int maxItems = hasScroll ? MAX_ITEMS_WITH_SCROLL : VISIBLE_GRID_SLOTS;
+
         List<ScenarioStep> steps = new ArrayList<ScenarioStep>();
         steps.add(new RecordOriginStep());
 
-        for (int i = 0; i < ITEMS_TO_PLACE; i++) {
-            steps.add(new OpenCreativeInventoryStep());
+        for (int i = 0; i < maxItems; i++) {
+            steps.add(new OpenCreativeInventoryStep(i));
             steps.add(new GrabItemStep(i));
-            steps.add(new CloseInventoryStep());
+            steps.add(new CloseInventoryStep(i));
             steps.add(new WalkAndPlaceStep(i));
             steps.add(new VerifyPlacementStep(i));
         }
@@ -142,19 +153,25 @@ public class CreativeBlockPaletteScenario implements Scenario {
         }
     }
 
-    // Open creative inventory
+    // Open creative inventory (also queries item count on first call)
     private class OpenCreativeInventoryStep implements ScenarioStep {
+        private final int itemIndex;
         private int ticks;
         private boolean opened;
 
+        OpenCreativeInventoryStep(int itemIndex) {
+            this.itemIndex = itemIndex;
+        }
+
         @Override
         public String getDescription() {
-            return "open_creative_inv";
+            return "open_creative_inv_" + itemIndex;
         }
 
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
+            if (allItemsPlaced) return true;
             ticks++;
             if (!opened) {
                 input.openInventory();
@@ -165,6 +182,23 @@ public class CreativeBlockPaletteScenario implements Scenario {
             Class<?> screen = gs.getCurrentScreenClass();
             if (screen == null) {
                 throw new RuntimeException("Creative inventory did not open");
+            }
+            // On first successful open, query total item count
+            if (totalCreativeItems == -1) {
+                int count = input.getCreativeItemCount();
+                if (count > 0) {
+                    totalCreativeItems = count;
+                } else {
+                    totalCreativeItems = VISIBLE_GRID_SLOTS;
+                }
+                System.out.println("[McTestAgent] Creative inventory has "
+                        + totalCreativeItems + " items");
+            }
+            // Check if this item is beyond the inventory
+            if (itemIndex >= totalCreativeItems) {
+                allItemsPlaced = true;
+                input.closeScreen();
+                return true;
             }
             return true;
         }
@@ -192,10 +226,16 @@ public class CreativeBlockPaletteScenario implements Scenario {
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
+            if (allItemsPlaced) return true;
             ticks++;
             if (ticks == 1) {
-                // Click on creative grid slot (8 columns, scrollable rows)
-                input.clickCreativeGridSlot(itemIndex, 0);
+                // Scroll to the correct page and get the visible grid slot
+                int gridSlot = input.scrollCreativeToItem(itemIndex, totalCreativeItems);
+                if (gridSlot < 0) {
+                    System.err.println("[McTestAgent] scrollCreativeToItem failed for index " + itemIndex);
+                    return true;
+                }
+                input.clickCreativeGridSlot(gridSlot, 0);
                 return false;
             }
             if (ticks == 3) {
@@ -214,14 +254,21 @@ public class CreativeBlockPaletteScenario implements Scenario {
 
     // Close inventory
     private class CloseInventoryStep implements ScenarioStep {
+        private final int itemIndex;
+
+        CloseInventoryStep(int itemIndex) {
+            this.itemIndex = itemIndex;
+        }
+
         @Override
         public String getDescription() {
-            return "close_inventory";
+            return "close_inventory_" + itemIndex;
         }
 
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
+            if (allItemsPlaced) return true;
             input.closeScreen();
             return true;
         }
@@ -256,6 +303,7 @@ public class CreativeBlockPaletteScenario implements Scenario {
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
+            if (allItemsPlaced) return true;
             computeOrigin(gs);
             ticks++;
 
@@ -351,6 +399,7 @@ public class CreativeBlockPaletteScenario implements Scenario {
         @Override
         public boolean tick(GameState gs, InputController input,
                             ScreenshotCapture capture, File statusDir) {
+            if (allItemsPlaced) return true;
             computeOrigin(gs);
             ticks++;
 
@@ -359,37 +408,38 @@ public class CreativeBlockPaletteScenario implements Scenario {
             int placedY = groundY + 1;
             int blockId = gs.getBlockId(tx, placedY, tz);
 
-            if (ticks == 1) {
-                // First check — block placed successfully (any non-air block).
-                // Block IDs vary by version (legacy cobblestone=4, 1.13+ state IDs differ).
-                if (blockId != 0) {
+            boolean preFlattening = McTestAgent.mappings == null || !McTestAgent.mappings.isLwjgl3();
+
+            if (blockId != 0) {
+                // Block placed — check cobblestone conversion for pre-1.13
+                if (preFlattening) {
+                    if (blockId == 4) {
+                        System.out.println("[McTestAgent] Item " + itemIndex
+                                + ": cobblestone conversion confirmed at ("
+                                + tx + "," + placedY + "," + tz + ")");
+                    } else {
+                        System.out.println("[McTestAgent] Item " + itemIndex
+                                + ": placed as blockId=" + blockId
+                                + " (expected cobblestone 4) at ("
+                                + tx + "," + placedY + "," + tz + ")");
+                    }
+                } else {
                     System.out.println("[McTestAgent] Item " + itemIndex
-                            + ": placed as blockId=" + blockId + " at (" + tx + "," + placedY + "," + tz + ")");
-                    recordFirstPlaced(tx, placedY, tz);
-                    return true;
+                            + ": placed as stateId=" + blockId + " at ("
+                            + tx + "," + placedY + "," + tz + ")");
                 }
+                recordFirstPlaced(tx, placedY, tz);
+                return true;
             }
 
-            // Wait up to 80 ticks (4s) for non-block items to disappear / conversion
-            if (ticks < 80) {
-                if (blockId != 0) {
-                    System.out.println("[McTestAgent] Item " + itemIndex
-                            + ": placed as blockId=" + blockId + " after " + ticks + " ticks");
-                    recordFirstPlaced(tx, placedY, tz);
-                    return true;
-                }
-                return false;
-            }
+            // blockId == 0: keep waiting up to 80 ticks for placement/conversion
+            if (ticks < 80) return false;
 
             // After 4s timeout: item was not placeable or disappeared
-            if (blockId == 0) {
-                System.out.println("[McTestAgent] Item " + itemIndex
-                        + ": non-block item or not placeable (air after 4s) — OK");
-            } else {
-                System.out.println("[McTestAgent] Item " + itemIndex
-                        + ": blockId=" + blockId + " after 4s wait — accepting");
-            }
-            return true; // continue regardless
+            System.out.println("[McTestAgent] Item " + itemIndex
+                    + ": non-block item or not placeable (air after "
+                    + ticks + " ticks) — OK");
+            return true;
         }
 
         @Override
@@ -443,6 +493,14 @@ public class CreativeBlockPaletteScenario implements Scenario {
                     double dz = walkZ - pos[2];
                     double dist = Math.sqrt(dx * dx + dz * dz);
 
+                    // Teleport if far away — walking through rows of placed
+                    // blocks can get the player stuck.
+                    if (dist > 10.0 && ticks == 1) {
+                        gs.teleportPlayer(walkX, pos[1], walkZ);
+                        System.out.println("[McTestAgent] Teleported to final position");
+                        return false;
+                    }
+
                     // Threshold must be > Z_OFFSET (2) because placed blocks at
                     // originZ+Z_OFFSET can physically block the player from getting
                     // closer to the target on the Z axis.
@@ -474,7 +532,7 @@ public class CreativeBlockPaletteScenario implements Scenario {
 
         @Override
         public int getTimeoutTicks() {
-            return 400; // generous for walking back (max ~20 blocks with serpentine)
+            return 600; // generous for walking back (up to ~70 blocks with full inventory)
         }
     }
 
