@@ -903,64 +903,14 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
 
         // Determine spawn position (lookup by UUID in online mode, username in offline mode)
-        short[] savedPos = world.getSavedPlayerPosition(player.getUsername(), player.getUuid());
-
-        double spawnX, spawnY, spawnZ;
-        float spawnYaw = 0, spawnPitch = 0;
-        if (savedPos != null) {
-            spawnX = savedPos[0] / 32.0;
-            spawnY = savedPos[1] / 32.0;
-            spawnZ = savedPos[2] / 32.0;
-            spawnYaw = (savedPos[3] & 0xFF) * 360.0f / 256.0f;
-            spawnPitch = (savedPos[4] & 0xFF) * 360.0f / 256.0f;
-            if (spawnPitch > 180.0f) spawnPitch -= 360.0f;
-
-            // Snap feet to nearest block surface
-            double feetY = spawnY - PLAYER_EYE_HEIGHT;
-            double fracFeet = feetY - Math.floor(feetY);
-            if (fracFeet > 1.0 - (1.0 / 16.0)) {
-                feetY = Math.ceil(feetY);
-                spawnY = feetY + PLAYER_EYE_HEIGHT;
-            } else if (fracFeet > 0 && fracFeet < (1.0 / 16.0)) {
-                feetY = Math.floor(feetY);
-                spawnY = feetY + PLAYER_EYE_HEIGHT;
-            }
-
-            int feetBlockX = (int) Math.floor(spawnX);
-            int feetBlockY = (int) Math.floor(feetY);
-            int feetBlockZ = (int) Math.floor(spawnZ);
-            if (world.inBounds(feetBlockX, feetBlockY, feetBlockZ)
-                    && (world.getBlock(feetBlockX, feetBlockY, feetBlockZ) != 0
-                        || world.getBlock(feetBlockX, feetBlockY + 1, feetBlockZ) != 0)) {
-                int[] safe = world.findSafePosition(feetBlockX, feetBlockY, feetBlockZ, 50);
-                spawnX = safe[0] + 0.5;
-                spawnY = safe[1] + PLAYER_EYE_HEIGHT;
-                spawnZ = safe[2] + 0.5;
-            }
-        } else {
-            // Spawn at the center of the chunk containing the world midpoint.
-            // Placing the player at a chunk boundary (e.g. x=128.5 for a 256-wide
-            // world) makes edge chunks asymmetrically distant from the camera.
-            // In 1.17+, the LevelRenderer BFS checks hasAllNeighbors for sections
-            // >24 blocks from the camera — at a chunk boundary, the nearest neighbor
-            // chunk center is ~24.7 blocks away, triggering the check and failing
-            // when padding chunks don't exist.  Centering in the chunk keeps all
-            // neighbor surface sections within 24 blocks, bypassing the check.
-            int cx = ((world.getWidth() / 2) >> 4) * 16 + 8;
-            int cz = ((world.getDepth() / 2) >> 4) * 16 + 8;
-            int heuristicY = world.getHeight() * 2 / 3 + 1;
-            int[] safe = world.findSafePosition(cx, heuristicY, cz, 50);
-            spawnX = safe[0] + 0.5;
-            spawnY = safe[1] + PLAYER_EYE_HEIGHT;
-            spawnZ = safe[2] + 0.5;
-        }
-
-        player.updatePositionDouble(spawnX, spawnY, spawnZ, spawnYaw, spawnPitch);
+        SpawnPositionResolver.SpawnPosition spawn = SpawnPositionResolver.resolve(
+                world, player.getUsername(), player.getUuid());
+        player.updatePositionDouble(spawn.x, spawn.y, spawn.z, spawn.yaw, spawn.pitch);
 
         // Send spawn position
-        int spawnBlockX = (int) Math.floor(spawnX);
-        int spawnBlockY = (int) Math.floor(spawnY);
-        int spawnBlockZ = (int) Math.floor(spawnZ);
+        int spawnBlockX = (int) Math.floor(spawn.x);
+        int spawnBlockY = (int) Math.floor(spawn.y);
+        int spawnBlockZ = (int) Math.floor(spawn.z);
         if (isV773) {
             ctx.writeAndFlush(new SpawnPositionPacketV773(spawnBlockX, spawnBlockY, spawnBlockZ));
         } else if (isV755) {
@@ -998,8 +948,8 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
 
         // S2C Y: 1.7.2 = eye-level (client subtracts yOffset=1.62); 1.8+ = feet-level.
-        float alphaSpawnYaw = (spawnYaw + 180.0f) % 360.0f;
-        double clientY = isV47 ? spawnY - PLAYER_EYE_HEIGHT : spawnY;
+        float alphaSpawnYaw = (spawn.yaw + 180.0f) % 360.0f;
+        double clientY = isV47 ? spawn.y - PLAYER_EYE_HEIGHT : spawn.y;
 
         // 1.14+: Send chunk cache center before chunks.
         if (isV477) {
@@ -1028,25 +978,25 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         if (isV768) {
             awaitingTeleportConfirm = true;
             ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV768(
-                    spawnX, clientY, spawnZ, alphaSpawnYaw, spawnPitch, ++nextTeleportId));
+                    spawn.x, clientY, spawn.z, alphaSpawnYaw, spawn.pitch, ++nextTeleportId));
         } else if (isV762) { // V762-V767 use NettyPlayerPositionS2CPacketV762
             awaitingTeleportConfirm = true;
             ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV762(
-                    spawnX, clientY, spawnZ, alphaSpawnYaw, spawnPitch, ++nextTeleportId));
+                    spawn.x, clientY, spawn.z, alphaSpawnYaw, spawn.pitch, ++nextTeleportId));
         } else if (isV755) {
             awaitingTeleportConfirm = true;
             ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV755(
-                    spawnX, clientY, spawnZ, alphaSpawnYaw, spawnPitch, ++nextTeleportId));
+                    spawn.x, clientY, spawn.z, alphaSpawnYaw, spawn.pitch, ++nextTeleportId));
         } else if (isV109) {
             awaitingTeleportConfirm = true;
             ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV109(
-                    spawnX, clientY, spawnZ, alphaSpawnYaw, spawnPitch, ++nextTeleportId));
+                    spawn.x, clientY, spawn.z, alphaSpawnYaw, spawn.pitch, ++nextTeleportId));
         } else if (isV47) {
             ctx.writeAndFlush(new NettyPlayerPositionS2CPacketV47(
-                    spawnX, clientY, spawnZ, alphaSpawnYaw, spawnPitch));
+                    spawn.x, clientY, spawn.z, alphaSpawnYaw, spawn.pitch));
         } else {
             ctx.writeAndFlush(new NettyPlayerPositionS2CPacket(
-                    spawnX, spawnY, spawnZ, alphaSpawnYaw, spawnPitch, false));
+                    spawn.x, spawn.y, spawn.z, alphaSpawnYaw, spawn.pitch, false));
         }
 
         // Send existing players — deferred by 1 second so the tick loop can deliver
@@ -1368,7 +1318,8 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                                 (int) existing.getX(), existingFeetY, (int) existing.getZ(),
                                 alphaYaw, pitch, (short) 0);
                 ctx.writeAndFlush(spawnPacket);
-                ctx.writeAndFlush(new com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket(existingEntityId, alphaYaw));
+                // 1.7.x uses int entityId; 1.8+ uses VarInt
+                ctx.writeAndFlush(new com.github.martinambrus.rdforward.protocol.packet.alpha.EntityHeadRotationPacket(existingEntityId, alphaYaw));
             }
         }
     }

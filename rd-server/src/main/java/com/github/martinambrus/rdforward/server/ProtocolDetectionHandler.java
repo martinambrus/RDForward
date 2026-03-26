@@ -9,13 +9,22 @@ import com.github.martinambrus.rdforward.protocol.codec.VarIntFrameDecoder;
 import com.github.martinambrus.rdforward.protocol.codec.VarIntFrameEncoder;
 import com.github.martinambrus.rdforward.protocol.packet.ConnectionState;
 import com.github.martinambrus.rdforward.protocol.packet.PacketDirection;
+import com.github.martinambrus.rdforward.protocol.packet.PacketRegistry;
 import com.github.martinambrus.rdforward.protocol.McDataTypes;
 import com.github.martinambrus.rdforward.server.api.ServerProperties;
+import com.github.martinambrus.rdforward.server.lce.LCEConnectionHandler;
+import com.github.martinambrus.rdforward.server.lce.ClassicToLCETranslator;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelPipeline;
+import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
+import io.netty.handler.codec.LengthFieldPrepender;
 import io.netty.handler.flush.FlushConsolidationHandler;
+
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Detects whether a connecting client uses the Nati-framed protocol
@@ -31,10 +40,19 @@ import io.netty.handler.flush.FlushConsolidationHandler;
  */
 public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
 
+    /** LCE small ID counter — assigns unique IDs to LCE clients (0-254). */
+    private static final AtomicInteger lceSmallIdCounter = new AtomicInteger(0);
+
+    /** How long to wait (ms) for client data before assuming LCE (server-sends-first). */
+    private static final int LCE_DETECT_DELAY_MS = 300;
+
     private final ProtocolVersion serverVersion;
     private final ServerWorld world;
     private final PlayerManager playerManager;
     private final ChunkManager chunkManager;
+
+    private volatile boolean dataReceived = false;
+    private ScheduledFuture<?> lceDetectTask;
 
     public ProtocolDetectionHandler(ProtocolVersion serverVersion, ServerWorld world,
                                     PlayerManager playerManager, ChunkManager chunkManager) {
@@ -45,7 +63,65 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
     }
 
     @Override
+    public void channelActive(ChannelHandlerContext ctx) throws Exception {
+        super.channelActive(ctx);
+        // Schedule LCE detection: if no data arrives within the delay,
+        // assume it's an LCE client (which waits for server to send a small ID first).
+        lceDetectTask = ctx.executor().schedule(() -> {
+            if (!dataReceived && ctx.channel().isActive()) {
+                configureLCEPipeline(ctx);
+            }
+        }, LCE_DETECT_DELAY_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private void configureLCEPipeline(ChannelHandlerContext ctx) {
+        PacketRegistry.ensureLCERegistered();
+        ChannelPipeline pipeline = ctx.pipeline();
+
+        // Send 1-byte small ID to the client (LCE expects this before any packets)
+        int smallId = (lceSmallIdCounter.getAndIncrement() & 0x7FFFFFFF) % 255;
+        ByteBuf idBuf = ctx.alloc().buffer(1);
+        idBuf.writeByte(smallId);
+        ctx.writeAndFlush(idBuf);
+
+        // LCE uses 4-byte big-endian length-prefixed framing
+        pipeline.replace("decoder", "decoder",
+                new LengthFieldBasedFrameDecoder(4 * 1024 * 1024, 0, 4, 0, 4));
+        pipeline.replace("encoder", "encoder", new LengthFieldPrepender(4));
+
+        // Add packet-level codec after frame decoder (reads packet ID + fields from frame)
+        RawPacketDecoder packetDecoder = new RawPacketDecoder(
+                PacketDirection.CLIENT_TO_SERVER, ProtocolVersion.LCE_TU19);
+        packetDecoder.setUseString16(true);
+        packetDecoder.setSkipUnknownPackets(true);
+        pipeline.addAfter("decoder", "packetDecoder", packetDecoder);
+
+        // Add packet-level encoder after frame encoder
+        RawPacketEncoder packetEncoder = new RawPacketEncoder();
+        packetEncoder.setUseString16(true);
+        pipeline.addAfter("encoder", "packetEncoder", packetEncoder);
+
+        pipeline.addBefore("decoder", "flushConsolidation",
+                new FlushConsolidationHandler(256, true));
+        pipeline.addAfter("packetEncoder", "prioritizer", new PrioritizingOutboundHandler());
+        pipeline.addAfter("prioritizer", "lceTranslator", new ClassicToLCETranslator());
+        pipeline.replace("handler", "handler",
+                new LCEConnectionHandler(serverVersion, world, playerManager, chunkManager));
+
+        pipeline.remove(this);
+
+        System.out.println("Detected LCE client (no initial data, sent small ID "
+                + smallId + "), pipeline reconfigured");
+    }
+
+    @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        // Cancel LCE timeout detection — client sent data first (not LCE)
+        dataReceived = true;
+        if (lceDetectTask != null) {
+            lceDetectTask.cancel(false);
+        }
+
         if (!(msg instanceof ByteBuf)) {
             super.channelRead(ctx, msg);
             return;

@@ -4,8 +4,10 @@ import com.github.martinambrus.rdforward.protocol.McDataTypes;
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.packet.classic.*;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.*;
+import com.github.martinambrus.rdforward.protocol.packet.lce.*;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -16,6 +18,11 @@ import static org.junit.jupiter.api.Assertions.*;
  * and verifies the fields match.
  */
 class PacketRoundTripTest {
+
+    @BeforeAll
+    static void ensureLCERegistered() {
+        PacketRegistry.ensureLCERegistered();
+    }
 
     private <T extends Packet> T roundTrip(T packet, ProtocolVersion version, PacketDirection direction) {
         ByteBuf buf = Unpooled.buffer();
@@ -995,5 +1002,223 @@ class PacketRoundTripTest {
                     "RubyDung and Classic should share S2C packet 0x" + Integer.toHexString(id)
             );
         }
+    }
+
+    // === LCE Packets ===
+
+    /** Byte-level round-trip: write -> read -> write again -> compare bytes. */
+    private void byteRoundTrip(Packet packet, ProtocolVersion version, PacketDirection direction) {
+        ByteBuf buf1 = Unpooled.buffer();
+        ByteBuf buf2 = Unpooled.buffer();
+        try {
+            packet.write(buf1);
+            byte[] original = new byte[buf1.readableBytes()];
+            buf1.getBytes(buf1.readerIndex(), original);
+
+            Packet decoded = PacketRegistry.createPacket(version, direction, packet.getPacketId());
+            assertNotNull(decoded, "No packet registered for ID 0x" + Integer.toHexString(packet.getPacketId()));
+            decoded.read(buf1);
+            assertEquals(0, buf1.readableBytes(), "Not all bytes consumed for " + packet.getClass().getSimpleName());
+
+            decoded.write(buf2);
+            byte[] reencoded = new byte[buf2.readableBytes()];
+            buf2.readBytes(reencoded);
+            assertArrayEquals(original, reencoded, "Byte-level round-trip failed for " + packet.getClass().getSimpleName());
+        } finally {
+            buf1.release();
+            buf2.release();
+        }
+    }
+
+    @Test
+    void lcePreLoginS2CRoundTrip() {
+        LCEPreLoginS2CPacket original = new LCEPreLoginS2CPacket(
+                (short) 560, "TestKey", (byte) 0, 1,
+                2, new long[]{1234L, 5678L},
+                new byte[14], 42, (byte) 0, 100);
+        byteRoundTrip(original, ProtocolVersion.LCE_TU19, PacketDirection.SERVER_TO_CLIENT);
+    }
+
+    @Test
+    void lcePreLoginC2SRoundTrip() {
+        // PreLoginC2S has no value constructor, so populate via write/read
+        LCEPreLoginS2CPacket template = new LCEPreLoginS2CPacket(
+                (short) 560, "TestUser", (byte) 1, 2,
+                1, new long[]{9999L},
+                new byte[14], 0, (byte) 0, 0);
+        // C2S and S2C share the same wire format
+        ByteBuf buf = Unpooled.buffer();
+        try {
+            template.write(buf);
+            LCEPreLoginC2SPacket decoded = new LCEPreLoginC2SPacket();
+            decoded.read(buf);
+            assertEquals(0, buf.readableBytes());
+            assertEquals(560, decoded.getNetcodeVersion());
+            assertEquals("TestUser", decoded.getLoginKey());
+            assertEquals(1, decoded.getPlayerCount());
+            assertArrayEquals(new long[]{9999L}, decoded.getPlayerXuids());
+        } finally {
+            buf.release();
+        }
+    }
+
+    @Test
+    void lceLoginS2CRoundTrip() {
+        LCELoginS2CPacket original = LCELoginS2CPacket.builder()
+                .clientVersion(78)
+                .userName("Steve")
+                .levelType("default")
+                .seed(12345L)
+                .gameType(1)
+                .dimension((byte) 0)
+                .mapHeight((byte) -128)
+                .maxPlayers((byte) 8)
+                .offlineXuid(111L)
+                .onlineXuid(222L)
+                .friendsOnlyUGC(true)
+                .ugcPlayersVersion(3)
+                .difficulty((byte) 2)
+                .multiplayerInstanceId(7)
+                .playerIndex((byte) 1)
+                .playerSkinId(10)
+                .playerCapeId(20)
+                .isGuest(false)
+                .newSeaLevel(true)
+                .gamePrivileges(0x1FB30)
+                .xzSize((short) 320)
+                .hellScale((byte) 8)
+                .build();
+        byteRoundTrip(original, ProtocolVersion.LCE_TU19, PacketDirection.SERVER_TO_CLIENT);
+    }
+
+    @Test
+    void lceLoginC2SRoundTrip() {
+        // LoginC2S and LoginS2C share the same wire format
+        LCELoginS2CPacket template = LCELoginS2CPacket.builder()
+                .clientVersion(78)
+                .userName("Alex")
+                .levelType("flat")
+                .seed(999L)
+                .gameType(0)
+                .dimension((byte) -1)
+                .maxPlayers((byte) 4)
+                .difficulty((byte) 3)
+                .gamePrivileges(0)
+                .build();
+        ByteBuf buf = Unpooled.buffer();
+        try {
+            template.write(buf);
+            LCELoginC2SPacket decoded = new LCELoginC2SPacket();
+            decoded.read(buf);
+            assertEquals(0, buf.readableBytes());
+            assertEquals(78, decoded.getClientVersion());
+            assertEquals("Alex", decoded.getUserName());
+            assertEquals("flat", decoded.getLevelType());
+            assertEquals(999L, decoded.getSeed());
+            assertEquals(0, decoded.getGameType());
+            assertEquals(-1, decoded.getDimension());
+            assertEquals(4, decoded.getMaxPlayers());
+            assertEquals(3, decoded.getDifficulty());
+        } finally {
+            buf.release();
+        }
+    }
+
+    @Test
+    void lceChatRoundTrip() {
+        LCEChatPacket original = new LCEChatPacket((short) 0, "Hello LCE!");
+        LCEChatPacket decoded = roundTrip(original, ProtocolVersion.LCE_TU19, PacketDirection.SERVER_TO_CLIENT);
+        assertEquals(0, decoded.getMessageType());
+        assertEquals("Hello LCE!", decoded.getMessage());
+    }
+
+    @Test
+    void lceChatWithMultipleArgsRoundTrip() {
+        LCEChatPacket original = new LCEChatPacket((short) 5, "Test");
+        byteRoundTrip(original, ProtocolVersion.LCE_TU19, PacketDirection.SERVER_TO_CLIENT);
+    }
+
+    @Test
+    void lceChunkVisibilityRoundTrip() {
+        LCEChunkVisibilityPacket original = new LCEChunkVisibilityPacket(4, -3, true);
+        LCEChunkVisibilityPacket decoded = roundTrip(original, ProtocolVersion.LCE_TU19, PacketDirection.SERVER_TO_CLIENT);
+        assertEquals(4, decoded.getChunkX());
+        assertEquals(-3, decoded.getChunkZ());
+        assertTrue(decoded.isVisible());
+    }
+
+    @Test
+    void lceChunkVisibilityFalseRoundTrip() {
+        LCEChunkVisibilityPacket original = new LCEChunkVisibilityPacket(0, 0, false);
+        LCEChunkVisibilityPacket decoded = roundTrip(original, ProtocolVersion.LCE_TU19, PacketDirection.SERVER_TO_CLIENT);
+        assertFalse(decoded.isVisible());
+    }
+
+    @Test
+    void lceBlockRegionUpdateRoundTrip() {
+        byte[] data = new byte[]{1, 2, 3, 4, 5};
+        LCEBlockRegionUpdatePacket original = new LCEBlockRegionUpdatePacket(
+                16, (short) 0, 32, 16, 256, 16, true, 0, data);
+        byteRoundTrip(original, ProtocolVersion.LCE_TU19, PacketDirection.SERVER_TO_CLIENT);
+    }
+
+    @Test
+    void lceAddPlayerRoundTrip() {
+        LCEAddPlayerPacket original = new LCEAddPlayerPacket(
+                5, "TestPlayer", 100, 200, 300,
+                (byte) 90, (byte) 45, (byte) 90,
+                (short) 0, 1234L, 5678L, (byte) 0, 10, 20, 0x1FB30);
+        byteRoundTrip(original, ProtocolVersion.LCE_TU19, PacketDirection.SERVER_TO_CLIENT);
+    }
+
+    @Test
+    void lceEntityTeleportRoundTrip() {
+        LCEEntityTeleportPacket original = new LCEEntityTeleportPacket(42, 1000, 2000, 3000, 128, 64);
+        byteRoundTrip(original, ProtocolVersion.LCE_TU19, PacketDirection.SERVER_TO_CLIENT);
+    }
+
+    @Test
+    void lceEntityRelativeMoveRoundTrip() {
+        LCEEntityRelativeMovePacket original = new LCEEntityRelativeMovePacket(7, 5, -3, 10);
+        byteRoundTrip(original, ProtocolVersion.LCE_TU19, PacketDirection.SERVER_TO_CLIENT);
+    }
+
+    @Test
+    void lceEntityLookRoundTrip() {
+        LCEEntityLookPacket original = new LCEEntityLookPacket(15, 200, 100);
+        byteRoundTrip(original, ProtocolVersion.LCE_TU19, PacketDirection.SERVER_TO_CLIENT);
+    }
+
+    @Test
+    void lceEntityLookAndMoveRoundTrip() {
+        LCEEntityLookAndMovePacket original = new LCEEntityLookAndMovePacket(20, 2, -1, 3, 150, 80);
+        byteRoundTrip(original, ProtocolVersion.LCE_TU19, PacketDirection.SERVER_TO_CLIENT);
+    }
+
+    @Test
+    void lceRotateHeadRoundTrip() {
+        LCERotateHeadPacket original = new LCERotateHeadPacket(99, 200);
+        byteRoundTrip(original, ProtocolVersion.LCE_TU19, PacketDirection.SERVER_TO_CLIENT);
+    }
+
+    @Test
+    void lcePacketRegistration() {
+        // Verify key LCE packets are registered in both directions
+        assertTrue(PacketRegistry.hasPacket(ProtocolVersion.LCE_TU19, PacketDirection.CLIENT_TO_SERVER, 0x01),
+                "LCE C2S Login should be registered");
+        assertTrue(PacketRegistry.hasPacket(ProtocolVersion.LCE_TU19, PacketDirection.CLIENT_TO_SERVER, 0x02),
+                "LCE C2S PreLogin should be registered");
+        assertTrue(PacketRegistry.hasPacket(ProtocolVersion.LCE_TU19, PacketDirection.SERVER_TO_CLIENT, 0x01),
+                "LCE S2C Login should be registered");
+        assertTrue(PacketRegistry.hasPacket(ProtocolVersion.LCE_TU19, PacketDirection.SERVER_TO_CLIENT, 0x02),
+                "LCE S2C PreLogin should be registered");
+        assertTrue(PacketRegistry.hasPacket(ProtocolVersion.LCE_TU19, PacketDirection.SERVER_TO_CLIENT, 0x14),
+                "LCE S2C AddPlayer should be registered");
+        assertTrue(PacketRegistry.hasPacket(ProtocolVersion.LCE_TU19, PacketDirection.SERVER_TO_CLIENT, 0x32),
+                "LCE S2C ChunkVisibility should be registered");
+        assertTrue(PacketRegistry.hasPacket(ProtocolVersion.LCE_TU19, PacketDirection.SERVER_TO_CLIENT, 0x33),
+                "LCE S2C BlockRegionUpdate should be registered");
+        assertTrue(PacketRegistry.hasPacket(ProtocolVersion.LCE_TU19, PacketDirection.CLIENT_TO_SERVER, 0x12),
+                "LCE C2S Batch should be registered");
     }
 }

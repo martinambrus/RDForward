@@ -231,7 +231,10 @@ public class NettyPacketRegistry {
         registerS2CReverse(EntityLookPacketV47.class, 0x16);
         registerS2CReverse(EntityLookAndMovePacketV47.class, 0x17);
         registerS2CReverse(EntityTeleportPacketV47.class, 0x18);
-        registerS2CReverse(com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket.class, 0x19); // Set Head Rotation
+        // v4/v5 (1.7.x): EntityHeadLook uses int entityId (NOT VarInt).
+        // alpha version writes int; netty version writes VarInt (used by v47+).
+        registerS2CReverse(com.github.martinambrus.rdforward.protocol.packet.alpha.EntityHeadRotationPacket.class, 0x19);
+        registerS2CReverse(com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket.class, 0x19);
         registerS2CReverse(NettyEntityPropertiesPacketV47.class, 0x20);
         registerS2CReverse(MapChunkPacketV47.class, 0x21);
         registerS2CReverse(NettyBlockChangePacketV47.class, 0x23);

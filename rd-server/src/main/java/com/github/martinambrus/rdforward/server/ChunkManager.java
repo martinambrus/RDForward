@@ -242,12 +242,14 @@ public class ChunkManager {
     static final int BUCKET_V766        = 18; // 1.20.5+
     static final int BUCKET_V770        = 19; // 1.21.5+
     static final int BUCKET_V775        = 20; // 26.1+
+    static final int BUCKET_LCE         = 21; // Legacy Console Edition
 
     /**
      * Map a protocol bucket to a {@link CanonicalSectionWriter} target constant.
      * Returns -1 for buckets that don't use the canonical path (Alpha, V28, V39, V47).
      */
     static int bucketToTarget(int bucket) {
+        if (bucket == BUCKET_LCE) return -1; // LCE uses its own serialization path
         if (bucket >= BUCKET_V775) return CanonicalSectionWriter.TARGET_V775;
         if (bucket >= BUCKET_V770) return CanonicalSectionWriter.TARGET_V770;
         if (bucket >= BUCKET_V759) return CanonicalSectionWriter.TARGET_V759;
@@ -277,6 +279,7 @@ public class ChunkManager {
      */
     static int protocolBucket(ProtocolVersion v) {
         if (v == ProtocolVersion.BEDROCK) return 0; // Bedrock uses separate path
+        if (v.getFamily() == ProtocolVersion.Family.LCE) return BUCKET_LCE;
         if (v.isAtLeast(ProtocolVersion.RELEASE_26_1))   return BUCKET_V775;
         if (v.isAtLeast(ProtocolVersion.RELEASE_1_21_5)) return BUCKET_V770;
         if (v.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) return BUCKET_V766;
@@ -311,7 +314,7 @@ public class ChunkManager {
      * Called when a block changes in that chunk.
      */
     private void invalidateChunkCache(int chunkX, int chunkZ) {
-        for (int bucket = BUCKET_ALPHA; bucket <= BUCKET_V775; bucket++) {
+        for (int bucket = BUCKET_ALPHA; bucket <= BUCKET_LCE; bucket++) {
             FutureChunkPackets entry = chunkPacketCache.remove(cacheKey(chunkX, chunkZ, bucket));
             if (entry != null) entry.invalidate(); // signal in-flight serialization to discard
         }
@@ -1135,6 +1138,10 @@ public class ChunkManager {
             // === Canonical path for all paletted versions (V109 through V770) ===
             CanonicalChunkData canonical = chunk.getOrBuildCanonical();
             buildCanonicalChunkPackets(chunk, bucket, target, canonical, collectedPackets);
+        } else if (bucket == BUCKET_LCE) {
+            // LCE: ChunkVisibility + BlockRegionUpdate with RLE+zlib compression
+            java.util.Collections.addAll(collectedPackets,
+                    com.github.martinambrus.rdforward.server.lce.LCEChunkSerializer.buildChunkPackets(chunk));
         } else if (bucket >= BUCKET_V47) { // 1.8+
             // v47: ushort blockStates, raw (uncompressed), VarInt data size
             AlphaChunk.V47ChunkData v47Data = chunk.serializeForV47Protocol();
@@ -1470,6 +1477,12 @@ public class ChunkManager {
         // Bedrock/MCPE clients manage their own chunk cache — no explicit unload needed.
         // Server-side tracking in playerChunks still removes the coord so re-sends work.
         if (player.getBedrockSession() != null || player.getMcpeSession() != null) return;
+
+        if (player.getProtocolVersion().getFamily() == ProtocolVersion.Family.LCE) {
+            player.writePacket(new com.github.martinambrus.rdforward.protocol.packet.lce.LCEChunkVisibilityPacket(
+                coord.getX(), coord.getZ(), false));
+            return;
+        }
 
         if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_9)) {
             // v109: dedicated UnloadChunk packet

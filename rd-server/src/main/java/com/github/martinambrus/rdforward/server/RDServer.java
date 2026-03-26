@@ -95,6 +95,7 @@ public class RDServer {
     private EventLoopGroup workerGroup;
     private Channel serverChannel;
     private Channel bedrockChannel;
+    private com.github.martinambrus.rdforward.server.lce.LCELanAdvertiser lceLanAdvertiser;
     private Channel udpFrontEndChannel;
     private LegacyRakNetServer mcpeServer;
     private UdpFrontEndHandler udpFrontEndHandler;
@@ -510,6 +511,12 @@ public class RDServer {
                 + " (protocol: " + MCPEConstants.MCPE_VERSION_STRING
                 + ", version " + MCPEConstants.MCPE_PROTOCOL_VERSION_11
                 + "-" + MCPEConstants.MCPE_PROTOCOL_VERSION_MAX + ")");
+
+        // Start LCE LAN discovery advertiser
+        lceLanAdvertiser = new com.github.martinambrus.rdforward.server.lce.LCELanAdvertiser(
+                port, com.github.martinambrus.rdforward.server.api.ServerProperties.getMotd(),
+                playerManager);
+        lceLanAdvertiser.start();
     }
 
     /**
@@ -520,6 +527,7 @@ public class RDServer {
         stopped = true;
 
         System.out.println("Stopping server...");
+        if (lceLanAdvertiser != null) lceLanAdvertiser.stop();
         tickLoop.stop();
 
         System.out.println("Saving world and player data...");

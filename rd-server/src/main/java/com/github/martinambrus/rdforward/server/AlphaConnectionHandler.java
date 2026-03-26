@@ -575,76 +575,16 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
 
         // Determine spawn position (lookup by UUID in online mode, username in offline mode)
-        short[] savedPos = world.getSavedPlayerPosition(player.getUsername(), player.getUuid());
-
-        double spawnX, spawnY, spawnZ;
-        float spawnYaw = 0, spawnPitch = 0;
-        if (savedPos != null) {
-            // Convert fixed-point back to double
-            spawnX = savedPos[0] / 32.0;
-            spawnY = savedPos[1] / 32.0;
-            spawnZ = savedPos[2] / 32.0;
-            spawnYaw = (savedPos[3] & 0xFF) * 360.0f / 256.0f;
-            spawnPitch = (savedPos[4] & 0xFF) * 360.0f / 256.0f;
-            // Normalize pitch back to signed range (-180..+180).
-            // The byte→unsigned→degree conversion maps negative pitches (looking up)
-            // to 180-360° range, but S2C packets expect -90..+90.
-            if (spawnPitch > 180.0f) spawnPitch -= 360.0f;
-
-            // Snap feet to nearest block surface if within fixed-point tolerance.
-            // Eye-level Y is saved as fixed-point (round(eyeY*32)/32), so the
-            // round-trip through fixed-point + eye height subtraction can shift
-            // feet up to ~0.02 blocks from their original integer position.
-            // Snap UP if close to the next integer (prevents sinking into block).
-            // Snap DOWN if slightly above an integer (prevents creative-mode
-            // clients from detecting "not on ground" and enabling flying).
-            double feetY = spawnY - PLAYER_EYE_HEIGHT;
-            double fracFeet = feetY - Math.floor(feetY);
-            if (fracFeet > 1.0 - (1.0 / 16.0)) {
-                feetY = Math.ceil(feetY);
-                spawnY = feetY + PLAYER_EYE_HEIGHT;
-            } else if (fracFeet > 0 && fracFeet < (1.0 / 16.0)) {
-                feetY = Math.floor(feetY);
-                spawnY = feetY + PLAYER_EYE_HEIGHT;
-            }
-
-            int feetBlockX = (int) Math.floor(spawnX);
-            int feetBlockY = (int) Math.floor(feetY);
-            int feetBlockZ = (int) Math.floor(spawnZ);
-            if (world.inBounds(feetBlockX, feetBlockY, feetBlockZ)
-                    && (world.getBlock(feetBlockX, feetBlockY, feetBlockZ) != 0
-                        || world.getBlock(feetBlockX, feetBlockY + 1, feetBlockZ) != 0)) {
-                int[] safe = world.findSafePosition(feetBlockX, feetBlockY, feetBlockZ, 50);
-                spawnX = safe[0] + 0.5;
-                spawnY = safe[1] + PLAYER_EYE_HEIGHT;
-                spawnZ = safe[2] + 0.5;
-                System.out.println("Saved position was inside blocks, relocated to "
-                        + safe[0] + "," + safe[1] + "," + safe[2]);
-            } else {
-                System.out.println("Restored position for " + player.getUsername());
-            }
-        } else {
-            // Default: center of the chunk containing the world midpoint.
-            // Using chunk center keeps spawn consistent with Netty handler
-            // and avoids 1.17+ LevelRenderer BFS issues at chunk boundaries.
-            int cx = ((world.getWidth() / 2) >> 4) * 16 + 8;
-            int cz = ((world.getDepth() / 2) >> 4) * 16 + 8;
-            int heuristicY = world.getHeight() * 2 / 3 + 1;
-            int[] safe = world.findSafePosition(cx, heuristicY, cz, 50);
-            spawnX = safe[0] + 0.5;
-            spawnY = safe[1] + PLAYER_EYE_HEIGHT; // eye-level
-            spawnZ = safe[2] + 0.5;
-        }
-
-        // Update player position — internal convention is eye-level Y
-        player.updatePositionDouble(spawnX, spawnY, spawnZ, spawnYaw, spawnPitch);
+        SpawnPositionResolver.SpawnPosition spawn = SpawnPositionResolver.resolve(
+                world, player.getUsername(), player.getUuid());
+        player.updatePositionDouble(spawn.x, spawn.y, spawn.z, spawn.yaw, spawn.pitch);
 
         // Send spawn position (block coords for compass). SpawnPosition (0x06) was
         // added in Alpha 1.1.0 (v2) alongside the compass item. v1 clients don't
         // have this packet and throw "Bad packet id 6" if they receive it.
-        int spawnBlockX = (int) Math.floor(spawnX);
-        int spawnBlockY = (int) Math.floor(spawnY);
-        int spawnBlockZ = (int) Math.floor(spawnZ);
+        int spawnBlockX = (int) Math.floor(spawn.x);
+        int spawnBlockY = (int) Math.floor(spawn.y);
+        int spawnBlockZ = (int) Math.floor(spawn.z);
         if (clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_1_0)) {
             ctx.writeAndFlush(new SpawnPositionPacket(spawnBlockX, spawnBlockY, spawnBlockZ));
         }
@@ -654,17 +594,14 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // TimSort's transitivity contract (Java 7+). Sending position first
         // ensures the client knows its location when the first render frame
         // sorts chunks by distance, avoiding the pathological case.
-        //
-        // spawnY is eye-level (internal convention). Alpha S2C needs posY and feet.
-        double feetY = spawnY - PLAYER_EYE_HEIGHT;
-        double posY = feetY + PLAYER_EYE_HEIGHT;
+        double feetY = spawn.y - PLAYER_EYE_HEIGHT;
 
         // S2C y = posY (eyes), stance = feet. The client sets posY from y
         // and computes BB.minY (feet) = posY - (double)(1.62f).
         // spawnYaw is Classic convention; Alpha client expects Alpha (0=South)
-        float alphaSpawnYaw = (spawnYaw + 180.0f) % 360.0f;
+        float alphaSpawnYaw = (spawn.yaw + 180.0f) % 360.0f;
         ctx.writeAndFlush(new PlayerPositionAndLookS2CPacket(
-                spawnX, posY, feetY, spawnZ, alphaSpawnYaw, spawnPitch, true));
+                spawn.x, spawn.y, feetY, spawn.z, alphaSpawnYaw, spawn.pitch, true));
 
         // Initialize fall tracking for pre-rewrite clients
         fallStartFeetY = feetY;

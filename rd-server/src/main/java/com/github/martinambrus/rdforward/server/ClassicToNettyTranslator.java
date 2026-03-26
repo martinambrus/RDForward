@@ -66,7 +66,7 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
         if (translated != null) {
             // Send EntityHeadRotation after any packet that includes entity yaw,
             // so the client's head yaw stays in sync with the body yaw.
-            com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket headRotation = buildHeadRotation(packet);
+            Packet headRotation = buildHeadRotation(packet);
             if (headRotation != null) {
                 super.write(ctx, translated, ctx.voidPromise());
                 super.write(ctx, headRotation, promise);
@@ -82,31 +82,35 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
     /**
      * Build an EntityHeadRotation packet for Classic packets that contain entity yaw.
      * Returns null if the packet doesn't need head rotation (e.g. position-only updates).
+     * v4/v5 (1.7.x) uses int entityId; v47+ uses VarInt entityId.
      */
-    private com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket buildHeadRotation(Packet classicPacket) {
+    private Packet buildHeadRotation(Packet classicPacket) {
+        int entityId = -1;
+        int alphaYaw = 0;
+
         if (classicPacket instanceof com.github.martinambrus.rdforward.protocol.packet.classic.SpawnPlayerPacket sp) {
             if (sp.getPlayerId() == -1) return null;
-            int entityId = sp.getPlayerId() + 1;
-            int alphaYaw = (sp.getYaw() + 128) & 0xFF;
-            return new com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket(entityId, alphaYaw);
-        }
-        if (classicPacket instanceof PlayerTeleportPacket pt) {
+            entityId = sp.getPlayerId() + 1;
+            alphaYaw = (sp.getYaw() + 128) & 0xFF;
+        } else if (classicPacket instanceof PlayerTeleportPacket pt) {
             if (pt.getPlayerId() == -1) return null;
-            int entityId = pt.getPlayerId() + 1;
-            int alphaYaw = (pt.getYaw() + 128) & 0xFF;
+            entityId = pt.getPlayerId() + 1;
+            alphaYaw = (pt.getYaw() + 128) & 0xFF;
+        } else if (classicPacket instanceof PositionOrientationUpdatePacket pou) {
+            entityId = pou.getPlayerId() + 1;
+            alphaYaw = (pou.getYaw() + 128) & 0xFF;
+        } else if (classicPacket instanceof OrientationUpdatePacket ou) {
+            entityId = ou.getPlayerId() + 1;
+            alphaYaw = (ou.getYaw() + 128) & 0xFF;
+        }
+
+        if (entityId == -1) return null;
+
+        // 1.7.x uses int entityId; 1.8+ uses VarInt
+        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
             return new com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket(entityId, alphaYaw);
         }
-        if (classicPacket instanceof PositionOrientationUpdatePacket pou) {
-            int entityId = pou.getPlayerId() + 1;
-            int alphaYaw = (pou.getYaw() + 128) & 0xFF;
-            return new com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket(entityId, alphaYaw);
-        }
-        if (classicPacket instanceof OrientationUpdatePacket ou) {
-            int entityId = ou.getPlayerId() + 1;
-            int alphaYaw = (ou.getYaw() + 128) & 0xFF;
-            return new com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket(entityId, alphaYaw);
-        }
-        return null;
+        return new com.github.martinambrus.rdforward.protocol.packet.alpha.EntityHeadRotationPacket(entityId, alphaYaw);
     }
 
     private Packet translate(Packet packet) {

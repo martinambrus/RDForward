@@ -107,6 +107,7 @@ If no username is provided, the server auto-assigns one (Player1, Player2, etc.)
 - **Authentication** — optional online-mode with Mojang session verification (Java 1.3+) and Xbox Live JWT validation (Bedrock)
 - **Server configuration** — vanilla-compatible `server.properties` with launcher-style version IDs
 - **World conversion** — auto-detects and converts between RubyDung, Alpha, and McRegion formats at startup
+- **Legacy Console support** — LCE TU19 (Windows64) clients can join via LAN discovery (UDP broadcast on port 25566) or direct connect, with full cross-play against all other client types
 - **Performance** — async chunk generation, packet compression (Java 1.8+), flush coalescing, crash-safe atomic saves
 
 ## Project Structure
@@ -137,10 +138,11 @@ The server accepts connections from a wide range of Minecraft clients simultaneo
 | Beta | b1.0 through b1.8 | TCP, 4-byte length prefix |
 | Release (pre-Netty) | 1.0 through 1.6.4 | TCP, 4-byte length prefix |
 | Release (Netty) | 1.7.2 through 26.1 | TCP, VarInt framing |
+| Legacy Console (LCE) | TU19 (v1.6.0560.0) | TCP, 4-byte length prefix |
 | MCPE (legacy) | 0.6.1 through 0.16.0 (protocols 9-91) | UDP, RakNet |
 | Bedrock | 1.26.10 (protocol 944) | UDP, RakNet |
 
-Protocol detection is automatic — the server identifies the client type from the first bytes of the connection and configures the Netty pipeline accordingly.
+Protocol detection is automatic — the server identifies the client type from the first bytes of the connection and configures the Netty pipeline accordingly. LCE clients are detected by a server-sends-first handshake (300ms timeout), while all other TCP protocols are identified from the first client byte.
 
 ## Key Design Decisions
 
@@ -151,7 +153,7 @@ Protocol detection is automatic — the server identifies the client type from t
 - **LWJGL 3.4.1** — ported from LWJGL 2 for Java 21+ compatibility on all platforms (see below)
 - **Fabric Loader + SpongePowered Mixin** for mod loading and code injection
 - **BuildTools approach** — no copyrighted code in the repository
-- **Lazy-loaded protocol infrastructure** — Bedrock palettes, MCPE codecs, and version-specific registries are loaded only when a client of that type first connects
+- **Lazy-loaded protocol infrastructure** — Bedrock palettes, MCPE codecs, LCE packet registries, and version-specific registries are loaded only when a client of that type first connects
 - **Canonical chunk serialization** — chunks are serialized once into a version-independent intermediate form, then derived per-client protocol cheaply via palette remapping
 
 ## Building
@@ -188,6 +190,7 @@ The server generates a `server.properties` file on first run with vanilla-compat
 |----------|---------|-------------|
 | `server-port` | 25565 | TCP port for Java Edition clients |
 | `bedrock-port` | 19132 | UDP port for Bedrock/MCPE clients |
+| *(auto)* | 25566 | UDP port for LCE LAN discovery broadcasts (not configurable) |
 | `server-version` | rd-132211 | World format — launcher-style ID (e.g. `rd-132211`, `a1.2.6`, `b1.7.3`, `1.8.9`) |
 | `gamemode` | creative | `creative` or `survival` |
 | `max-players` | 128 | Maximum concurrent players |
@@ -283,6 +286,7 @@ This project would not be possible without the following open source projects, t
 | [Dragonfly](https://github.com/df-mc/dragonfly) | Go-based Bedrock server. Referenced for chunk serialization optimization patterns alongside NukkitX and GeyserMC. |
 | [wiki.vg](https://wiki.vg/Protocol) / [minecraft.wiki](https://minecraft.wiki) | Community-maintained Minecraft protocol documentation. Used for packet formats, field types, and version-specific wire format details across all supported protocol versions. |
 | [Minecraft Wiki](https://minecraft.wiki) | Official Minecraft server JAR downloads for decompilation and protocol version history. |
+| 4J Studios LCE binary (Windows64 TU19) | Reverse-engineered for Legacy Console Edition protocol support. Packet framing, login sequence, RLE+zlib chunk compression (`compression.cpp`), LAN discovery broadcast format (`WinsockNetLayer.cpp`), entity wire formats (short entity IDs, relative body rotation), and batch packet structure were derived from the compiled client binary. |
 
 ### Tools
 

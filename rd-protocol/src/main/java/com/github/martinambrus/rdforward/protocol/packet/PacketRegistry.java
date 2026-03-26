@@ -3,6 +3,7 @@ package com.github.martinambrus.rdforward.protocol.packet;
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.packet.classic.*;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.*;
+import com.github.martinambrus.rdforward.protocol.packet.lce.*;
 // Explicit imports resolve classic/alpha name collisions (explicit beats wildcard)
 import com.github.martinambrus.rdforward.protocol.packet.classic.SpawnPlayerPacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.DisconnectPacket;
@@ -201,10 +202,12 @@ public class PacketRegistry {
             register(v, PacketDirection.SERVER_TO_CLIENT, 0x02, new PacketFactory() {
                 public Packet create() { return new HandshakeS2CPacket(); }
             });
-            // Game state
-            register(v, PacketDirection.SERVER_TO_CLIENT, 0x04, new PacketFactory() {
-                public Packet create() { return new TimeUpdatePacket(); }
-            });
+            // Game state — TimeUpdate (0x04) added in Alpha 1.0.17 (v1)
+            if (v.isAtLeast(ProtocolVersion.ALPHA_1_0_17)) {
+                register(v, PacketDirection.SERVER_TO_CLIENT, 0x04, new PacketFactory() {
+                    public Packet create() { return new TimeUpdatePacket(); }
+                });
+            }
             register(v, PacketDirection.SERVER_TO_CLIENT, 0x06, new PacketFactory() {
                 public Packet create() { return new SpawnPositionPacket(); }
             });
@@ -640,5 +643,119 @@ public class PacketRegistry {
 
     private static String registryKey(ProtocolVersion version, PacketDirection direction, int packetId) {
         return version.name() + ":" + direction.name() + ":" + packetId;
+    }
+
+    /**
+     * Lazy-loaded LCE packet registration. Uses the JVM inner-class holder
+     * pattern for thread-safe lazy initialization without synchronization.
+     * Called from ProtocolDetectionHandler when an LCE client is detected.
+     */
+    private static class LCERegistryHolder {
+        static {
+            registerLCEPackets();
+        }
+        static void ensure() {}
+    }
+
+    public static void ensureLCERegistered() {
+        LCERegistryHolder.ensure();
+    }
+
+    private static void registerLCEPackets() {
+        ProtocolVersion v = ProtocolVersion.LCE_TU19;
+
+        // === C2S packets ===
+        register(v, PacketDirection.CLIENT_TO_SERVER, 0x00, new PacketFactory() {
+            public Packet create() { return new KeepAlivePacketV17(); }
+        });
+        register(v, PacketDirection.CLIENT_TO_SERVER, 0x01, new PacketFactory() {
+            public Packet create() { return new LCELoginC2SPacket(); }
+        });
+        register(v, PacketDirection.CLIENT_TO_SERVER, 0x02, new PacketFactory() {
+            public Packet create() { return new LCEPreLoginC2SPacket(); }
+        });
+        register(v, PacketDirection.CLIENT_TO_SERVER, 0x03, new PacketFactory() {
+            public Packet create() { return new LCEChatPacket(); }
+        });
+        register(v, PacketDirection.CLIENT_TO_SERVER, 0x0A, new PacketFactory() {
+            public Packet create() { return new PlayerOnGroundPacket(); }
+        });
+        register(v, PacketDirection.CLIENT_TO_SERVER, 0x0B, new PacketFactory() {
+            public Packet create() { return new PlayerPositionPacket(); }
+        });
+        register(v, PacketDirection.CLIENT_TO_SERVER, 0x0C, new PacketFactory() {
+            public Packet create() { return new PlayerLookPacket(); }
+        });
+        register(v, PacketDirection.CLIENT_TO_SERVER, 0x0D, new PacketFactory() {
+            public Packet create() { return new PlayerPositionAndLookC2SPacket(); }
+        });
+        register(v, PacketDirection.CLIENT_TO_SERVER, 0x0E, new PacketFactory() {
+            public Packet create() { return new PlayerDiggingPacket(); }
+        });
+        register(v, PacketDirection.CLIENT_TO_SERVER, 0x12, new PacketFactory() {
+            public Packet create() { return new LCEBatchPacket(); }
+        });
+        register(v, PacketDirection.CLIENT_TO_SERVER, 0x0F, new PacketFactory() {
+            public Packet create() { return new PlayerBlockPlacementPacketV39(); }
+        });
+        register(v, PacketDirection.CLIENT_TO_SERVER, 0xFF, new PacketFactory() {
+            public Packet create() { return new com.github.martinambrus.rdforward.protocol.packet.alpha.DisconnectPacket(); }
+        });
+
+        // === S2C packets ===
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x00, new PacketFactory() {
+            public Packet create() { return new KeepAlivePacketV17(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x01, new PacketFactory() {
+            public Packet create() { return new LCELoginS2CPacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x02, new PacketFactory() {
+            public Packet create() { return new LCEPreLoginS2CPacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x03, new PacketFactory() {
+            public Packet create() { return new LCEChatPacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x04, new PacketFactory() {
+            public Packet create() { return new TimeUpdatePacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x06, new PacketFactory() {
+            public Packet create() { return new SpawnPositionPacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x0D, new PacketFactory() {
+            public Packet create() { return new PlayerPositionAndLookS2CPacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x1D, new PacketFactory() {
+            public Packet create() { return new DestroyEntityPacketV39(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x1F, new PacketFactory() {
+            public Packet create() { return new LCEEntityRelativeMovePacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x20, new PacketFactory() {
+            public Packet create() { return new LCEEntityLookPacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x21, new PacketFactory() {
+            public Packet create() { return new LCEEntityLookAndMovePacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x22, new PacketFactory() {
+            public Packet create() { return new LCEEntityTeleportPacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x23, new PacketFactory() {
+            public Packet create() { return new LCERotateHeadPacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x14, new PacketFactory() {
+            public Packet create() { return new LCEAddPlayerPacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x32, new PacketFactory() {
+            public Packet create() { return new LCEChunkVisibilityPacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x33, new PacketFactory() {
+            public Packet create() { return new LCEBlockRegionUpdatePacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x35, new PacketFactory() {
+            public Packet create() { return new BlockChangePacketV39(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0xFF, new PacketFactory() {
+            public Packet create() { return new com.github.martinambrus.rdforward.protocol.packet.alpha.DisconnectPacket(); }
+        });
     }
 }

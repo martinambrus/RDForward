@@ -306,6 +306,10 @@ public class PlayerManager {
                 } else if (player.getMcpeSession() != null) {
                     player.getMcpeSession().sendTimeUpdate((int) (Math.abs(timeOfDay) % 24000));
                 }
+            } else if (v.getFamily() == ProtocolVersion.Family.LCE) {
+                // LCE uses Java 1.6.4 format: two longs (worldAge + timeOfDay)
+                if (preNettyV47 == null) preNettyV47 = new TimeUpdatePacketV47(worldAge, timeOfDay);
+                sendOrWrite(player, preNettyV47, flush);
             } else if (v.isAtLeast(ProtocolVersion.RELEASE_26_1)) {
                 if (nettyV775 == null) nettyV775 = new NettyTimeUpdatePacketV775(worldAge, timeOfDay);
                 sendOrWrite(player, nettyV775, flush);
@@ -321,7 +325,7 @@ public class PlayerManager {
             } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_4_2)) {
                 if (preNettyV47Abs == null) preNettyV47Abs = new TimeUpdatePacketV47(worldAge, Math.abs(timeOfDay));
                 sendOrWrite(player, preNettyV47Abs, flush);
-            } else if (v.isAtLeast(ProtocolVersion.ALPHA_1_0_15)) {
+            } else if (v.isAtLeast(ProtocolVersion.ALPHA_1_0_17)) {
                 if (preNetty == null) preNetty = new TimeUpdatePacket(Math.abs(timeOfDay));
                 sendOrWrite(player, preNetty, flush);
             }
@@ -371,6 +375,9 @@ public class PlayerManager {
                     }
                     player.getBedrockSession().getSession().sendPacket(lep);
                 }
+            } else if (v.getFamily() == ProtocolVersion.Family.LCE) {
+                // LCE uses pre-Netty weather (same as Java 1.6.4)
+                player.sendPacket(preNetty);
             } else if (v.isAtLeast(ProtocolVersion.RELEASE_1_7_2)) {
                 player.sendPacket(nettyWeather);
                 if (nettyRainLevel != null) {
@@ -545,6 +552,10 @@ public class PlayerManager {
             move.setTeleportationCause(MovePlayerPacket.TeleportationCause.UNKNOWN);
             move.setOnGround(true);
             target.getBedrockSession().getSession().sendPacket(move);
+        } else if (version.getFamily() == ProtocolVersion.Family.LCE) {
+            // LCE uses pre-Netty S2C 0x0D (same as Java 1.6.4): y=eyes, stance=feet
+            target.sendPacket(new PlayerPositionAndLookS2CPacket(
+                    x, eyeY, feetY, z, alphaYaw, pitch, true));
         } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_17)) {
             target.sendPacket(new NettyPlayerPositionS2CPacketV755(
                     x, feetY, z, alphaYaw, pitch, teleportIdCounter.incrementAndGet()));

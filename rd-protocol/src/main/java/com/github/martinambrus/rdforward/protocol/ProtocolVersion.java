@@ -814,19 +814,29 @@ public enum ProtocolVersion {
     RELEASE_26_1(775, 82, Family.RELEASE, "Release 26.1 (v775)", 94, "26.1"),
 
     /**
+     * Minecraft Legacy Console Edition TU19 (v1.6.0560.0).
+     * C++ port of Java Edition 1.6.4 by 4J Studios with console-specific extensions.
+     * Uses TCP on port 25565 with single-byte packet IDs (pre-Netty framing).
+     * NETWORK_PROTOCOL_VERSION = 78 (same as Java 1.6.4).
+     * MINECRAFT_NET_VERSION = 560 (netcode version, unique to LCE).
+     * No encryption. PlayerUID = uint64 (8 bytes XUID).
+     */
+    LCE_TU19(560, 84, Family.LCE, "LCE TU19", 92, "lce-tu19"),
+
+    /**
      * Minecraft Bedrock Edition (1.26.10+).
      * Uses UDP/RakNet on port 19132 with a completely different protocol.
      * Protocol version 944 matches the CloudburstMC codec for 1.26.10.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(944, 83, Family.BEDROCK, "Bedrock", 92, "bedrock-1.26.10");
+    BEDROCK(944, 85, Family.BEDROCK, "Bedrock", 92, "bedrock-1.26.10");
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
      * when rejecting a client with an unsupported protocol version.
      */
     public enum Family {
-        PRE_CLASSIC, CLASSIC, ALPHA, BETA, RELEASE, BEDROCK
+        PRE_CLASSIC, CLASSIC, ALPHA, BETA, RELEASE, LCE, BEDROCK
     }
 
     private final int versionNumber;

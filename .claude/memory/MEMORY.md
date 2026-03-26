@@ -21,6 +21,7 @@
 ## Workflow Preferences
 - [feedback_restart_server.md](feedback_restart_server.md): Rebuild and restart the server proactively after code changes
 - [feedback_server_start.md](feedback_server_start.md): Use plain Bash & to start the server, never run_in_background
+- [feedback_wait_for_confirmation.md](feedback_wait_for_confirmation.md): Wait for user to confirm they tested before drawing conclusions from logs
 
 ## E2E Test Rules
 - NEVER run two Gradle test suites in parallel. They share the Gradle daemon and will conflict/kill each other. Always run sequentially.

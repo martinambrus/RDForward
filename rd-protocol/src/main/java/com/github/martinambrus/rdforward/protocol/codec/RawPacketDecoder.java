@@ -28,6 +28,7 @@ public class RawPacketDecoder extends ByteToMessageDecoder {
     private final PacketDirection readDirection;
     private volatile ProtocolVersion protocolVersion;
     private volatile boolean useString16 = false;
+    private volatile boolean skipUnknownPackets = false;
 
     public RawPacketDecoder(PacketDirection readDirection, ProtocolVersion protocolVersion) {
         this.readDirection = readDirection;
@@ -45,6 +46,10 @@ public class RawPacketDecoder extends ByteToMessageDecoder {
 
             Packet packet = PacketRegistry.createPacket(protocolVersion, readDirection, packetId);
             if (packet == null) {
+                if (skipUnknownPackets) {
+                    in.skipBytes(in.readableBytes());
+                    return;
+                }
                 // Unknown packet ID — dump context bytes for debugging
                 int readable = Math.min(in.readableBytes(), 32);
                 StringBuilder hex = new StringBuilder();
@@ -96,5 +101,14 @@ public class RawPacketDecoder extends ByteToMessageDecoder {
 
     public void setUseString16(boolean useString16) {
         this.useString16 = useString16;
+    }
+
+    /**
+     * When true, unknown packet IDs are silently skipped instead of closing the
+     * connection. Only safe when used after a frame decoder (e.g. LengthFieldBasedFrameDecoder)
+     * that guarantees each decode() call processes exactly one complete packet.
+     */
+    public void setSkipUnknownPackets(boolean skip) {
+        this.skipUnknownPackets = skip;
     }
 }
