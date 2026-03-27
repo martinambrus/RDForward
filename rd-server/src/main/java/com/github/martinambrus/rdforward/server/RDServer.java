@@ -617,6 +617,18 @@ public class RDServer {
             }
         });
 
+        CommandRegistry.registerOp("say", "Broadcast a message to all players", PermissionManager.OP_CHEAT, ctx -> {
+            if (ctx.getArgs().length == 0) {
+                ctx.reply("Usage: say <message>");
+                return;
+            }
+            String message = String.join(" ", ctx.getArgs());
+            String sender = ctx.isConsole() ? "Server" : ctx.getSenderName();
+            String formatted = "[" + sender + "] " + message;
+            playerManager.broadcastChat((byte) 0, formatted);
+            System.out.println("[INFO] " + ctx.getSenderName() + " issued say: " + formatted);
+        });
+
         CommandRegistry.registerOp("save", "Save the world to disk", PermissionManager.OP_ADMIN, ctx -> {
             world.save();
             world.savePlayers(playerManager.getAllPlayers());
@@ -1005,12 +1017,12 @@ public class RDServer {
             boolean wasIp = arg.contains(".") || arg.contains(":");
             boolean wasBanned;
             if (wasIp) {
-                wasBanned = BanManager.getBannedIps().contains(arg);
+                wasBanned = BanManager.isIpBanned(arg);
                 if (wasBanned) {
                     BanManager.unbanIp(arg);
                 }
             } else {
-                wasBanned = BanManager.getBannedPlayers().contains(arg);
+                wasBanned = BanManager.isPlayerBanned(arg);
                 if (wasBanned) {
                     BanManager.unbanPlayer(arg);
                 }

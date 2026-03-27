@@ -234,9 +234,11 @@ class AdminCommandTest {
             }
             assertTrue(connectFailed, "UnbanBot should not connect while banned");
 
-            // Unban via command
+            // Unban via command — wait for confirmation instead of fixed sleep
             op.getSession().sendChat("/unban UnbanBot");
-            Thread.sleep(200); // Allow command to process
+            String unbanMsg = op.getSession().waitForChat("Unbanned", 3000);
+            assertNotNull(unbanMsg, "Should receive unban confirmation");
+            Thread.sleep(100); // Small grace period for ban state to propagate
 
             // Now UnbanBot should connect successfully
             BotClient unbanBot = testServer.createBot(ProtocolVersion.BETA_1_7_3, "UnbanBot");
@@ -249,6 +251,51 @@ class AdminCommandTest {
             op.disconnect();
             BanManager.unbanPlayer("UnbanBot");
             PermissionManager.removeOp("UnbanOp");
+        }
+    }
+
+    @Test
+    void tpSelfToCoordinates() throws Exception {
+        PermissionManager.addOp("TpSelfXyz");
+        BotClient op = testServer.createBot(ProtocolVersion.BETA_1_7_3, "TpSelfXyz");
+        try {
+            BotSession opSession = op.getSession();
+            assertTrue(opSession.isLoginComplete());
+
+            int prevCount = opSession.getPositionUpdateCount();
+            opSession.sendChat("/tp 30 50 40");
+
+            boolean updated = opSession.waitForPositionUpdate(prevCount, 3000);
+            assertTrue(updated, "Should receive position update");
+
+            double expectedEyeY = 50 + (double) 1.62f;
+            assertEquals(30.0, opSession.getX(), 1.0, "X should be ~30");
+            assertEquals(expectedEyeY, opSession.getY(), 1.0, "Y should be ~51.62");
+            assertEquals(40.0, opSession.getZ(), 1.0, "Z should be ~40");
+        } finally {
+            op.disconnect();
+            PermissionManager.removeOp("TpSelfXyz");
+        }
+    }
+
+    @Test
+    void tpRequiresOpPermission() throws Exception {
+        BotClient bot = testServer.createBot(ProtocolVersion.BETA_1_7_3, "TpNonOp");
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete());
+
+            int prevCount = session.getPositionUpdateCount();
+            session.sendChat("/tp 10 50 10");
+
+            String msg = session.waitForChat("permission", 3000);
+            assertNotNull(msg, "Non-op should receive permission denied for /tp");
+
+            // Position should not have changed
+            assertFalse(session.waitForPositionUpdate(prevCount, 500),
+                    "Non-op should not receive position update from /tp");
+        } finally {
+            bot.disconnect();
         }
     }
 }
