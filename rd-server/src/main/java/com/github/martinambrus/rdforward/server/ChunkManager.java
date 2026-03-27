@@ -111,8 +111,12 @@ public class ChunkManager {
     /** Tracks which chunks have been modified since last save. */
     private final Set<ChunkCoord> dirtyChunks = ConcurrentHashMap.newKeySet();
 
-    /** Reference to the authoritative Classic/RD world for block data overlay. */
-    private ServerWorld serverWorld;
+    /**
+     * Reference to the authoritative Classic/RD world for block data overlay.
+     * When non-null, chunks are ephemeral projections of this world and are
+     * NOT persisted to disk (saves are skipped, dirty tracking is suppressed).
+     */
+    private volatile ServerWorld serverWorld;
 
     /** Reusable per-thread collections for updatePlayerChunks to avoid allocation churn. */
     private static final ThreadLocal<Set<ChunkCoord>> TL_DESIRED = ThreadLocal.withInitial(() -> new HashSet<>(256));
@@ -332,6 +336,10 @@ public class ChunkManager {
      */
     public void setServerWorld(ServerWorld serverWorld) {
         this.serverWorld = serverWorld;
+        if (serverWorld != null) {
+            System.out.println("[ChunkManager] Overlay mode active — chunks are projected from"
+                    + " server-world.dat. Alpha chunk files will NOT be written to disk.");
+        }
     }
 
     /** Get or create a ChunkHolder for the given coordinate. */
@@ -878,7 +886,9 @@ public class ChunkManager {
             return false;
         }
         chunk.setBlock(localX, blockY, localZ, blockType & 0xFF);
-        dirtyChunks.add(coord);
+        if (serverWorld == null) {
+            dirtyChunks.add(coord);
+        }
         // Update ChunkHolder state
         ChunkHolder holder = chunkHolders.get(coord);
         if (holder != null) {
@@ -954,7 +964,7 @@ public class ChunkManager {
      * Only the disk I/O runs on the worker thread.
      */
     public void saveIncrementally() {
-        if (dirtyChunks.isEmpty()) return;
+        if (serverWorld != null || dirtyChunks.isEmpty()) return;
 
         int count = 0;
         Iterator<ChunkCoord> it = dirtyChunks.iterator();
@@ -989,7 +999,7 @@ public class ChunkManager {
      * to avoid concurrent file writes.
      */
     public void saveAllDirty() {
-        if (dirtyChunks.isEmpty()) return;
+        if (serverWorld != null || dirtyChunks.isEmpty()) return;
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         for (ChunkCoord coord : dirtyChunks) {
             if (ioThread.isSaveInFlight(coord)) continue; // in-flight incremental save
@@ -1021,6 +1031,10 @@ public class ChunkManager {
      * Save all loaded chunks to disk (for server shutdown).
      */
     public void saveAll() {
+        if (serverWorld != null) {
+            dirtyChunks.clear();
+            return;
+        }
         int count = 0;
         for (Map.Entry<ChunkCoord, AlphaChunk> entry : loadedChunks.entrySet()) {
             try {
@@ -1520,6 +1534,10 @@ public class ChunkManager {
         // Update ChunkHolder lifecycle
         ChunkHolder holder = chunkHolders.remove(coord);
         if (holder != null) holder.setStatus(ChunkStatus.UNLOADING);
+        if (serverWorld != null) {
+            dirtyChunks.remove(coord);
+            return;
+        }
         if (chunk != null && dirtyChunks.remove(coord)) {
             AlphaLevelFormat.SaveTask saveTask;
             try (LockToken lock = chunkLocks.acquire(coord, Usage.SAVE)) {

@@ -19,15 +19,15 @@ import java.util.zip.GZIPOutputStream;
  *   Block ordering: (y * depth + z) * width + x (YZX).
  *
  * RDForward server format:
- *   GZip'd [int width][int height][int depth][byte[] blocks].
+ *   GZip'd [magic][version][width][height][depth][byte[] blocks].
+ *   See {@link ServerWorldHeader} for header details.
  *   Block ID 2 = grass (surface), 4 = cobblestone (subsurface), 0 = air.
  *   Same YZX block ordering.
  *
  * The converter:
  *   1. Reads the raw blocks from level.dat
- *   2. Adds the 3-int dimension header
- *   3. Maps block ID 1 to grass (surface) / cobblestone (below surface)
- *   4. Writes as server-world.dat in the output directory
+ *   2. Maps block ID 1 to grass (surface) / cobblestone (below surface)
+ *   3. Writes as server-world.dat with versioned header
  */
 public class OriginalRubyDungToServerConverter implements FormatConverter {
 
@@ -106,13 +106,11 @@ public class OriginalRubyDungToServerConverter implements FormatConverter {
 
         System.out.println("Mapped " + mapped + " blocks (ID 1 -> grass/cobblestone)");
 
-        // Write in server-world.dat format (with 3-int header)
+        // Write in server-world.dat format (versioned header + dimensions + blocks)
         outputPath.getParentFile().mkdirs();
         try (DataOutputStream dos = new DataOutputStream(
                 new GZIPOutputStream(new FileOutputStream(outputPath)))) {
-            dos.writeInt(width);
-            dos.writeInt(height);
-            dos.writeInt(depth);
+            ServerWorldHeader.write(dos, width, height, depth);
             dos.write(blocks);
         }
 

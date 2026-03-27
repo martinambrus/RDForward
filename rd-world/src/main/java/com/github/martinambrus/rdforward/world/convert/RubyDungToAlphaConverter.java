@@ -61,9 +61,10 @@ public class RubyDungToAlphaConverter implements FormatConverter {
         byte[] blocks;
 
         try (DataInputStream dis = new DataInputStream(new GZIPInputStream(new FileInputStream(inputFile)))) {
-            width = dis.readInt();
-            height = dis.readInt();  // vertical axis
-            depth = dis.readInt();
+            ServerWorldHeader header = ServerWorldHeader.read(dis);
+            width = header.width;
+            height = header.height;
+            depth = header.depth;
             blocks = new byte[width * height * depth];
             dis.readFully(blocks);
         }

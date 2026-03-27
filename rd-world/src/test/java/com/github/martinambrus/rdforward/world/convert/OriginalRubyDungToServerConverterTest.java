@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Tests for OriginalRubyDungToServerConverter: verifies that the original
  * RubyDung level.dat (no header, block ID 1 = solid) is correctly converted
- * to the server-world.dat format (3-int header, grass/cobblestone block IDs).
+ * to the server-world.dat format (versioned header, grass/cobblestone block IDs).
  */
 class OriginalRubyDungToServerConverterTest {
 
@@ -65,6 +65,8 @@ class OriginalRubyDungToServerConverterTest {
         // Read back the converted file
         try (DataInputStream dis = new DataInputStream(
                 new GZIPInputStream(new FileInputStream(output)))) {
+            assertEquals(ServerWorldHeader.FORMAT_MAGIC, dis.readInt(), "Expected FORMAT_MAGIC");
+            assertEquals(ServerWorldHeader.FORMAT_V1_FINITE, dis.readInt(), "Expected FORMAT_V1_FINITE");
             assertEquals(w, dis.readInt());
             assertEquals(h, dis.readInt());
             assertEquals(d, dis.readInt());
@@ -120,6 +122,8 @@ class OriginalRubyDungToServerConverterTest {
 
         try (DataInputStream dis = new DataInputStream(
                 new GZIPInputStream(new FileInputStream(output)))) {
+            dis.readInt(); // magic
+            dis.readInt(); // version
             dis.readInt(); // width
             dis.readInt(); // height
             dis.readInt(); // depth

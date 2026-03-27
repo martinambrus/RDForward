@@ -3,6 +3,7 @@ package com.github.martinambrus.rdforward.server;
 import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import com.github.martinambrus.rdforward.world.BlockRegistry;
 import com.github.martinambrus.rdforward.world.WorldGenerator;
+import com.github.martinambrus.rdforward.world.convert.ServerWorldHeader;
 
 import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
 
@@ -263,17 +264,15 @@ public class ServerWorld {
             }
         }
         try (DataInputStream dis = new DataInputStream(new GZIPInputStream(new FileInputStream(saveFile)))) {
-            int savedWidth = dis.readInt();
-            int savedHeight = dis.readInt();
-            int savedDepth = dis.readInt();
-            if (savedWidth != width || savedHeight != height || savedDepth != depth) {
-                System.err.println("Saved world dimensions (" + savedWidth + "x" + savedHeight + "x" + savedDepth
+            ServerWorldHeader header = ServerWorldHeader.read(dis);
+            if (header.width != width || header.height != height || header.depth != depth) {
+                System.err.println("Saved world dimensions (" + header.width + "x" + header.height + "x" + header.depth
                     + ") don't match server (" + width + "x" + height + "x" + depth + "), generating fresh world");
                 return false;
             }
             dis.readFully(blocks);
             dirty = false;
-            System.out.println("Loaded world from " + saveFile);
+            System.out.println("Loaded world from " + saveFile + " (format version " + header.formatVersion + ")");
             return true;
         } catch (IOException e) {
             System.err.println("Failed to load world from " + saveFile + ": " + e.getMessage());
@@ -361,9 +360,7 @@ public class ServerWorld {
         File tmp = new File(saveFile.getPath() + ".tmp");
         try (DataOutputStream dos = new DataOutputStream(
                 new GZIPOutputStream(new FileOutputStream(tmp)))) {
-            dos.writeInt(width);
-            dos.writeInt(height);
-            dos.writeInt(depth);
+            ServerWorldHeader.write(dos, width, height, depth);
             dos.write(snapshot);
         } catch (IOException e) {
             dirty = true; // retry on next cycle

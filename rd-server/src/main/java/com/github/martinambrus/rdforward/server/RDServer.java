@@ -14,6 +14,7 @@ import com.github.martinambrus.rdforward.world.FlatWorldGenerator;
 import com.github.martinambrus.rdforward.world.WorldGenerator;
 import com.github.martinambrus.rdforward.world.convert.ConversionRegistry;
 import com.github.martinambrus.rdforward.world.convert.ServerToOriginalRubyDungConverter;
+import com.github.martinambrus.rdforward.world.convert.ServerWorldHeader;
 import com.github.martinambrus.rdforward.world.convert.WorldFormat;
 import com.github.martinambrus.rdforward.world.convert.WorldFormatDetector;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockBlockMapper;
@@ -43,6 +44,7 @@ import org.cloudburstmc.protocol.bedrock.netty.initializer.BedrockServerInitiali
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 import java.util.Collection;
@@ -205,6 +207,7 @@ public class RDServer {
         registerSpawnProtection();
 
         convertWorldIfNeeded();
+        checkWorldCompatibility();
 
         if (!world.load()) {
             System.out.println("Generating world (" + world.getWidth() + "x"
@@ -354,6 +357,165 @@ public class RDServer {
             if (worldDir.isDirectory()) {
                 System.out.println("[RDServer] Clearing stale chunk cache at " + worldDir + "...");
                 deleteRecursive(worldDir);
+            }
+        }
+    }
+
+    /**
+     * Validate that {@code server-version} and {@code level-type} are compatible,
+     * then check whether the existing world on disk matches the current config.
+     *
+     * <b>Config validation:</b>
+     *   server-version determines the server mode (finite-world vs chunk-gen).
+     *   level-type must be compatible — e.g. "alpha" level-type with a RubyDung
+     *   server-version is not allowed because a finite-world server cannot
+     *   host infinite Alpha terrain.
+     *
+     * <b>Downgrade</b> (newer world → older server-version, e.g. Alpha→RubyDung):
+     *   Backwards conversion is not possible. The server refuses to start and
+     *   tells the user to back up and remove the old world or restore settings.
+     *
+     * <b>Upgrade</b> (older world → newer server-version, e.g. RubyDung→Alpha):
+     *   The existing world is automatically converted to the new format. The
+     *   old world file is renamed (not deleted) so the user can remove it once
+     *   they are satisfied with the result.
+     */
+    private void checkWorldCompatibility() {
+        boolean finiteServer = protocolVersion.isFiniteWorld();
+        String levelType = ServerProperties.getLevelType();
+
+        // --- Config validation: level-type must be compatible with server-version ---
+        if (finiteServer && "alpha".equals(levelType)) {
+            System.err.println("==========================================================");
+            System.err.println("INCOMPATIBLE CONFIGURATION");
+            System.err.println();
+            System.err.println("server-version '" + ServerProperties.getServerVersion()
+                    + "' uses a finite world, but level-type is set to 'alpha'");
+            System.err.println("which requires infinite chunk-based world generation.");
+            System.err.println();
+            System.err.println("Options:");
+            System.err.println("  1. Change level-type to 'flat', 'rubydung', or 'classic'");
+            System.err.println("  2. Change server-version to an Alpha or later version");
+            System.err.println("     (e.g. a1.2.6, b1.7.3)");
+            System.err.println("==========================================================");
+            throw new IllegalStateException("Incompatible config: level-type 'alpha'"
+                    + " requires a chunk-gen server-version, but '"
+                    + ServerProperties.getServerVersion() + "' is finite-world");
+        }
+        // Chunk-gen servers cannot use finite-only level types
+        if (!finiteServer && ("rubydung".equals(levelType) || "classic".equals(levelType))) {
+            System.err.println("==========================================================");
+            System.err.println("INCOMPATIBLE CONFIGURATION");
+            System.err.println();
+            System.err.println("server-version '" + ServerProperties.getServerVersion()
+                    + "' uses chunk-based world generation, but level-type");
+            System.err.println("is set to '" + levelType + "' which only supports finite worlds.");
+            System.err.println();
+            System.err.println("Options:");
+            System.err.println("  1. Change level-type to 'flat' or 'alpha'");
+            System.err.println("  2. Change server-version to a finite-world version");
+            System.err.println("     (e.g. rd-132211, c0.30)");
+            System.err.println("==========================================================");
+            throw new IllegalStateException("Incompatible config: level-type '" + levelType
+                    + "' requires a finite-world server-version, but '"
+                    + ServerProperties.getServerVersion() + "' uses chunk generation");
+        }
+
+        File dir = getDataDir();
+        File serverWorldFile = new File(dir, "server-world.dat");
+        String levelName = ServerProperties.getLevelName();
+        File worldDir = (dataDir != null) ? new File(dataDir, levelName) : new File(levelName);
+
+        boolean hasFiniteWorld = serverWorldFile.exists();
+        boolean hasAlphaWorld = worldDir.isDirectory()
+                && WorldFormatDetector.detect(worldDir) == WorldFormat.ALPHA;
+
+        // Both worlds exist — warn that one is unused so the admin doesn't get confused.
+        if (hasAlphaWorld && hasFiniteWorld) {
+            if (finiteServer) {
+                System.out.println("[RDServer] Both server-world.dat and Alpha world directory"
+                        + " found; using server-world.dat (finite mode). The Alpha world at '"
+                        + worldDir + "' is unused and can be removed.");
+            } else {
+                System.out.println("[RDServer] Both server-world.dat and Alpha world directory"
+                        + " found; using Alpha world (chunk-gen mode). server-world.dat"
+                        + " is unused and can be removed.");
+            }
+        }
+
+        // --- Downgrade: Alpha world on disk, server-version switched to finite ---
+        // Backwards conversion is not possible. Stop and let the user decide.
+        if (hasAlphaWorld && !hasFiniteWorld && finiteServer) {
+            System.err.println("==========================================================");
+            System.err.println("INCOMPATIBLE WORLD FORMAT");
+            System.err.println();
+            System.err.println("Found an Alpha world at '" + worldDir + "' but server-version");
+            System.err.println("is '" + ServerProperties.getServerVersion()
+                    + "' (" + protocolVersion.getDisplayName() + ").");
+            System.err.println("Alpha worlds cannot be converted back to the finite-world format.");
+            System.err.println();
+            System.err.println("Options:");
+            System.err.println("  1. Change server-version to an Alpha or later version");
+            System.err.println("     (e.g. a1.2.6, b1.7.3) to keep using this world.");
+            System.err.println("  2. Back up and remove the '" + levelName + "/' directory");
+            System.err.println("     to start fresh with a new "
+                    + protocolVersion.getDisplayName() + " world.");
+            System.err.println("==========================================================");
+            throw new IllegalStateException("Incompatible world format: Alpha world"
+                    + " cannot be loaded with server-version '"
+                    + ServerProperties.getServerVersion() + "'");
+        }
+
+        // --- Upgrade: finite world on disk, server-version switched to chunk-gen ---
+        // Auto-convert RubyDung → Alpha. Rename the old server-world.dat so the
+        // user can delete it once they're happy with the converted world.
+        if (hasFiniteWorld && !finiteServer && !hasAlphaWorld) {
+            int version = ServerWorldHeader.readFormatVersion(serverWorldFile);
+            if (version == ServerWorldHeader.FORMAT_V1_FINITE) {
+                System.out.println("[RDServer] server-version is '"
+                        + ServerProperties.getServerVersion()
+                        + "' but a finite world (server-world.dat) exists.");
+                System.out.println("[RDServer] Auto-converting to Alpha format...");
+                try {
+                    long startMs = System.currentTimeMillis();
+                    if (!worldDir.mkdirs() && !worldDir.isDirectory()) {
+                        throw new IOException("Failed to create world directory: " + worldDir);
+                    }
+                    ConversionRegistry.createDefault().convert(
+                            serverWorldFile, worldDir,
+                            WorldFormat.RUBYDUNG_SERVER, WorldFormat.ALPHA, worldSeed);
+
+                    // Rename old file instead of deleting — user can remove it later
+                    File backup = new File(dir, "server-world.dat.old");
+                    if (!serverWorldFile.renameTo(backup)) {
+                        java.nio.file.Files.move(serverWorldFile.toPath(), backup.toPath(),
+                                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    }
+
+                    // Detach ServerWorld from ChunkManager so the converted Alpha
+                    // world is the sole authority — no finite-world overlay.
+                    chunkManager.setServerWorld(null);
+                    System.out.println("[ChunkManager] Overlay detached; Alpha chunk saves enabled.");
+
+                    System.out.println("[RDServer] Conversion complete in "
+                            + (System.currentTimeMillis() - startMs) + "ms.");
+                    System.out.println("[RDServer] Old world backed up to " + backup.getName()
+                            + " — you can delete it once you're happy with the converted world.");
+                } catch (Exception e) {
+                    // Clean up partial Alpha directory to allow retry on next startup
+                    if (worldDir.isDirectory()) {
+                        System.out.println("[RDServer] Cleaning up partial conversion at " + worldDir + "...");
+                        deleteRecursive(worldDir);
+                    }
+                    System.err.println("[RDServer] Auto-conversion failed: " + e.getMessage());
+                    e.printStackTrace();
+                    System.err.println("[RDServer] The original server-world.dat is preserved.");
+                    System.err.println("[RDServer] The server will start in finite-world overlay mode.");
+                    System.err.println("[RDServer] To retry, fix the issue above and restart.");
+                }
+            } else {
+                System.out.println("[RDServer] server-world.dat has unrecognized format version "
+                        + version + "; skipping auto-conversion to Alpha.");
             }
         }
     }

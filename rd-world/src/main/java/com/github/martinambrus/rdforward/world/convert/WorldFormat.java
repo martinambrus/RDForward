@@ -10,7 +10,7 @@ package com.github.martinambrus.rdforward.world.convert;
 public enum WorldFormat {
     /** Original RubyDung level.dat: GZip'd raw byte[] blocks, no header. Block ID 1 = all solid. */
     RUBYDUNG,
-    /** RDForward server-world.dat: GZip'd [int width][int height][int depth][byte[] blocks]. */
+    /** RDForward server-world.dat: GZip'd [magic][version][width][height][depth][blocks]. See {@link ServerWorldHeader}. */
     RUBYDUNG_SERVER,
     /** Per-chunk GZip'd NBT files in base-36 directory tree with level.dat. */
     ALPHA,

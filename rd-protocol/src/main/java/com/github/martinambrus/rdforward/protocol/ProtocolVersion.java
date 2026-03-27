@@ -1130,6 +1130,16 @@ public enum ProtocolVersion {
     }
 
     /**
+     * Check if this version uses a finite world (fixed dimensions, flat block array).
+     * RubyDung and Classic use finite worlds. Alpha and later use chunk-based
+     * infinite worlds. This determines the authoritative save format:
+     * finite → server-world.dat, chunk-based → Alpha/McRegion chunk files.
+     */
+    public boolean isFiniteWorld() {
+        return this == RUBYDUNG || this == CLASSIC;
+    }
+
+    /**
      * Check if this version is Bedrock Edition (UDP/RakNet protocol).
      */
     public boolean isBedrock() {

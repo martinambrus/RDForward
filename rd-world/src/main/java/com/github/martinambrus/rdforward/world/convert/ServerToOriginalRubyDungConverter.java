@@ -14,7 +14,8 @@ import java.util.zip.GZIPOutputStream;
  * Converts an RDForward server-world.dat to the original RubyDung level.dat format.
  *
  * RDForward server format:
- *   GZip'd [int width][int height][int depth][byte[] blocks].
+ *   GZip'd [magic][version][width][height][depth][byte[] blocks].
+ *   See {@link ServerWorldHeader} for header details.
  *   Block ID 2 = grass, 4 = cobblestone, 0 = air.
  *
  * Original RubyDung format:
@@ -23,7 +24,7 @@ import java.util.zip.GZIPOutputStream;
  *   Dimensions are hardcoded in the game (256x64x256).
  *
  * The converter:
- *   1. Reads the server format (strips the 3-int header)
+ *   1. Reads the server format (strips the versioned header)
  *   2. Maps all non-air block IDs to 1 (the only solid block in original RubyDung)
  *   3. Writes raw blocks as GZip'd level.dat (no header)
  */
@@ -50,9 +51,10 @@ public class ServerToOriginalRubyDungConverter implements FormatConverter {
 
         try (DataInputStream dis = new DataInputStream(
                 new GZIPInputStream(new FileInputStream(inputPath)))) {
-            width = dis.readInt();
-            height = dis.readInt();
-            depth = dis.readInt();
+            ServerWorldHeader header = ServerWorldHeader.read(dis);
+            width = header.width;
+            height = header.height;
+            depth = header.depth;
             blocks = new byte[width * height * depth];
             dis.readFully(blocks);
         }

@@ -12,7 +12,7 @@ import java.util.zip.GZIPInputStream;
  * Detection heuristics:
  *   ALPHA     — directory with level.dat and at least one c.*.dat chunk file
  *   MCREGION  — directory with region/*.mcr files
- *   RUBYDUNG_SERVER — GZip'd .dat file whose header (3 ints) matches the data size
+ *   RUBYDUNG_SERVER — GZip'd .dat file with versioned header (see {@link ServerWorldHeader})
  *   RUBYDUNG  — GZip'd .dat file with no header (raw blocks, original RubyDung level.dat)
  */
 public final class WorldFormatDetector {
@@ -109,16 +109,14 @@ public final class WorldFormatDetector {
     static boolean isRubyDungServerFile(File file) {
         try (DataInputStream dis = new DataInputStream(
                 new GZIPInputStream(new FileInputStream(file)))) {
-            int width = dis.readInt();
-            int height = dis.readInt();
-            int depth = dis.readInt();
+            ServerWorldHeader header = ServerWorldHeader.read(dis);
 
-            if (width <= 0 || height <= 0 || depth <= 0) {
+            if (header.width <= 0 || header.height <= 0 || header.depth <= 0) {
                 return false;
             }
 
             // Dimensions should be reasonable for a Minecraft world
-            long expectedSize = (long) width * height * depth;
+            long expectedSize = (long) header.width * header.height * header.depth;
             return expectedSize <= 512L * 256 * 512;
         } catch (IOException e) {
             return false;
