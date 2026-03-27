@@ -1318,12 +1318,25 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                         + LOGIN_TIMEOUT_SECONDS + " seconds");
                 ctx.writeAndFlush(new DisconnectPacket("Login timed out"));
             }
+        } else if (isNormalDisconnect(cause)) {
+            System.out.println("Alpha client disconnected"
+                    + (player != null ? " (" + player.getUsername() + ")" : ""));
         } else {
             System.err.println("Alpha connection error"
                     + (player != null ? " (" + player.getUsername() + ")" : "")
                     + ": " + cause.getMessage());
         }
         ctx.close();
+    }
+
+    private static boolean isNormalDisconnect(Throwable cause) {
+        if (cause instanceof java.net.SocketException || cause instanceof java.io.IOException) {
+            String msg = cause.getMessage();
+            return msg != null && (msg.contains("Connection reset")
+                    || msg.contains("forcibly closed")
+                    || msg.contains("Broken pipe"));
+        }
+        return false;
     }
 
     /**

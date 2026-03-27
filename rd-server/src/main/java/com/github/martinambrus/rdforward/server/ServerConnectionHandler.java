@@ -401,11 +401,24 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
                 ctx.writeAndFlush(new DisconnectPacket("Login timed out"));
             }
             // Post-login timeouts are handled by keep-alive pings, not read timeouts
+        } else if (isNormalDisconnect(cause)) {
+            System.out.println("Classic client disconnected"
+                + (player != null ? " (" + player.getUsername() + ")" : ""));
         } else {
             System.err.println("Connection error"
                 + (player != null ? " (" + player.getUsername() + ")" : "")
                 + ": " + cause.getMessage());
         }
         ctx.close();
+    }
+
+    private static boolean isNormalDisconnect(Throwable cause) {
+        if (cause instanceof java.net.SocketException || cause instanceof java.io.IOException) {
+            String msg = cause.getMessage();
+            return msg != null && (msg.contains("Connection reset")
+                    || msg.contains("forcibly closed")
+                    || msg.contains("Broken pipe"));
+        }
+        return false;
     }
 }

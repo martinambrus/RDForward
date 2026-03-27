@@ -1847,11 +1847,26 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        System.err.println("Netty connection error"
-                + (player != null ? " (" + player.getUsername() + ")" : "")
-                + ": " + cause.getMessage());
-        cause.printStackTrace(System.err);
+        if (isNormalDisconnect(cause)) {
+            System.out.println("Netty client disconnected"
+                    + (player != null ? " (" + player.getUsername() + ")" : ""));
+        } else {
+            System.err.println("Netty connection error"
+                    + (player != null ? " (" + player.getUsername() + ")" : "")
+                    + ": " + cause.getMessage());
+            cause.printStackTrace(System.err);
+        }
         ctx.close();
+    }
+
+    private static boolean isNormalDisconnect(Throwable cause) {
+        if (cause instanceof java.net.SocketException || cause instanceof java.io.IOException) {
+            String msg = cause.getMessage();
+            return msg != null && (msg.contains("Connection reset")
+                    || msg.contains("forcibly closed")
+                    || msg.contains("Broken pipe"));
+        }
+        return false;
     }
 
     // ========================================================================

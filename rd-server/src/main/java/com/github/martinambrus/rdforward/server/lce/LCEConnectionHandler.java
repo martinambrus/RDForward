@@ -506,6 +506,9 @@ public class LCEConnectionHandler extends SimpleChannelInboundHandler<Packet> {
         if (cause instanceof ReadTimeoutException) {
             System.out.println("LCE client timed out"
                     + (player != null ? " (" + player.getUsername() + ")" : ""));
+        } else if (isNormalDisconnect(cause)) {
+            System.out.println("LCE client disconnected"
+                    + (player != null ? " (" + player.getUsername() + ")" : ""));
         } else {
             System.err.println("LCE connection error"
                     + (player != null ? " (" + player.getUsername() + ")" : "")
@@ -513,6 +516,16 @@ public class LCEConnectionHandler extends SimpleChannelInboundHandler<Packet> {
             cause.printStackTrace();
         }
         ctx.close();
+    }
+
+    private static boolean isNormalDisconnect(Throwable cause) {
+        if (cause instanceof java.net.SocketException || cause instanceof java.io.IOException) {
+            String msg = cause.getMessage();
+            return msg != null && (msg.contains("Connection reset")
+                    || msg.contains("forcibly closed")
+                    || msg.contains("Broken pipe"));
+        }
+        return false;
     }
 
     private static short toFixedPoint(double value) {
