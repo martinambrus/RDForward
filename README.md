@@ -7,6 +7,8 @@ On your phone.
 With friends on PC...
 
 --------
+<video src="https://github.com/user-attachments/assets/1323a62a-257b-4c86-99af-3132cce45fbc" autoplay loop muted playsinline></video>
+--------
 
 ## Quick Start
 
