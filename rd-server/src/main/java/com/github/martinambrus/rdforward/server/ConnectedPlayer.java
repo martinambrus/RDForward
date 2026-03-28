@@ -283,6 +283,19 @@ public class ConnectedPlayer {
         this.hasBroadcastPosition = true;
     }
 
+    // --- Chunk cache center tracking (1.14+) ---
+
+    private volatile int lastChunkCenterX = Integer.MIN_VALUE;
+    private volatile int lastChunkCenterZ = Integer.MIN_VALUE;
+
+    public int getLastChunkCenterX() { return lastChunkCenterX; }
+    public int getLastChunkCenterZ() { return lastChunkCenterZ; }
+
+    public void setLastChunkCenter(int chunkX, int chunkZ) {
+        this.lastChunkCenterX = chunkX;
+        this.lastChunkCenterZ = chunkZ;
+    }
+
     // --- RTT-based throttling ---
 
     public int incrementAndGetThrottleCounter() { return ++entityUpdateThrottleCounter; }

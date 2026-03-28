@@ -953,22 +953,16 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         // 1.14+: Send chunk cache center before chunks.
         if (isV477) {
-            ctx.writeAndFlush(new SetChunkCacheCenterPacketV477(
-                    spawnBlockX >> 4, spawnBlockZ >> 4));
+            int spawnChunkX = spawnBlockX >> 4;
+            int spawnChunkZ = spawnBlockZ >> 4;
+            ctx.writeAndFlush(new SetChunkCacheCenterPacketV477(spawnChunkX, spawnChunkZ));
+            player.setLastChunkCenter(spawnChunkX, spawnChunkZ);
         }
 
         // Send initial chunks. addPlayer is deferred until after the login
         // sequence completes to prevent the tick loop from racing with us.
-        // v764+: Wrap in chunk batch start/finished
-        if (isV764) {
-            ctx.writeAndFlush(new ChunkBatchStartPacket());
-        }
+        // v764+ batch wrapping is handled inside sendOrQueueChunks.
         chunkManager.sendInitialChunks(player, spawnBlockX, spawnBlockZ);
-        if (isV764) {
-            ctx.writeAndFlush(new ChunkBatchFinishedPacket(
-                    (2 * ChunkManager.DEFAULT_VIEW_DISTANCE + 1)
-                            * (2 * ChunkManager.DEFAULT_VIEW_DISTANCE + 1)));
-        }
 
         // Send player position AFTER chunks. The client uses PlayerPosition as
         // the signal to exit the loading screen and start physics. Sending it
@@ -1765,8 +1759,11 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             int spawnBlockX = (int) Math.floor(spawnX);
             int spawnBlockZ = (int) Math.floor(spawnZ);
             if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_14)) {
+                int respawnChunkX = spawnBlockX >> 4;
+                int respawnChunkZ = spawnBlockZ >> 4;
                 ctx.writeAndFlush(new SetChunkCacheCenterPacketV477(
-                        spawnBlockX >> 4, spawnBlockZ >> 4));
+                        respawnChunkX, respawnChunkZ));
+                player.setLastChunkCenter(respawnChunkX, respawnChunkZ);
             }
             chunkManager.resendPlayerChunks(player);
         }

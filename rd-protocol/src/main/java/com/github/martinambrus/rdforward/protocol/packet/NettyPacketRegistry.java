@@ -2543,7 +2543,7 @@ public class NettyPacketRegistry {
             registerV764S2CReverse(NettySetSlotPacketV756.class, 0x15);
             registerV764S2CReverse(NettyPluginMessageS2CPacketV393.class, 0x18);
             registerV764S2CReverse(NettyDisconnectPacket.class, 0x1B);
-            registerV764S2CReverse(UnloadChunkPacketV109.class, 0x1F);
+            registerV764S2CReverse(UnloadChunkPacketV764.class, 0x1F);
             registerV764S2CReverse(NettyChangeGameStatePacket.class, 0x20);
             registerV764S2CReverse(KeepAlivePacketV340.class, 0x24);
             registerV764S2CReverse(MapChunkPacketV764.class, 0x25);
@@ -2881,7 +2881,7 @@ public class NettyPacketRegistry {
             registerV766S2CReverse(NettyPluginMessageS2CPacketV393.class, 0x19);
             // Packets shifted +2 (DEBUG_SAMPLE at 0x1B):
             registerV766S2CReverse(NettyDisconnectPacketV765.class, 0x1D);
-            registerV766S2CReverse(UnloadChunkPacketV109.class, 0x21);
+            registerV766S2CReverse(UnloadChunkPacketV764.class, 0x21);
             registerV766S2CReverse(NettyChangeGameStatePacket.class, 0x22);
             registerV766S2CReverse(KeepAlivePacketV340.class, 0x26);
             registerV766S2CReverse(MapChunkPacketV764.class, 0x27);
@@ -3095,7 +3095,7 @@ public class NettyPacketRegistry {
             registerV768S2CReverse(NettySetSlotPacketV766.class, 0x15);
             registerV768S2CReverse(NettyPluginMessageS2CPacketV393.class, 0x19);
             registerV768S2CReverse(NettyDisconnectPacketV765.class, 0x1D);
-            registerV768S2CReverse(UnloadChunkPacketV109.class, 0x22);
+            registerV768S2CReverse(UnloadChunkPacketV764.class, 0x22);
             registerV768S2CReverse(NettyChangeGameStatePacket.class, 0x23);
             registerV768S2CReverse(KeepAlivePacketV340.class, 0x27);
             registerV768S2CReverse(MapChunkPacketV764.class, 0x28);
@@ -3393,7 +3393,7 @@ public class NettyPacketRegistry {
             registerV770S2CReverse(NettyPluginMessageS2CPacketV393.class, 0x18);
             registerV770S2CReverse(NettyDisconnectPacketV765.class, 0x1C);
             registerV770S2CReverse(EntityPositionSyncPacketV768.class, 0x1F);
-            registerV770S2CReverse(UnloadChunkPacketV109.class, 0x21);
+            registerV770S2CReverse(UnloadChunkPacketV764.class, 0x21);
             registerV770S2CReverse(NettyChangeGameStatePacket.class, 0x22);
             registerV770S2CReverse(KeepAlivePacketV340.class, 0x26);
             registerV770S2CReverse(MapChunkPacketV770.class, 0x27);
@@ -3706,7 +3706,7 @@ public class NettyPacketRegistry {
             registerV773S2CReverse(NettyPluginMessageS2CPacketV393.class, 0x18);
             registerV773S2CReverse(NettyDisconnectPacketV765.class, 0x20);  // was 0x1C, +4
             registerV773S2CReverse(EntityPositionSyncPacketV768.class, 0x23); // was 0x1F, +4
-            registerV773S2CReverse(UnloadChunkPacketV109.class, 0x25);       // was 0x21, +4
+            registerV773S2CReverse(UnloadChunkPacketV764.class, 0x25);       // was 0x21, +4
             registerV773S2CReverse(NettyChangeGameStatePacket.class, 0x26);  // was 0x22, +4
             registerV773S2CReverse(KeepAlivePacketV340.class, 0x2B);         // was 0x26, +5
             registerV773S2CReverse(MapChunkPacketV770.class, 0x2C);          // was 0x27, +5
@@ -3809,7 +3809,7 @@ public class NettyPacketRegistry {
             REVERSE.put(reverseKey(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT,
                     EntityPositionSyncPacketV768.class), 0x23);
             REVERSE.put(reverseKey(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT,
-                    UnloadChunkPacketV109.class), 0x25);
+                    UnloadChunkPacketV764.class), 0x25);
             REVERSE.put(reverseKey(ConnectionState.PLAY, PacketDirection.SERVER_TO_CLIENT,
                     NettyChangeGameStatePacket.class), 0x26);
 

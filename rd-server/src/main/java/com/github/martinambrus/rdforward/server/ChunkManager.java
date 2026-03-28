@@ -16,7 +16,11 @@ import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV75
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV763;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV764;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV770;
+import com.github.martinambrus.rdforward.protocol.packet.netty.ChunkBatchFinishedPacket;
+import com.github.martinambrus.rdforward.protocol.packet.netty.ChunkBatchStartPacket;
+import com.github.martinambrus.rdforward.protocol.packet.netty.SetChunkCacheCenterPacketV477;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UnloadChunkPacketV109;
+import com.github.martinambrus.rdforward.protocol.packet.netty.UnloadChunkPacketV764;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacketV477;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacketV735;
 import com.github.martinambrus.rdforward.protocol.packet.netty.UpdateLightPacketV755;
@@ -82,6 +86,9 @@ public class ChunkManager {
      *  Always >= 2 so the client doesn't cap its effective render distance below
      *  its options.txt renderDistance:2 (min(clientRender, serverView)). */
     public static final int CLIENT_VIEW_DISTANCE = Math.max(DEFAULT_VIEW_DISTANCE, 2);
+
+    /** Stateless singleton — avoids per-batch allocation for 1.20.2+ chunk batching. */
+    private static final ChunkBatchStartPacket CHUNK_BATCH_START = new ChunkBatchStartPacket();
 
     /** Chunks loaded in memory, keyed by coordinate. */
     private final Map<ChunkCoord, AlphaChunk> loadedChunks = new ConcurrentHashMap<>();
@@ -514,6 +521,8 @@ public class ChunkManager {
                 continue;
             }
 
+            boolean needsBatch = player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_20_2);
+            boolean batchStarted = false;
             int playerBudget = player.getChunkSendBudget();
             int perPlayerLimit = Math.min(playerBudget,
                     MAX_TOTAL_DELIVERIES_PER_TICK - totalSent);
@@ -524,6 +533,10 @@ public class ChunkManager {
                 AlphaChunk chunk = loadedChunks.get(coord);
                 if (chunk != null) {
                     if (isInViewDistance(player, coord)) {
+                        if (needsBatch && !batchStarted) {
+                            player.writePacket(CHUNK_BATCH_START);
+                            batchStarted = true;
+                        }
                         if (sendChunkToPlayer(player, chunk)) {
                             current.add(coord);
                             getOrCreateHolder(coord).addTracker(player);
@@ -541,6 +554,10 @@ public class ChunkManager {
                     ChunkHolder h = chunkHolders.get(coord);
                     if (h != null) h.removeTracker(player);
                 }
+            }
+            if (batchStarted) {
+                player.writePacket(new ChunkBatchFinishedPacket(sent));
+                player.flushPackets();
             }
             player.updateChunkSendRate(sent);
             totalSent += sent;
@@ -622,6 +639,14 @@ public class ChunkManager {
         int centerChunkX = blockX >> 4;
         int centerChunkZ = blockZ >> 4;
 
+        // 1.14+: update chunk tracking view center so client accepts new chunks
+        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_14)
+                && (centerChunkX != player.getLastChunkCenterX()
+                    || centerChunkZ != player.getLastChunkCenterZ())) {
+            player.setLastChunkCenter(centerChunkX, centerChunkZ);
+            player.sendPacket(new SetChunkCacheCenterPacketV477(centerChunkX, centerChunkZ));
+        }
+
         // Build desired set and load list using pre-computed spiral order
         // (closest chunks first, no per-player sort needed).
         // Reuse thread-local collections to avoid allocation churn (called every 250ms per player).
@@ -685,13 +710,23 @@ public class ChunkManager {
     public void resendPlayerChunks(ConnectedPlayer player) {
         Set<ChunkCoord> current = playerChunks.get(player);
         if (current == null || current.isEmpty()) return;
+        boolean needsBatch = player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_20_2);
+        boolean batchStarted = false;
         int sent = 0;
         for (ChunkCoord coord : current) {
             AlphaChunk chunk = getOrLoadChunk(coord);
             if (chunk != null) {
-                sendChunkToPlayer(player, chunk);
-                sent++;
+                if (needsBatch && !batchStarted) {
+                    player.writePacket(CHUNK_BATCH_START);
+                    batchStarted = true;
+                }
+                if (sendChunkToPlayer(player, chunk)) {
+                    sent++;
+                }
             }
+        }
+        if (batchStarted) {
+            player.writePacket(new ChunkBatchFinishedPacket(sent));
         }
         player.flushPackets();
         System.out.println("[ChunkManager] Resent " + sent + " chunks to " + player.getUsername());
@@ -736,11 +771,17 @@ public class ChunkManager {
      */
     private int[] sendOrQueueChunks(ConnectedPlayer player, List<ChunkCoord> coords,
                                      Set<ChunkCoord> current) {
+        boolean needsBatch = player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_20_2);
+        boolean batchStarted = false;
         Queue<ChunkCoord> pendingQueue = null;
         int sentCount = 0;
         for (ChunkCoord coord : coords) {
             AlphaChunk cached = loadedChunks.get(coord);
             if (cached != null) {
+                if (needsBatch && !batchStarted) {
+                    player.writePacket(CHUNK_BATCH_START);
+                    batchStarted = true;
+                }
                 if (sendChunkToPlayer(player, cached)) {
                     current.add(coord);
                     getOrCreateHolder(coord).addTracker(player);
@@ -765,6 +806,9 @@ public class ChunkManager {
                 }
                 pendingQueue.add(coord);
             }
+        }
+        if (batchStarted) {
+            player.writePacket(new ChunkBatchFinishedPacket(sentCount));
         }
         int asyncCount = pendingQueue != null ? pendingQueue.size() : 0;
         return new int[]{sentCount, asyncCount};
@@ -1498,8 +1542,11 @@ public class ChunkManager {
             return;
         }
 
-        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_9)) {
-            // v109: dedicated UnloadChunk packet
+        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_20_2)) {
+            // v764: packed long format (chunkX in lower 32 bits, chunkZ in upper 32 bits)
+            player.writePacket(new UnloadChunkPacketV764(coord.getX(), coord.getZ()));
+        } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_9)) {
+            // v109: dedicated UnloadChunk packet (two ints)
             player.writePacket(new UnloadChunkPacketV109(coord.getX(), coord.getZ()));
         } else if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_8)) {
             // v47 chunk unload: send empty chunk (primaryBitMask=0, biome-only data, raw)
