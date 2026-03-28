@@ -541,7 +541,17 @@ public class PlayerManager {
 
         ProtocolVersion version = target.getProtocolVersion();
 
-        if (version == ProtocolVersion.BEDROCK) {
+        if (version == ProtocolVersion.BEDROCK && target.getMcpeSession() != null) {
+            // Legacy MCPE (v9-v91): route through MCPESessionWrapper's Classic→MCPE translator.
+            // PlayerTeleportPacket Y is eye-level (internal convention), codec adjusts for wire.
+            short fpX = (short) (x * 32);
+            short fpY = (short) (eyeY * 32);
+            short fpZ = (short) (z * 32);
+            int byteYaw = ((int) (classicYaw / 360.0f * 256.0f)) & 0xFF;
+            int bytePitch = ((int) (pitch / 360.0f * 256.0f)) & 0xFF;
+            target.getMcpeSession().translateAndSend(
+                    new PlayerTeleportPacket(target.getPlayerId(), fpX, fpY, fpZ, byteYaw, bytePitch));
+        } else if (version == ProtocolVersion.BEDROCK) {
             // Bedrock MovePlayerPacket uses eye-level Y
             float bedrockYaw = (classicYaw - 180.0f + 360.0f) % 360.0f;
             MovePlayerPacket move = new MovePlayerPacket();
