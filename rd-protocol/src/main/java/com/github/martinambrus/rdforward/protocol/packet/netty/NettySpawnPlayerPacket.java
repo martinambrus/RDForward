@@ -50,11 +50,16 @@ public class NettySpawnPlayerPacket implements Packet {
     @Override
     public int getPacketId() { return 0x0C; }
 
+    /** MC clients enforce max 16 chars for player names in SpawnPlayer. */
+    private static final int MAX_NAME_LENGTH = 16;
+
     @Override
     public void write(ByteBuf buf) {
         McDataTypes.writeVarInt(buf, entityId);
         McDataTypes.writeVarIntString(buf, uuid);
-        McDataTypes.writeVarIntString(buf, playerName);
+        String name = playerName.length() > MAX_NAME_LENGTH
+                ? playerName.substring(0, MAX_NAME_LENGTH) : playerName;
+        McDataTypes.writeVarIntString(buf, name);
         // Note: 1.7.2 does NOT have a property count/list field here.
         // That was added in 1.7.6. ViaLegacy confirms: r1_7_2_5Tor1_7_6_10
         // inserts VarInt(0) when converting from 1.7.2 to 1.7.6 format.

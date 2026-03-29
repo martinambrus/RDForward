@@ -517,7 +517,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                     : new SelectKnownPacksS2CPacket());
         } else {
             // V764/V765: Send registry data directly — single CompoundTag in network NBT.
-            ctx.writeAndFlush(RegistryDataPacketV764.create(ctx.alloc().buffer()));
+            ctx.writeAndFlush(RegistryDataPacketV764.create(ctx.alloc()));
 
             // Send feature flags
             ctx.writeAndFlush(new UpdateEnabledFeaturesPacketV761());
@@ -559,13 +559,13 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // 26.1 added world_clock registry; dimension_type built-in data references it,
         // so it must be sent BEFORE dimension_type to satisfy cross-references.
         if (isV775) {
-            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
+            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc(),
                     "minecraft:world_clock",
                     "minecraft:overworld", "minecraft:the_end"));
         }
         // Use createBuiltIn() for dimension_type — client uses its built-in overworld
         // (minY=-64, height=384 = 24 sections). Chunk serialization is adjusted to match.
-        ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
+        ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc(),
                 "minecraft:dimension_type",
                 "minecraft:overworld", "minecraft:overworld_caves",
                 "minecraft:the_nether", "minecraft:the_end"));
@@ -574,105 +574,105 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // the client errors: "Unbound values in registry minecraft:worldgen/biome".
         // 26.1 clients only confirm "26.1" pack — must send full biome list (65 entries).
         if (isV775) {
-            ctx.writeAndFlush(RegistryDataPacketV766.createBiomeV775(ctx.alloc().buffer()));
+            ctx.writeAndFlush(RegistryDataPacketV766.createBiomeV775(ctx.alloc()));
         } else if (isV767) {
-            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
+            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc(),
                     "minecraft:worldgen/biome",
                     "minecraft:the_void", "minecraft:plains",
                     "minecraft:forest", "minecraft:grove",
                     "minecraft:old_growth_pine_taiga", "minecraft:old_growth_spruce_taiga",
                     "minecraft:snowy_taiga", "minecraft:taiga"));
         } else {
-            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
+            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc(),
                     "minecraft:worldgen/biome",
                     "minecraft:the_void", "minecraft:plains"));
         }
-        ctx.writeAndFlush(RegistryDataPacketV766.createChatType(ctx.alloc().buffer()));
+        ctx.writeAndFlush(RegistryDataPacketV766.createChatType(ctx.alloc()));
         // Damage types: 26.1 added spear + wind_charge (50 entries)
         // 1.21.2 added ender_pearl + mace_smash damage types (48 entries)
         // 1.21 added minecraft:campfire damage type (45 entries vs 44)
         ctx.writeAndFlush(isV775
-                ? RegistryDataPacketV766.createDamageTypeV775(ctx.alloc().buffer())
+                ? RegistryDataPacketV766.createDamageTypeV775(ctx.alloc())
                 : isV768
-                ? RegistryDataPacketV766.createDamageTypeV768(ctx.alloc().buffer())
+                ? RegistryDataPacketV766.createDamageTypeV768(ctx.alloc())
                 : isV767
-                ? RegistryDataPacketV766.createDamageTypeV767(ctx.alloc().buffer())
-                : RegistryDataPacketV766.createDamageType(ctx.alloc().buffer()));
+                ? RegistryDataPacketV766.createDamageTypeV767(ctx.alloc())
+                : RegistryDataPacketV766.createDamageType(ctx.alloc()));
         // 1.21 added bolt + flow trim patterns (18 entries vs 16)
         ctx.writeAndFlush(isV767
-                ? RegistryDataPacketV766.createTrimPatternV767(ctx.alloc().buffer())
-                : RegistryDataPacketV766.createTrimPattern(ctx.alloc().buffer()));
+                ? RegistryDataPacketV766.createTrimPatternV767(ctx.alloc())
+                : RegistryDataPacketV766.createTrimPattern(ctx.alloc()));
         // 26.1 added resin trim material (11 entries)
         ctx.writeAndFlush(isV775
-                ? RegistryDataPacketV766.createTrimMaterialV775(ctx.alloc().buffer())
-                : RegistryDataPacketV766.createTrimMaterial(ctx.alloc().buffer()));
+                ? RegistryDataPacketV766.createTrimMaterialV775(ctx.alloc())
+                : RegistryDataPacketV766.createTrimMaterial(ctx.alloc()));
         // 26.1 added flow + guster banner patterns (43 entries)
         ctx.writeAndFlush(isV775
-                ? RegistryDataPacketV766.createBannerPatternV775(ctx.alloc().buffer())
-                : RegistryDataPacketV766.createBannerPattern(ctx.alloc().buffer()));
+                ? RegistryDataPacketV766.createBannerPatternV775(ctx.alloc())
+                : RegistryDataPacketV766.createBannerPattern(ctx.alloc()));
         // 1.21 has 9 wolf variants (all built-in); 1.20.5 had 1 (pale with data)
         ctx.writeAndFlush(isV767
-                ? RegistryDataPacketV766.createWolfVariantV767(ctx.alloc().buffer())
-                : RegistryDataPacketV766.createWolfVariant(ctx.alloc().buffer()));
+                ? RegistryDataPacketV766.createWolfVariantV767(ctx.alloc())
+                : RegistryDataPacketV766.createWolfVariant(ctx.alloc()));
         // 1.21 added painting_variant, enchantment, and jukebox_song as synchronized registries.
         // Without these RegistryData packets, 1.21 clients hang during CONFIG phase.
         if (isV767) {
             // 26.1 added 20 new paintings (51 total), new jukebox song (tears), lunge enchantment
             ctx.writeAndFlush(isV775
-                    ? RegistryDataPacketV766.createPaintingVariantV775(ctx.alloc().buffer())
+                    ? RegistryDataPacketV766.createPaintingVariantV775(ctx.alloc())
                     : isV772
-                    ? RegistryDataPacketV766.createPaintingVariantV772(ctx.alloc().buffer())
-                    : RegistryDataPacketV766.createPaintingVariant(ctx.alloc().buffer()));
+                    ? RegistryDataPacketV766.createPaintingVariantV772(ctx.alloc())
+                    : RegistryDataPacketV766.createPaintingVariant(ctx.alloc()));
             ctx.writeAndFlush(isV775
-                    ? RegistryDataPacketV766.createEnchantmentV775(ctx.alloc().buffer())
-                    : RegistryDataPacketV766.createEnchantment(ctx.alloc().buffer()));
+                    ? RegistryDataPacketV766.createEnchantmentV775(ctx.alloc())
+                    : RegistryDataPacketV766.createEnchantment(ctx.alloc()));
             ctx.writeAndFlush(isV775
-                    ? RegistryDataPacketV766.createJukeboxSongV775(ctx.alloc().buffer())
+                    ? RegistryDataPacketV766.createJukeboxSongV775(ctx.alloc())
                     : isV772
-                    ? RegistryDataPacketV766.createJukeboxSongV772(ctx.alloc().buffer())
-                    : RegistryDataPacketV766.createJukeboxSong(ctx.alloc().buffer()));
+                    ? RegistryDataPacketV766.createJukeboxSongV772(ctx.alloc())
+                    : RegistryDataPacketV766.createJukeboxSong(ctx.alloc()));
         }
         // 1.21.2 added instrument registry (8 goat horns, all built-in)
         if (isV768) {
-            ctx.writeAndFlush(RegistryDataPacketV766.createInstrument(ctx.alloc().buffer()));
+            ctx.writeAndFlush(RegistryDataPacketV766.createInstrument(ctx.alloc()));
         }
         // 1.21.6 added dialog registry (3 built-in entries)
         if (isV771) {
-            ctx.writeAndFlush(RegistryDataPacketV766.createDialog(ctx.alloc().buffer()));
+            ctx.writeAndFlush(RegistryDataPacketV766.createDialog(ctx.alloc()));
         }
         // 1.21.11 added zombie_nautilus_variant and timeline registries
         if (isV774) {
-            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
+            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc(),
                     "minecraft:zombie_nautilus_variant",
                     "minecraft:temperate", "minecraft:warm"));
-            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
+            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc(),
                     "minecraft:timeline",
                     "minecraft:day", "minecraft:early_game",
                     "minecraft:moon", "minecraft:villager_schedule"));
         }
         // 26.1 added 4 new sound variant registries
         if (isV775) {
-            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
+            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc(),
                     "minecraft:cat_sound_variant",
                     "minecraft:classic", "minecraft:royal"));
-            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
+            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc(),
                     "minecraft:chicken_sound_variant",
                     "minecraft:classic", "minecraft:picky"));
-            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
+            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc(),
                     "minecraft:cow_sound_variant",
                     "minecraft:classic", "minecraft:moody"));
-            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc().buffer(),
+            ctx.writeAndFlush(RegistryDataPacketV766.createBuiltIn(ctx.alloc(),
                     "minecraft:pig_sound_variant",
                     "minecraft:classic", "minecraft:mini", "minecraft:big"));
         }
         // 1.21.5 added 6 new variant registries (all built-in)
         if (isV770) {
-            ctx.writeAndFlush(RegistryDataPacketV766.createPigVariant(ctx.alloc().buffer()));
-            ctx.writeAndFlush(RegistryDataPacketV766.createCowVariant(ctx.alloc().buffer()));
-            ctx.writeAndFlush(RegistryDataPacketV766.createChickenVariant(ctx.alloc().buffer()));
-            ctx.writeAndFlush(RegistryDataPacketV766.createFrogVariant(ctx.alloc().buffer()));
-            ctx.writeAndFlush(RegistryDataPacketV766.createCatVariant(ctx.alloc().buffer()));
-            ctx.writeAndFlush(RegistryDataPacketV766.createWolfSoundVariant(ctx.alloc().buffer()));
+            ctx.writeAndFlush(RegistryDataPacketV766.createPigVariant(ctx.alloc()));
+            ctx.writeAndFlush(RegistryDataPacketV766.createCowVariant(ctx.alloc()));
+            ctx.writeAndFlush(RegistryDataPacketV766.createChickenVariant(ctx.alloc()));
+            ctx.writeAndFlush(RegistryDataPacketV766.createFrogVariant(ctx.alloc()));
+            ctx.writeAndFlush(RegistryDataPacketV766.createCatVariant(ctx.alloc()));
+            ctx.writeAndFlush(RegistryDataPacketV766.createWolfSoundVariant(ctx.alloc()));
         }
 
         // Send feature flags and tags (required for block rendering)
@@ -1123,10 +1123,12 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         playerManager.broadcastChat((byte) 0, player.getUsername() + " joined the game");
         ServerEvents.PLAYER_JOIN.invoker().onPlayerJoin(player.getUsername(), clientVersion);
 
+        String ip = PlayerManager.extractIp(ctx.channel().remoteAddress());
         System.out.println("Netty login complete: " + player.getUsername()
                 + " (" + clientVersion.getDisplayName()
                 + ", ID " + player.getPlayerId()
-                + ", " + playerManager.getPlayerCount() + " online)");
+                + ", " + playerManager.getPlayerCount() + " online"
+                + (ip != null ? ", ip " + ip : "") + ")");
     }
 
     // ========================================================================

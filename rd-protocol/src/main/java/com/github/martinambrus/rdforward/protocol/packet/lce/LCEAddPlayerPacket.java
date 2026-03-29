@@ -72,10 +72,15 @@ public class LCEAddPlayerPacket implements Packet {
     @Override
     public int getPacketId() { return 0x14; }
 
+    /** LCE clients (Java 1.6.4 base) enforce max 16 chars for player names. */
+    private static final int MAX_NAME_LENGTH = 16;
+
     @Override
     public void write(ByteBuf buf) {
         buf.writeInt(entityId);
-        McDataTypes.writeString16(buf, name);
+        String truncatedName = name.length() > MAX_NAME_LENGTH
+                ? name.substring(0, MAX_NAME_LENGTH) : name;
+        McDataTypes.writeString16(buf, truncatedName);
         buf.writeInt(x);
         buf.writeInt(y);
         buf.writeInt(z);

@@ -713,11 +713,13 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         String familyLabel = clientVersion.getFamily() == ProtocolVersion.Family.RELEASE ? "Release"
                 : clientVersion.getFamily() == ProtocolVersion.Family.BETA ? "Beta" : "Alpha";
+        String ip = PlayerManager.extractIp(ctx.channel().remoteAddress());
         System.out.println(familyLabel + " login complete: " + player.getUsername()
                 + " (protocol: " + clientVersion.getDisplayName()
                 + ", version " + clientVersion.getVersionNumber()
                 + ", ID " + player.getPlayerId()
-                + ", " + playerManager.getPlayerCount() + " online)");
+                + ", " + playerManager.getPlayerCount() + " online"
+                + (ip != null ? ", ip " + ip : "") + ")");
 
         // Send existing tab list entries to the new player (broadcast already sent above)
         if (clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {

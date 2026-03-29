@@ -16,6 +16,9 @@ public class NettyPlayerListItemPacketV759 implements Packet {
     public static final int REMOVE_PLAYER = 4;
     public static final int UPDATE_LATENCY = 2;
 
+    /** MC clients enforce max 16 chars for player names in PlayerListItem. */
+    private static final int MAX_NAME_LENGTH = 16;
+
     private int action;
     private long uuidMsb;
     private long uuidLsb;
@@ -61,7 +64,9 @@ public class NettyPlayerListItemPacketV759 implements Packet {
 
         switch (action) {
             case ADD_PLAYER:
-                McDataTypes.writeVarIntString(buf, playerName);
+                String name = playerName.length() > MAX_NAME_LENGTH
+                        ? playerName.substring(0, MAX_NAME_LENGTH) : playerName;
+                McDataTypes.writeVarIntString(buf, name);
                 McDataTypes.writeVarInt(buf, 0); // 0 properties
                 McDataTypes.writeVarInt(buf, gameMode);
                 McDataTypes.writeVarInt(buf, ping);

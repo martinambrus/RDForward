@@ -3,6 +3,7 @@ package com.github.martinambrus.rdforward.protocol.packet.netty;
 import com.github.martinambrus.rdforward.protocol.McDataTypes;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
 
 import java.nio.charset.StandardCharsets;
 
@@ -48,8 +49,8 @@ public class RegistryDataPacketV766 implements Packet {
     // Factory methods — one per registry
     // ========================================================================
 
-    public static RegistryDataPacketV766 createDimensionType(ByteBuf alloc) {
-        ByteBuf data = alloc.alloc().buffer();
+    public static RegistryDataPacketV766 createDimensionType(ByteBufAllocator alloc) {
+        ByteBuf data = alloc.buffer();
 
         McDataTypes.writeVarIntString(data, "minecraft:dimension_type");
         McDataTypes.writeVarInt(data, 4); // 4 entries
@@ -78,8 +79,8 @@ public class RegistryDataPacketV766 implements Packet {
         return new RegistryDataPacketV766(data);
     }
 
-    public static RegistryDataPacketV766 createBiome(ByteBuf alloc) {
-        ByteBuf data = alloc.alloc().buffer();
+    public static RegistryDataPacketV766 createBiome(ByteBufAllocator alloc) {
+        ByteBuf data = alloc.buffer();
 
         McDataTypes.writeVarIntString(data, "minecraft:worldgen/biome");
         McDataTypes.writeVarInt(data, 1); // 1 entry
@@ -112,9 +113,9 @@ public class RegistryDataPacketV766 implements Packet {
      * Creates a registry where ALL entries use built-in data (hasData=false).
      * Used when the client confirmed a known pack, so it already has the data.
      */
-    public static RegistryDataPacketV766 createBuiltIn(ByteBuf alloc,
+    public static RegistryDataPacketV766 createBuiltIn(ByteBufAllocator alloc,
             String registryKey, String... entryIds) {
-        ByteBuf data = alloc.alloc().buffer();
+        ByteBuf data = alloc.buffer();
         McDataTypes.writeVarIntString(data, registryKey);
         McDataTypes.writeVarInt(data, entryIds.length);
         for (String id : entryIds) {
@@ -124,7 +125,7 @@ public class RegistryDataPacketV766 implements Packet {
         return new RegistryDataPacketV766(data);
     }
 
-    public static RegistryDataPacketV766 createChatType(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createChatType(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:chat_type",
                 "minecraft:chat", "minecraft:say_command",
                 "minecraft:msg_command_incoming", "minecraft:msg_command_outgoing",
@@ -132,7 +133,7 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:emote_command");
     }
 
-    public static RegistryDataPacketV766 createDamageType(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createDamageType(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:damage_type",
                 "minecraft:arrow", "minecraft:bad_respawn_point", "minecraft:cactus",
                 "minecraft:cramming", "minecraft:dragon_breath", "minecraft:drown",
@@ -154,7 +155,7 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:wither_skull");
     }
 
-    public static RegistryDataPacketV766 createTrimPattern(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createTrimPattern(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:trim_pattern",
                 "minecraft:coast", "minecraft:dune", "minecraft:eye",
                 "minecraft:host", "minecraft:raiser", "minecraft:rib",
@@ -164,7 +165,7 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:wild");
     }
 
-    public static RegistryDataPacketV766 createTrimPatternV767(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createTrimPatternV767(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:trim_pattern",
                 "minecraft:coast", "minecraft:dune", "minecraft:eye",
                 "minecraft:host", "minecraft:raiser", "minecraft:rib",
@@ -175,7 +176,7 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:bolt", "minecraft:flow");
     }
 
-    public static RegistryDataPacketV766 createTrimMaterial(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createTrimMaterial(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:trim_material",
                 "minecraft:amethyst", "minecraft:copper", "minecraft:diamond",
                 "minecraft:emerald", "minecraft:gold", "minecraft:iron",
@@ -187,8 +188,8 @@ public class RegistryDataPacketV766 implements Packet {
      * Creates wolf_variant registry matching ViaVersion's approach:
      * single pale wolf entry with empty biomes list.
      */
-    public static RegistryDataPacketV766 createWolfVariant(ByteBuf alloc) {
-        ByteBuf data = alloc.alloc().buffer();
+    public static RegistryDataPacketV766 createWolfVariant(ByteBufAllocator alloc) {
+        ByteBuf data = alloc.buffer();
         McDataTypes.writeVarIntString(data, "minecraft:wolf_variant");
         McDataTypes.writeVarInt(data, 1); // 1 entry
 
@@ -215,7 +216,7 @@ public class RegistryDataPacketV766 implements Packet {
         buf.writeInt(0);     // 0 elements
     }
 
-    public static RegistryDataPacketV766 createBannerPattern(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createBannerPattern(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:banner_pattern",
                 "minecraft:base", "minecraft:square_bottom_left",
                 "minecraft:square_bottom_right", "minecraft:square_top_left",
@@ -240,7 +241,7 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:piglin");
     }
 
-    public static RegistryDataPacketV766 createDamageTypeV767(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createDamageTypeV767(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:damage_type",
                 "minecraft:arrow", "minecraft:bad_respawn_point", "minecraft:cactus",
                 "minecraft:campfire",
@@ -263,14 +264,14 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:wither_skull");
     }
 
-    public static RegistryDataPacketV766 createWolfVariantV767(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createWolfVariantV767(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:wolf_variant",
                 "minecraft:pale", "minecraft:ashen", "minecraft:black",
                 "minecraft:chestnut", "minecraft:rusty", "minecraft:snowy",
                 "minecraft:spotted", "minecraft:striped", "minecraft:woods");
     }
 
-    public static RegistryDataPacketV766 createEnchantment(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createEnchantment(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:enchantment",
                 "minecraft:protection", "minecraft:fire_protection",
                 "minecraft:feather_falling", "minecraft:blast_protection",
@@ -295,7 +296,7 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:mending", "minecraft:vanishing_curse");
     }
 
-    public static RegistryDataPacketV766 createPaintingVariant(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createPaintingVariant(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:painting_variant",
                 "minecraft:kebab", "minecraft:aztec", "minecraft:alban",
                 "minecraft:aztec2", "minecraft:bomb", "minecraft:plant",
@@ -311,7 +312,7 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:water", "minecraft:fire");
     }
 
-    public static RegistryDataPacketV766 createDamageTypeV768(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createDamageTypeV768(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:damage_type",
                 "minecraft:arrow", "minecraft:bad_respawn_point", "minecraft:cactus",
                 "minecraft:campfire",
@@ -336,7 +337,7 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:wither_skull");
     }
 
-    public static RegistryDataPacketV766 createInstrument(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createInstrument(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:instrument",
                 "minecraft:ponder_goat_horn", "minecraft:sing_goat_horn",
                 "minecraft:seek_goat_horn", "minecraft:feel_goat_horn",
@@ -348,27 +349,27 @@ public class RegistryDataPacketV766 implements Packet {
     // 1.21.5 registries
     // ========================================================================
 
-    public static RegistryDataPacketV766 createPigVariant(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createPigVariant(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:pig_variant",
                 "minecraft:cold", "minecraft:temperate", "minecraft:warm");
     }
 
-    public static RegistryDataPacketV766 createCowVariant(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createCowVariant(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:cow_variant",
                 "minecraft:cold", "minecraft:temperate", "minecraft:warm");
     }
 
-    public static RegistryDataPacketV766 createChickenVariant(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createChickenVariant(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:chicken_variant",
                 "minecraft:cold", "minecraft:temperate", "minecraft:warm");
     }
 
-    public static RegistryDataPacketV766 createFrogVariant(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createFrogVariant(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:frog_variant",
                 "minecraft:cold", "minecraft:temperate", "minecraft:warm");
     }
 
-    public static RegistryDataPacketV766 createCatVariant(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createCatVariant(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:cat_variant",
                 "minecraft:tabby", "minecraft:black", "minecraft:red",
                 "minecraft:siamese", "minecraft:british_shorthair",
@@ -376,14 +377,14 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:white", "minecraft:jellie", "minecraft:all_black");
     }
 
-    public static RegistryDataPacketV766 createWolfSoundVariant(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createWolfSoundVariant(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:wolf_sound_variant",
                 "minecraft:classic", "minecraft:angry", "minecraft:big",
                 "minecraft:cute", "minecraft:grumpy", "minecraft:puglin",
                 "minecraft:sad");
     }
 
-    public static RegistryDataPacketV766 createJukeboxSong(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createJukeboxSong(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:jukebox_song",
                 "minecraft:11", "minecraft:13", "minecraft:5",
                 "minecraft:blocks", "minecraft:cat", "minecraft:chirp",
@@ -395,7 +396,7 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:wait", "minecraft:ward");
     }
 
-    public static RegistryDataPacketV766 createPaintingVariantV772(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createPaintingVariantV772(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:painting_variant",
                 "minecraft:kebab", "minecraft:aztec", "minecraft:alban",
                 "minecraft:aztec2", "minecraft:bomb", "minecraft:plant",
@@ -412,7 +413,7 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:dennis");
     }
 
-    public static RegistryDataPacketV766 createJukeboxSongV772(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createJukeboxSongV772(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:jukebox_song",
                 "minecraft:11", "minecraft:13", "minecraft:5",
                 "minecraft:blocks", "minecraft:cat", "minecraft:chirp",
@@ -425,7 +426,7 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:lava_chicken");
     }
 
-    public static RegistryDataPacketV766 createDialog(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createDialog(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:dialog",
                 "minecraft:custom_options", "minecraft:quick_actions",
                 "minecraft:server_links");
@@ -435,7 +436,7 @@ public class RegistryDataPacketV766 implements Packet {
     // 26.1 (V775) registries — entries added or changed from 1.21.11
     // ========================================================================
 
-    public static RegistryDataPacketV766 createTrimMaterialV775(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createTrimMaterialV775(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:trim_material",
                 "minecraft:amethyst", "minecraft:copper", "minecraft:diamond",
                 "minecraft:emerald", "minecraft:gold", "minecraft:iron",
@@ -443,7 +444,7 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:redstone", "minecraft:resin");
     }
 
-    public static RegistryDataPacketV766 createBannerPatternV775(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createBannerPatternV775(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:banner_pattern",
                 "minecraft:base", "minecraft:square_bottom_left",
                 "minecraft:square_bottom_right", "minecraft:square_top_left",
@@ -468,7 +469,7 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:piglin", "minecraft:flow", "minecraft:guster");
     }
 
-    public static RegistryDataPacketV766 createPaintingVariantV775(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createPaintingVariantV775(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:painting_variant",
                 "minecraft:kebab", "minecraft:aztec", "minecraft:alban",
                 "minecraft:aztec2", "minecraft:bomb", "minecraft:plant",
@@ -492,7 +493,7 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:tides", "minecraft:unpacked");
     }
 
-    public static RegistryDataPacketV766 createJukeboxSongV775(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createJukeboxSongV775(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:jukebox_song",
                 "minecraft:11", "minecraft:13", "minecraft:5",
                 "minecraft:blocks", "minecraft:cat", "minecraft:chirp",
@@ -505,7 +506,7 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:wait", "minecraft:ward");
     }
 
-    public static RegistryDataPacketV766 createDamageTypeV775(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createDamageTypeV775(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:damage_type",
                 "minecraft:arrow", "minecraft:bad_respawn_point", "minecraft:cactus",
                 "minecraft:campfire",
@@ -531,7 +532,7 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:wither", "minecraft:wither_skull");
     }
 
-    public static RegistryDataPacketV766 createBiomeV775(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createBiomeV775(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:worldgen/biome",
                 "minecraft:the_void", "minecraft:plains",
                 "minecraft:badlands", "minecraft:bamboo_jungle",
@@ -568,7 +569,7 @@ public class RegistryDataPacketV766 implements Packet {
                 "minecraft:wooded_badlands");
     }
 
-    public static RegistryDataPacketV766 createEnchantmentV775(ByteBuf alloc) {
+    public static RegistryDataPacketV766 createEnchantmentV775(ByteBufAllocator alloc) {
         return createBuiltIn(alloc, "minecraft:enchantment",
                 "minecraft:protection", "minecraft:fire_protection",
                 "minecraft:feather_falling", "minecraft:blast_protection",

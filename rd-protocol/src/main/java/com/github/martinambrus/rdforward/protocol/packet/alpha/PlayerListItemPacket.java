@@ -34,9 +34,14 @@ public class PlayerListItemPacket implements Packet {
         return 0xC9;
     }
 
+    /** Pre-Netty clients enforce max 16 chars for player names in readString(). */
+    private static final int MAX_NAME_LENGTH = 16;
+
     @Override
     public void write(ByteBuf buf) {
-        McDataTypes.writeStringAdaptive(buf, username);
+        String name = username.length() > MAX_NAME_LENGTH
+                ? username.substring(0, MAX_NAME_LENGTH) : username;
+        McDataTypes.writeStringAdaptive(buf, name);
         buf.writeByte(online ? 1 : 0);
         buf.writeShort(ping);
     }

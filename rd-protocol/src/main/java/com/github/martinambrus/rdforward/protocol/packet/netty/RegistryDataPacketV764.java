@@ -2,6 +2,7 @@ package com.github.martinambrus.rdforward.protocol.packet.netty;
 
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
 
 import java.nio.charset.StandardCharsets;
 
@@ -46,8 +47,8 @@ public class RegistryDataPacketV764 implements Packet {
     /**
      * Creates the complete registry data packet containing all 4 registries.
      */
-    public static RegistryDataPacketV764 create(ByteBuf alloc) {
-        ByteBuf data = alloc.alloc().buffer();
+    public static RegistryDataPacketV764 create(ByteBufAllocator alloc) {
+        ByteBuf data = alloc.buffer();
 
         // Network NBT root compound (type byte only, no name)
         data.writeByte(0x0A);

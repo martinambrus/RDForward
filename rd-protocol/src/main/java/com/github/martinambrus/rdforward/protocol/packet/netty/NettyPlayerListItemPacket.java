@@ -29,9 +29,14 @@ public class NettyPlayerListItemPacket implements Packet {
     @Override
     public int getPacketId() { return 0x38; }
 
+    /** MC clients enforce max 16 chars for player names in PlayerListItem. */
+    private static final int MAX_NAME_LENGTH = 16;
+
     @Override
     public void write(ByteBuf buf) {
-        McDataTypes.writeVarIntString(buf, playerName);
+        String name = playerName.length() > MAX_NAME_LENGTH
+                ? playerName.substring(0, MAX_NAME_LENGTH) : playerName;
+        McDataTypes.writeVarIntString(buf, name);
         buf.writeBoolean(online);
         buf.writeShort(ping);
     }

@@ -55,11 +55,16 @@ public class NettySpawnPlayerPacketV5 implements Packet {
     @Override
     public int getPacketId() { return 0x0C; }
 
+    /** MC clients enforce max 16 chars for player names in SpawnPlayer. */
+    private static final int MAX_NAME_LENGTH = 16;
+
     @Override
     public void write(ByteBuf buf) {
         McDataTypes.writeVarInt(buf, entityId);
         McDataTypes.writeVarIntString(buf, uuid);
-        McDataTypes.writeVarIntString(buf, playerName);
+        String name = playerName.length() > MAX_NAME_LENGTH
+                ? playerName.substring(0, MAX_NAME_LENGTH) : playerName;
+        McDataTypes.writeVarIntString(buf, name);
         // 1.7.6+ property list — write empty (0 properties)
         McDataTypes.writeVarInt(buf, 0);
         buf.writeInt(x);

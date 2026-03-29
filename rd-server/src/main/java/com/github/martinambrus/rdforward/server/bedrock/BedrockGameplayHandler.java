@@ -290,9 +290,11 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         // Set disconnect handler
         session.getPeer().getChannel().closeFuture().addListener(future -> onDisconnect());
 
+        String ip = PlayerManager.extractIp(player);
         System.out.println("Bedrock login complete: " + player.getUsername()
                 + " (ID " + player.getPlayerId()
-                + ", " + playerManager.getPlayerCount() + " online)");
+                + ", " + playerManager.getPlayerCount() + " online"
+                + (ip != null ? ", ip " + ip : "") + ")");
 
         playerManager.broadcastChat((byte) 0, player.getUsername() + " joined the game");
         ServerEvents.PLAYER_JOIN.invoker().onPlayerJoin(player.getUsername(), ProtocolVersion.BEDROCK);

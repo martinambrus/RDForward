@@ -31,6 +31,9 @@ public class NettyPlayerInfoUpdatePacketV761 implements Packet {
     private static final byte UPDATE_LISTED  = 0x08;
     private static final byte UPDATE_LATENCY = 0x10;
 
+    /** MC clients enforce max 16 chars for player names in PlayerInfoUpdate. */
+    private static final int MAX_NAME_LENGTH = 16;
+
     private byte actions;
     private long uuidMsb;
     private long uuidLsb;
@@ -73,7 +76,9 @@ public class NettyPlayerInfoUpdatePacketV761 implements Packet {
 
         // ADD_PLAYER (0x01)
         if ((actions & ADD_PLAYER) != 0) {
-            McDataTypes.writeVarIntString(buf, playerName);
+            String name = playerName.length() > MAX_NAME_LENGTH
+                    ? playerName.substring(0, MAX_NAME_LENGTH) : playerName;
+            McDataTypes.writeVarIntString(buf, name);
             McDataTypes.writeVarInt(buf, 0); // 0 properties
         }
 

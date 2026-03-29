@@ -51,10 +51,15 @@ public class SpawnPlayerPacket implements Packet {
         return 0x14;
     }
 
+    /** Pre-Netty clients enforce max 16 chars for player names in readString(). */
+    private static final int MAX_NAME_LENGTH = 16;
+
     @Override
     public void write(ByteBuf buf) {
         buf.writeInt(entityId);
-        McDataTypes.writeStringAdaptive(buf, playerName);
+        String name = playerName.length() > MAX_NAME_LENGTH
+                ? playerName.substring(0, MAX_NAME_LENGTH) : playerName;
+        McDataTypes.writeStringAdaptive(buf, name);
         buf.writeInt(x);
         buf.writeInt(y);
         buf.writeInt(z);
