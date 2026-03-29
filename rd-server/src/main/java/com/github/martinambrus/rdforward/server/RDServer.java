@@ -208,6 +208,18 @@ public class RDServer {
         registerSpawnProtection();
         GriefProtection.init(ServerProperties.getMaxBlockChangesPerSecond(), playerManager, world);
 
+        // Apply locked time from config, or auto-lock for rubydung maps
+        long lockTime = ServerProperties.getLockTime();
+        if (lockTime >= 0) {
+            world.setWorldTime(lockTime);
+            world.setTimeFrozen(true);
+            System.out.println("World time locked to " + lockTime + " ticks");
+        } else if ("rubydung".equals(ServerProperties.getLevelType())) {
+            world.setWorldTime(6000);
+            world.setTimeFrozen(true);
+            System.out.println("World time locked to noon (RubyDung map has no night)");
+        }
+
         convertWorldIfNeeded();
         checkWorldCompatibility();
 

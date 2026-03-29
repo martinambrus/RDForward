@@ -58,6 +58,7 @@ public final class ServerProperties {
         DEFAULTS.put("world-depth", "256");
         DEFAULTS.put("spawn-protection", "16");
         DEFAULTS.put("max-block-changes-per-second", "17");
+        DEFAULTS.put("lock-time", "-1");
         DEFAULTS.put("pvp", "true");
         DEFAULTS.put("online-mode", "false");
         DEFAULTS.put("white-list", "false");
@@ -412,6 +413,15 @@ public final class ServerProperties {
     public static int getMaxBlockChangesPerSecond() {
         warnIfNotLoaded();
         return Math.max(0, getInt("max-block-changes-per-second", 17));
+    }
+
+    /**
+     * Get the locked world time, or -1 if time should flow normally.
+     * Value is in MC ticks: 0=dawn, 6000=noon, 12000=sunset, 18000=midnight.
+     */
+    public static long getLockTime() {
+        warnIfNotLoaded();
+        return Long.parseLong(props.getProperty("lock-time", "-1").trim());
     }
 
     public static int getSpawnProtection() {

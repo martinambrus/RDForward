@@ -158,6 +158,17 @@ Protocol detection is automatic — the server identifies the client type from t
 - **Lazy-loaded protocol infrastructure** — Bedrock palettes, MCPE codecs, LCE packet registries, and version-specific registries are loaded only when a client of that type first connects
 - **Canonical chunk serialization** — chunks are serialized once into a version-independent intermediate form, then derived per-client protocol cheaply via palette remapping
 
+### Grief Protection — Infinite Map Scalability
+
+The current grief protection system tracks block ownership in a `ConcurrentHashMap<Long, String>` which works well for bounded worlds (256x64x256) but will need optimization for infinite/large maps. Options to explore:
+
+1. **Region-based eviction** — only track blocks in loaded chunks, discard ownership when chunks unload
+2. **Compact storage** — map player names to short IDs, store ownership in per-chunk `short[]` arrays alongside block data (zero overhead for unplaced blocks)
+3. **Disk-backed** — persist ownership in chunk files or SQLite (like CoreProtect), so memory only holds loaded chunks
+4. **Time-based expiry** — expire ownership after N hours to bound growth, since grief typically happens soon after placement
+
+The `GriefProtection` API (event listeners, bypass mechanism, scoring) is decoupled from the backing store and won't need to change.
+
 ## Building
 
 Requires Java 21+ and Gradle 8.14+.
