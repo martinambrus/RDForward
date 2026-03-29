@@ -5,6 +5,7 @@ import com.github.martinambrus.rdforward.protocol.codec.PacketDecoder;
 import com.github.martinambrus.rdforward.protocol.codec.PacketEncoder;
 import com.github.martinambrus.rdforward.protocol.packet.PacketDirection;
 import com.github.martinambrus.rdforward.server.api.BanManager;
+import com.github.martinambrus.rdforward.server.api.GriefProtection;
 import com.github.martinambrus.rdforward.server.api.WhitelistManager;
 import com.github.martinambrus.rdforward.server.api.CommandRegistry;
 import com.github.martinambrus.rdforward.server.api.PermissionManager;
@@ -205,6 +206,7 @@ public class RDServer {
         chunkManager.initAsyncDelivery();
         registerBuiltInCommands();
         registerSpawnProtection();
+        GriefProtection.init(ServerProperties.getMaxBlockChangesPerSecond(), playerManager);
 
         convertWorldIfNeeded();
         checkWorldCompatibility();

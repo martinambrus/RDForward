@@ -57,6 +57,7 @@ public final class ServerProperties {
         DEFAULTS.put("world-height", "64");
         DEFAULTS.put("world-depth", "256");
         DEFAULTS.put("spawn-protection", "16");
+        DEFAULTS.put("max-block-changes-per-second", "30");
         DEFAULTS.put("pvp", "true");
         DEFAULTS.put("online-mode", "false");
         DEFAULTS.put("white-list", "false");
@@ -406,6 +407,11 @@ public final class ServerProperties {
     public static String getServerVersion() {
         warnIfNotLoaded();
         return props.getProperty("server-version", "rd-132211").trim();
+    }
+
+    public static int getMaxBlockChangesPerSecond() {
+        warnIfNotLoaded();
+        return Math.max(0, getInt("max-block-changes-per-second", 30));
     }
 
     public static int getSpawnProtection() {
