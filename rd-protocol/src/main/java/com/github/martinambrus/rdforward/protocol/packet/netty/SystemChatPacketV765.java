@@ -6,6 +6,7 @@ import io.netty.buffer.ByteBuf;
 
 import java.nio.charset.StandardCharsets;
 
+
 /**
  * 1.20.3 Play state, S2C packet 0x69: System Chat Message.
  *
@@ -33,10 +34,8 @@ public class SystemChatPacketV765 implements Packet {
 
     @Override
     public void write(ByteBuf buf) {
-        byte[] textBytes = plainText.getBytes(StandardCharsets.UTF_8);
         buf.writeByte(0x08); // TAG_String type
-        buf.writeShort(textBytes.length);
-        buf.writeBytes(textBytes);
+        McDataTypes.writeNbtStringPayload(buf, plainText);
         buf.writeBoolean(overlay);
     }
 

@@ -11,6 +11,8 @@ import io.netty.channel.ChannelPromise;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Outbound handler that translates Classic broadcast packets to LCE format.
@@ -24,6 +26,9 @@ import java.util.Map;
  * while head rotation uses a separate RotateHeadPacket (0x23) with ABSOLUTE yaw.
  */
 public class ClassicToLCETranslator extends ChannelOutboundHandlerAdapter {
+
+    /** Packet classes already logged as dropped — log each only once to avoid flooding. */
+    private static final Set<String> LOGGED_DROPPED = ConcurrentHashMap.newKeySet();
 
     /** Same as AlphaConnectionHandler.PLAYER_EYE_HEIGHT_FIXED (package-private). */
     private static final int EYE_HEIGHT_FIXED = (int) Math.ceil((double) 1.62f * 32);
@@ -106,8 +111,12 @@ public class ClassicToLCETranslator extends ChannelOutboundHandlerAdapter {
         }
 
         // Unknown packet type — drop it to prevent wrong-format data reaching LCE client
-        System.out.println("[LCE-TX] dropped incompatible: " + packet.getClass().getSimpleName()
-                + " (ID 0x" + Integer.toHexString(packet.getPacketId()) + ")");
+        String className = packet.getClass().getSimpleName();
+        if (LOGGED_DROPPED.add(className)) {
+            System.out.println("[LCE-TX] dropped incompatible: " + className
+                    + " (ID 0x" + Integer.toHexString(packet.getPacketId())
+                    + ") — further drops of this type suppressed");
+        }
         return null;
     }
 

@@ -286,12 +286,8 @@ public class JoinGamePacketV751 implements Packet {
 
     private static void writeStringTag(ByteBuf buf, String name, String value) {
         buf.writeByte(0x08); // TAG_String
-        byte[] nameBytes = name.getBytes(StandardCharsets.UTF_8);
-        buf.writeShort(nameBytes.length);
-        buf.writeBytes(nameBytes);
-        byte[] valueBytes = value.getBytes(StandardCharsets.UTF_8);
-        buf.writeShort(valueBytes.length);
-        buf.writeBytes(valueBytes);
+        McDataTypes.writeNbtStringPayload(buf, name);
+        McDataTypes.writeNbtStringPayload(buf, value);
     }
 
     private static void writeByteTag(ByteBuf buf, String name, byte value) {

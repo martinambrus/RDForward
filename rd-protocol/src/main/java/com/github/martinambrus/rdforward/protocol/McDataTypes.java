@@ -328,6 +328,23 @@ public final class McDataTypes {
         buf.writeShort(-1); // no NBT data
     }
 
+    /**
+     * Write an NBT TAG_String payload: [short byteLength] [Modified UTF-8 bytes].
+     * Uses Java's Modified UTF-8 encoding (DataOutputStream.writeUTF format),
+     * which encodes supplementary characters (emojis, etc.) as surrogate pairs —
+     * required by the Minecraft client's NBT decoder.
+     */
+    public static void writeNbtStringPayload(ByteBuf buf, String value) {
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        try {
+            new java.io.DataOutputStream(baos).writeUTF(value);
+        } catch (java.io.IOException e) {
+            throw new RuntimeException("Modified UTF-8 encoding failed", e);
+        }
+        // DataOutputStream.writeUTF writes [short len][bytes] — write the whole thing
+        buf.writeBytes(baos.toByteArray());
+    }
+
     /** Maximum NBT nesting depth to prevent stack overflow from malformed data. */
     private static final int MAX_NBT_DEPTH = 512;
 

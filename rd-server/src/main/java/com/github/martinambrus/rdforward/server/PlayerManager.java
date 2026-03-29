@@ -18,6 +18,8 @@ import com.github.martinambrus.rdforward.protocol.packet.netty.NettyPlayerPositi
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyPlayerPositionS2CPacketV47;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyPlayerPositionS2CPacketV109;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyPlayerPositionS2CPacketV755;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettyPlayerPositionS2CPacketV762;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettyPlayerPositionS2CPacketV768;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyTimeUpdatePacket;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyTimeUpdatePacketV768;
 import com.github.martinambrus.rdforward.protocol.packet.netty.NettyTimeUpdatePacketV775;
@@ -566,6 +568,12 @@ public class PlayerManager {
             // LCE uses pre-Netty S2C 0x0D (same as Java 1.6.4): y=eyes, stance=feet
             target.sendPacket(new PlayerPositionAndLookS2CPacket(
                     x, eyeY, feetY, z, alphaYaw, pitch, true));
+        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
+            target.sendPacket(new NettyPlayerPositionS2CPacketV768(
+                    x, feetY, z, alphaYaw, pitch, teleportIdCounter.incrementAndGet()));
+        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_19_4)) {
+            target.sendPacket(new NettyPlayerPositionS2CPacketV762(
+                    x, feetY, z, alphaYaw, pitch, teleportIdCounter.incrementAndGet()));
         } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_17)) {
             target.sendPacket(new NettyPlayerPositionS2CPacketV755(
                     x, feetY, z, alphaYaw, pitch, teleportIdCounter.incrementAndGet()));

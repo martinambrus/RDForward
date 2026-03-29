@@ -849,7 +849,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         // 1.13+: Send mandatory DeclareCommands, UpdateRecipes, UpdateTags, Brand
         if (isV393) {
-            ctx.writeAndFlush(new DeclareCommandsPacketV393());
+            int opLevel = com.github.martinambrus.rdforward.server.api.PermissionManager.getOpLevel(player.getUsername());
+            java.util.List<String> cmds = com.github.martinambrus.rdforward.server.api.CommandRegistry.getCommandNamesForOpLevel(opLevel);
+            ctx.writeAndFlush(DeclareCommandsPacketV393.withCommands(cmds));
             ctx.writeAndFlush(isV768 ? new UpdateRecipesPacketV768() : new UpdateRecipesPacketV393());
             // v764+ sends UpdateTags during Configuration phase
             if (!isV764) {
@@ -875,6 +877,13 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             System.arraycopy(brand, 0, brandData, 1, brand.length);
             ctx.writeAndFlush(new NettyPluginMessageS2CPacketV393(
                     "minecraft:brand", brandData));
+        }
+
+        // Send OP permission level via EntityEvent so the client knows which commands to show.
+        // Status 24 = non-op, 25 = level 1, ..., 28 = level 4.
+        if (isV47) {
+            int opLvl = com.github.martinambrus.rdforward.server.api.PermissionManager.getOpLevel(player.getUsername());
+            ctx.writeAndFlush(new NettyEntityEventPacket(entityId, NettyEntityEventPacket.OP_PERMISSION_BASE + opLvl));
         }
 
         // Send PlayerAbilities with gamemode-aware flags

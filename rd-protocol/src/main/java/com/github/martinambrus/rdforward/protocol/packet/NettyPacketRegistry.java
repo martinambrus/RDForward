@@ -235,6 +235,7 @@ public class NettyPacketRegistry {
         // alpha version writes int; netty version writes VarInt (used by v47+).
         registerS2CReverse(com.github.martinambrus.rdforward.protocol.packet.alpha.EntityHeadRotationPacket.class, 0x19);
         registerS2CReverse(com.github.martinambrus.rdforward.protocol.packet.netty.EntityHeadRotationPacket.class, 0x19);
+        registerS2CReverse(NettyEntityEventPacket.class, 0x1A);
         registerS2CReverse(NettyEntityPropertiesPacketV47.class, 0x20);
         registerS2CReverse(MapChunkPacketV47.class, 0x21);
         registerS2CReverse(NettyBlockChangePacketV47.class, 0x23);
@@ -490,6 +491,7 @@ public class NettyPacketRegistry {
             registerV109S2CReverse(NettyEntityPropertiesPacketV47.class, 0x4B);
             registerV109S2CReverse(NettyTimeUpdatePacket.class, 0x44);
             registerV109S2CReverse(NettyChangeGameStatePacket.class, 0x1E);
+            registerV109S2CReverse(NettyEntityEventPacket.class, 0x1B);
     
             // === ConfirmTransaction S2C reverse map entries ===
             // Base/V47: 0x32 (already registered above via registerS2C)
@@ -871,6 +873,7 @@ public class NettyPacketRegistry {
             registerV393S2CReverse(NettyBlockChangePacketV393.class, 0x0B);
             // New mandatory S2C packets
             registerV393S2CReverse(DeclareCommandsPacketV393.class, 0x11);
+            registerV393S2CReverse(NettyEntityEventPacket.class, 0x1A);
             registerV393S2CReverse(UpdateRecipesPacketV393.class, 0x54);
             registerV393S2CReverse(UpdateTagsPacketV393.class, 0x55);
             // SpawnPlayer 0x05 is UNCHANGED from V338
@@ -999,6 +1002,7 @@ public class NettyPacketRegistry {
             registerV477S2CReverse(NettyBlockChangePacketV477.class, 0x0B);
             registerV477S2CReverse(NettyChatS2CPacketV47.class, 0x0E);
             registerV477S2CReverse(DeclareCommandsPacketV393.class, 0x11);
+            registerV477S2CReverse(NettyEntityEventPacket.class, 0x1B);
             registerV477S2CReverse(ConfirmTransactionPacket.class, 0x12);
             registerV477S2CReverse(UpdateRecipesPacketV393.class, 0x5A);
             registerV477S2CReverse(UpdateTagsPacketV477.class, 0x5B);
@@ -1076,6 +1080,7 @@ public class NettyPacketRegistry {
             registerV573S2CReverse(NettyBlockChangePacketV477.class, 0x0C);
             registerV573S2CReverse(NettyChatS2CPacketV47.class, 0x0F);
             registerV573S2CReverse(DeclareCommandsPacketV393.class, 0x12);
+            registerV573S2CReverse(NettyEntityEventPacket.class, 0x1D);
             registerV573S2CReverse(ConfirmTransactionPacket.class, 0x13);
             registerV573S2CReverse(NettyWindowItemsPacketV47.class, 0x15);
             registerV573S2CReverse(NettySetSlotPacketV393.class, 0x17);
@@ -1185,6 +1190,7 @@ public class NettyPacketRegistry {
             registerV735S2CReverse(NettyBlockChangePacketV477.class, 0x0B);
             registerV735S2CReverse(NettyChatS2CPacketV735.class, 0x0E);
             registerV735S2CReverse(DeclareCommandsPacketV393.class, 0x11);
+            registerV735S2CReverse(NettyEntityEventPacket.class, 0x1B);
             registerV735S2CReverse(ConfirmTransactionPacket.class, 0x12);
             registerV735S2CReverse(NettyWindowItemsPacketV47.class, 0x14);
             registerV735S2CReverse(NettySetSlotPacketV393.class, 0x16);
@@ -1358,6 +1364,7 @@ public class NettyPacketRegistry {
             registerV751S2CReverse(NettyBlockChangePacketV477.class, 0x0B);
             registerV751S2CReverse(NettyChatS2CPacketV735.class, 0x0E);
             registerV751S2CReverse(DeclareCommandsPacketV393.class, 0x10);
+            registerV751S2CReverse(NettyEntityEventPacket.class, 0x1A);
             registerV751S2CReverse(ConfirmTransactionPacket.class, 0x11);
             registerV751S2CReverse(NettyWindowItemsPacketV47.class, 0x13);
             registerV751S2CReverse(NettySetSlotPacketV393.class, 0x15);
@@ -1501,6 +1508,7 @@ public class NettyPacketRegistry {
             registerV755S2CReverse(NettyBlockChangePacketV477.class, 0x0C);
             registerV755S2CReverse(NettyChatS2CPacketV735.class, 0x0F);
             registerV755S2CReverse(DeclareCommandsPacketV393.class, 0x12);
+            registerV755S2CReverse(NettyEntityEventPacket.class, 0x1C);
             registerV755S2CReverse(NettyWindowItemsPacketV47.class, 0x14);
             registerV755S2CReverse(NettySetSlotPacketV393.class, 0x16);
             registerV755S2CReverse(NettySetSlotPacketV404.class, 0x16);
@@ -1746,6 +1754,7 @@ public class NettyPacketRegistry {
             registerV759S2CReverse(BlockChangedAckPacketV759.class, 0x05);
             registerV759S2CReverse(NettyBlockChangePacketV477.class, 0x09);
             registerV759S2CReverse(DeclareCommandsPacketV393.class, 0x0F);
+            registerV759S2CReverse(NettyEntityEventPacket.class, 0x18);
             registerV759S2CReverse(NettyWindowItemsPacketV47.class, 0x11);
             registerV759S2CReverse(NettySetSlotPacketV756.class, 0x13);
             registerV759S2CReverse(NettyPluginMessageS2CPacketV393.class, 0x15);
@@ -1917,6 +1926,7 @@ public class NettyPacketRegistry {
             registerV760S2CReverse(BlockChangedAckPacketV759.class, 0x05);
             registerV760S2CReverse(NettyBlockChangePacketV477.class, 0x09);
             registerV760S2CReverse(DeclareCommandsPacketV393.class, 0x0F);
+            registerV760S2CReverse(NettyEntityEventPacket.class, 0x1A);
             registerV760S2CReverse(NettyWindowItemsPacketV47.class, 0x11);
             registerV760S2CReverse(NettySetSlotPacketV756.class, 0x13);
             registerV760S2CReverse(NettyPluginMessageS2CPacketV393.class, 0x16);
@@ -2091,6 +2101,7 @@ public class NettyPacketRegistry {
             registerV761S2CReverse(BlockChangedAckPacketV759.class, 0x05);
             registerV761S2CReverse(NettyBlockChangePacketV477.class, 0x09);
             registerV761S2CReverse(DeclareCommandsPacketV393.class, 0x0E);
+            registerV761S2CReverse(NettyEntityEventPacket.class, 0x19);
             registerV761S2CReverse(NettyWindowItemsPacketV47.class, 0x10);
             registerV761S2CReverse(NettySetSlotPacketV756.class, 0x12);
             registerV761S2CReverse(NettyPluginMessageS2CPacketV393.class, 0x15);
@@ -2277,6 +2288,7 @@ public class NettyPacketRegistry {
             registerV762S2CReverse(BlockChangedAckPacketV759.class, 0x06);
             registerV762S2CReverse(NettyBlockChangePacketV477.class, 0x0A);
             registerV762S2CReverse(DeclareCommandsPacketV393.class, 0x10);
+            registerV762S2CReverse(NettyEntityEventPacket.class, 0x1C);
             registerV762S2CReverse(NettyWindowItemsPacketV47.class, 0x12);
             registerV762S2CReverse(NettySetSlotPacketV756.class, 0x14);
             registerV762S2CReverse(NettyPluginMessageS2CPacketV393.class, 0x17);
@@ -2540,6 +2552,7 @@ public class NettyPacketRegistry {
             registerV764S2CReverse(ChunkBatchFinishedPacket.class, 0x0C);
             registerV764S2CReverse(ChunkBatchStartPacket.class, 0x0D);
             registerV764S2CReverse(DeclareCommandsPacketV393.class, 0x11);
+            registerV764S2CReverse(NettyEntityEventPacket.class, 0x1D);
             registerV764S2CReverse(NettySetSlotPacketV756.class, 0x15);
             registerV764S2CReverse(NettyPluginMessageS2CPacketV393.class, 0x18);
             registerV764S2CReverse(NettyDisconnectPacket.class, 0x1B);
@@ -2881,6 +2894,7 @@ public class NettyPacketRegistry {
             registerV766S2CReverse(NettyPluginMessageS2CPacketV393.class, 0x19);
             // Packets shifted +2 (DEBUG_SAMPLE at 0x1B):
             registerV766S2CReverse(NettyDisconnectPacketV765.class, 0x1D);
+            registerV766S2CReverse(NettyEntityEventPacket.class, 0x1F);
             registerV766S2CReverse(UnloadChunkPacketV764.class, 0x21);
             registerV766S2CReverse(NettyChangeGameStatePacket.class, 0x22);
             registerV766S2CReverse(KeepAlivePacketV340.class, 0x26);
@@ -3092,6 +3106,7 @@ public class NettyPacketRegistry {
             registerV768S2CReverse(ChunkBatchFinishedPacket.class, 0x0C);
             registerV768S2CReverse(ChunkBatchStartPacket.class, 0x0D);
             registerV768S2CReverse(DeclareCommandsPacketV393.class, 0x11);
+            registerV768S2CReverse(NettyEntityEventPacket.class, 0x20);
             registerV768S2CReverse(NettySetSlotPacketV766.class, 0x15);
             registerV768S2CReverse(NettyPluginMessageS2CPacketV393.class, 0x19);
             registerV768S2CReverse(NettyDisconnectPacketV765.class, 0x1D);
@@ -3389,6 +3404,7 @@ public class NettyPacketRegistry {
             registerV770S2CReverse(ChunkBatchFinishedPacket.class, 0x0B);
             registerV770S2CReverse(ChunkBatchStartPacket.class, 0x0C);
             registerV770S2CReverse(DeclareCommandsPacketV393.class, 0x10);
+            registerV770S2CReverse(NettyEntityEventPacket.class, 0x1E);
             registerV770S2CReverse(NettySetSlotPacketV766.class, 0x14);
             registerV770S2CReverse(NettyPluginMessageS2CPacketV393.class, 0x18);
             registerV770S2CReverse(NettyDisconnectPacketV765.class, 0x1C);
@@ -3702,6 +3718,7 @@ public class NettyPacketRegistry {
             registerV773S2CReverse(ChunkBatchFinishedPacket.class, 0x0B);
             registerV773S2CReverse(ChunkBatchStartPacket.class, 0x0C);
             registerV773S2CReverse(DeclareCommandsPacketV393.class, 0x10);
+            registerV773S2CReverse(NettyEntityEventPacket.class, 0x22);
             registerV773S2CReverse(NettySetSlotPacketV766.class, 0x14);
             registerV773S2CReverse(NettyPluginMessageS2CPacketV393.class, 0x18);
             registerV773S2CReverse(NettyDisconnectPacketV765.class, 0x20);  // was 0x1C, +4

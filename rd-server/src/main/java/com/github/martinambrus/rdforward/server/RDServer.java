@@ -750,6 +750,29 @@ public class RDServer {
     public ChunkManager getChunkManager() { return chunkManager; }
 
     /**
+     * Send EntityEvent (OP permission level) and DeclareCommands to an online
+     * player after their OP level changes. If the player is not online or not
+     * a 1.8+ Netty client, this is a no-op.
+     */
+    private void sendOpUpdatePackets(String playerName, int newOpLevel) {
+        ConnectedPlayer target = playerManager.getPlayerByName(playerName);
+        if (target == null || target.getChannel() == null || !target.getChannel().isActive()) return;
+
+        // 1.8+: send EntityEvent with OP permission level
+        if (target.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+            int entityId = target.getPlayerId() + 1;
+            target.sendPacket(new com.github.martinambrus.rdforward.protocol.packet.netty.NettyEntityEventPacket(
+                    entityId, com.github.martinambrus.rdforward.protocol.packet.netty.NettyEntityEventPacket.OP_PERMISSION_BASE + newOpLevel));
+        }
+
+        // 1.13+: resend DeclareCommands with updated command list
+        if (target.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_13)) {
+            java.util.List<String> cmds = CommandRegistry.getCommandNamesForOpLevel(newOpLevel);
+            target.sendPacket(com.github.martinambrus.rdforward.protocol.packet.netty.DeclareCommandsPacketV393.withCommands(cmds));
+        }
+    }
+
+    /**
      * Register built-in server commands with the command registry.
      */
     private void registerBuiltInCommands() {
@@ -841,6 +864,7 @@ public class RDServer {
                 ctx.reply("Note: " + targetName + " is not online. Op will take effect when they join.");
             }
             PermissionManager.addOp(targetName, grantLevel);
+            sendOpUpdatePackets(targetName, grantLevel);
             if (oldLevel > 0 && oldLevel != grantLevel) {
                 ctx.reply("Changed " + targetName + "'s op level from " + oldLevel + " to " + grantLevel + ".");
             } else {
@@ -873,6 +897,7 @@ public class RDServer {
                 }
             }
             PermissionManager.removeOp(targetName);
+            sendOpUpdatePackets(targetName, 0);
             ctx.reply("Removed " + targetName + " from operators (was level " + targetLevel + ").");
             System.out.println("[AUDIT] " + ctx.getSenderName() + " deopped " + targetName
                     + " (was level " + targetLevel + ")");

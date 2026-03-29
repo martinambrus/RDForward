@@ -112,6 +112,22 @@ public final class CommandRegistry {
         return Collections.unmodifiableMap(commands);
     }
 
+    /**
+     * Get the list of command names available to a player with the given op level.
+     * Commands with requiredOpLevel == 0 are available to everyone.
+     * Commands with requiredOpLevel > 0 require at least that op level.
+     */
+    public static java.util.List<String> getCommandNamesForOpLevel(int opLevel) {
+        java.util.List<String> result = new java.util.ArrayList<>();
+        for (RegisteredCommand cmd : commands.values()) {
+            if (cmd.requiredOpLevel == 0 || opLevel >= cmd.requiredOpLevel) {
+                result.add(cmd.name);
+            }
+        }
+        java.util.Collections.sort(result);
+        return result;
+    }
+
     /** Clear all registered commands. Package-private, for testing only. */
     static void clearForTesting() {
         commands.clear();
