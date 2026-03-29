@@ -243,8 +243,10 @@ public class LCEConnectionHandler extends SimpleChannelInboundHandler<Packet> {
             ctx.writeAndFlush(new KeepAlivePacketV17(++keepAliveCounter));
         }, 15, 15, TimeUnit.SECONDS);
 
+        String ip = ctx.channel().remoteAddress() != null
+                ? ctx.channel().remoteAddress().toString() : "unknown";
         System.out.println(pendingUsername + " (LCE) joined the game"
-                + " (" + playerManager.getPlayerCount() + " online)");
+                + " (" + playerManager.getPlayerCount() + " online, ip " + ip + ")");
         ServerEvents.PLAYER_JOIN.invoker().onPlayerJoin(player.getUsername(), ProtocolVersion.LCE_TU19);
     }
 

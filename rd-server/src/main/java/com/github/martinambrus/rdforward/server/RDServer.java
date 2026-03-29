@@ -920,6 +920,21 @@ public class RDServer {
             }
         });
 
+        CommandRegistry.registerOp("ip", "Show a player's IP address", PermissionManager.OP_ADMIN, ctx -> {
+            if (ctx.getArgs().length == 0) {
+                ctx.reply("Usage: ip <player>");
+                return;
+            }
+            String target = ctx.getArgs()[0];
+            ConnectedPlayer player = playerManager.getPlayerByName(target);
+            if (player == null) {
+                ctx.reply("Player not found: " + target);
+                return;
+            }
+            String ip = PlayerManager.extractIp(player);
+            ctx.reply(player.getUsername() + "'s IP: " + (ip != null ? ip : "unknown"));
+        });
+
         CommandRegistry.registerOp("tp", "Teleport players", PermissionManager.OP_CHEAT, ctx -> {
             String[] args = ctx.getArgs();
             if (args.length == 1) {
