@@ -87,8 +87,6 @@ public final class GriefProtection {
      * Creative mode reach is ~5 blocks; we add tolerance for latency.
      */
     private static final double MAX_REACH_DISTANCE = 7.0;
-    /** Extra grief score for out-of-reach block breaks (suspicious behavior). */
-    private static final double OUT_OF_REACH_GRIEF_BONUS = 2.0;
 
     // ========================================================================
     // Bypass API
@@ -258,9 +256,8 @@ public final class GriefProtection {
 
     /**
      * Check if a player can reach the target block. Out-of-reach interactions
-     * are always blocked and boost the player's grief score.
-     *
-     * @param isBreak true if breaking (adds grief bonus), false if placing
+     * are silently blocked but do NOT add grief score — protocol quirks
+     * (e.g. Alpha cancel-digging at 0,0,0) can trigger false positives.
      */
     private static EventResult checkReach(String player, int x, int y, int z, boolean isBreak) {
         if (playerManager == null) return EventResult.PASS;
@@ -285,22 +282,7 @@ public final class GriefProtection {
             return EventResult.PASS;
         }
 
-        // Out of reach — block the action and boost grief score
-        double dist = Math.sqrt(distSq);
-        System.out.println("[GriefProtection] " + player + " tried to "
-                + (isBreak ? "break" : "place") + " block at (" + x + ", " + y + ", " + z
-                + ") from distance " + String.format("%.1f", dist)
-                + " (max " + MAX_REACH_DISTANCE + ")");
-
-        if (isBreak) {
-            // Boost grief score for suspicious out-of-reach breaking
-            PlayerGriefData data = getOrCreateData(player);
-            data.decayScore();
-            data.griefScore += OUT_OF_REACH_GRIEF_BONUS;
-            data.lastGriefTime = System.currentTimeMillis();
-        }
-
-        warn(player, "You cannot interact with blocks that far away.");
+        // Out of reach — block silently (no grief score, no warning spam)
         return EventResult.CANCEL;
     }
 

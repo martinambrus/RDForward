@@ -1505,6 +1505,9 @@ public class RDServer {
      * System properties (-Drdforward.*, -De2e.viewDistance) override file values.
      */
     public static void main(String[] args) {
+        // Initialize logging — tee stdout/stderr to logs/latest.log
+        ServerLogger.init();
+
         // Load server.properties (creates with defaults if missing)
         ServerProperties.load();
 
@@ -1543,7 +1546,10 @@ public class RDServer {
         RDServer server = new RDServer(port, version, generator, seed,
             worldWidth, worldHeight, worldDepth);
         server.setBedrockPort(ServerProperties.getBedrockPort());
-        Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "RDForward-Shutdown"));
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            server.stop();
+            ServerLogger.close();
+        }, "RDForward-Shutdown"));
 
         try {
             server.start();

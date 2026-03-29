@@ -978,13 +978,19 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
-        // Alpha creative mode: instant block breaking on STARTED or FINISHED
+        // Alpha creative mode: instant block breaking on STARTED or FINISHED.
+        // STATUS_FINISHED at (0,0,0) is a cancel/abort signal — skip it.
         if (packet.getStatus() == PlayerDiggingPacket.STATUS_STARTED
                 || packet.getStatus() == PlayerDiggingPacket.STATUS_FINISHED) {
 
             int x = packet.getX();
             int y = packet.getY();
             int z = packet.getZ();
+
+            if (packet.getStatus() == PlayerDiggingPacket.STATUS_FINISHED
+                    && x == 0 && y == 0 && z == 0) {
+                return;
+            }
 
             if (!world.inBounds(x, y, z)) return;
 
