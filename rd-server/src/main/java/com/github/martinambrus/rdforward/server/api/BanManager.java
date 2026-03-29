@@ -6,6 +6,7 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -126,5 +127,82 @@ public final class BanManager {
     /** Get all banned IPs (unmodifiable snapshot). */
     public static Set<String> getBannedIps() {
         return java.util.Collections.unmodifiableSet(bannedIps);
+    }
+
+    // ---- Temporary bans (in-memory, not persisted across restarts) ----
+
+    /** Maps lowercase player name → expiry timestamp (epoch ms). */
+    private static final ConcurrentHashMap<String, Long> tempBans = new ConcurrentHashMap<>();
+
+    /**
+     * Temporarily ban a player for the given duration.
+     *
+     * @param username player name (case-insensitive)
+     * @param durationMs ban duration in milliseconds
+     */
+    public static void tempBanPlayer(String username, long durationMs) {
+        tempBans.put(username.toLowerCase(), System.currentTimeMillis() + durationMs);
+    }
+
+    /**
+     * Check if a player is temporarily banned.
+     * Automatically clears expired bans.
+     *
+     * @return true if the player has an active temp ban
+     */
+    public static boolean isTempBanned(String username) {
+        Long expiry = tempBans.get(username.toLowerCase());
+        if (expiry == null) return false;
+        if (System.currentTimeMillis() >= expiry) {
+            tempBans.remove(username.toLowerCase());
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Get the remaining temp ban duration in milliseconds.
+     * Returns 0 if not temp-banned.
+     */
+    public static long getTempBanRemaining(String username) {
+        Long expiry = tempBans.get(username.toLowerCase());
+        if (expiry == null) return 0;
+        long remaining = expiry - System.currentTimeMillis();
+        if (remaining <= 0) {
+            tempBans.remove(username.toLowerCase());
+            return 0;
+        }
+        return remaining;
+    }
+
+    /**
+     * Remove a temporary ban.
+     */
+    public static void removeTempBan(String username) {
+        tempBans.remove(username.toLowerCase());
+    }
+
+    /**
+     * Get all active temp bans (name → expiry timestamp).
+     */
+    public static Map<String, Long> getActiveTempBans() {
+        long now = System.currentTimeMillis();
+        // Purge expired entries
+        tempBans.entrySet().removeIf(e -> e.getValue() <= now);
+        return java.util.Collections.unmodifiableMap(tempBans);
+    }
+
+    /**
+     * Format a duration in ms to a human-readable string (e.g., "30m", "1h 30m").
+     */
+    public static String formatDuration(long ms) {
+        long seconds = ms / 1000;
+        long minutes = seconds / 60;
+        long hours = minutes / 60;
+        minutes = minutes % 60;
+        if (hours > 0 && minutes > 0) return hours + "h " + minutes + "m";
+        if (hours > 0) return hours + "h";
+        if (minutes > 0) return minutes + "m";
+        return seconds + "s";
     }
 }

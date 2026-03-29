@@ -113,6 +113,12 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
                 session.disconnect("You are banned from this server");
                 return;
             }
+            if (com.github.martinambrus.rdforward.server.api.BanManager.isTempBanned(username)) {
+                String remaining = com.github.martinambrus.rdforward.server.api.BanManager.formatDuration(
+                        com.github.martinambrus.rdforward.server.api.BanManager.getTempBanRemaining(username));
+                session.disconnect("You are temporarily banned (" + remaining + " remaining)");
+                return;
+            }
         }
 
         // Whitelist check — reject non-whitelisted players when whitelist is enabled

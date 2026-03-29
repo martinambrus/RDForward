@@ -503,6 +503,13 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 ctx.close();
                 return;
             }
+            if (com.github.martinambrus.rdforward.server.api.BanManager.isTempBanned(pendingUsername)) {
+                String remaining = com.github.martinambrus.rdforward.server.api.BanManager.formatDuration(
+                        com.github.martinambrus.rdforward.server.api.BanManager.getTempBanRemaining(pendingUsername));
+                ctx.writeAndFlush(new DisconnectPacket("You are temporarily banned (" + remaining + " remaining)"));
+                ctx.close();
+                return;
+            }
         }
 
         // Whitelist check — reject non-whitelisted players when whitelist is enabled

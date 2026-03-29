@@ -206,7 +206,7 @@ public class RDServer {
         chunkManager.initAsyncDelivery();
         registerBuiltInCommands();
         registerSpawnProtection();
-        GriefProtection.init(ServerProperties.getMaxBlockChangesPerSecond(), playerManager);
+        GriefProtection.init(ServerProperties.getMaxBlockChangesPerSecond(), playerManager, world);
 
         convertWorldIfNeeded();
         checkWorldCompatibility();
@@ -1073,6 +1073,40 @@ public class RDServer {
                 System.out.println("[INFO] " + ctx.getSenderName() + " banned IP " + ip
                         + " + player " + arg);
             }
+        });
+
+        CommandRegistry.registerOp("tempban", "Temporarily ban a player", PermissionManager.OP_MANAGE, ctx -> {
+            String[] args = ctx.getArgs();
+            if (args.length < 2) {
+                ctx.reply("Usage: tempban <player> <duration> (e.g., 30m, 2h, 1d)");
+                return;
+            }
+            String target = args[0];
+            String durationStr = args[1].toLowerCase();
+            long durationMs;
+            try {
+                char unit = durationStr.charAt(durationStr.length() - 1);
+                long value = Long.parseLong(durationStr.substring(0, durationStr.length() - 1));
+                if (value <= 0) throw new NumberFormatException();
+                switch (unit) {
+                    case 'm': durationMs = value * 60 * 1000L; break;
+                    case 'h': durationMs = value * 60 * 60 * 1000L; break;
+                    case 'd': durationMs = value * 24 * 60 * 60 * 1000L; break;
+                    default: throw new NumberFormatException();
+                }
+            } catch (NumberFormatException | StringIndexOutOfBoundsException e) {
+                ctx.reply("Invalid duration. Use a number followed by m (minutes), h (hours), or d (days).");
+                return;
+            }
+            BanManager.tempBanPlayer(target, durationMs);
+            String formatted = BanManager.formatDuration(durationMs);
+            ConnectedPlayer p = playerManager.getPlayerByName(target);
+            if (p != null) {
+                playerManager.kickPlayer(target, "Temporarily banned for " + formatted, world);
+            }
+            ctx.reply("Temporarily banned " + target + " for " + formatted);
+            System.out.println("[INFO] " + ctx.getSenderName() + " temp-banned " + target
+                    + " for " + formatted);
         });
 
         CommandRegistry.registerOp("time", "Query or set the world time", PermissionManager.OP_CHEAT, ctx -> {

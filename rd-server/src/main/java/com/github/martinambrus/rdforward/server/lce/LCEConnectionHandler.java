@@ -151,6 +151,25 @@ public class LCEConnectionHandler extends SimpleChannelInboundHandler<Packet> {
             pendingUsername = userName;
         }
 
+        // Ban check
+        {
+            String ip = com.github.martinambrus.rdforward.server.PlayerManager.extractIp(
+                    ctx.channel().remoteAddress());
+            if (com.github.martinambrus.rdforward.server.api.BanManager.isPlayerBanned(pendingUsername)
+                    || (ip != null && com.github.martinambrus.rdforward.server.api.BanManager.isIpBanned(ip))) {
+                ctx.writeAndFlush(new DisconnectPacket("You are banned from this server"));
+                ctx.close();
+                return;
+            }
+            if (com.github.martinambrus.rdforward.server.api.BanManager.isTempBanned(pendingUsername)) {
+                String remaining = com.github.martinambrus.rdforward.server.api.BanManager.formatDuration(
+                        com.github.martinambrus.rdforward.server.api.BanManager.getTempBanRemaining(pendingUsername));
+                ctx.writeAndFlush(new DisconnectPacket("You are temporarily banned (" + remaining + " remaining)"));
+                ctx.close();
+                return;
+            }
+        }
+
         // Register player
         player = playerManager.addPlayer(pendingUsername, null, ctx.channel(),
                 ProtocolVersion.LCE_TU19);

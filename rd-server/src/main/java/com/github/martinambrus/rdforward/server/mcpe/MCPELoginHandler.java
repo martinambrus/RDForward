@@ -190,6 +190,10 @@ public class MCPELoginHandler {
                 sendLoginStatus(MCPEConstants.LOGIN_CLIENT_OUTDATED);
                 return;
             }
+            if (com.github.martinambrus.rdforward.server.api.BanManager.isTempBanned(username)) {
+                sendLoginStatus(MCPEConstants.LOGIN_CLIENT_OUTDATED);
+                return;
+            }
         }
 
         // Whitelist check — reject non-whitelisted players when whitelist is enabled
