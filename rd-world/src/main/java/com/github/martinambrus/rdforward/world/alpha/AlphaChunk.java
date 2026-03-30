@@ -50,6 +50,13 @@ public class AlphaChunk {
     private final byte[] heightMap;
 
     /**
+     * Block ownership IDs, parallel to {@code blocks[]}.
+     * 0 = unowned. Lazily allocated on first {@link #setBlockOwnerId} call
+     * to save memory for chunks with no player-placed blocks.
+     */
+    private short[] blockOwnerIds;
+
+    /**
      * Cached canonical chunk data (version-independent intermediate form).
      * Volatile for safe publication across threads. Invalidated (set to null)
      * on any block change via setBlock()/setBlockData().
@@ -122,6 +129,43 @@ public class AlphaChunk {
     public void setBlockData(int x, int y, int z, int value) {
         setNibble(data, blockIndex(x, y, z), value);
         canonicalData = null; // invalidate cached canonical form
+    }
+
+    /**
+     * Get the owner ID of the block at local coordinates.
+     * Returns 0 (unowned) if no ownership data exists for this chunk.
+     */
+    public short getBlockOwnerId(int x, int y, int z) {
+        short[] ids = blockOwnerIds;
+        if (ids == null) return 0;
+        return ids[blockIndex(x, y, z)];
+    }
+
+    /**
+     * Set the owner ID of the block at local coordinates.
+     * Lazily allocates the ownership array on first call.
+     */
+    public void setBlockOwnerId(int x, int y, int z, short ownerId) {
+        if (blockOwnerIds == null) {
+            if (ownerId == 0) return; // no-op: clearing unowned block
+            blockOwnerIds = new short[BLOCK_COUNT];
+        }
+        blockOwnerIds[blockIndex(x, y, z)] = ownerId;
+    }
+
+    /** Check if this chunk has any ownership data. */
+    public boolean hasOwnershipData() {
+        return blockOwnerIds != null;
+    }
+
+    /** Get the raw ownership array (may be null). For save/load only. */
+    public short[] getBlockOwnerIds() {
+        return blockOwnerIds;
+    }
+
+    /** Set the raw ownership array. For save/load only. */
+    public void setBlockOwnerIds(short[] ids) {
+        this.blockOwnerIds = ids;
     }
 
     /**
@@ -1862,6 +1906,18 @@ public class AlphaChunk {
             tileEntitiesTag.add(tileEntities.get(i).toNbt());
         }
         level.put("TileEntities", tileEntitiesTag);
+
+        // Custom extension: block ownership IDs (packed 2 shorts per int)
+        if (blockOwnerIds != null) {
+            int intCount = (BLOCK_COUNT + 1) / 2;
+            int[] packed = new int[intCount];
+            for (int i = 0; i < BLOCK_COUNT; i += 2) {
+                int hi = blockOwnerIds[i] & 0xFFFF;
+                int lo = (i + 1 < BLOCK_COUNT) ? (blockOwnerIds[i + 1] & 0xFFFF) : 0;
+                packed[i / 2] = (hi << 16) | lo;
+            }
+            level.putIntArray("BlockOwnerIds", packed);
+        }
 
         root.put("Level", level);
         return root;

@@ -4,6 +4,7 @@ import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.codec.PacketDecoder;
 import com.github.martinambrus.rdforward.protocol.codec.PacketEncoder;
 import com.github.martinambrus.rdforward.protocol.packet.PacketDirection;
+import com.github.martinambrus.rdforward.server.api.BlockOwnerRegistry;
 import com.github.martinambrus.rdforward.server.api.BanManager;
 import com.github.martinambrus.rdforward.server.api.GriefProtection;
 import com.github.martinambrus.rdforward.server.api.TeamManager;
@@ -204,11 +205,37 @@ public class RDServer {
         BanManager.load(dataDir);
         WhitelistManager.load(dataDir);
         TeamManager.load(dataDir);
+        BlockOwnerRegistry.load(dataDir);
         Scheduler.init();
         chunkManager.initAsyncDelivery();
         registerBuiltInCommands();
         registerSpawnProtection();
-        GriefProtection.init(ServerProperties.getMaxBlockChangesPerSecond(), playerManager, world);
+        GriefProtection.init(ServerProperties.getMaxBlockChangesPerSecond(), playerManager, world, chunkManager);
+
+        // Track player activity for block ownership and protection budget
+        ServerEvents.PLAYER_JOIN.register((name, version) -> {
+            // Check expiry BEFORE updating last login
+            int daysLeft = BlockOwnerRegistry.getDaysUntilExpiry(name);
+            BlockOwnerRegistry.updateLastLogin(name);
+            BlockOwnerRegistry.startSession(name);
+            // Warn returning players whose blocks are close to expiring
+            if (daysLeft >= 0 && daysLeft <= 7) {
+                ConnectedPlayer cp = playerManager.getPlayerByName(name);
+                if (cp != null) {
+                    if (daysLeft == 0) {
+                        playerManager.sendChat(cp,
+                                "[Server] Your blocks have expired due to inactivity.");
+                    } else {
+                        playerManager.sendChat(cp,
+                                "[Server] Your blocks will expire in " + daysLeft
+                                + " day(s) of inactivity. Play to reset the timer.");
+                    }
+                }
+            }
+        });
+
+        // Accumulate play time when players leave (for protection budget accrual)
+        ServerEvents.PLAYER_LEAVE.register(name -> BlockOwnerRegistry.endSession(name));
 
         // Apply locked time from config, or auto-lock for rubydung maps
         long lockTime = ServerProperties.getLockTime();
@@ -487,7 +514,8 @@ public class RDServer {
         // user can delete it once they're happy with the converted world.
         if (hasFiniteWorld && !finiteServer && !hasAlphaWorld) {
             int version = ServerWorldHeader.readFormatVersion(serverWorldFile);
-            if (version == ServerWorldHeader.FORMAT_V1_FINITE) {
+            if (version >= ServerWorldHeader.FORMAT_V1_FINITE
+                    && version <= ServerWorldHeader.CURRENT_FORMAT_VERSION) {
                 System.out.println("[RDServer] server-version is '"
                         + ServerProperties.getServerVersion()
                         + "' but a finite world (server-world.dat) exists.");
@@ -711,6 +739,7 @@ public class RDServer {
         System.out.println("Saving world and player data...");
         world.save();
         world.savePlayers(playerManager.getAllPlayers());
+        BlockOwnerRegistry.saveIfDirty();
         chunkManager.shutdown();
 
         if (udpFrontEndChannel != null) {
@@ -833,6 +862,7 @@ public class RDServer {
         CommandRegistry.registerOp("save", "Save the world to disk", PermissionManager.OP_ADMIN, ctx -> {
             world.save();
             world.savePlayers(playerManager.getAllPlayers());
+            BlockOwnerRegistry.saveIfDirty();
             chunkManager.saveAllDirty();
             ctx.reply("World saved.");
         });
@@ -1524,13 +1554,16 @@ public class RDServer {
 
         // /griefinfo — grief protection information (available to all players)
         CommandRegistry.register("griefinfo", "Grief protection information", ctx -> {
+            ctx.reply("");
             ctx.reply("=== Grief Protection ===");
-            ctx.reply("This server tracks who places blocks. Breaking another"
-                    + " player's blocks gives you grief points.");
-            ctx.reply("Score 5: Warning | Score 10: Kick | Score 20: Temp ban");
-            ctx.reply("To let friends break your blocks: /trust add <player>");
-            ctx.reply("Trusted players won't trigger grief protection on your blocks.");
-            ctx.reply("Type /trust list to see your current trust list.");
+            ctx.reply("Blocks you place are protected.");
+            ctx.reply("Breaking others' blocks gives grief points (5=warn, 10=kick, 20=tempban).");
+            ctx.reply("");
+            ctx.reply("Use \"/trust add <name>\" to allow <name> to break your blocks with no penalty.");
+            ctx.reply("");
+            ctx.reply("Protection budget: " + BlockOwnerRegistry.getRemainingBudget(ctx.getSenderName())
+                    + " / " + BlockOwnerRegistry.getTotalBudget(ctx.getSenderName())
+                    + " blocks. Grows as you play.");
         });
     }
 

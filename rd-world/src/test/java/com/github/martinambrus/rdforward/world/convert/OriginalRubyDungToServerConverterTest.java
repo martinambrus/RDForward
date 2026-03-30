@@ -66,7 +66,7 @@ class OriginalRubyDungToServerConverterTest {
         try (DataInputStream dis = new DataInputStream(
                 new GZIPInputStream(new FileInputStream(output)))) {
             assertEquals(ServerWorldHeader.FORMAT_MAGIC, dis.readInt(), "Expected FORMAT_MAGIC");
-            assertEquals(ServerWorldHeader.FORMAT_V1_FINITE, dis.readInt(), "Expected FORMAT_V1_FINITE");
+            assertEquals(ServerWorldHeader.CURRENT_FORMAT_VERSION, dis.readInt(), "Expected current format version");
             assertEquals(w, dis.readInt());
             assertEquals(h, dis.readInt());
             assertEquals(d, dis.readInt());

@@ -1014,6 +1014,36 @@ public class ChunkManager {
     }
 
     /**
+     * Get the owner ID of a block at world coordinates.
+     * Returns 0 (unowned) if the chunk isn't loaded or coordinates are invalid.
+     */
+    public short getBlockOwnerId(int blockX, int blockY, int blockZ) {
+        ChunkCoord coord = ChunkCoord.fromBlock(blockX, blockZ);
+        AlphaChunk chunk = loadedChunks.get(coord);
+        if (chunk == null || blockY < 0 || blockY >= AlphaChunk.HEIGHT) return 0;
+        return chunk.getBlockOwnerId(blockX & 15, blockY, blockZ & 15);
+    }
+
+    /**
+     * Set the owner ID of a block at world coordinates.
+     * No-op if the chunk isn't loaded.
+     */
+    public void setBlockOwnerId(int blockX, int blockY, int blockZ, short ownerId) {
+        ChunkCoord coord = ChunkCoord.fromBlock(blockX, blockZ);
+        AlphaChunk chunk = loadedChunks.get(coord);
+        if (chunk == null || blockY < 0 || blockY >= AlphaChunk.HEIGHT) return;
+        chunk.setBlockOwnerId(blockX & 15, blockY, blockZ & 15, ownerId);
+        dirtyChunks.add(coord);
+    }
+
+    /**
+     * Clear the owner ID of a block at world coordinates.
+     */
+    public void clearBlockOwner(int blockX, int blockY, int blockZ) {
+        setBlockOwnerId(blockX, blockY, blockZ, (short) 0);
+    }
+
+    /**
      * Check for chunks that need a full resend due to excessive individual block changes.
      * Called from the tick loop. When a chunk accumulates more than
      * {@link #BATCH_RESEND_THRESHOLD} individual block changes, resending the full

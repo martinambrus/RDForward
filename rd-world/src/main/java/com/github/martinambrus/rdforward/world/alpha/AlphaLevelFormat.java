@@ -119,6 +119,19 @@ public class AlphaLevelFormat {
             }
         }
 
+        // Custom extension: block ownership IDs (packed 2 shorts per int)
+        int[] packedOwners = level.getIntArray("BlockOwnerIds");
+        if (packedOwners != null && packedOwners.length > 0) {
+            short[] ownerIds = new short[AlphaChunk.BLOCK_COUNT];
+            for (int i = 0; i < packedOwners.length && i * 2 < AlphaChunk.BLOCK_COUNT; i++) {
+                ownerIds[i * 2] = (short) ((packedOwners[i] >> 16) & 0xFFFF);
+                if (i * 2 + 1 < AlphaChunk.BLOCK_COUNT) {
+                    ownerIds[i * 2 + 1] = (short) (packedOwners[i] & 0xFFFF);
+                }
+            }
+            chunk.setBlockOwnerIds(ownerIds);
+        }
+
         return chunk;
     }
 

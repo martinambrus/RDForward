@@ -25,8 +25,11 @@ public final class ServerWorldHeader {
     /** Format version 1: finite RubyDung/Classic world (flat block array). */
     public static final int FORMAT_V1_FINITE = 1;
 
+    /** Format version 2: V1 + block ownership short[] after blocks. */
+    public static final int FORMAT_V2_OWNERSHIP = 2;
+
     /** The latest format version written by the current code. */
-    public static final int CURRENT_FORMAT_VERSION = FORMAT_V1_FINITE;
+    public static final int CURRENT_FORMAT_VERSION = FORMAT_V2_OWNERSHIP;
 
     public final int formatVersion;
     public final int width;

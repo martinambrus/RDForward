@@ -54,6 +54,12 @@ public class ServerWorld {
     private final int height;
     private final int depth;
     private final byte[] blocks;
+    /**
+     * Block ownership IDs, parallel to {@code blocks[]}.
+     * 0 = unowned (natural/expired). Positive values are player IDs from
+     * {@link com.github.martinambrus.rdforward.server.api.BlockOwnerRegistry}.
+     */
+    private final short[] blockOwnerIds;
     private final File saveFile;
     private final File playersFile;
     private volatile boolean dirty = false;
@@ -97,6 +103,7 @@ public class ServerWorld {
         this.height = height;
         this.depth = depth;
         this.blocks = new byte[width * height * depth];
+        this.blockOwnerIds = new short[width * height * depth];
         File dir = (dataDir != null) ? dataDir : new File(".");
         this.saveFile = new File(dir, SAVE_FILE_NAME);
         this.playersFile = new File(dir, PLAYERS_FILE_NAME);
@@ -154,6 +161,41 @@ public class ServerWorld {
         } finally {
             rwLock.writeLock().unlock();
         }
+    }
+
+    /**
+     * Get the owner ID of the block at the given coordinates.
+     * Returns 0 (unowned) if out of bounds.
+     */
+    public short getBlockOwnerId(int x, int y, int z) {
+        if (!inBounds(x, y, z)) return 0;
+        rwLock.readLock().lock();
+        try {
+            return blockOwnerIds[blockIndex(x, y, z)];
+        } finally {
+            rwLock.readLock().unlock();
+        }
+    }
+
+    /**
+     * Set the owner ID of the block at the given coordinates.
+     */
+    public void setBlockOwnerId(int x, int y, int z, short ownerId) {
+        if (!inBounds(x, y, z)) return;
+        rwLock.writeLock().lock();
+        try {
+            blockOwnerIds[blockIndex(x, y, z)] = ownerId;
+            dirty = true;
+        } finally {
+            rwLock.writeLock().unlock();
+        }
+    }
+
+    /**
+     * Clear the owner ID of the block at the given coordinates.
+     */
+    public void clearBlockOwner(int x, int y, int z) {
+        setBlockOwnerId(x, y, z, (short) 0);
     }
 
     /**
@@ -271,6 +313,17 @@ public class ServerWorld {
                 return false;
             }
             dis.readFully(blocks);
+            // V2+: read block ownership IDs
+            if (header.formatVersion >= ServerWorldHeader.FORMAT_V2_OWNERSHIP) {
+                for (int i = 0; i < blockOwnerIds.length; i++) {
+                    blockOwnerIds[i] = dis.readShort();
+                }
+                int ownedCount = 0;
+                for (short id : blockOwnerIds) {
+                    if (id != 0) ownedCount++;
+                }
+                System.out.println("Loaded " + ownedCount + " owned block(s) from world save");
+            }
             dirty = false;
             System.out.println("Loaded world from " + saveFile + " (format version " + header.formatVersion + ")");
             return true;
@@ -312,14 +365,16 @@ public class ServerWorld {
      */
     public void save() {
         byte[] snapshot;
+        short[] ownerSnapshot;
         rwLock.readLock().lock();
         try {
             snapshot = Arrays.copyOf(blocks, blocks.length);
+            ownerSnapshot = Arrays.copyOf(blockOwnerIds, blockOwnerIds.length);
             dirty = false;
         } finally {
             rwLock.readLock().unlock();
         }
-        writeSnapshot(snapshot);
+        writeSnapshot(snapshot, ownerSnapshot);
     }
 
     /**
@@ -339,29 +394,38 @@ public class ServerWorld {
     public void saveIfDirtyAsync() {
         if (!dirty) return;
         byte[] snapshot;
+        short[] ownerSnapshot;
         rwLock.readLock().lock();
         try {
             snapshot = Arrays.copyOf(blocks, blocks.length);
+            ownerSnapshot = Arrays.copyOf(blockOwnerIds, blockOwnerIds.length);
             dirty = false;
         } finally {
             rwLock.readLock().unlock();
         }
         ChunkIOThread io = this.ioThread;
         if (io != null) {
-            io.submitWrite(() -> writeSnapshot(snapshot));
+            io.submitWrite(() -> writeSnapshot(snapshot, ownerSnapshot));
         } else {
             // Fallback for unit tests or early startup
-            writeSnapshot(snapshot);
+            writeSnapshot(snapshot, ownerSnapshot);
         }
     }
 
-    /** Write a block-array snapshot to disk via temp file + atomic rename. */
-    private void writeSnapshot(byte[] snapshot) {
+    /**
+     * Write block + ownership snapshots to disk via temp file + atomic rename.
+     * V2 format: header + blocks + ownership shorts (big-endian).
+     */
+    private void writeSnapshot(byte[] snapshot, short[] ownerSnapshot) {
         File tmp = new File(saveFile.getPath() + ".tmp");
         try (DataOutputStream dos = new DataOutputStream(
                 new GZIPOutputStream(new FileOutputStream(tmp)))) {
             ServerWorldHeader.write(dos, width, height, depth);
             dos.write(snapshot);
+            // V2: write ownership IDs as big-endian shorts
+            for (short id : ownerSnapshot) {
+                dos.writeShort(id);
+            }
         } catch (IOException e) {
             dirty = true; // retry on next cycle
             tmp.delete();

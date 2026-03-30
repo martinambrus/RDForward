@@ -112,6 +112,10 @@ public class OriginalRubyDungToServerConverter implements FormatConverter {
                 new GZIPOutputStream(new FileOutputStream(outputPath)))) {
             ServerWorldHeader.write(dos, width, height, depth);
             dos.write(blocks);
+            // V2: write empty ownership data (all zeros = unowned)
+            for (int i = 0; i < blocks.length; i++) {
+                dos.writeShort(0);
+            }
         }
 
         System.out.println("Conversion complete: " + outputPath.getAbsolutePath());

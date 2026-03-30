@@ -110,7 +110,7 @@ If no username is provided, the server auto-assigns one (Player1, Player2, etc.)
 - **Server configuration** — vanilla-compatible `server.properties` with launcher-style version IDs
 - **World conversion** — auto-detects and converts between RubyDung, Alpha, and McRegion formats at startup
 - **Legacy Console support** — LCE TU19 (Windows64) clients can join via LAN discovery (UDP broadcast on port 25566) or direct connect, with full cross-play against all other client types
-- **Grief protection** — behavioral scoring system that distinguishes builders from griefers, with escalating responses (warning, freeze, kick), block ownership tracking, and a mod bypass API
+- **Grief protection** — behavioral scoring with protection budgets, persistent block ownership, automatic rollback on kick/ban, and escalating responses (warning, kick, tempban)
 - **Performance** — async chunk generation, packet compression (Java 1.8+), flush coalescing, crash-safe atomic saves
 
 ## Project Structure
@@ -162,30 +162,45 @@ Protocol detection is automatic — the server identifies the client type from t
 
 ### Grief Protection
 
-The server includes a smart grief detection system that uses behavioral scoring rather than simple rate limits. This allows fast builders to work unimpeded while catching players who destroy other people's builds.
+The server includes a smart grief detection system inspired by [GriefPrevention](https://github.com/TechFortress/GriefPrevention). It uses behavioral scoring and a play-time-based protection budget rather than simple rate limits, allowing fast builders to work unimpeded while catching players who destroy other people's builds.
 
-**How it works:**
-- The server tracks block ownership (who placed each block)
-- Breaking another player's blocks earns grief points; breaking your own or natural blocks does not
-- New players (< 30 min session) receive double grief points
+**Block ownership and protection budget:**
+- Every block a player places is tagged with their ownership (persisted across server restarts)
+- Players have a limited protection budget — only blocks placed within budget are ownership-tracked and protected from grief scoring
+- Initial budget: 200 blocks (enough for a small house)
+- Accrual: 100 blocks per hour of active play time
+- Maximum: 50,000 blocks
+- Breaking your own protected blocks returns budget (so rebuilding is free)
+- Blocks placed beyond budget are unprotected (not tracked, no grief score when broken by others)
+- Players inactive for 30+ days have their block ownership expire (blocks become unprotected)
+- Budget warnings appear at 80%+ usage, with accrual info when fully depleted
+
+**Grief scoring:**
+- Breaking another player's protected block: +1 grief point
+- Breaking natural/unplaced blocks (mining): 0 points
+- Breaking your own blocks or a trusted teammate's blocks: 0 points
+- New players (< 30 min session): 2x grief points
 - Points decay over time (halved every 60 seconds of no grief activity)
+- Grief scores persist across reconnects (no logout/login bypass)
 
 **Escalating responses:**
 | Score | Response |
 |-------|----------|
 | 5 | Warning message |
-| 10 | Kicked from the server |
-| 20 | Temporarily banned (30m / 90m / 24h escalating) |
+| 10 | Kicked from the server + automatic rollback |
+| 20 | Temporarily banned (30m / 90m / 24h escalating) + automatic rollback |
+
+**Automatic rollback:** When a player is kicked or temp-banned for griefing, the server automatically reverses their last 50 block changes — restoring original blocks, ownership tags, and protection budgets for all affected players.
 
 **Trust system** — players working together can exempt each other from grief scoring:
 - `/trust add <player>` — let a player break your blocks without triggering protection
 - `/trust remove <player>` — revoke trust
 - `/trust list` — show your current trust list
-- `/griefinfo` — explain the system in-game
+- `/griefinfo` — view grief score, protection budget, and system details in-game
 
 Trust is asymmetric: if Alice trusts Bob, Bob can break Alice's blocks freely, but not vice versa unless Bob also trusts Alice.
 
-Operators are exempt from grief checks. Mods performing bulk block operations can bypass all checks via `GriefProtection.runBypassed(() -> { ... })`.
+Operators are exempt from grief checks and budget limits. Mods performing bulk block operations can bypass all checks via `GriefProtection.runBypassed(() -> { ... })`.
 
 ## Building
 
