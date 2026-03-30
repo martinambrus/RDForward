@@ -80,21 +80,21 @@ Output locations:
 
 **Start the server:**
 ```bash
-java -jar rd-server-0.1.0-SNAPSHOT-all.jar           # Default port 25565
-java -jar rd-server-0.1.0-SNAPSHOT-all.jar 12345      # Custom port
+java -jar rd-server-0.2.0-SNAPSHOT-all.jar           # Default port 25565
+java -jar rd-server-0.2.0-SNAPSHOT-all.jar 12345      # Custom port
 ```
 
 **Start a client:**
 ```bash
-java -jar rd-client-0.1.0-SNAPSHOT-all.jar                            # Connects to localhost:25565
-java -jar rd-client-0.1.0-SNAPSHOT-all.jar --server=example.com:25565  # Remote server
-java -jar rd-client-0.1.0-SNAPSHOT-all.jar --username=Alice            # Custom name
-java -jar rd-client-0.1.0-SNAPSHOT-all.jar --server=10.0.0.5:25565 --username=Bob
+java -jar rd-client-0.2.0-SNAPSHOT-all.jar                            # Connects to localhost:25565
+java -jar rd-client-0.2.0-SNAPSHOT-all.jar --server=example.com:25565  # Remote server
+java -jar rd-client-0.2.0-SNAPSHOT-all.jar --username=Alice            # Custom name
+java -jar rd-client-0.2.0-SNAPSHOT-all.jar --server=10.0.0.5:25565 --username=Bob
 ```
 
 The `--server` and `--username` flags also work as JVM properties (must go before `-jar`):
 ```bash
-java -Drdforward.server=example.com:25565 -Drdforward.username=Alice -jar rd-client-0.1.0-SNAPSHOT-all.jar
+java -Drdforward.server=example.com:25565 -Drdforward.username=Alice -jar rd-client-0.2.0-SNAPSHOT-all.jar
 ```
 
 If no username is provided, the server auto-assigns one (Player1, Player2, etc.).
@@ -110,6 +110,7 @@ If no username is provided, the server auto-assigns one (Player1, Player2, etc.)
 - **Server configuration** — vanilla-compatible `server.properties` with launcher-style version IDs
 - **World conversion** — auto-detects and converts between RubyDung, Alpha, and McRegion formats at startup
 - **Legacy Console support** — LCE TU19 (Windows64) clients can join via LAN discovery (UDP broadcast on port 25566) or direct connect, with full cross-play against all other client types
+- **Grief protection** — behavioral scoring system that distinguishes builders from griefers, with escalating responses (warning, freeze, kick), block ownership tracking, and a mod bypass API
 - **Performance** — async chunk generation, packet compression (Java 1.8+), flush coalescing, crash-safe atomic saves
 
 ## Project Structure
@@ -137,6 +138,7 @@ The server accepts connections from a wide range of Minecraft clients simultaneo
 | RubyDung | rd-132211 (the original) | TCP, Classic framing |
 | Classic | c0.30 | TCP, Classic framing |
 | Alpha | a1.0.15 through a1.2.6 | TCP, 4-byte length prefix |
+| Alphaver | Cypress (modified a1.0.16) | TCP, 4-byte length prefix |
 | Beta | b1.0 through b1.8 | TCP, 4-byte length prefix |
 | Release (pre-Netty) | 1.0 through 1.6.4 | TCP, 4-byte length prefix |
 | Release (Netty) | 1.7.2 through 26.1 | TCP, VarInt framing |
@@ -144,7 +146,7 @@ The server accepts connections from a wide range of Minecraft clients simultaneo
 | MCPE (legacy) | 0.6.1 through 0.16.0 (protocols 9-91) | UDP, RakNet |
 | Bedrock | 1.26.10 (protocol 944) | UDP, RakNet |
 
-Protocol detection is automatic — the server identifies the client type from the first bytes of the connection and configures the Netty pipeline accordingly. LCE clients are detected by a server-sends-first handshake (300ms timeout), while all other TCP protocols are identified from the first client byte.
+Protocol detection is automatic — the server identifies the client type from the first bytes of the connection and configures the Netty pipeline accordingly. LCE clients are detected by a server-sends-first handshake (300ms timeout), while all other TCP protocols are identified from the first client byte. Alphaver clients (which report the same protocol version as standard Alpha 1.1.0) are detected reactively after login via a client-specific skin request packet.
 
 ## Key Design Decisions
 
@@ -158,16 +160,24 @@ Protocol detection is automatic — the server identifies the client type from t
 - **Lazy-loaded protocol infrastructure** — Bedrock palettes, MCPE codecs, LCE packet registries, and version-specific registries are loaded only when a client of that type first connects
 - **Canonical chunk serialization** — chunks are serialized once into a version-independent intermediate form, then derived per-client protocol cheaply via palette remapping
 
-### Grief Protection — Infinite Map Scalability
+### Grief Protection
 
-The current grief protection system tracks block ownership in a `ConcurrentHashMap<Long, String>` which works well for bounded worlds (256x64x256) but will need optimization for infinite/large maps. Options to explore:
+The server includes a smart grief detection system that uses behavioral scoring rather than simple rate limits. This allows fast builders to work unimpeded while catching players who destroy other people's builds.
 
-1. **Region-based eviction** — only track blocks in loaded chunks, discard ownership when chunks unload
-2. **Compact storage** — map player names to short IDs, store ownership in per-chunk `short[]` arrays alongside block data (zero overhead for unplaced blocks)
-3. **Disk-backed** — persist ownership in chunk files or SQLite (like CoreProtect), so memory only holds loaded chunks
-4. **Time-based expiry** — expire ownership after N hours to bound growth, since grief typically happens soon after placement
+**How it works:**
+- The server tracks block ownership (who placed each block)
+- Breaking another player's blocks earns grief points; breaking your own or natural blocks does not
+- New players (< 30 min session) receive double grief points
+- Points decay over time (halved every 60 seconds of no grief activity)
 
-The `GriefProtection` API (event listeners, bypass mechanism, scoring) is decoupled from the backing store and won't need to change.
+**Escalating responses:**
+| Score | Response |
+|-------|----------|
+| 5 | Warning message |
+| 10 | Block interactions frozen for 5 seconds |
+| 20 | Kicked from the server |
+
+Operators are exempt from grief checks. Mods performing bulk block operations can bypass all checks via `GriefProtection.runBypassed(() -> { ... })`.
 
 ## Building
 
@@ -329,6 +339,12 @@ Techniques from these open-source Fabric mods and server forks were studied and 
 | Project | Influence |
 |---------|-----------|
 | [Spigot BuildTools](https://www.spigotmc.org/wiki/buildtools/) | Inspired the build approach — downloading copyrighted code at build time rather than redistributing it. |
+
+### AI Assistance
+
+| Tool | Role |
+|------|------|
+| [Claude Code](https://claude.ai/claude-code) (Anthropic) | Co-developed major features including protocol version support, Bedrock/MCPE integration, LCE cross-play, grief protection, Alphaver compatibility, E2E test infrastructure, and performance optimizations. |
 
 ## License
 

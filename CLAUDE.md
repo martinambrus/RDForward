@@ -36,13 +36,13 @@ To build and start the server for manual testing:
 
 ```bash
 ./gradlew buildAll
-sleep infinity | java -jar rd-server/build/libs/rd-server-0.1.0-SNAPSHOT-all.jar 2>&1 | tee /tmp/rdforward-server.log &
+sleep infinity | java -jar rd-server/build/libs/rd-server-0.2.0-SNAPSHOT-all.jar 2>&1 | tee /tmp/rdforward-server.log &
 ```
 
 - `sleep infinity |` keeps stdin open so the server's console reader doesn't EOF and exit.
 - `tee /tmp/rdforward-server.log` lets you read logs later with `cat /tmp/rdforward-server.log`.
 - To check if it's running: `ps aux | grep rd-server | grep -v grep`
-- To stop it: `pkill -f "rd-server-0.1.0"`
+- To stop it: `pkill -f "rd-server-0.2.0"`
 - To read live output: `cat /tmp/rdforward-server.log`
 - Ports: TCP 25565 (Java), UDP 19132 (MCPE/Bedrock)
 - If you get `BindException: Address already in use`, kill the old process first and wait 2-3 seconds.
