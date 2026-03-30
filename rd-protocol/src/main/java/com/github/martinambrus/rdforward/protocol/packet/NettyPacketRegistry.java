@@ -776,6 +776,11 @@ public class NettyPacketRegistry {
         static final Map<String, Integer> REVERSE = new HashMap<String, Integer>();
         static {
     
+            // === V393 (1.13) LOGIN state: Login Plugin Response (C2S 0x02, new in 1.13) ===
+            // Modded clients (Fabric, Forge) may send these during login negotiation.
+            REGISTRY.put(key(ConnectionState.LOGIN, PacketDirection.CLIENT_TO_SERVER, 0x02),
+                    NO_OP_FACTORY);
+
             // === V393 (1.13) PLAY state C2S (complete — ALL IDs reshuffled) ===
             registerV393C2S(0x00, new PacketFactory() { public Packet create() { return new TeleportConfirmPacketV109(); } });
             registerV393C2S(0x01, NO_OP_FACTORY); // BlockEntityTagQuery (new)
@@ -2538,6 +2543,12 @@ public class NettyPacketRegistry {
                     new PacketFactory() { public Packet create() { return new ConfigCustomPayloadC2SPacket(); } });
             registerV764Forward(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER, 0x02,
                     new PacketFactory() { public Packet create() { return new ConfigFinishC2SPacket(); } });
+            registerV764Forward(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER, 0x03,
+                    NO_OP_FACTORY); // KeepAlive response
+            registerV764Forward(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER, 0x04,
+                    NO_OP_FACTORY); // Pong
+            registerV764Forward(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER, 0x05,
+                    NO_OP_FACTORY); // ResourcePack
             registerV764Reverse(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER,
                     ConfigClientInformationC2SPacket.class, 0x00);
             registerV764Reverse(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER,
@@ -2838,6 +2849,11 @@ public class NettyPacketRegistry {
             registerV766Forward(ConnectionState.LOGIN, PacketDirection.SERVER_TO_CLIENT, 0x02,
                     new PacketFactory() { public Packet create() { return new LoginSuccessPacketV766(); } });
     
+            // === V766 LOGIN state C2S: Cookie Response (0x04, new in 1.20.5) ===
+            // Modded clients may send these during login.
+            registerV766Forward(ConnectionState.LOGIN, PacketDirection.CLIENT_TO_SERVER, 0x04,
+                    NO_OP_FACTORY);
+
             // === V766 CONFIGURATION state ===
             // CONFIG S2C forward map (for server decoder — not normally used, but registered for completeness)
             registerV766Forward(ConnectionState.CONFIGURATION, PacketDirection.SERVER_TO_CLIENT, 0x03,
@@ -2872,6 +2888,12 @@ public class NettyPacketRegistry {
                     NO_OP_FACTORY); // CustomPayload (shifted from 0x01)
             registerV766Forward(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER, 0x03,
                     new PacketFactory() { public Packet create() { return new ConfigFinishC2SPacket(); } }); // shifted from 0x02
+            registerV766Forward(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER, 0x04,
+                    NO_OP_FACTORY); // KeepAlive response
+            registerV766Forward(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER, 0x05,
+                    NO_OP_FACTORY); // Pong
+            registerV766Forward(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER, 0x06,
+                    NO_OP_FACTORY); // ResourcePack
             registerV766Forward(ConnectionState.CONFIGURATION, PacketDirection.CLIENT_TO_SERVER, 0x07,
                     new PacketFactory() { public Packet create() { return new SelectKnownPacksC2SPacket(); } }); // NEW
     

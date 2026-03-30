@@ -9,7 +9,9 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ByteToMessageDecoder;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Decodes raw Minecraft protocol packets (no length prefix).
@@ -30,6 +32,12 @@ public class RawPacketDecoder extends ByteToMessageDecoder {
     private volatile boolean useString16 = false;
     private volatile boolean skipUnknownPackets = false;
 
+    // Temporary debug flag — set true to log all inbound packet IDs.
+    private volatile boolean debugLog = false;
+
+    /** Per-connection packet factory overrides, keyed by packet ID. */
+    private final Map<Integer, PacketRegistry.PacketFactory> packetOverrides = new HashMap<>();
+
     public RawPacketDecoder(PacketDirection readDirection, ProtocolVersion protocolVersion) {
         this.readDirection = readDirection;
         this.protocolVersion = protocolVersion;
@@ -44,7 +52,10 @@ public class RawPacketDecoder extends ByteToMessageDecoder {
 
             int packetId = in.readUnsignedByte();
 
-            Packet packet = PacketRegistry.createPacket(protocolVersion, readDirection, packetId);
+            // Check per-connection overrides first, then fall back to global registry
+            PacketRegistry.PacketFactory override = packetOverrides.get(packetId);
+            Packet packet = override != null ? override.create()
+                    : PacketRegistry.createPacket(protocolVersion, readDirection, packetId);
             if (packet == null) {
                 if (skipUnknownPackets) {
                     in.skipBytes(in.readableBytes());
@@ -66,6 +77,11 @@ public class RawPacketDecoder extends ByteToMessageDecoder {
                 return;
             }
 
+            if (debugLog) {
+                System.err.println("[C2S] 0x" + Integer.toHexString(packetId)
+                        + " " + packet.getClass().getSimpleName());
+            }
+
             try {
                 packet.read(in);
             } catch (IndexOutOfBoundsException e) {
@@ -73,9 +89,16 @@ public class RawPacketDecoder extends ByteToMessageDecoder {
                 in.resetReaderIndex();
                 return;
             } catch (Exception e) {
-                System.err.println("RawPacketDecoder: error reading "
-                        + packet.getClass().getSimpleName() + ": " + e.getMessage());
+                // Dump hex context for debugging
                 in.resetReaderIndex();
+                int readable = Math.min(in.readableBytes(), 64);
+                StringBuilder hex = new StringBuilder();
+                for (int i = 0; i < readable; i++) {
+                    hex.append(String.format("%02x ", in.getByte(in.readerIndex() + i)));
+                }
+                System.err.println("RawPacketDecoder: error reading "
+                        + packet.getClass().getSimpleName() + ": " + e.getMessage()
+                        + " | hex: " + hex.toString().trim());
                 ctx.close();
                 return;
             }
@@ -110,5 +133,17 @@ public class RawPacketDecoder extends ByteToMessageDecoder {
      */
     public void setSkipUnknownPackets(boolean skip) {
         this.skipUnknownPackets = skip;
+    }
+
+    public void setDebugLog(boolean debugLog) {
+        this.debugLog = debugLog;
+    }
+
+    /**
+     * Override the packet factory for a specific packet ID on this connection only.
+     * Takes priority over the global PacketRegistry.
+     */
+    public void overridePacket(int packetId, PacketRegistry.PacketFactory factory) {
+        packetOverrides.put(packetId, factory);
     }
 }

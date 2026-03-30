@@ -46,15 +46,20 @@ public class NettyPacketDecoder extends MessageToMessageDecoder<ByteBuf> {
                 direction, packetId, protocolVersion);
 
         if (packet == null) {
-            // Unknown packet — log and skip (frame is already bounded)
-            int readable = Math.min(msg.readableBytes(), 32);
-            StringBuilder hex = new StringBuilder();
-            for (int i = 0; i < readable; i++) {
-                hex.append(String.format("%02x ", msg.getByte(msg.readerIndex() + i)));
+            // Unknown packet — log and skip (frame is already bounded).
+            // During LOGIN/CONFIGURATION, modded clients (Fabric/Forge) may send
+            // extra packets we don't handle, so only log at debug level.
+            if (connectionState != ConnectionState.LOGIN
+                    && connectionState != ConnectionState.CONFIGURATION) {
+                int readable = Math.min(msg.readableBytes(), 32);
+                StringBuilder hex = new StringBuilder();
+                for (int i = 0; i < readable; i++) {
+                    hex.append(String.format("%02x ", msg.getByte(msg.readerIndex() + i)));
+                }
+                System.err.println("NettyPacketDecoder: unknown packet ID 0x"
+                        + Integer.toHexString(packetId) + " in state " + connectionState
+                        + ", next " + readable + " bytes: " + hex.toString().trim());
             }
-            System.err.println("NettyPacketDecoder: unknown packet ID 0x"
-                    + Integer.toHexString(packetId) + " in state " + connectionState
-                    + ", next " + readable + " bytes: " + hex.toString().trim());
             return;
         }
 
@@ -64,10 +69,18 @@ public class NettyPacketDecoder extends MessageToMessageDecoder<ByteBuf> {
             System.err.println("NettyPacketDecoder: error reading "
                     + packet.getClass().getSimpleName() + " (0x"
                     + Integer.toHexString(packetId) + "): " + e.getMessage());
-            if (!lenient) {
+            if (!lenient && connectionState != ConnectionState.LOGIN
+                    && connectionState != ConnectionState.CONFIGURATION) {
                 ctx.close();
             }
             return;
+        }
+
+        // Skip any remaining bytes in the frame (e.g. extra data appended by
+        // Fabric/Forge mods). The frame is bounded by VarIntFrameDecoder, so
+        // unread bytes belong to this packet only and are safe to discard.
+        if (msg.readableBytes() > 0) {
+            msg.skipBytes(msg.readableBytes());
         }
 
         out.add(packet);

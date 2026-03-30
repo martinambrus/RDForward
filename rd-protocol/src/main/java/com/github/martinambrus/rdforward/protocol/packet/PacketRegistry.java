@@ -288,6 +288,15 @@ public class PacketRegistry {
         // (v1-v6) for all other packets including 0x0F (BlockPlacement) and 0x15
         // (PickupSpawn). No further version-specific overrides needed.
 
+        // === Alphaver-specific packets ===
+        // Alphaver clients (based on Alpha 1.0.16, protocol v2) send a custom
+        // skin request (0x07) after login. Register it for ALPHA_1_1_0 since
+        // that's the version Alphaver clients report. Standard Alpha 1.1.0
+        // clients never send this packet.
+        register(ProtocolVersion.ALPHA_1_1_0, PacketDirection.CLIENT_TO_SERVER, 0x07, new PacketFactory() {
+            public Packet create() { return new AlphaverSkinRequestPacket(); }
+        });
+
         // === Beta + Release overrides (v7+) ===
         // Beta changed several packet wire formats and added new packets.
         // Release 1.0.0 (v22) shares the same base registrations as Beta, with

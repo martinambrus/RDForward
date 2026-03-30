@@ -66,6 +66,9 @@ public class ConnectedPlayer {
     // Adaptive chunk send rate (EMA, alpha=0.1). Starts at 4 chunks/tick.
     private volatile double chunkSendRate = 4.0;
 
+    // Alphaver client flag (based on Alpha 1.0.16 with modified packet formats)
+    private volatile boolean alphaverClient = false;
+
     public ConnectedPlayer(byte playerId, String username, String uuid, Channel channel, ProtocolVersion protocolVersion) {
         this.playerId = playerId;
         this.username = username;
@@ -185,6 +188,8 @@ public class ConnectedPlayer {
     public String getUuid() { return uuid; }
     public Channel getChannel() { return channel; }
     public ProtocolVersion getProtocolVersion() { return protocolVersion; }
+    public boolean isAlphaverClient() { return alphaverClient; }
+    public void setAlphaverClient(boolean alphaverClient) { this.alphaverClient = alphaverClient; }
     public short getX() { return x; }
     public short getY() { return y; }
     public short getZ() { return z; }

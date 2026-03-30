@@ -5,6 +5,7 @@ import com.github.martinambrus.rdforward.protocol.packet.alpha.MapChunkPacket;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.MapChunkPacketV28;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.MapChunkPacketV39;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.PreChunkPacket;
+import com.github.martinambrus.rdforward.protocol.packet.alpha.PreChunkPacketAlphaver;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV109;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV47;
 import com.github.martinambrus.rdforward.protocol.packet.netty.MapChunkPacketV477;
@@ -231,9 +232,71 @@ public class ChunkManager {
         deliveryTask = Scheduler.runRepeating(0, 1, this::deliverReadyChunks);
     }
 
+    /**
+     * Valid zlib that decompresses to 5 zero bytes. Used as the compressed
+     * payload of the "phantom" MapChunk embedded in backwards-compatible
+     * PreChunkPacketAlphaver extra bytes (see {@link #buildCompatHeightData}).
+     */
+    private static final byte[] PHANTOM_CHUNK_ZLIB;
+    static {
+        byte[] input = new byte[5];
+        java.util.zip.Deflater def = new java.util.zip.Deflater();
+        def.setInput(input);
+        def.finish();
+        byte[] tmp = new byte[64];
+        int len = def.deflate(tmp);
+        def.end();
+        PHANTOM_CHUNK_ZLIB = java.util.Arrays.copyOf(tmp, len);
+    }
+
+    /**
+     * Builds PreChunkPacketAlphaver parameters that are backwards-compatible
+     * with standard Alpha clients.
+     *
+     * Standard Alpha reads 9 bytes for PreChunk (int x, int z, boolean true),
+     * then interprets the remaining 1544 extra bytes as a single "phantom"
+     * MapChunk packet (0x33) that writes air to the same chunk. The phantom
+     * chunk is immediately overwritten by the real MapChunk that follows.
+     *
+     * Without this, the 1544 zero bytes would decode as ~1544 KeepAlive
+     * no-ops, overwhelming the client's per-tick packet limit and causing
+     * the player to fall through terrain before chunks finish loading.
+     *
+     * Alphaver clients read all 1553 bytes as heightmap data. The minHeight
+     * and maxHeight values are near-zero, producing a flat (harmless) heightmap.
+     *
+     * @return float[2]{minHeight, maxHeight} — the heightData is written into hd
+     */
+    private static float[] buildCompatHeightData(int chunkX, int chunkZ, byte[] hd) {
+        int blockX = chunkX << 4;
+        int blockZ = chunkZ << 4;
+
+        // minHeight bytes: [0x33 (MapChunk ID), blockX>>24, blockX>>16, blockX>>8]
+        int minBits = (0x33 << 24)
+                | (((blockX >> 24) & 0xFF) << 16)
+                | (((blockX >> 16) & 0xFF) << 8)
+                | ((blockX >> 8) & 0xFF);
+        // maxHeight bytes: [blockX&FF, 0x00 (blockY hi), 0x00 (blockY lo), blockZ>>24]
+        int maxBits = ((blockX & 0xFF) << 24) | ((blockZ >> 24) & 0xFF);
+
+        // hd[0..2] = blockZ low 3 bytes
+        hd[0] = (byte) ((blockZ >> 16) & 0xFF);
+        hd[1] = (byte) ((blockZ >> 8) & 0xFF);
+        hd[2] = (byte) (blockZ & 0xFF);
+        // hd[3..5] = sizeX, sizeY, sizeZ = 0 (1×1×1 block region)
+        // hd[6..9] = compressedLength = 1526 (big-endian)
+        hd[8] = 0x05;
+        hd[9] = (byte) 0xF6;
+        // hd[10..] = valid zlib + zero padding (padding ignored by Inflater)
+        System.arraycopy(PHANTOM_CHUNK_ZLIB, 0, hd, 10, PHANTOM_CHUNK_ZLIB.length);
+
+        return new float[]{Float.intBitsToFloat(minBits), Float.intBitsToFloat(maxBits)};
+    }
+
     // --- Protocol bucket constants ---
     // Each constant maps to exactly one serialization path in buildChunkPackets().
     // Must be kept in sync with protocolBucket().
+    static final int BUCKET_ALPHAVER     = 1;  // Alphaver (Alpha flat format + extended PreChunk)
     static final int BUCKET_ALPHA       = 2;  // Pre-1.2.1 (Alpha/Beta flat format)
     static final int BUCKET_V28         = 3;  // 1.2.1+ (section-based, PreChunk required)
     static final int BUCKET_V39         = 4;  // 1.3.1+ (no PreChunk)
@@ -1116,7 +1179,11 @@ public class ChunkManager {
         }
 
         // Check chunk packet cache for TCP clients
-        int bucket = protocolBucket(player.getProtocolVersion());
+        // All v2 (Alpha 1.1.0) clients use BUCKET_ALPHAVER so they get the
+        // Alphaver-format PreChunk with extra fields set to zero. Standard Alpha
+        // 1.1.0 clients harmlessly decode the extra zero bytes as KeepAlive no-ops.
+        int bucket = (player.getProtocolVersion() == ProtocolVersion.ALPHA_1_1_0) ? BUCKET_ALPHAVER
+                : protocolBucket(player.getProtocolVersion());
         long key = cacheKey(chunk.getXPos(), chunk.getZPos(), bucket);
         FutureChunkPackets cached = chunkPacketCache.get(key);
 
@@ -1233,6 +1300,30 @@ public class ChunkManager {
                 ));
             } catch (IOException e) {
                 System.err.println("Failed to serialize v28 chunk (" + chunk.getXPos() + ", " + chunk.getZPos()
+                    + ") bucket " + bucket + ": " + e.getMessage());
+            }
+        } else if (bucket == BUCKET_ALPHAVER) {
+            // Alphaver: extended PreChunk with heightmap crafted so standard Alpha
+            // clients decode the extra bytes as a single phantom MapChunk, not ~1544
+            // KeepAlive no-ops (which would overwhelm the client's packet-per-tick limit).
+            byte[] hd = new byte[1536];
+            float[] heights = buildCompatHeightData(chunk.getXPos(), chunk.getZPos(), hd);
+            collectedPackets.add(new PreChunkPacketAlphaver(
+                    chunk.getXPos(), chunk.getZPos(), true,
+                    heights[0], heights[1], hd));
+            try {
+                byte[] compressed = chunk.serializeForAlphaProtocol();
+                int blockX = chunk.getXPos() * AlphaChunk.WIDTH;
+                int blockZ = chunk.getZPos() * AlphaChunk.DEPTH;
+                collectedPackets.add(new MapChunkPacket(
+                    blockX, (short) 0, blockZ,
+                    AlphaChunk.WIDTH - 1,
+                    AlphaChunk.HEIGHT - 1,
+                    AlphaChunk.DEPTH - 1,
+                    compressed
+                ));
+            } catch (IOException e) {
+                System.err.println("Failed to serialize alphaver chunk (" + chunk.getXPos() + ", " + chunk.getZPos()
                     + ") bucket " + bucket + ": " + e.getMessage());
             }
         } else {

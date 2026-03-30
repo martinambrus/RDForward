@@ -57,6 +57,7 @@ public class LoginC2SPacket implements Packet {
 
     private int protocolVersion;
     private String username;
+    private String unusedString;
     private long mapSeed;
     private byte dimension;
     private final boolean forceMapSeed;
@@ -144,7 +145,7 @@ public class LoginC2SPacket implements Packet {
             buf.readByte();  // worldHeight
             buf.readByte();  // maxPlayers
         } else {
-            McDataTypes.readStringAdaptive(buf); // unused
+            unusedString = McDataTypes.readStringAdaptive(buf);
             if (forceMapSeed || (protocolVersion >= 3 && protocolVersion < 10)) {
                 mapSeed = buf.readLong();
                 dimension = buf.readByte();
@@ -154,6 +155,7 @@ public class LoginC2SPacket implements Packet {
 
     public int getProtocolVersion() { return protocolVersion; }
     public String getUsername() { return username; }
+    public String getUnusedString() { return unusedString; }
     public long getMapSeed() { return mapSeed; }
     public byte getDimension() { return dimension; }
 }

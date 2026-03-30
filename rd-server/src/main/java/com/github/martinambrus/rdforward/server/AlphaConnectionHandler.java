@@ -69,6 +69,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
     private String pendingUsername;
     private boolean detectedString16 = false;
+    private boolean alphaverDetected = false;
     private ProtocolVersion clientVersion;
     private ConnectedPlayer player;
     private boolean loginComplete = false;
@@ -151,6 +152,18 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             }
             // Ignore other packets before login completes
             return;
+        }
+
+        // Reactive Alphaver detection: if ANY v2 client sends the 0x07 skin
+        // request (which only Alphaver does), apply Alphaver-specific C2S overrides.
+        if (!alphaverDetected && packet instanceof AlphaverSkinRequestPacket) {
+            alphaverDetected = true;
+            player.setAlphaverClient(true);
+            // Override C2S 0x05 decoder: Alphaver uses int item IDs (standard uses short)
+            RawPacketDecoder decoder = ctx.pipeline().get(RawPacketDecoder.class);
+            if (decoder != null) {
+                decoder.overridePacket(0x05, PlayerInventoryPacketAlphaver::new);
+            }
         }
 
         // Route gameplay packets
@@ -589,10 +602,17 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Send spawn position (block coords for compass). SpawnPosition (0x06) was
         // added in Alpha 1.1.0 (v2) alongside the compass item. v1 clients don't
         // have this packet and throw "Bad packet id 6" if they receive it.
+        //
+        // For ALL v2 clients, send Alphaver format with seed=0L. The extra 8 zero
+        // bytes are harmlessly decoded by standard Alpha 1.1.0 as 8 KeepAlive (0x00)
+        // no-ops, since KeepAlive has zero payload. This avoids needing to know
+        // whether the client is Alphaver before sending SpawnPosition.
         int spawnBlockX = (int) Math.floor(spawn.x);
         int spawnBlockY = (int) Math.floor(spawn.y);
         int spawnBlockZ = (int) Math.floor(spawn.z);
-        if (clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_1_0)) {
+        if (clientVersion == ProtocolVersion.ALPHA_1_1_0) {
+            ctx.writeAndFlush(new SpawnPositionPacketAlphaver(spawnBlockX, spawnBlockY, spawnBlockZ, 0L));
+        } else if (clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_1_0)) {
             ctx.writeAndFlush(new SpawnPositionPacket(spawnBlockX, spawnBlockY, spawnBlockZ));
         }
 
@@ -718,7 +738,8 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.pipeline().remove("loginTimeout");
         }
 
-        String familyLabel = clientVersion.getFamily() == ProtocolVersion.Family.RELEASE ? "Release"
+        String familyLabel = alphaverDetected ? "Alphaver"
+                : clientVersion.getFamily() == ProtocolVersion.Family.RELEASE ? "Release"
                 : clientVersion.getFamily() == ProtocolVersion.Family.BETA ? "Beta" : "Alpha";
         String ip = PlayerManager.extractIp(ctx.channel().remoteAddress());
         System.out.println(familyLabel + " login complete: " + player.getUsername()
