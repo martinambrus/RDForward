@@ -393,13 +393,14 @@ public final class GriefProtection {
             long banDuration = TEMPBAN_DURATIONS_MS[banIndex];
             String banDurationStr = BanManager.formatDuration(banDuration);
             BanManager.tempBanPlayer(player, banDuration);
+            data.wasGriefKicked = true;
             System.out.println("[GriefProtection] Temp-banned " + player
                     + " for " + banDurationStr + " (grief score "
                     + String.format("%.1f", data.griefScore)
                     + ", offense #" + (priorOffenses + 1) + ")");
             if (playerManager != null && serverWorld != null) {
                 playerManager.kickPlayer(player,
-                        "Do not grief. Use /griefinfo for details.",
+                        "Do not grief. Try /rtp to escape.",
                         serverWorld);
             }
             return EventResult.CANCEL;
@@ -411,18 +412,19 @@ public final class GriefProtection {
             rollbackChanges(player);
 
             data.hasBeenKicked = true;
+            data.wasGriefKicked = true;
             System.out.println("[GriefProtection] Kicking " + player
                     + " (grief score " + String.format("%.1f", data.griefScore) + ")");
             if (playerManager != null && serverWorld != null) {
                 playerManager.kickPlayer(player,
-                        "Do not grief. Use /griefinfo for details.",
+                        "Do not grief. Try /rtp to escape.",
                         serverWorld);
             }
             return EventResult.CANCEL;
 
         } else if (data.griefScore >= THRESHOLD_WARN && !data.hasBeenWarned) {
             data.hasBeenWarned = true;
-            warn(player, "Do not grief. Use /griefinfo for details.");
+            warn(player, "Do not grief. Use /rtp to teleport away.");
             return EventResult.PASS; // Allow this one but warn
         }
 
@@ -435,6 +437,18 @@ public final class GriefProtection {
 
     private static PlayerGriefData getOrCreateData(String player) {
         return playerData.computeIfAbsent(player, k -> new PlayerGriefData());
+    }
+
+    /**
+     * Check if a player was recently kicked or banned by grief protection.
+     * Clears the flag after reading (one-shot).
+     */
+    public static boolean wasGriefKicked(String player) {
+        PlayerGriefData data = playerData.get(player);
+        if (data == null) return false;
+        boolean was = data.wasGriefKicked;
+        data.wasGriefKicked = false;
+        return was;
     }
 
     /** Warn a player about low protection budget (>= 80% used). Throttled to once per 30s. */
@@ -620,6 +634,8 @@ public final class GriefProtection {
         volatile boolean hasBeenWarned = false;
         /** Whether the player has been kicked this session (prevent re-kick on reconnect decay). */
         volatile boolean hasBeenKicked = false;
+        /** Whether the player was kicked/banned by grief protection (for RTP hint on rejoin). */
+        volatile boolean wasGriefKicked = false;
         /** Timestamp of last rate-limit warning (throttle to once per 3s). */
         volatile long lastRateWarning = 0;
         /** Timestamp of last budget warning (throttle to once per 30s). */

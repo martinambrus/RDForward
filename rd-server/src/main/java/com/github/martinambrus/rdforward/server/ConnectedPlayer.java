@@ -69,6 +69,11 @@ public class ConnectedPlayer {
     // Alphaver client flag (based on Alpha 1.0.16 with modified packet formats)
     private volatile boolean alphaverClient = false;
 
+    // Teleport grace: skip chunk-boundary checks on movement packets for a
+    // short duration after teleport, giving old clients time to process the
+    // position + chunk data. Prevents false "stuck at unloaded chunk" kicks.
+    private volatile long teleportGraceUntil = 0;
+
     public ConnectedPlayer(byte playerId, String username, String uuid, Channel channel, ProtocolVersion protocolVersion) {
         this.playerId = playerId;
         this.username = username;
@@ -190,6 +195,20 @@ public class ConnectedPlayer {
     public ProtocolVersion getProtocolVersion() { return protocolVersion; }
     public boolean isAlphaverClient() { return alphaverClient; }
     public void setAlphaverClient(boolean alphaverClient) { this.alphaverClient = alphaverClient; }
+
+    /**
+     * Check if the player is currently in teleport grace period.
+     * During grace, movement handlers should skip chunk-boundary checks
+     * but still accept the movement (don't drop packets).
+     */
+    public boolean isInTeleportGrace() {
+        return System.currentTimeMillis() < teleportGraceUntil;
+    }
+
+    /** Start teleport grace for the given duration in milliseconds. */
+    public void setTeleportGrace(long durationMs) {
+        teleportGraceUntil = System.currentTimeMillis() + durationMs;
+    }
     public short getX() { return x; }
     public short getY() { return y; }
     public short getZ() { return z; }

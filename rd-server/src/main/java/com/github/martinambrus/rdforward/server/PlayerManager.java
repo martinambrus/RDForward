@@ -536,71 +536,91 @@ public class PlayerManager {
      */
     public void teleportPlayer(ConnectedPlayer target, double x, double eyeY, double z,
                                 float classicYaw, float pitch, ChunkManager chunkManager) {
+        // Time-based grace: skip chunk-boundary checks on movement for 2 seconds
+        // after teleport, giving old clients time to process position + chunk data.
+        target.setTeleportGrace(2000);
+
+        // Update server-side position immediately so movement handlers and
+        // updatePlayerChunks use the destination as the reference point.
         target.updatePositionDouble(x, eyeY, z, classicYaw, pitch);
 
+        // Pre-send a 3×3 ring of chunks around the destination synchronously
+        // so the client has terrain under their feet before the position snap.
+        chunkManager.preloadChunksForTeleport(target, x, z, 1);
+
+        // Schedule the position packet on the next event loop tick. This ensures
+        // the chunk data flushes to the wire first (Netty's channelReadComplete
+        // flush happens between ticks), so old clients have terrain before the
+        // camera snaps to the destination.
         double feetY = eyeY - PLAYER_EYE_HEIGHT;
         float alphaYaw = (classicYaw + 180.0f) % 360.0f;
-
         ProtocolVersion version = target.getProtocolVersion();
 
-        if (version == ProtocolVersion.BEDROCK && target.getMcpeSession() != null) {
-            // Legacy MCPE (v9-v91): route through MCPESessionWrapper's Classic→MCPE translator.
-            // PlayerTeleportPacket Y is eye-level (internal convention), codec adjusts for wire.
-            short fpX = (short) (x * 32);
-            short fpY = (short) (eyeY * 32);
-            short fpZ = (short) (z * 32);
-            int byteYaw = ((int) (classicYaw / 360.0f * 256.0f)) & 0xFF;
-            int bytePitch = ((int) (pitch / 360.0f * 256.0f)) & 0xFF;
-            target.getMcpeSession().translateAndSend(
-                    new PlayerTeleportPacket(target.getPlayerId(), fpX, fpY, fpZ, byteYaw, bytePitch));
-        } else if (version == ProtocolVersion.BEDROCK) {
-            // Bedrock MovePlayerPacket uses eye-level Y
-            float bedrockYaw = (classicYaw - 180.0f + 360.0f) % 360.0f;
-            MovePlayerPacket move = new MovePlayerPacket();
-            move.setRuntimeEntityId(target.getPlayerId() + 1);
-            move.setPosition(Vector3f.from((float) x, (float) eyeY, (float) z));
-            move.setRotation(Vector3f.from(pitch, bedrockYaw, bedrockYaw));
-            move.setMode(MovePlayerPacket.Mode.TELEPORT);
-            move.setTeleportationCause(MovePlayerPacket.TeleportationCause.UNKNOWN);
-            move.setOnGround(true);
-            target.getBedrockSession().getSession().sendPacket(move);
-        } else if (version.getFamily() == ProtocolVersion.Family.LCE) {
-            // LCE uses pre-Netty S2C 0x0D (same as Java 1.6.4): y=eyes, stance=feet
-            target.sendPacket(new PlayerPositionAndLookS2CPacket(
-                    x, eyeY, feetY, z, alphaYaw, pitch, true));
-        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
-            target.sendPacket(new NettyPlayerPositionS2CPacketV768(
-                    x, feetY, z, alphaYaw, pitch, teleportIdCounter.incrementAndGet()));
-        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_19_4)) {
-            target.sendPacket(new NettyPlayerPositionS2CPacketV762(
-                    x, feetY, z, alphaYaw, pitch, teleportIdCounter.incrementAndGet()));
-        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_17)) {
-            target.sendPacket(new NettyPlayerPositionS2CPacketV755(
-                    x, feetY, z, alphaYaw, pitch, teleportIdCounter.incrementAndGet()));
-        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_9)) {
-            target.sendPacket(new NettyPlayerPositionS2CPacketV109(
-                    x, feetY, z, alphaYaw, pitch, teleportIdCounter.incrementAndGet()));
-        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
-            target.sendPacket(new NettyPlayerPositionS2CPacketV47(
-                    x, feetY, z, alphaYaw, pitch));
-        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_7_2)) {
-            target.sendPacket(new NettyPlayerPositionS2CPacket(
-                    x, eyeY, z, alphaYaw, pitch, false));
+        Runnable sendPositionAndFinish = () -> {
+            if (version == ProtocolVersion.BEDROCK && target.getMcpeSession() != null) {
+                short fpX = (short) (x * 32);
+                short fpY = (short) (eyeY * 32);
+                short fpZ = (short) (z * 32);
+                int byteYaw = ((int) (classicYaw / 360.0f * 256.0f)) & 0xFF;
+                int bytePitch = ((int) (pitch / 360.0f * 256.0f)) & 0xFF;
+                target.getMcpeSession().translateAndSend(
+                        new PlayerTeleportPacket(target.getPlayerId(), fpX, fpY, fpZ, byteYaw, bytePitch));
+            } else if (version == ProtocolVersion.BEDROCK) {
+                float bedrockYaw = (classicYaw - 180.0f + 360.0f) % 360.0f;
+                MovePlayerPacket move = new MovePlayerPacket();
+                move.setRuntimeEntityId(target.getPlayerId() + 1);
+                move.setPosition(Vector3f.from((float) x, (float) eyeY, (float) z));
+                move.setRotation(Vector3f.from(pitch, bedrockYaw, bedrockYaw));
+                move.setMode(MovePlayerPacket.Mode.TELEPORT);
+                move.setTeleportationCause(MovePlayerPacket.TeleportationCause.UNKNOWN);
+                move.setOnGround(true);
+                target.getBedrockSession().getSession().sendPacket(move);
+            } else if (version.getFamily() == ProtocolVersion.Family.LCE) {
+                target.sendPacket(new PlayerPositionAndLookS2CPacket(
+                        x, eyeY, feetY, z, alphaYaw, pitch, true));
+            } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
+                target.sendPacket(new NettyPlayerPositionS2CPacketV768(
+                        x, feetY, z, alphaYaw, pitch, teleportIdCounter.incrementAndGet()));
+            } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_19_4)) {
+                target.sendPacket(new NettyPlayerPositionS2CPacketV762(
+                        x, feetY, z, alphaYaw, pitch, teleportIdCounter.incrementAndGet()));
+            } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_17)) {
+                target.sendPacket(new NettyPlayerPositionS2CPacketV755(
+                        x, feetY, z, alphaYaw, pitch, teleportIdCounter.incrementAndGet()));
+            } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_9)) {
+                target.sendPacket(new NettyPlayerPositionS2CPacketV109(
+                        x, feetY, z, alphaYaw, pitch, teleportIdCounter.incrementAndGet()));
+            } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+                target.sendPacket(new NettyPlayerPositionS2CPacketV47(
+                        x, feetY, z, alphaYaw, pitch));
+            } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_7_2)) {
+                target.sendPacket(new NettyPlayerPositionS2CPacket(
+                        x, eyeY, z, alphaYaw, pitch, false));
+            } else {
+                target.sendPacket(new PlayerPositionAndLookS2CPacket(
+                        x, eyeY, feetY, z, alphaYaw, pitch, true));
+            }
+
+            // Fill in remaining chunks beyond the 3×3 preload via the normal async cycle
+            chunkManager.updatePlayerChunks(target);
+
+            // Broadcast position to other players
+            short fixedX = (short) (x * 32);
+            short fixedY = (short) (eyeY * 32);
+            short fixedZ = (short) (z * 32);
+            byte byteYaw2 = (byte) ((classicYaw / 360.0f) * 256);
+            byte bytePitch2 = (byte) ((pitch / 360.0f) * 256);
+            broadcastPositionUpdate(target, fixedX, fixedY, fixedZ, byteYaw2, bytePitch2);
+        };
+
+        // For TCP clients, schedule on the next event loop tick so chunk data
+        // flushes before the position packet. For non-TCP clients, run inline.
+        Channel ch = target.getChannel();
+        if (ch != null && ch.eventLoop() != null) {
+            ch.eventLoop().execute(sendPositionAndFinish);
         } else {
-            // Pre-Netty (Alpha/Beta/pre-1.7): S2C y=eyes, stance=feet
-            target.sendPacket(new PlayerPositionAndLookS2CPacket(
-                    x, eyeY, feetY, z, alphaYaw, pitch, true));
+            sendPositionAndFinish.run();
         }
-
-        chunkManager.updatePlayerChunks(target);
-
-        // Broadcast position to other players
-        short fixedX = (short) (x * 32);
-        short fixedY = (short) (eyeY * 32);
-        short fixedZ = (short) (z * 32);
-        byte byteYaw = (byte) ((classicYaw / 360.0f) * 256);
-        byte bytePitch = (byte) ((pitch / 360.0f) * 256);
-        broadcastPositionUpdate(target, fixedX, fixedY, fixedZ, byteYaw, bytePitch);
     }
 
     /**

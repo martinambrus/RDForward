@@ -834,7 +834,7 @@ public class NettyPacketRegistry {
             // Shadow stale V109/V108 entries whose IDs shifted in 1.13.
             registerV393S2C(0x0F, NO_OP_FACTORY);  // V109: Chat; V393: Tab-Complete
             registerV393S2C(0x16, NO_OP_FACTORY);  // V109: SetSlot; V393: Set Cooldown
-            registerV393S2C(0x1A, NO_OP_FACTORY);  // V109: Disconnect; V393: Entity Status
+            registerV393S2C(0x1A, NO_OP_FACTORY);  // V109: Disconnect; V393: Named Sound Effect
             registerV393S2C(0x1D, new PacketFactory() { public Packet create() { return new NettyChangeGameStatePacket(); } });  // V109: UnloadChunk; V393: Change Game State
             registerV393S2C(0x1E, NO_OP_FACTORY);  // V109: ChangeGameState; V393: Open Horse Window
             registerV393S2C(0x20, NO_OP_FACTORY);  // V109: MapChunk; V393: Effect
@@ -878,7 +878,7 @@ public class NettyPacketRegistry {
             registerV393S2CReverse(NettyBlockChangePacketV393.class, 0x0B);
             // New mandatory S2C packets
             registerV393S2CReverse(DeclareCommandsPacketV393.class, 0x11);
-            registerV393S2CReverse(NettyEntityEventPacket.class, 0x1A);
+            registerV393S2CReverse(NettyEntityEventPacket.class, 0x1C);
             registerV393S2CReverse(UpdateRecipesPacketV393.class, 0x54);
             registerV393S2CReverse(UpdateTagsPacketV393.class, 0x55);
             // SpawnPlayer 0x05 is UNCHANGED from V338
@@ -1085,7 +1085,7 @@ public class NettyPacketRegistry {
             registerV573S2CReverse(NettyBlockChangePacketV477.class, 0x0C);
             registerV573S2CReverse(NettyChatS2CPacketV47.class, 0x0F);
             registerV573S2CReverse(DeclareCommandsPacketV393.class, 0x12);
-            registerV573S2CReverse(NettyEntityEventPacket.class, 0x1D);
+            registerV573S2CReverse(NettyEntityEventPacket.class, 0x1C);
             registerV573S2CReverse(ConfirmTransactionPacket.class, 0x13);
             registerV573S2CReverse(NettyWindowItemsPacketV47.class, 0x15);
             registerV573S2CReverse(NettySetSlotPacketV393.class, 0x17);
@@ -1513,7 +1513,7 @@ public class NettyPacketRegistry {
             registerV755S2CReverse(NettyBlockChangePacketV477.class, 0x0C);
             registerV755S2CReverse(NettyChatS2CPacketV735.class, 0x0F);
             registerV755S2CReverse(DeclareCommandsPacketV393.class, 0x12);
-            registerV755S2CReverse(NettyEntityEventPacket.class, 0x1C);
+            registerV755S2CReverse(NettyEntityEventPacket.class, 0x1B);
             registerV755S2CReverse(NettyWindowItemsPacketV47.class, 0x14);
             registerV755S2CReverse(NettySetSlotPacketV393.class, 0x16);
             registerV755S2CReverse(NettySetSlotPacketV404.class, 0x16);

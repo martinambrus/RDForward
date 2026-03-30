@@ -218,19 +218,22 @@ public class RDServer {
             int daysLeft = BlockOwnerRegistry.getDaysUntilExpiry(name);
             BlockOwnerRegistry.updateLastLogin(name);
             BlockOwnerRegistry.startSession(name);
+            ConnectedPlayer cp = playerManager.getPlayerByName(name);
             // Warn returning players whose blocks are close to expiring
-            if (daysLeft >= 0 && daysLeft <= 7) {
-                ConnectedPlayer cp = playerManager.getPlayerByName(name);
-                if (cp != null) {
-                    if (daysLeft == 0) {
-                        playerManager.sendChat(cp,
-                                "[Server] Your blocks have expired due to inactivity.");
-                    } else {
-                        playerManager.sendChat(cp,
-                                "[Server] Your blocks will expire in " + daysLeft
-                                + " day(s) of inactivity. Play to reset the timer.");
-                    }
+            if (daysLeft >= 0 && daysLeft <= 7 && cp != null) {
+                if (daysLeft == 0) {
+                    playerManager.sendChat(cp,
+                            "[Server] Your blocks have expired due to inactivity.");
+                } else {
+                    playerManager.sendChat(cp,
+                            "[Server] Your blocks will expire in " + daysLeft
+                            + " day(s) of inactivity. Play to reset the timer.");
                 }
+            }
+            // Remind players who were kicked/banned by grief protection about /rtp
+            if (GriefProtection.wasGriefKicked(name) && cp != null) {
+                playerManager.sendChat(cp,
+                        "[Server] Use /rtp to teleport away from traps or encasements.");
             }
         });
 
@@ -1063,6 +1066,75 @@ public class RDServer {
             }
         });
 
+        CommandRegistry.register("rtp", "Random teleport to a safe location", ctx -> {
+            if (ctx.isConsole()) {
+                ctx.reply("Cannot rtp from console");
+                return;
+            }
+            ConnectedPlayer sender = playerManager.getPlayerByName(ctx.getSenderName());
+            if (sender == null) {
+                ctx.reply("Player not found");
+                return;
+            }
+            // Find a random safe spot in the world
+            int worldW = world.getWidth();
+            int worldH = world.getHeight();
+            int worldD = world.getDepth();
+            java.util.Random rng = new java.util.Random();
+            // Margin from world edges to avoid boundary issues
+            int margin = 5;
+            int maxAttempts = 50;
+            for (int attempt = 0; attempt < maxAttempts; attempt++) {
+                int rx = margin + rng.nextInt(Math.max(1, worldW - 2 * margin));
+                int rz = margin + rng.nextInt(Math.max(1, worldD - 2 * margin));
+                // Find the highest solid block (surface) at this column
+                int surfaceY = -1;
+                for (int y = worldH - 1; y >= 0; y--) {
+                    if (world.getBlock(rx, y, rz) != 0) {
+                        surfaceY = y;
+                        break;
+                    }
+                }
+                if (surfaceY < 0 || surfaceY >= worldH - 3) continue;
+                int feetY = surfaceY + 1;
+                // Check two blocks of air at feet and head level
+                if (world.getBlock(rx, feetY, rz) != 0) continue;
+                if (world.getBlock(rx, feetY + 1, rz) != 0) continue;
+                // Check air on all four sides at both feet and head height
+                boolean sidesOk = true;
+                int[][] sides = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+                for (int[] side : sides) {
+                    int sx = rx + side[0], sz = rz + side[1];
+                    if (!world.inBounds(sx, feetY, sz)
+                            || world.getBlock(sx, feetY, sz) != 0
+                            || world.getBlock(sx, feetY + 1, sz) != 0) {
+                        sidesOk = false;
+                        break;
+                    }
+                }
+                if (!sidesOk) continue;
+                // Check sky visibility — no solid blocks above head
+                boolean skyVisible = true;
+                for (int y = feetY + 2; y < worldH; y++) {
+                    if (world.getBlock(rx, y, rz) != 0) {
+                        skyVisible = false;
+                        break;
+                    }
+                }
+                if (!skyVisible) continue;
+                // Safe spot found — teleport
+                double tx = rx + 0.5;
+                double tFeetY = feetY;
+                double tz = rz + 0.5;
+                double eyeY = tFeetY + (double) 1.62f;
+                playerManager.teleportPlayer(sender, tx, eyeY, tz,
+                        sender.getFloatYaw(), sender.getFloatPitch(), chunkManager);
+                ctx.reply("Teleported to " + rx + " " + feetY + " " + rz);
+                return;
+            }
+            ctx.reply("Could not find a safe spot. Try again.");
+        });
+
         CommandRegistry.registerOp("ban", "Ban a player", PermissionManager.OP_MANAGE, ctx -> {
             if (ctx.getArgs().length == 0) {
                 ctx.reply("Usage: ban <player> [reason]");
@@ -1560,6 +1632,7 @@ public class RDServer {
             ctx.reply("Breaking others' blocks gives grief points (5=warn, 10=kick, 20=tempban).");
             ctx.reply("");
             ctx.reply("Use \"/trust add <name>\" to allow <name> to break your blocks with no penalty.");
+            ctx.reply("Use /rtp to teleport away if trapped by another player's blocks.");
             ctx.reply("");
             ctx.reply("Protection budget: " + BlockOwnerRegistry.getRemainingBudget(ctx.getSenderName())
                     + " / " + BlockOwnerRegistry.getTotalBudget(ctx.getSenderName())

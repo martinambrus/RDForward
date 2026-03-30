@@ -1375,10 +1375,14 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             return;
         }
 
+        // During teleport grace, skip chunk-boundary checks to give old clients
+        // time to process chunk data. Accept the movement unconditionally.
+        boolean inGrace = player.isInTeleportGrace();
+
         // Reject movement into chunks not yet sent to this client.
         int destChunkX = (int) Math.floor(x) >> 4;
         int destChunkZ = (int) Math.floor(z) >> 4;
-        if (!chunkManager.isChunkSentToPlayer(player, destChunkX, destChunkZ)) {
+        if (!inGrace && !chunkManager.isChunkSentToPlayer(player, destChunkX, destChunkZ)) {
             if (stuckAtUnloadedChunk) {
                 return; // Already sent teleport-back, don't spam
             }

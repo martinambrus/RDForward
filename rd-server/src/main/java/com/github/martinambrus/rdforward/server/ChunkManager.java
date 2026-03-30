@@ -796,6 +796,76 @@ public class ChunkManager {
     }
 
     /**
+     * Pre-send chunks around a teleport destination synchronously so the client
+     * has terrain data before the position packet arrives. Uses blocking
+     * serialization to guarantee chunk data is in the channel buffer before
+     * the position write.
+     *
+     * @param player the player being teleported
+     * @param x      destination X (block coordinate as double)
+     * @param z      destination Z (block coordinate as double)
+     * @param radius chunk radius to preload (0 = 1×1, 1 = 3×3, 2 = 5×5, etc.)
+     */
+    public void preloadChunksForTeleport(ConnectedPlayer player, double x, double z, int radius) {
+        int destChunkX = ((int) Math.floor(x)) >> 4;
+        int destChunkZ = ((int) Math.floor(z)) >> 4;
+
+        Set<ChunkCoord> current = playerChunks.get(player);
+        if (current == null) {
+            current = ConcurrentHashMap.newKeySet();
+            playerChunks.put(player, current);
+        }
+
+        // 1.14+: update chunk tracking view center so client accepts chunks at the new location
+        if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_14)) {
+            player.setLastChunkCenter(destChunkX, destChunkZ);
+            player.sendPacket(new SetChunkCacheCenterPacketV477(destChunkX, destChunkZ));
+        }
+
+        // For Bedrock clients, update the chunk publisher area
+        if (player.getBedrockSession() != null) {
+            int blockX = (int) Math.floor(x);
+            int blockZ = (int) Math.floor(z);
+            player.getBedrockSession().sendChunkPublisherUpdate(
+                    blockX, player.getY() / 32, blockZ, viewDistance * 16);
+        }
+
+        boolean needsBatch = player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_20_2);
+        boolean batchStarted = false;
+        int sent = 0;
+
+        // Send chunks in spiral order (closest first) within the requested radius.
+        // Uses blocking sends — serialization completes synchronously if needed
+        // so the client has terrain data before the position packet.
+        ChunkCoord[] spiral = SpiralIterator.computeOffsets(radius);
+        for (ChunkCoord offset : spiral) {
+            ChunkCoord coord = new ChunkCoord(destChunkX + offset.getX(),
+                    destChunkZ + offset.getZ());
+            if (current.contains(coord)) continue; // already sent
+
+            AlphaChunk chunk = getOrLoadChunk(coord);
+            if (chunk != null) {
+                getOrCreateHolder(coord).addTracker(player);
+                if (needsBatch && !batchStarted) {
+                    player.writePacket(CHUNK_BATCH_START);
+                    batchStarted = true;
+                }
+                if (sendChunkToPlayerBlocking(player, chunk)) {
+                    current.add(coord);
+                    sent++;
+                }
+            }
+        }
+
+        if (batchStarted) {
+            player.writePacket(new ChunkBatchFinishedPacket(sent));
+        }
+        if (sent > 0) {
+            player.flushPackets();
+        }
+    }
+
+    /**
      * Send all chunks within view distance to a player.
      * Used during initial login for Alpha-mode clients.
      *
@@ -860,7 +930,9 @@ public class ChunkManager {
                     pendingQueue.add(coord);
                 }
             } else {
-                getOrLoadChunkAsync(coord);
+                if (cached == null) {
+                    getOrLoadChunkAsync(coord);
+                }
                 // Add tracker now so the chunk isn't unloaded while pending.
                 getOrCreateHolder(coord).addTracker(player);
                 if (pendingQueue == null) {
@@ -1271,6 +1343,63 @@ public class ChunkManager {
             return true;
         }
         return false; // will be delivered next tick
+    }
+
+    /**
+     * Send a chunk to a player, blocking until serialization completes if necessary.
+     * Used by teleport preloading where chunks MUST be sent before the position packet.
+     *
+     * <p>If the cache already has a ready entry, sends immediately (same as non-blocking).
+     * If serialization is in-flight, spin-waits up to 500ms for it to complete.
+     * If no cache entry exists, serializes synchronously on the calling thread.
+     */
+    private boolean sendChunkToPlayerBlocking(ConnectedPlayer player, AlphaChunk chunk) {
+        // Bedrock/MCPE: always synchronous
+        if (player.getBedrockSession() != null) {
+            player.getBedrockSession().sendChunkData(chunk);
+            return true;
+        }
+        if (player.getMcpeSession() != null) {
+            player.getMcpeSession().sendChunkData(serverWorld, chunk.getXPos(), chunk.getZPos());
+            return true;
+        }
+
+        int bucket = (player.getProtocolVersion() == ProtocolVersion.ALPHA_1_1_0) ? BUCKET_ALPHAVER
+                : protocolBucket(player.getProtocolVersion());
+        long key = cacheKey(chunk.getXPos(), chunk.getZPos(), bucket);
+        FutureChunkPackets cached = chunkPacketCache.get(key);
+
+        // Case 1: cache hit, already ready
+        if (cached != null && cached != FutureChunkPackets.EMPTY && cached.isReady()) {
+            for (Packet p : cached.getPackets()) {
+                player.writePacket(p);
+            }
+            return true;
+        }
+
+        // Case 2: serialization in-flight — wait for it
+        if (cached != null && cached != FutureChunkPackets.EMPTY) {
+            long deadline = System.nanoTime() + 500_000_000L; // 500ms
+            while (!cached.isReady() && System.nanoTime() < deadline) {
+                Thread.yield();
+            }
+            if (cached.isReady()) {
+                for (Packet p : cached.getPackets()) {
+                    player.writePacket(p);
+                }
+                return true;
+            }
+            // Timed out — fall through to synchronous serialization
+        }
+
+        // Case 3: no cache entry or timed out — serialize synchronously
+        Packet[] packets = buildChunkPackets(chunk, bucket);
+        FutureChunkPackets entry = new FutureChunkPackets(packets);
+        chunkPacketCache.put(key, entry);
+        for (Packet p : packets) {
+            player.writePacket(p);
+        }
+        return true;
     }
 
     /**
