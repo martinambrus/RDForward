@@ -187,7 +187,8 @@ public final class PermissionManager {
 
         // Level 0 — available to all players
         for (String cmd : new String[]{
-                "help", "list", "me", "msg", "tell", "w", "teammsg", "tm", "trigger", "seed"
+                "help", "list", "me", "msg", "tell", "w", "teammsg", "tm", "trigger", "seed",
+                "trust", "trustback", "griefinfo"
         }) {
             cmdPermsDefaults.setProperty(cmd, "0");
         }

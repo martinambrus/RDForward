@@ -22,15 +22,16 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>Breaking a block placed by another player: <b>+1 grief point</b></li>
  *   <li>Breaking natural/unplaced blocks (mining): <b>0 points</b></li>
  *   <li>Breaking your own blocks: <b>0 points</b></li>
+ *   <li>Breaking a trusted teammate's blocks: <b>0 points</b> (see {@link TeamManager})</li>
  *   <li>New players (&lt;30 min session time): <b>2x grief points</b></li>
  *   <li>Points decay: halved every 60 seconds of no grief activity</li>
  * </ul>
  *
  * <h3>Escalating responses</h3>
  * <ul>
- *   <li>Score 5: Warning message</li>
- *   <li>Score 10: Block interactions frozen for 5 seconds</li>
- *   <li>Score 20: Kicked from the server</li>
+ *   <li>Score 5: Warning message (mentions /griefinfo)</li>
+ *   <li>Score 10: Kicked from the server</li>
+ *   <li>Score 20: Temporarily banned (escalating: 30m / 90m / 24h)</li>
  * </ul>
  *
  * <h3>Mod bypass API</h3>
@@ -62,12 +63,10 @@ public final class GriefProtection {
 
     /** Grief score at which the player receives a warning. */
     private static final double THRESHOLD_WARN = 5.0;
-    /** Grief score at which the player's block interactions are frozen. */
-    private static final double THRESHOLD_FREEZE = 10.0;
     /** Grief score at which the player is kicked. */
-    private static final double THRESHOLD_KICK = 20.0;
-    /** Duration of interaction freeze in milliseconds. */
-    private static final long FREEZE_DURATION_MS = 5_000;
+    private static final double THRESHOLD_KICK = 10.0;
+    /** Grief score at which the player is temporarily banned. */
+    private static final double THRESHOLD_TEMPBAN = 20.0;
     /** Escalating tempban durations: 1st=30m, 2nd=90m, 3rd+=24h. */
     private static final long[] TEMPBAN_DURATIONS_MS = {
         30 * 60 * 1000L,   // 30 minutes
@@ -294,8 +293,8 @@ public final class GriefProtection {
         long packedPos = packPosition(x, y, z);
         String owner = blockOwners.get(packedPos);
 
-        // Natural/unplaced block or own block — no grief points
-        if (owner == null || owner.equals(player)) {
+        // Natural/unplaced block, own block, or trusted teammate — no grief points
+        if (owner == null || owner.equals(player) || TeamManager.isTeammate(owner, player)) {
             // Remove ownership on break
             if (owner != null) blockOwners.remove(packedPos);
             return EventResult.PASS;
@@ -327,52 +326,44 @@ public final class GriefProtection {
                 + ") — score: " + String.format("%.1f", data.griefScore));
 
         // Escalating responses
-        if (data.griefScore >= THRESHOLD_KICK) {
+        if (data.griefScore >= THRESHOLD_TEMPBAN) {
             String key = player.toLowerCase();
             int priorOffenses = offenseHistory.getOrDefault(key, 0);
             offenseHistory.put(key, priorOffenses + 1);
 
-            if (priorOffenses == 0) {
-                // First offense: kick only
-                System.out.println("[GriefProtection] Kicking " + player
-                        + " (grief score " + String.format("%.1f", data.griefScore)
-                        + ", 1st offense)");
-                if (playerManager != null && serverWorld != null) {
-                    playerManager.kickPlayer(player,
-                            "Excessive griefing detected", serverWorld);
-                }
-            } else {
-                // Repeat offense: escalating tempban
-                int banIndex = Math.min(priorOffenses - 1, TEMPBAN_DURATIONS_MS.length - 1);
-                long banDuration = TEMPBAN_DURATIONS_MS[banIndex];
-                String banDurationStr = BanManager.formatDuration(banDuration);
-                BanManager.tempBanPlayer(player, banDuration);
-                System.out.println("[GriefProtection] Temp-banned " + player
-                        + " for " + banDurationStr + " (grief score "
-                        + String.format("%.1f", data.griefScore)
-                        + ", offense #" + (priorOffenses + 1) + ")");
-                if (playerManager != null && serverWorld != null) {
-                    playerManager.kickPlayer(player,
-                            "Temporarily banned for griefing (" + banDurationStr + ")",
-                            serverWorld);
-                }
+            int banIndex = Math.min(priorOffenses, TEMPBAN_DURATIONS_MS.length - 1);
+            long banDuration = TEMPBAN_DURATIONS_MS[banIndex];
+            String banDurationStr = BanManager.formatDuration(banDuration);
+            BanManager.tempBanPlayer(player, banDuration);
+            System.out.println("[GriefProtection] Temp-banned " + player
+                    + " for " + banDurationStr + " (grief score "
+                    + String.format("%.1f", data.griefScore)
+                    + ", offense #" + (priorOffenses + 1) + ")");
+            if (playerManager != null && serverWorld != null) {
+                playerManager.kickPlayer(player,
+                        "Temporarily banned for griefing (" + banDurationStr
+                        + "). Do not break other players' builds."
+                        + " Use /griefinfo for help.",
+                        serverWorld);
             }
             return EventResult.CANCEL;
 
-        } else if (data.griefScore >= THRESHOLD_FREEZE && !data.isFrozen()) {
-            data.freezeUntil = System.currentTimeMillis() + FREEZE_DURATION_MS;
-            System.out.println("[GriefProtection] Froze " + player
-                    + " for " + (FREEZE_DURATION_MS / 1000) + "s (grief score "
-                    + String.format("%.1f", data.griefScore) + ")");
-            warn(player, "Block interactions frozen for "
-                    + (FREEZE_DURATION_MS / 1000)
-                    + " seconds — stop destroying other players' builds!");
+        } else if (data.griefScore >= THRESHOLD_KICK && !data.hasBeenKicked) {
+            data.hasBeenKicked = true;
+            System.out.println("[GriefProtection] Kicking " + player
+                    + " (grief score " + String.format("%.1f", data.griefScore) + ")");
+            if (playerManager != null && serverWorld != null) {
+                playerManager.kickPlayer(player,
+                        "Kicked for griefing. Do not break other players' builds."
+                        + " Use /griefinfo to learn about the trust system.",
+                        serverWorld);
+            }
             return EventResult.CANCEL;
 
         } else if (data.griefScore >= THRESHOLD_WARN && !data.hasBeenWarned) {
             data.hasBeenWarned = true;
-            warn(player, "Warning: do not destroy other players' builds. "
-                    + "Continued griefing will result in a kick.");
+            warn(player, "Warning: do not break other players' builds."
+                    + " Use /griefinfo to learn about the trust system.");
             return EventResult.PASS; // Allow this one but warn
         }
 
@@ -417,6 +408,8 @@ public final class GriefProtection {
         volatile long freezeUntil = 0;
         /** Whether the warning threshold message has been sent. */
         volatile boolean hasBeenWarned = false;
+        /** Whether the player has been kicked this session (prevent re-kick on reconnect decay). */
+        volatile boolean hasBeenKicked = false;
         /** Timestamp of last rate-limit warning (throttle to once per 3s). */
         volatile long lastRateWarning = 0;
         /** When this player's session started (for new-player detection). */

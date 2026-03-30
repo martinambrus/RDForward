@@ -174,8 +174,16 @@ The server includes a smart grief detection system that uses behavioral scoring 
 | Score | Response |
 |-------|----------|
 | 5 | Warning message |
-| 10 | Block interactions frozen for 5 seconds |
-| 20 | Kicked from the server |
+| 10 | Kicked from the server |
+| 20 | Temporarily banned (30m / 90m / 24h escalating) |
+
+**Trust system** — players working together can exempt each other from grief scoring:
+- `/trust add <player>` — let a player break your blocks without triggering protection
+- `/trust remove <player>` — revoke trust
+- `/trust list` — show your current trust list
+- `/griefinfo` — explain the system in-game
+
+Trust is asymmetric: if Alice trusts Bob, Bob can break Alice's blocks freely, but not vice versa unless Bob also trusts Alice.
 
 Operators are exempt from grief checks. Mods performing bulk block operations can bypass all checks via `GriefProtection.runBypassed(() -> { ... })`.
 

@@ -6,6 +6,7 @@ import com.github.martinambrus.rdforward.protocol.codec.PacketEncoder;
 import com.github.martinambrus.rdforward.protocol.packet.PacketDirection;
 import com.github.martinambrus.rdforward.server.api.BanManager;
 import com.github.martinambrus.rdforward.server.api.GriefProtection;
+import com.github.martinambrus.rdforward.server.api.TeamManager;
 import com.github.martinambrus.rdforward.server.api.WhitelistManager;
 import com.github.martinambrus.rdforward.server.api.CommandRegistry;
 import com.github.martinambrus.rdforward.server.api.PermissionManager;
@@ -202,6 +203,7 @@ public class RDServer {
         PermissionManager.load(dataDir);
         BanManager.load(dataDir);
         WhitelistManager.load(dataDir);
+        TeamManager.load(dataDir);
         Scheduler.init();
         chunkManager.initAsyncDelivery();
         registerBuiltInCommands();
@@ -1412,6 +1414,123 @@ public class RDServer {
                 System.err.println("[convert_to_rd_world] " + e.getMessage());
                 e.printStackTrace();
             }
+        });
+
+        // /trust — manage your trusted teammates (available to all players)
+        CommandRegistry.register("trust", "Manage your trusted teammates", ctx -> {
+            if (ctx.isConsole()) {
+                ctx.reply("This command can only be used by players");
+                return;
+            }
+            String[] args = ctx.getArgs();
+            if (args.length == 0) {
+                ctx.reply("Usage: /trust <add|remove|list> [player]");
+                return;
+            }
+            String sub = args[0].toLowerCase();
+            switch (sub) {
+                case "add":
+                    if (args.length < 2) {
+                        ctx.reply("Usage: /trust add <player>");
+                        return;
+                    }
+                    if (args[1].equalsIgnoreCase(ctx.getSenderName())) {
+                        ctx.reply("You cannot add yourself to your trust list");
+                        return;
+                    }
+                    if (TeamManager.addTeammate(ctx.getSenderName(), args[1])) {
+                        ctx.reply("Added " + args[1] + " to your trust list."
+                                + " They can now break your blocks without triggering grief protection.");
+                        // Notify the trusted player so they can reciprocate
+                        TeamManager.setLastTruster(args[1], ctx.getSenderName());
+                        ConnectedPlayer target = playerManager.getPlayerByName(args[1]);
+                        if (target != null) {
+                            playerManager.sendChat(target,
+                                    ctx.getSenderName() + " added you to their trust list."
+                                    + " To trust them back, type: /trustback");
+                        }
+                    } else {
+                        ctx.reply(args[1] + " is already in your trust list");
+                    }
+                    break;
+                case "remove":
+                    if (args.length < 2) {
+                        ctx.reply("Usage: /trust remove <player or number>");
+                        return;
+                    }
+                    // Support numbered removal from /trust list
+                    String removeTarget = args[1];
+                    try {
+                        int idx = Integer.parseInt(args[1]);
+                        java.util.List<String> indexed = TeamManager.getTeammatesList(ctx.getSenderName());
+                        if (idx < 1 || idx > indexed.size()) {
+                            ctx.reply("Invalid number. Use /trust list to see valid numbers (1-" + indexed.size() + ").");
+                            return;
+                        }
+                        removeTarget = indexed.get(idx - 1);
+                    } catch (NumberFormatException ignored) {
+                        // Not a number — treat as player name
+                    }
+                    if (TeamManager.removeTeammate(ctx.getSenderName(), removeTarget)) {
+                        ctx.reply("Removed " + removeTarget + " from your trust list");
+                    } else {
+                        ctx.reply(removeTarget + " is not in your trust list");
+                    }
+                    break;
+                case "list":
+                    java.util.List<String> teammateList = TeamManager.getTeammatesList(ctx.getSenderName());
+                    if (teammateList.isEmpty()) {
+                        ctx.reply("Your trust list is empty. Use /trust add <player> to add someone.");
+                    } else {
+                        StringBuilder sb = new StringBuilder("Trusted players:");
+                        for (int i = 0; i < teammateList.size(); i++) {
+                            sb.append(" ").append(i + 1).append(". ").append(teammateList.get(i));
+                        }
+                        ctx.reply(sb.toString());
+                    }
+                    break;
+                default:
+                    ctx.reply("Usage: /trust <add|remove|list> [player]");
+                    break;
+            }
+        });
+
+        // /trustback — trust back the last player who trusted you
+        CommandRegistry.register("trustback", "Trust back the last player who trusted you", ctx -> {
+            if (ctx.isConsole()) {
+                ctx.reply("This command can only be used by players");
+                return;
+            }
+            String truster = TeamManager.getLastTruster(ctx.getSenderName());
+            if (truster == null) {
+                ctx.reply("Nobody has added you to their trust list yet.");
+                return;
+            }
+            if (truster.equalsIgnoreCase(ctx.getSenderName())) {
+                ctx.reply("Cannot trust yourself");
+                return;
+            }
+            if (TeamManager.addTeammate(ctx.getSenderName(), truster)) {
+                ctx.reply("Added " + truster + " to your trust list. Trust is now mutual!");
+                ConnectedPlayer target = playerManager.getPlayerByName(truster);
+                if (target != null) {
+                    playerManager.sendChat(target,
+                            ctx.getSenderName() + " trusted you back! Trust is now mutual.");
+                }
+            } else {
+                ctx.reply(truster + " is already in your trust list");
+            }
+        });
+
+        // /griefinfo — grief protection information (available to all players)
+        CommandRegistry.register("griefinfo", "Grief protection information", ctx -> {
+            ctx.reply("=== Grief Protection ===");
+            ctx.reply("This server tracks who places blocks. Breaking another"
+                    + " player's blocks gives you grief points.");
+            ctx.reply("Score 5: Warning | Score 10: Kick | Score 20: Temp ban");
+            ctx.reply("To let friends break your blocks: /trust add <player>");
+            ctx.reply("Trusted players won't trigger grief protection on your blocks.");
+            ctx.reply("Type /trust list to see your current trust list.");
         });
     }
 
