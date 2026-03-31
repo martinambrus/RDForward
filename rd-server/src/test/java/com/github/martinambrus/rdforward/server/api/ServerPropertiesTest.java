@@ -219,6 +219,36 @@ class ServerPropertiesTest {
         }
     }
 
+    // --- Grief protection config ---
+
+    @Test
+    void griefProtectionDefaults() {
+        ServerProperties.load(tempDir);
+        assertEquals(200, ServerProperties.getGriefInitialBudget());
+        assertEquals(100, ServerProperties.getGriefAccrualPerHour());
+        assertEquals(50_000, ServerProperties.getGriefMaxBudget());
+        assertEquals(30, ServerProperties.getGriefExpiryDays());
+        assertEquals(5.0, ServerProperties.getGriefThresholdWarn());
+        assertEquals(10.0, ServerProperties.getGriefThresholdKick());
+        assertEquals(20.0, ServerProperties.getGriefThresholdTempban());
+    }
+
+    @Test
+    void griefProtectionConfigOverride() throws IOException {
+        writeProps("grief-initial-budget=500\ngrief-accrual-per-hour=200\n"
+                + "grief-max-budget=100000\ngrief-expiry-days=60\n"
+                + "grief-threshold-warn=3.0\ngrief-threshold-kick=8.0\n"
+                + "grief-threshold-tempban=15.0\n");
+        ServerProperties.load(tempDir);
+        assertEquals(500, ServerProperties.getGriefInitialBudget());
+        assertEquals(200, ServerProperties.getGriefAccrualPerHour());
+        assertEquals(100_000, ServerProperties.getGriefMaxBudget());
+        assertEquals(60, ServerProperties.getGriefExpiryDays());
+        assertEquals(3.0, ServerProperties.getGriefThresholdWarn());
+        assertEquals(8.0, ServerProperties.getGriefThresholdKick());
+        assertEquals(15.0, ServerProperties.getGriefThresholdTempban());
+    }
+
     // --- Helpers ---
 
     private void writeProps(String content) throws IOException {

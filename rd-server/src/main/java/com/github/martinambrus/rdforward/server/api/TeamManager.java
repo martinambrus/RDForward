@@ -187,5 +187,6 @@ public final class TeamManager {
     static void clearForTesting() {
         teams.clear();
         lastTruster.clear();
+        dirty = false;
     }
 }
