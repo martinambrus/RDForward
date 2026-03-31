@@ -603,14 +603,17 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // added in Alpha 1.1.0 (v2) alongside the compass item. v1 clients don't
         // have this packet and throw "Bad packet id 6" if they receive it.
         //
-        // Only send the Alphaver-extended SpawnPositionPacketAlphaver (with seed field)
-        // to clients that have been positively detected as Alphaver. Standard Alpha 1.1.0
-        // clients receive the regular SpawnPositionPacket to avoid relying on the fragile
-        // assumption that extra trailing bytes decode as harmless KeepAlive no-ops.
+        // ALL v2 clients get SpawnPositionPacketAlphaver with seed=0L. The extra 8
+        // zero bytes are harmlessly decoded by standard Alpha 1.1.0 as 8 KeepAlive
+        // (0x00) no-ops — KeepAlive has zero payload. Alphaver clients read the seed
+        // field properly. We CANNOT gate on alphaverDetected here because the 0x07
+        // skin request that triggers detection arrives AFTER the login sequence.
+        // Sending the short SpawnPositionPacket to an Alphaver client would cause it
+        // to consume 8 bytes from the next packet, misaligning the TCP stream.
         int spawnBlockX = (int) Math.floor(spawn.x);
         int spawnBlockY = (int) Math.floor(spawn.y);
         int spawnBlockZ = (int) Math.floor(spawn.z);
-        if (alphaverDetected) {
+        if (clientVersion == ProtocolVersion.ALPHA_1_1_0) {
             ctx.writeAndFlush(new SpawnPositionPacketAlphaver(spawnBlockX, spawnBlockY, spawnBlockZ, 0L));
         } else if (clientVersion.isAtLeast(ProtocolVersion.ALPHA_1_1_0)) {
             ctx.writeAndFlush(new SpawnPositionPacket(spawnBlockX, spawnBlockY, spawnBlockZ));

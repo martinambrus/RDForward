@@ -36,6 +36,7 @@ public final class DebugLog {
     public static final String BLOCK = "BLOCK";
     public static final String POS   = "POS";
     public static final String CHUNK = "CHUNK";
+    public static final String PKT   = "PKT";
 
     /** Minutes before debug auto-disables. */
     public static final int AUTO_OFF_MINUTES = 15;
@@ -47,6 +48,7 @@ public final class DebugLog {
     private static volatile boolean blocks = true;
     private static volatile boolean pos    = true;
     private static volatile boolean chunks = true;
+    private static volatile boolean packets = false;
 
     // Verbose mode — disables sampling/rate-limiting so every event is logged
     private static volatile boolean verbose = false;
@@ -61,9 +63,10 @@ public final class DebugLog {
     // Guards — call sites use these to short-circuit before any work
     // ========================================================================
 
-    public static boolean blocks() { return enabled && checkAutoOff() && blocks; }
-    public static boolean pos()    { return enabled && checkAutoOff() && pos; }
-    public static boolean chunks() { return enabled && checkAutoOff() && chunks; }
+    public static boolean blocks()  { return enabled && checkAutoOff() && blocks; }
+    public static boolean pos()     { return enabled && checkAutoOff() && pos; }
+    public static boolean chunks()  { return enabled && checkAutoOff() && chunks; }
+    public static boolean packets() { return enabled && checkAutoOff() && packets; }
 
     /**
      * Check if logging is active for a specific player.
@@ -118,16 +121,23 @@ public final class DebugLog {
         } else {
             autoOffAt = 0;
         }
+        // Sync packet trace with master toggle
+        com.github.martinambrus.rdforward.protocol.codec.RawPacketEncoder.setTracePackets(on && packets);
     }
     public static boolean isEnabled()         { return enabled; }
 
-    public static void setBlocks(boolean on) { blocks = on; }
-    public static void setPos(boolean on)    { pos = on; }
-    public static void setChunks(boolean on) { chunks = on; }
+    public static void setBlocks(boolean on)  { blocks = on; }
+    public static void setPos(boolean on)     { pos = on; }
+    public static void setChunks(boolean on)  { chunks = on; }
+    public static void setPackets(boolean on) {
+        packets = on;
+        com.github.martinambrus.rdforward.protocol.codec.RawPacketEncoder.setTracePackets(on && enabled);
+    }
 
-    public static boolean isBlocks() { return blocks; }
-    public static boolean isPos()    { return pos; }
-    public static boolean isChunks() { return chunks; }
+    public static boolean isBlocks()  { return blocks; }
+    public static boolean isPos()     { return pos; }
+    public static boolean isChunks()  { return chunks; }
+    public static boolean isPackets() { return packets; }
 
     public static void setVerbose(boolean on) { verbose = on; }
     public static boolean isVerbose()         { return verbose; }
@@ -178,6 +188,7 @@ public final class DebugLog {
         if (deadline > 0 && System.currentTimeMillis() >= deadline) {
             enabled = false;
             autoOffAt = 0;
+            com.github.martinambrus.rdforward.protocol.codec.RawPacketEncoder.setTracePackets(false);
             System.out.println("[Server] Debug auto-disabled after " + AUTO_OFF_MINUTES + " minutes");
             return false;
         }
@@ -194,8 +205,10 @@ public final class DebugLog {
         blocks = true;
         pos = true;
         chunks = true;
+        packets = false;
         verbose = false;
         playerFilter = null;
         autoOffAt = 0;
+        com.github.martinambrus.rdforward.protocol.codec.RawPacketEncoder.setTracePackets(false);
     }
 }

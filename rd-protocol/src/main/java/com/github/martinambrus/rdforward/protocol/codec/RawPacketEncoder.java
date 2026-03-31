@@ -18,14 +18,36 @@ public class RawPacketEncoder extends MessageToByteEncoder<Packet> {
 
     private volatile boolean useString16 = false;
 
+    /** Global packet trace flag — set via /debug packets command. */
+    private static volatile boolean tracePackets = false;
+
+    public static void setTracePackets(boolean on) { tracePackets = on; }
+    public static boolean isTracePackets() { return tracePackets; }
+
     @Override
     protected void encode(ChannelHandlerContext ctx, Packet packet, ByteBuf out) {
-        out.writeByte(packet.getPacketId());
-        McDataTypes.STRING16_MODE.set(useString16);
-        try {
-            packet.write(out);
-        } finally {
-            McDataTypes.STRING16_MODE.remove();
+        if (tracePackets) {
+            int startIdx = out.writerIndex();
+            out.writeByte(packet.getPacketId());
+            McDataTypes.STRING16_MODE.set(useString16);
+            try {
+                packet.write(out);
+            } finally {
+                McDataTypes.STRING16_MODE.remove();
+            }
+            int size = out.writerIndex() - startIdx;
+            System.out.println("[DEBUG/PKT] S2C 0x"
+                    + Integer.toHexString(packet.getPacketId())
+                    + " (" + packet.getClass().getSimpleName() + ") "
+                    + size + "B → " + ctx.channel().remoteAddress());
+        } else {
+            out.writeByte(packet.getPacketId());
+            McDataTypes.STRING16_MODE.set(useString16);
+            try {
+                packet.write(out);
+            } finally {
+                McDataTypes.STRING16_MODE.remove();
+            }
         }
     }
 

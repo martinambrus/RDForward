@@ -876,6 +876,7 @@ public class RDServer {
                     DebugLog.setEnabled(true);
                     ctx.reply("[Server] Debug ON (blocks=" + DebugLog.isBlocks()
                             + " pos=" + DebugLog.isPos() + " chunks=" + DebugLog.isChunks()
+                            + " packets=" + DebugLog.isPackets()
                             + " players=" + DebugLog.getPlayerFilterDesc() + ")"
                             + DebugLog.getAutoOffDesc());
                     break;
@@ -887,7 +888,7 @@ public class RDServer {
                     ctx.reply("[Server] Debug: " + (DebugLog.isEnabled() ? "ON" + DebugLog.getAutoOffDesc() : "OFF"));
                     ctx.reply("[Server]   blocks=" + DebugLog.isBlocks()
                             + " pos=" + DebugLog.isPos() + " chunks=" + DebugLog.isChunks()
-                            + " verbose=" + DebugLog.isVerbose());
+                            + " packets=" + DebugLog.isPackets() + " verbose=" + DebugLog.isVerbose());
                     ctx.reply("[Server]   players=" + DebugLog.getPlayerFilterDesc());
                     break;
                 case "player":
@@ -918,7 +919,8 @@ public class RDServer {
                     break;
                 case "blocks":
                 case "pos":
-                case "chunks": {
+                case "chunks":
+                case "packets": {
                     if (args.length >= 2) {
                         String toggle = args[1].toLowerCase();
                         if (!"on".equals(toggle) && !"off".equals(toggle)) {
@@ -928,6 +930,7 @@ public class RDServer {
                         boolean val = "on".equals(toggle);
                         if ("blocks".equals(sub)) DebugLog.setBlocks(val);
                         else if ("pos".equals(sub)) DebugLog.setPos(val);
+                        else if ("packets".equals(sub)) DebugLog.setPackets(val);
                         else DebugLog.setChunks(val);
                         ctx.reply("[Server] Debug " + sub + " " + (val ? "ON" : "OFF"));
                     } else {
@@ -935,6 +938,7 @@ public class RDServer {
                         boolean current;
                         if ("blocks".equals(sub)) { current = DebugLog.isBlocks(); DebugLog.setBlocks(!current); }
                         else if ("pos".equals(sub)) { current = DebugLog.isPos(); DebugLog.setPos(!current); }
+                        else if ("packets".equals(sub)) { current = DebugLog.isPackets(); DebugLog.setPackets(!current); }
                         else { current = DebugLog.isChunks(); DebugLog.setChunks(!current); }
                         ctx.reply("[Server] Debug " + sub + " " + (!current ? "ON" : "OFF"));
                     }
@@ -951,16 +955,17 @@ public class RDServer {
                     ctx.reply("  debug player <name>   — add <name> to filter (additive)");
                     ctx.reply("  debug player -<name>  — remove <name> from filter");
                     ctx.reply("  debug player *        — clear filter (log all players)");
-                    ctx.reply("  debug blocks [on|off] — toggle block place/break logging");
-                    ctx.reply("  debug pos [on|off]    — toggle position/teleport logging");
-                    ctx.reply("  debug chunks [on|off] — toggle chunk send/load logging");
-                    ctx.reply("  debug verbose         — toggle verbose mode (log every block change, no sampling)");
-                    ctx.reply("  Categories: BLOCK (place/break/grief), POS (move/teleport/save), CHUNK (load/send)");
+                    ctx.reply("  debug blocks [on|off]  — toggle block place/break logging");
+                    ctx.reply("  debug pos [on|off]     — toggle position/teleport logging");
+                    ctx.reply("  debug chunks [on|off]  — toggle chunk send/load logging");
+                    ctx.reply("  debug packets [on|off] — toggle S2C packet trace (WARNING: very verbose)");
+                    ctx.reply("  debug verbose          — toggle verbose mode (log every block change, no sampling)");
+                    ctx.reply("  Categories: BLOCK (place/break/grief), POS (move/teleport/save), CHUNK (load/send), PKT (S2C wire)");
                     ctx.reply("  State does not survive restarts.");
                     ctx.reply("  Example: debug player Alice  then  debug on");
                     break;
                 default:
-                    ctx.reply("Usage: debug [on|off|status|info|verbose|player <name>|blocks|pos|chunks] [on|off]");
+                    ctx.reply("Usage: debug [on|off|status|info|verbose|player <name>|blocks|pos|chunks|packets] [on|off]");
                     break;
             }
         });
