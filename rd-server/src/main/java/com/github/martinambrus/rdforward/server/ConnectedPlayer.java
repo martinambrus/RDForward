@@ -148,6 +148,11 @@ public class ConnectedPlayer {
         this.z = (short) (z * 32);
         this.yaw = (byte) ((yaw / 360.0f) * 256);
         this.pitch = (byte) ((pitch / 360.0f) * 256);
+        if (DebugLog.pos() && DebugLog.forPlayer(this.username)) {
+            DebugLog.log(DebugLog.POS, username + " updatePosDouble"
+                    + " d=(" + String.format("%.2f,%.2f,%.2f", x, y, z) + ")"
+                    + " f=(" + this.x + "," + this.y + "," + this.z + ")");
+        }
     }
 
     public void disconnect() {

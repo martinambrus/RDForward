@@ -119,6 +119,9 @@ public class ChunkManager {
     /** Tracks which chunks have been modified since last save. */
     private final Set<ChunkCoord> dirtyChunks = ConcurrentHashMap.newKeySet();
 
+    // Debug: sampling counter for setBlock logs to avoid flooding during bulk operations
+    private long debugSetBlockCounter = 0;
+
     /**
      * Reference to the authoritative Classic/RD world for block data overlay.
      * When non-null, chunks are ephemeral projections of this world and are
@@ -760,6 +763,14 @@ public class ChunkManager {
                     blockX, player.getY() / 32, blockZ, viewDistance * 16);
         }
 
+        if (DebugLog.chunks() && DebugLog.forPlayer(player.getUsername())) {
+            if (!toLoad.isEmpty() || !toUnload.isEmpty()) {
+                DebugLog.log(DebugLog.CHUNK, player.getUsername()
+                        + " center=(" + centerChunkX + "," + centerChunkZ + ")"
+                        + " load=" + toLoad.size() + " unload=" + toUnload.size());
+            }
+        }
+
         // Send cached chunks immediately; queue uncached for async generation
         sendOrQueueChunks(player, toLoad, current);
     }
@@ -809,6 +820,11 @@ public class ChunkManager {
     public void preloadChunksForTeleport(ConnectedPlayer player, double x, double z, int radius) {
         int destChunkX = ((int) Math.floor(x)) >> 4;
         int destChunkZ = ((int) Math.floor(z)) >> 4;
+
+        if (DebugLog.chunks() && DebugLog.forPlayer(player.getUsername())) {
+            DebugLog.log(DebugLog.CHUNK, player.getUsername() + " preloadTP"
+                    + " dest=(" + destChunkX + "," + destChunkZ + ") radius=" + radius);
+        }
 
         Set<ChunkCoord> current = playerChunks.computeIfAbsent(player, k -> ConcurrentHashMap.newKeySet());
 
@@ -874,6 +890,12 @@ public class ChunkManager {
 
         int centerChunkX = blockX >> 4;
         int centerChunkZ = blockZ >> 4;
+
+        if (DebugLog.chunks() && DebugLog.forPlayer(player.getUsername())) {
+            DebugLog.log(DebugLog.CHUNK, player.getUsername() + " sendInitial"
+                    + " center=(" + centerChunkX + "," + centerChunkZ + ")"
+                    + " viewDist=" + viewDistance);
+        }
 
         // Build chunk list in spiral order (closest first, no sort needed)
         ChunkCoord[] spiral = SpiralIterator.computeOffsets(viewDistance);
@@ -1057,6 +1079,24 @@ public class ChunkManager {
             return false;
         }
         chunk.setBlock(localX, blockY, localZ, blockType & 0xFF);
+        if (DebugLog.blocks()) {
+            if (DebugLog.isVerbose()) {
+                DebugLog.log(DebugLog.BLOCK, "CM.setBlock (" + blockX + "," + blockY + "," + blockZ
+                        + ") chunk=(" + coord.getX() + "," + coord.getZ()
+                        + ") local=(" + localX + "," + blockY + "," + localZ
+                        + ") " + oldBlock + "->" + (blockType & 0xFF));
+            } else {
+                // Sample every 100th call to avoid log flooding during bulk operations
+                long count = debugSetBlockCounter++;
+                if (count % 100 == 0) {
+                    DebugLog.log(DebugLog.BLOCK, "CM.setBlock (" + blockX + "," + blockY + "," + blockZ
+                            + ") chunk=(" + coord.getX() + "," + coord.getZ()
+                            + ") local=(" + localX + "," + blockY + "," + localZ
+                            + ") " + oldBlock + "->" + (blockType & 0xFF)
+                            + (count > 0 ? " [sampled, #" + count + "]" : ""));
+                }
+            }
+        }
         if (serverWorld == null) {
             dirtyChunks.add(coord);
         }
@@ -1360,6 +1400,14 @@ public class ChunkManager {
                 : protocolBucket(player.getProtocolVersion());
         long key = cacheKey(chunk.getXPos(), chunk.getZPos(), bucket);
         FutureChunkPackets cached = chunkPacketCache.get(key);
+
+        if (DebugLog.chunks() && DebugLog.forPlayer(player.getUsername())) {
+            String cacheStatus = (cached != null && cached != FutureChunkPackets.EMPTY && cached.isReady()) ? "HIT"
+                    : (cached != null && cached != FutureChunkPackets.EMPTY) ? "PENDING" : "MISS";
+            DebugLog.log(DebugLog.CHUNK, player.getUsername() + " sendBlocking"
+                    + " chunk=(" + chunk.getXPos() + "," + chunk.getZPos() + ")"
+                    + " bucket=" + bucket + " cache=" + cacheStatus);
+        }
 
         // Case 1: cache hit, already ready
         if (cached != null && cached != FutureChunkPackets.EMPTY && cached.isReady()) {

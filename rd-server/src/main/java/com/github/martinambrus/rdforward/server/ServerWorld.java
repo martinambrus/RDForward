@@ -582,6 +582,11 @@ public class ServerWorld {
             } else {
                 fx = p.getX(); fy = p.getY(); fz = p.getZ();
             }
+            if (DebugLog.pos() && DebugLog.forPlayer(p.getUsername())) {
+                DebugLog.log(DebugLog.POS, "save " + p.getUsername()
+                        + " d=(" + String.format("%.2f,%.2f,%.2f", p.getDoubleX(), p.getDoubleY(), p.getDoubleZ()) + ")"
+                        + " f=(" + fx + "," + fy + "," + fz + ")");
+            }
             // In online mode, use UUID as save key; in offline mode, use username
             String key = (online && p.getUuid() != null) ? p.getUuid() : p.getUsername();
             playerPositionCache.put(key, new short[]{
@@ -667,18 +672,24 @@ public class ServerWorld {
      * Returns null if no saved position exists.
      */
     public short[] getSavedPlayerPosition(String username, String uuid) {
+        if (username == null && uuid == null) return null;
         Map<String, short[]> saved = loadPlayerPositions();
         String trimmedName = (username != null) ? username.trim() : null;
+        short[] result;
         if (ServerProperties.isOnlineMode() && uuid != null) {
-            short[] pos = saved.get(uuid);
-            if (pos != null) return pos;
-            // Fallback: position may have been saved under username before online mode was enabled
-            return saved.get(trimmedName);
+            result = saved.get(uuid);
+            if (result == null && trimmedName != null) result = saved.get(trimmedName);
+        } else if (trimmedName != null) {
+            result = saved.get(trimmedName);
+            if (result == null && uuid != null) result = saved.get(uuid);
+        } else {
+            result = saved.get(uuid);
         }
-        short[] pos = saved.get(trimmedName);
-        if (pos != null) return pos;
-        // Fallback: position may have been saved under UUID before offline mode was enabled
-        return (uuid != null) ? saved.get(uuid) : null;
+        if (DebugLog.pos() && username != null && DebugLog.forPlayer(username)) {
+            DebugLog.log(DebugLog.POS, "restore " + username
+                    + (result != null ? " f=(" + result[0] + "," + result[1] + "," + result[2] + ")" : " (no saved pos)"));
+        }
+        return result;
     }
 
     /**

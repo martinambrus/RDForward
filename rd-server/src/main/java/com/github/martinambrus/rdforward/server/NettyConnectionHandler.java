@@ -1449,6 +1449,11 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             byte existingBlock = world.getBlock(x, y, z);
             if (existingBlock == 0) return;
 
+            if (DebugLog.blocks() && DebugLog.forPlayer(player.getUsername())) {
+                DebugLog.log(DebugLog.BLOCK, player.getUsername() + " DIG status=" + packet.getStatus()
+                        + " at (" + x + "," + y + "," + z + ") existing=" + (existingBlock & 0xFF));
+            }
+
             EventResult result = ServerEvents.BLOCK_BREAK.invoker()
                     .onBlockBreak(player.getUsername(), x, y, z, existingBlock & 0xFF);
             if (result == EventResult.CANCEL) {
@@ -1546,6 +1551,13 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
 
         short itemId = packet.getItemId();
+
+        if (DebugLog.blocks() && DebugLog.forPlayer(player.getUsername())) {
+            DebugLog.log(DebugLog.BLOCK, player.getUsername() + " PLACE raw=(" + x + "," + y + "," + z
+                    + ") face=" + direction + " target=(" + targetX + "," + targetY + "," + targetZ
+                    + ") item=" + itemId);
+        }
+
         if (itemId < 0) return;
 
         // Creative mode: accept any block ID (1-MAX_BLOCK_ID)

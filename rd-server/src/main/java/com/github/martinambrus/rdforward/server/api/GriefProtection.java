@@ -3,6 +3,7 @@ package com.github.martinambrus.rdforward.server.api;
 import com.github.martinambrus.rdforward.protocol.event.EventResult;
 import com.github.martinambrus.rdforward.server.ChunkManager;
 import com.github.martinambrus.rdforward.server.ConnectedPlayer;
+import com.github.martinambrus.rdforward.server.DebugLog;
 import com.github.martinambrus.rdforward.server.PlayerManager;
 import com.github.martinambrus.rdforward.server.ServerWorld;
 import com.github.martinambrus.rdforward.server.event.ServerEvents;
@@ -176,14 +177,24 @@ public final class GriefProtection {
             // Reach distance check (non-OPs only)
             if (!isOp) {
                 EventResult reachResult = checkReach(player, x, y, z, false);
-                if (reachResult == EventResult.CANCEL) return reachResult;
+                if (reachResult == EventResult.CANCEL) {
+                    if (DebugLog.blocks() && DebugLog.forPlayer(player)) {
+                        DebugLog.log(DebugLog.BLOCK, player + " PLACE DENIED reach (" + x + "," + y + "," + z + ")");
+                    }
+                    return reachResult;
+                }
             }
 
             // Rate limit check FIRST (before consuming budget) so a rate-limited
             // placement doesn't permanently leak a protection slot.
             if (!isOp) {
                 EventResult rateResult = checkRateLimit(player);
-                if (rateResult == EventResult.CANCEL) return rateResult;
+                if (rateResult == EventResult.CANCEL) {
+                    if (DebugLog.blocks() && DebugLog.forPlayer(player)) {
+                        DebugLog.log(DebugLog.BLOCK, player + " PLACE DENIED rateLimit (" + x + "," + y + "," + z + ")");
+                    }
+                    return rateResult;
+                }
             }
 
             // Capture old state for rollback
@@ -209,6 +220,14 @@ public final class GriefProtection {
                 }
             } else {
                 notifyBudgetDepleted(player);
+            }
+
+            if (DebugLog.blocks() && DebugLog.forPlayer(player)) {
+                String oldOwner = oldOwnerId > 0 ? BlockOwnerRegistry.getPlayerName(oldOwnerId) : "none";
+                String newOwner = newOwnerId > 0 ? BlockOwnerRegistry.getPlayerName(newOwnerId) : "unprotected";
+                DebugLog.log(DebugLog.BLOCK, player + " PLACE (" + x + "," + y + "," + z
+                        + ") old=" + (oldBlockType & 0xFF) + "/" + oldOwner
+                        + " new_owner=" + newOwner);
             }
 
             // Record for rollback (non-OPs only)
@@ -239,13 +258,25 @@ public final class GriefProtection {
 
             // Reach distance check
             EventResult reachResult = checkReach(player, x, y, z, true);
-            if (reachResult == EventResult.CANCEL) return reachResult;
+            if (reachResult == EventResult.CANCEL) {
+                if (DebugLog.blocks() && DebugLog.forPlayer(player)) {
+                    DebugLog.log(DebugLog.BLOCK, player + " BREAK DENIED reach (" + x + "," + y + "," + z + ")");
+                }
+                return reachResult;
+            }
 
             // Capture old state BEFORE checkGriefScore modifies ownership
             byte oldBlockType = getBlockType(x, y, z);
             short oldOwnerId = getBlockOwnerId(x, y, z);
 
             EventResult result = checkGriefScore(player, x, y, z);
+
+            if (DebugLog.blocks() && DebugLog.forPlayer(player)) {
+                String ownerName = oldOwnerId > 0 ? BlockOwnerRegistry.getPlayerName(oldOwnerId) : "none";
+                DebugLog.log(DebugLog.BLOCK, player + " BREAK (" + x + "," + y + "," + z
+                        + ") type=" + (oldBlockType & 0xFF) + " owner=" + ownerName
+                        + " result=" + result);
+            }
 
             // Record for rollback only if the block will actually be broken (PASS)
             if (result == EventResult.PASS) {

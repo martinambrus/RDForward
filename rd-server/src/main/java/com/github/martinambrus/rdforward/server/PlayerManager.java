@@ -538,7 +538,14 @@ public class PlayerManager {
                                 float classicYaw, float pitch, ChunkManager chunkManager) {
         // Time-based grace: skip chunk-boundary checks on movement for 2 seconds
         // after teleport, giving old clients time to process position + chunk data.
-        target.setTeleportGrace(2000);
+        long graceMs = 2000;
+        target.setTeleportGrace(graceMs);
+
+        if (DebugLog.pos() && DebugLog.forPlayer(target.getUsername())) {
+            DebugLog.log(DebugLog.POS, "teleport " + target.getUsername()
+                    + " to (" + String.format("%.2f,%.2f,%.2f", x, eyeY, z) + ")"
+                    + " yaw=" + String.format("%.1f", classicYaw) + " grace=" + graceMs + "ms");
+        }
 
         // Update server-side position immediately so movement handlers and
         // updatePlayerChunks use the destination as the reference point.
@@ -634,7 +641,14 @@ public class PlayerManager {
             int dx = fixedX - player.getLastBroadcastX();
             int dy = fixedY - player.getLastBroadcastY();
             int dz = fixedZ - player.getLastBroadcastZ();
-            if (dx >= -128 && dx <= 127 && dy >= -128 && dy <= 127 && dz >= -128 && dz <= 127) {
+            boolean useDelta = dx >= -128 && dx <= 127 && dy >= -128 && dy <= 127 && dz >= -128 && dz <= 127;
+            if (DebugLog.pos() && DebugLog.forPlayer(player.getUsername())) {
+                DebugLog.log(DebugLog.POS, "broadcast " + player.getUsername()
+                        + " fixed=(" + fixedX + "," + fixedY + "," + fixedZ + ")"
+                        + " delta=(" + dx + "," + dy + "," + dz + ")"
+                        + " type=" + (useDelta ? "RELATIVE" : "ABSOLUTE"));
+            }
+            if (useDelta) {
                 broadcastPacketExcept(
                         new PositionOrientationUpdatePacket(player.getPlayerId(),
                                 dx, dy, dz, byteYaw & 0xFF, bytePitch & 0xFF),

@@ -858,6 +858,113 @@ public class RDServer {
             }
         });
 
+        CommandRegistry.registerOp("debug", "Toggle debug logging (console only)", PermissionManager.OP_ADMIN, ctx -> {
+            if (!ctx.isConsole()) {
+                ctx.reply("Debug commands are console-only.");
+                return;
+            }
+            String[] args = ctx.getArgs();
+            if (args.length == 0) {
+                // Toggle
+                DebugLog.setEnabled(!DebugLog.isEnabled());
+                ctx.reply("[Server] Debug " + (DebugLog.isEnabled() ? "ON" + DebugLog.getAutoOffDesc() : "OFF"));
+                return;
+            }
+            String sub = args[0].toLowerCase();
+            switch (sub) {
+                case "on":
+                    DebugLog.setEnabled(true);
+                    ctx.reply("[Server] Debug ON (blocks=" + DebugLog.isBlocks()
+                            + " pos=" + DebugLog.isPos() + " chunks=" + DebugLog.isChunks()
+                            + " players=" + DebugLog.getPlayerFilterDesc() + ")"
+                            + DebugLog.getAutoOffDesc());
+                    break;
+                case "off":
+                    DebugLog.setEnabled(false);
+                    ctx.reply("[Server] Debug OFF");
+                    break;
+                case "status":
+                    ctx.reply("[Server] Debug: " + (DebugLog.isEnabled() ? "ON" + DebugLog.getAutoOffDesc() : "OFF"));
+                    ctx.reply("[Server]   blocks=" + DebugLog.isBlocks()
+                            + " pos=" + DebugLog.isPos() + " chunks=" + DebugLog.isChunks()
+                            + " verbose=" + DebugLog.isVerbose());
+                    ctx.reply("[Server]   players=" + DebugLog.getPlayerFilterDesc());
+                    break;
+                case "player":
+                    if (args.length < 2) {
+                        ctx.reply("Usage: debug player <name|*|-name>");
+                        return;
+                    }
+                    String pArg = args[1];
+                    if ("*".equals(pArg)) {
+                        DebugLog.clearPlayerFilter();
+                        ctx.reply("[Server] Debug player filter cleared (logging all players)");
+                    } else if (pArg.startsWith("-")) {
+                        String removeName = pArg.substring(1);
+                        if (removeName.isEmpty()) {
+                            ctx.reply("Usage: debug player -<name>");
+                            return;
+                        }
+                        DebugLog.removePlayerFilter(removeName);
+                        ctx.reply("[Server] Removed " + removeName + " from debug filter (players=" + DebugLog.getPlayerFilterDesc() + ")");
+                    } else {
+                        if (pArg.isEmpty()) {
+                            ctx.reply("Usage: debug player <name>");
+                            return;
+                        }
+                        DebugLog.addPlayerFilter(pArg);
+                        ctx.reply("[Server] Added " + pArg + " to debug filter (players=" + DebugLog.getPlayerFilterDesc() + ")");
+                    }
+                    break;
+                case "blocks":
+                case "pos":
+                case "chunks": {
+                    if (args.length >= 2) {
+                        String toggle = args[1].toLowerCase();
+                        if (!"on".equals(toggle) && !"off".equals(toggle)) {
+                            ctx.reply("Usage: debug " + sub + " on|off");
+                            return;
+                        }
+                        boolean val = "on".equals(toggle);
+                        if ("blocks".equals(sub)) DebugLog.setBlocks(val);
+                        else if ("pos".equals(sub)) DebugLog.setPos(val);
+                        else DebugLog.setChunks(val);
+                        ctx.reply("[Server] Debug " + sub + " " + (val ? "ON" : "OFF"));
+                    } else {
+                        // No value — toggle
+                        boolean current;
+                        if ("blocks".equals(sub)) { current = DebugLog.isBlocks(); DebugLog.setBlocks(!current); }
+                        else if ("pos".equals(sub)) { current = DebugLog.isPos(); DebugLog.setPos(!current); }
+                        else { current = DebugLog.isChunks(); DebugLog.setChunks(!current); }
+                        ctx.reply("[Server] Debug " + sub + " " + (!current ? "ON" : "OFF"));
+                    }
+                    break;
+                }
+                case "verbose":
+                    DebugLog.setVerbose(!DebugLog.isVerbose());
+                    ctx.reply("[Server] Debug verbose " + (DebugLog.isVerbose() ? "ON — logging ALL block changes (no sampling)" : "OFF — sampling enabled"));
+                    break;
+                case "info":
+                    ctx.reply("[Server] Debug logging — usage guide:");
+                    ctx.reply("  debug on/off          — master toggle (auto-off after " + DebugLog.AUTO_OFF_MINUTES + " min)");
+                    ctx.reply("  debug status          — show current state");
+                    ctx.reply("  debug player <name>   — add <name> to filter (additive)");
+                    ctx.reply("  debug player -<name>  — remove <name> from filter");
+                    ctx.reply("  debug player *        — clear filter (log all players)");
+                    ctx.reply("  debug blocks [on|off] — toggle block place/break logging");
+                    ctx.reply("  debug pos [on|off]    — toggle position/teleport logging");
+                    ctx.reply("  debug chunks [on|off] — toggle chunk send/load logging");
+                    ctx.reply("  debug verbose         — toggle verbose mode (log every block change, no sampling)");
+                    ctx.reply("  Categories: BLOCK (place/break/grief), POS (move/teleport/save), CHUNK (load/send)");
+                    ctx.reply("  State does not survive restarts.");
+                    ctx.reply("  Example: debug player Alice  then  debug on");
+                    break;
+                default:
+                    ctx.reply("Usage: debug [on|off|status|info|verbose|player <name>|blocks|pos|chunks] [on|off]");
+                    break;
+            }
+        });
+
         CommandRegistry.registerOp("say", "Broadcast a message to all players", PermissionManager.OP_CHEAT, ctx -> {
             if (ctx.getArgs().length == 0) {
                 ctx.reply("Usage: say <message>");

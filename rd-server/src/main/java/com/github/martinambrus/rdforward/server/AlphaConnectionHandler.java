@@ -838,6 +838,14 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // time to process chunk data. Accept the movement unconditionally.
         boolean inGrace = player.isInTeleportGrace();
 
+        if (DebugLog.pos() && DebugLog.forPlayer(player.getUsername())) {
+            DebugLog.log(DebugLog.POS, player.getUsername() + " move feet=("
+                    + String.format("%.2f,%.2f,%.2f", x, y, z)
+                    + ") eyeY=" + String.format("%.2f", eyeY)
+                    + " yaw=" + String.format("%.1f", yaw)
+                    + " grace=" + inGrace);
+        }
+
         // Reject movement into chunks not yet sent to this client.
         int destChunkX = (int) Math.floor(x) >> 4;
         int destChunkZ = (int) Math.floor(z) >> 4;
@@ -1022,6 +1030,11 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             byte existingBlock = world.getBlock(x, y, z);
             if (existingBlock == 0) return;
 
+            if (DebugLog.blocks() && DebugLog.forPlayer(player.getUsername())) {
+                DebugLog.log(DebugLog.BLOCK, player.getUsername() + " DIG status=" + packet.getStatus()
+                        + " at (" + x + "," + y + "," + z + ") existing=" + (existingBlock & 0xFF));
+            }
+
             EventResult result = ServerEvents.BLOCK_BREAK.invoker()
                     .onBlockBreak(player.getUsername(), x, y, z, existingBlock & 0xFF);
             if (result == EventResult.CANCEL) {
@@ -1058,6 +1071,13 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         }
 
         short itemId = packet.getItemId();
+
+        if (DebugLog.blocks() && DebugLog.forPlayer(player.getUsername())) {
+            DebugLog.log(DebugLog.BLOCK, player.getUsername() + " PLACE raw=(" + x + "," + y + "," + z
+                    + ") face=" + direction + " target=(" + targetX + "," + targetY + "," + targetZ
+                    + ") item=" + itemId);
+        }
+
         if (itemId < 0) return;
 
         // Validate the item being placed.
