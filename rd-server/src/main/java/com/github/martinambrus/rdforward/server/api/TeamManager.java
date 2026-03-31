@@ -34,6 +34,7 @@ public final class TeamManager {
     /** Tracks the last player who trusted each player (for /trustback). */
     private static final ConcurrentHashMap<String, String> lastTruster = new ConcurrentHashMap<>();
     private static volatile File teamsFile = new File(TEAMS_FILE_NAME);
+    private static volatile boolean dirty = false;
 
     /**
      * Load teams from disk, resolving file relative to dataDir.
@@ -69,6 +70,11 @@ public final class TeamManager {
         }
     }
 
+    /** Save only if there are unsaved changes. */
+    public static void saveIfDirty() {
+        if (dirty) save();
+    }
+
     private static synchronized void save() {
         File tempFile = new File(teamsFile.getParentFile(), TEAMS_FILE_NAME + ".tmp");
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(tempFile))) {
@@ -101,6 +107,7 @@ public final class TeamManager {
                 System.err.println("Failed to save teams file: " + e2.getMessage());
             }
         }
+        dirty = false;
     }
 
     /**
@@ -111,7 +118,7 @@ public final class TeamManager {
         Set<String> members = teams.computeIfAbsent(owner.toLowerCase(),
                 k -> ConcurrentHashMap.newKeySet());
         if (members.add(teammate.toLowerCase())) {
-            save();
+            dirty = true;
             return true;
         }
         return false;
@@ -125,7 +132,7 @@ public final class TeamManager {
         Set<String> members = teams.get(owner.toLowerCase());
         if (members != null && members.remove(teammate.toLowerCase())) {
             if (members.isEmpty()) teams.remove(owner.toLowerCase());
-            save();
+            dirty = true;
             return true;
         }
         return false;

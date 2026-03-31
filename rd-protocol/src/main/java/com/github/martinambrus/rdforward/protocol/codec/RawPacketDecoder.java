@@ -32,9 +32,6 @@ public class RawPacketDecoder extends ByteToMessageDecoder {
     private volatile boolean useString16 = false;
     private volatile boolean skipUnknownPackets = false;
 
-    // Temporary debug flag — set true to log all inbound packet IDs.
-    private volatile boolean debugLog = false;
-
     /** Per-connection packet factory overrides, keyed by packet ID. */
     private final Map<Integer, PacketRegistry.PacketFactory> packetOverrides = new HashMap<>();
 
@@ -75,11 +72,6 @@ public class RawPacketDecoder extends ByteToMessageDecoder {
                 in.resetReaderIndex();
                 ctx.close();
                 return;
-            }
-
-            if (debugLog) {
-                System.err.println("[C2S] 0x" + Integer.toHexString(packetId)
-                        + " " + packet.getClass().getSimpleName());
             }
 
             try {
@@ -133,10 +125,6 @@ public class RawPacketDecoder extends ByteToMessageDecoder {
      */
     public void setSkipUnknownPackets(boolean skip) {
         this.skipUnknownPackets = skip;
-    }
-
-    public void setDebugLog(boolean debugLog) {
-        this.debugLog = debugLog;
     }
 
     /**

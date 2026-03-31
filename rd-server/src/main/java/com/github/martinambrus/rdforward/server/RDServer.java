@@ -743,6 +743,7 @@ public class RDServer {
         world.save();
         world.savePlayers(playerManager.getAllPlayers());
         BlockOwnerRegistry.saveIfDirty();
+        TeamManager.saveIfDirty();
         chunkManager.shutdown();
 
         if (udpFrontEndChannel != null) {
@@ -866,6 +867,7 @@ public class RDServer {
             world.save();
             world.savePlayers(playerManager.getAllPlayers());
             BlockOwnerRegistry.saveIfDirty();
+            TeamManager.saveIfDirty();
             chunkManager.saveAllDirty();
             ctx.reply("World saved.");
         });

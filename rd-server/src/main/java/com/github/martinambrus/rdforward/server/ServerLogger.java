@@ -31,6 +31,10 @@ public final class ServerLogger {
     /** The date string (yyyy-MM-dd) when the current log file was started. */
     private static volatile String currentLogDay;
 
+    /** Millis timestamp at which the next midnight rotation check is needed.
+     *  Avoids creating Date objects and formatting on every log line. */
+    private static volatile long nextRotationCheckMs;
+
     /**
      * Initialize logging. Tees stdout and stderr to logs/latest.log with
      * timestamps. Rotates the previous latest.log to a dated filename
@@ -56,6 +60,7 @@ public final class ServerLogger {
             compressOldLogs(dir);
 
             currentLogDay = DAY_FORMAT.format(new Date());
+            nextRotationCheckMs = computeNextMidnightMs();
             logFileStream = new FileOutputStream(new File(dir, CURRENT_LOG), false);
 
             PrintStream teeOut = new PrintStream(new TeeOutputStream(System.out, logFileStream, false), true);
@@ -84,10 +89,16 @@ public final class ServerLogger {
     /**
      * Check if the date has rolled past midnight and rotate if so.
      * Called from the write path; must be called under synchronization.
+     * Uses a cached timestamp to avoid Date allocation on every log line.
      */
-    private static void rotatIfNeeded() {
+    private static void rotateIfNeeded() {
+        if (System.currentTimeMillis() < nextRotationCheckMs) return;
         String today = DAY_FORMAT.format(new Date());
-        if (today.equals(currentLogDay)) return;
+        if (today.equals(currentLogDay)) {
+            // Not midnight yet — push the next check forward 60 seconds
+            nextRotationCheckMs = System.currentTimeMillis() + 60_000;
+            return;
+        }
 
         try {
             // Flush and close the current log
@@ -115,6 +126,7 @@ public final class ServerLogger {
 
             // Open new log file
             currentLogDay = today;
+            nextRotationCheckMs = computeNextMidnightMs();
             logFileStream = new FileOutputStream(new File(dir, CURRENT_LOG), false);
         } catch (IOException e) {
             // If rotation fails, try to keep logging to the existing file
@@ -124,6 +136,19 @@ public final class ServerLogger {
                 // Nothing we can do
             }
         }
+    }
+
+    /**
+     * Compute millis timestamp for the next midnight (local time).
+     */
+    private static long computeNextMidnightMs() {
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        cal.add(java.util.Calendar.DAY_OF_MONTH, 1);
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 0);
+        cal.set(java.util.Calendar.MINUTE, 0);
+        cal.set(java.util.Calendar.SECOND, 0);
+        cal.set(java.util.Calendar.MILLISECOND, 0);
+        return cal.getTimeInMillis();
     }
 
     /**
@@ -177,7 +202,7 @@ public final class ServerLogger {
         public synchronized void write(int b) throws IOException {
             console.write(b);
             if (atLineStart) {
-                rotatIfNeeded();
+                rotateIfNeeded();
                 writeTimestamp();
                 atLineStart = false;
             }
@@ -192,7 +217,7 @@ public final class ServerLogger {
             console.write(buf, off, len);
             for (int i = off; i < off + len; i++) {
                 if (atLineStart) {
-                    rotatIfNeeded();
+                    rotateIfNeeded();
                     writeTimestamp();
                     atLineStart = false;
                 }
