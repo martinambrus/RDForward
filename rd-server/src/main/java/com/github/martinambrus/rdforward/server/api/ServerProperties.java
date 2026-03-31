@@ -415,6 +415,43 @@ public final class ServerProperties {
         return Math.max(0, getInt("max-block-changes-per-second", 17));
     }
 
+    // --- Grief protection config ---
+
+    public static int getGriefInitialBudget() {
+        warnIfNotLoaded();
+        return Math.max(0, getInt("grief-initial-budget", 200));
+    }
+
+    public static int getGriefAccrualPerHour() {
+        warnIfNotLoaded();
+        return Math.max(0, getInt("grief-accrual-per-hour", 100));
+    }
+
+    public static int getGriefMaxBudget() {
+        warnIfNotLoaded();
+        return Math.max(1, getInt("grief-max-budget", 50000));
+    }
+
+    public static int getGriefExpiryDays() {
+        warnIfNotLoaded();
+        return Math.max(1, getInt("grief-expiry-days", 30));
+    }
+
+    public static double getGriefThresholdWarn() {
+        warnIfNotLoaded();
+        return Double.parseDouble(props.getProperty("grief-threshold-warn", "5.0").trim());
+    }
+
+    public static double getGriefThresholdKick() {
+        warnIfNotLoaded();
+        return Double.parseDouble(props.getProperty("grief-threshold-kick", "10.0").trim());
+    }
+
+    public static double getGriefThresholdTempban() {
+        warnIfNotLoaded();
+        return Double.parseDouble(props.getProperty("grief-threshold-tempban", "20.0").trim());
+    }
+
     /**
      * Get the locked world time, or -1 if time should flow normally.
      * Value is in MC ticks: 0=dawn, 6000=noon, 12000=sunset, 18000=midnight.

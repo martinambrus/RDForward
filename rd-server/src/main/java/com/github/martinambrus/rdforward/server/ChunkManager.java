@@ -810,11 +810,7 @@ public class ChunkManager {
         int destChunkX = ((int) Math.floor(x)) >> 4;
         int destChunkZ = ((int) Math.floor(z)) >> 4;
 
-        Set<ChunkCoord> current = playerChunks.get(player);
-        if (current == null) {
-            current = ConcurrentHashMap.newKeySet();
-            playerChunks.put(player, current);
-        }
+        Set<ChunkCoord> current = playerChunks.computeIfAbsent(player, k -> ConcurrentHashMap.newKeySet());
 
         // 1.14+: update chunk tracking view center so client accepts chunks at the new location
         if (player.getProtocolVersion().isAtLeast(ProtocolVersion.RELEASE_1_14)) {
@@ -874,11 +870,7 @@ public class ChunkManager {
      * @param blockZ player block Z position
      */
     public void sendInitialChunks(ConnectedPlayer player, int blockX, int blockZ) {
-        Set<ChunkCoord> current = playerChunks.get(player);
-        if (current == null) {
-            current = ConcurrentHashMap.newKeySet();
-            playerChunks.put(player, current);
-        }
+        Set<ChunkCoord> current = playerChunks.computeIfAbsent(player, k -> ConcurrentHashMap.newKeySet());
 
         int centerChunkX = blockX >> 4;
         int centerChunkZ = blockZ >> 4;
@@ -1393,13 +1385,21 @@ public class ChunkManager {
         }
 
         // Case 3: no cache entry or timed out — serialize synchronously
-        Packet[] packets = buildChunkPackets(chunk, bucket);
-        FutureChunkPackets entry = new FutureChunkPackets(packets);
-        chunkPacketCache.put(key, entry);
-        for (Packet p : packets) {
-            player.writePacket(p);
+        try {
+            Packet[] packets = buildChunkPackets(chunk, bucket);
+            FutureChunkPackets entry = new FutureChunkPackets(packets);
+            chunkPacketCache.put(key, entry);
+            for (Packet p : packets) {
+                player.writePacket(p);
+            }
+            return true;
+        } catch (Exception e) {
+            System.err.println("[ChunkManager] Failed to build chunk packets for chunk ("
+                    + chunk.getXPos() + ", " + chunk.getZPos() + ") bucket " + bucket
+                    + " for player " + player.getUsername() + ": " + e.getMessage());
+            e.printStackTrace();
+            return false;
         }
-        return true;
     }
 
     /**

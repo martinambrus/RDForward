@@ -54,7 +54,7 @@ public class AlphaChunk {
      * 0 = unowned. Lazily allocated on first {@link #setBlockOwnerId} call
      * to save memory for chunks with no player-placed blocks.
      */
-    private short[] blockOwnerIds;
+    private volatile short[] blockOwnerIds;
 
     /**
      * Cached canonical chunk data (version-independent intermediate form).

@@ -100,7 +100,7 @@ public class PlayerManager {
         if (username == null || username.trim().isEmpty()) {
             username = "Player" + (id + 1);
         } else {
-            username = username.trim();
+            username = sanitizeUsername(username.trim());
         }
 
         // Ensure uniqueness: if the name is taken, append a number
@@ -652,6 +652,23 @@ public class PlayerManager {
                     player);
         }
         player.updateLastBroadcastPosition(fixedX, fixedY, fixedZ, byteYaw, bytePitch);
+    }
+
+    /**
+     * Sanitize a username to prevent file format injection.
+     * Strips characters that are delimiters in persistence files (colon, comma,
+     * newline) and limits length. Keeps alphanumeric, underscore, hyphen, and period.
+     */
+    static String sanitizeUsername(String name) {
+        StringBuilder sb = new StringBuilder(Math.min(name.length(), 32));
+        for (int i = 0; i < name.length() && sb.length() < 32; i++) {
+            char c = name.charAt(i);
+            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+                    || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.') {
+                sb.append(c);
+            }
+        }
+        return sb.length() > 0 ? sb.toString() : "Player";
     }
 
     /**

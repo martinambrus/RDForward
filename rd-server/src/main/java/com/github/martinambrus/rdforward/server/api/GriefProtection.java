@@ -63,12 +63,12 @@ public final class GriefProtection {
     // Thresholds
     // ========================================================================
 
-    /** Grief score at which the player receives a warning. */
-    private static final double THRESHOLD_WARN = 5.0;
-    /** Grief score at which the player is kicked. */
-    private static final double THRESHOLD_KICK = 10.0;
-    /** Grief score at which the player is temporarily banned. */
-    private static final double THRESHOLD_TEMPBAN = 20.0;
+    /** Grief score at which the player receives a warning. Configurable via grief-threshold-warn. */
+    private static double THRESHOLD_WARN = 5.0;
+    /** Grief score at which the player is kicked. Configurable via grief-threshold-kick. */
+    private static double THRESHOLD_KICK = 10.0;
+    /** Grief score at which the player is temporarily banned. Configurable via grief-threshold-tempban. */
+    private static double THRESHOLD_TEMPBAN = 20.0;
     /** Escalating tempban durations: 1st=30m, 2nd=90m, 3rd+=24h. */
     private static final long[] TEMPBAN_DURATIONS_MS = {
         30 * 60 * 1000L,   // 30 minutes
@@ -158,9 +158,18 @@ public final class GriefProtection {
         maxChangesPerSecond = maxPerSecond;
         enabled = true;
 
+        // Load configurable thresholds
+        try {
+            THRESHOLD_WARN = ServerProperties.getGriefThresholdWarn();
+            THRESHOLD_KICK = ServerProperties.getGriefThresholdKick();
+            THRESHOLD_TEMPBAN = ServerProperties.getGriefThresholdTempban();
+        } catch (Exception e) {
+            // Keep defaults if properties not loaded
+        }
+
         // Track block ownership on placement
         ServerEvents.BLOCK_PLACE.register((player, x, y, z, blockType) -> {
-            if (BYPASSED.get()) return EventResult.PASS;
+            if (!enabled || BYPASSED.get()) return EventResult.PASS;
 
             boolean isOp = PermissionManager.getOpLevel(player) >= PermissionManager.OP_BYPASS_SPAWN;
 
@@ -168,6 +177,13 @@ public final class GriefProtection {
             if (!isOp) {
                 EventResult reachResult = checkReach(player, x, y, z, false);
                 if (reachResult == EventResult.CANCEL) return reachResult;
+            }
+
+            // Rate limit check FIRST (before consuming budget) so a rate-limited
+            // placement doesn't permanently leak a protection slot.
+            if (!isOp) {
+                EventResult rateResult = checkRateLimit(player);
+                if (rateResult == EventResult.CANCEL) return rateResult;
             }
 
             // Capture old state for rollback
@@ -180,8 +196,9 @@ public final class GriefProtection {
             if (isOp || BlockOwnerRegistry.useProtectionSlot(player)) {
                 short ownerId = BlockOwnerRegistry.getOrCreateId(player);
                 if (ownerId > 0) {
-                    // Return old owner's slot if overwriting a protected block
-                    if (oldOwnerId > 0 && oldOwnerId != ownerId) {
+                    // Return old owner's slot if overwriting ANY protected block
+                    // (including own blocks — prevents budget leak on self-overwrite)
+                    if (oldOwnerId > 0) {
                         BlockOwnerRegistry.returnProtectionSlot(oldOwnerId);
                     }
                     setBlockOwner(x, y, z, ownerId);
@@ -194,20 +211,17 @@ public final class GriefProtection {
                 notifyBudgetDepleted(player);
             }
 
-            // Rate limit check (applies to all non-OP players)
-            EventResult rateResult = checkRateLimit(player);
-
-            // Record for rollback (non-OPs only, only if block will actually be placed)
-            if (!isOp && rateResult == EventResult.PASS) {
+            // Record for rollback (non-OPs only)
+            if (!isOp) {
                 recordBlockChange(player, x, y, z, oldBlockType, oldOwnerId, newOwnerId);
             }
 
-            return rateResult;
+            return EventResult.PASS;
         });
 
         // Check grief score on block breaking
         ServerEvents.BLOCK_BREAK.register((player, x, y, z, blockType) -> {
-            if (BYPASSED.get()) return EventResult.PASS;
+            if (!enabled || BYPASSED.get()) return EventResult.PASS;
 
             // Rate limit check first
             EventResult rateResult = checkRateLimit(player);
@@ -352,9 +366,9 @@ public final class GriefProtection {
             return EventResult.PASS;
         }
 
-        // Breaking another player's block — grief! Return budget to victim.
-        BlockOwnerRegistry.returnProtectionSlot(ownerId);
-        clearBlockOwner(x, y, z);
+        // Breaking another player's block — grief!
+        // Do NOT clear ownership yet — if we escalate to kick/ban with rollback,
+        // the ownership needs to stay in place. Only clear if we allow the break.
 
         PlayerGriefData data = getOrCreateData(player);
 
@@ -368,7 +382,7 @@ public final class GriefProtection {
 
         // Add grief points (new players get double)
         double points = 1.0;
-        if (data.isNewPlayer()) {
+        if (data.isNewPlayer(player)) {
             points *= NEW_PLAYER_MULTIPLIER;
         }
         data.griefScore += points;
@@ -380,9 +394,7 @@ public final class GriefProtection {
 
         // Escalating responses
         if (data.griefScore >= THRESHOLD_TEMPBAN) {
-            // Restore the triggering block's ownership (cleared above, not in rollback buffer)
-            setBlockOwner(x, y, z, ownerId);
-            BlockOwnerRegistry.restoreUsedSlot(ownerId);
+            // Ownership stays — rollback restores the rest
             rollbackChanges(player);
 
             String key = player.toLowerCase();
@@ -400,15 +412,15 @@ public final class GriefProtection {
                     + ", offense #" + (priorOffenses + 1) + ")");
             if (playerManager != null && serverWorld != null) {
                 playerManager.kickPlayer(player,
-                        "Do not grief. Try /rtp to escape.",
+                        "Kicked for breaking " + owner + "'s blocks (grief score: "
+                        + String.format("%.1f", data.griefScore) + "). "
+                        + "Banned for " + banDurationStr + ". Use /griefinfo after rejoining.",
                         serverWorld);
             }
             return EventResult.CANCEL;
 
         } else if (data.griefScore >= THRESHOLD_KICK && !data.hasBeenKicked) {
-            // Restore the triggering block's ownership (cleared above, not in rollback buffer)
-            setBlockOwner(x, y, z, ownerId);
-            BlockOwnerRegistry.restoreUsedSlot(ownerId);
+            // Ownership stays — rollback restores the rest
             rollbackChanges(player);
 
             data.hasBeenKicked = true;
@@ -417,17 +429,35 @@ public final class GriefProtection {
                     + " (grief score " + String.format("%.1f", data.griefScore) + ")");
             if (playerManager != null && serverWorld != null) {
                 playerManager.kickPlayer(player,
-                        "Do not grief. Try /rtp to escape.",
+                        "Kicked for breaking " + owner + "'s blocks (grief score: "
+                        + String.format("%.1f", data.griefScore) + "). "
+                        + "Use /griefinfo to learn about block protection.",
                         serverWorld);
             }
             return EventResult.CANCEL;
 
         } else if (data.griefScore >= THRESHOLD_WARN && !data.hasBeenWarned) {
             data.hasBeenWarned = true;
-            warn(player, "Do not grief. Use /rtp to teleport away.");
-            return EventResult.PASS; // Allow this one but warn
+            // Allow the break but warn
+            BlockOwnerRegistry.returnProtectionSlot(ownerId);
+            clearBlockOwner(x, y, z);
+            warn(player, "That block belongs to " + owner
+                    + ". Breaking others' blocks will result in a kick. Use /griefinfo for details.");
+            return EventResult.PASS;
+
+        } else if (!data.hasBeenNotifiedFirstGrief) {
+            // First grief block — subtle notification before any threshold
+            data.hasBeenNotifiedFirstGrief = true;
+            BlockOwnerRegistry.returnProtectionSlot(ownerId);
+            clearBlockOwner(x, y, z);
+            warn(player, "That block belongs to " + owner
+                    + ". Breaking others' blocks gives grief points.");
+            return EventResult.PASS;
         }
 
+        // Below all thresholds — allow the break, return budget to victim
+        BlockOwnerRegistry.returnProtectionSlot(ownerId);
+        clearBlockOwner(x, y, z);
         return EventResult.PASS;
     }
 
@@ -436,7 +466,24 @@ public final class GriefProtection {
     // ========================================================================
 
     private static PlayerGriefData getOrCreateData(String player) {
-        return playerData.computeIfAbsent(player, k -> new PlayerGriefData());
+        return playerData.computeIfAbsent(player.toLowerCase(), k -> new PlayerGriefData());
+    }
+
+    /**
+     * Evict stale grief data entries to prevent unbounded memory growth.
+     * Removes entries with zero grief score that haven't been active for 10+ minutes.
+     * Called periodically from the tick loop.
+     */
+    public static void evictStaleEntries() {
+        long now = System.currentTimeMillis();
+        playerData.entrySet().removeIf(entry -> {
+            PlayerGriefData data = entry.getValue();
+            data.decayScore();
+            return data.griefScore == 0
+                    && !data.wasGriefKicked
+                    && (now - data.lastGriefTime) > 600_000
+                    && data.recentChanges.isEmpty();
+        });
     }
 
     /**
@@ -444,7 +491,7 @@ public final class GriefProtection {
      * Clears the flag after reading (one-shot).
      */
     public static boolean wasGriefKicked(String player) {
-        PlayerGriefData data = playerData.get(player);
+        PlayerGriefData data = playerData.get(player.toLowerCase());
         if (data == null) return false;
         boolean was = data.wasGriefKicked;
         data.wasGriefKicked = false;
@@ -512,8 +559,7 @@ public final class GriefProtection {
     private static void restoreBlock(int x, int y, int z, byte blockType) {
         if (serverWorld != null && serverWorld.inBounds(x, y, z)) {
             serverWorld.queueBlockChange(x, y, z, blockType);
-        }
-        if (chunkManager != null) {
+        } else if (chunkManager != null) {
             chunkManager.setBlock(x, y, z, blockType);
         }
     }
@@ -525,10 +571,12 @@ public final class GriefProtection {
     private static void recordBlockChange(String player, int x, int y, int z,
                                            byte oldBlockType, short oldOwnerId, short newOwnerId) {
         PlayerGriefData data = getOrCreateData(player);
-        if (data.recentChanges.size() >= MAX_RECENT_CHANGES) {
-            data.recentChanges.pollFirst(); // drop oldest
+        synchronized (data) {
+            if (data.recentChanges.size() >= MAX_RECENT_CHANGES) {
+                data.recentChanges.pollFirst(); // drop oldest
+            }
+            data.recentChanges.addLast(new BlockChangeRecord(x, y, z, oldBlockType, oldOwnerId, newOwnerId));
         }
-        data.recentChanges.addLast(new BlockChangeRecord(x, y, z, oldBlockType, oldOwnerId, newOwnerId));
     }
 
     /**
@@ -537,10 +585,11 @@ public final class GriefProtection {
      * Restores original blocks and ownership, fixes protection budgets.
      */
     private static void rollbackChanges(String player) {
-        PlayerGriefData data = playerData.get(player);
-        if (data == null || data.recentChanges.isEmpty()) return;
+        PlayerGriefData data = playerData.get(player.toLowerCase());
+        if (data == null) return;
 
         int count = 0;
+        synchronized (data) {
         while (!data.recentChanges.isEmpty()) {
             BlockChangeRecord record = data.recentChanges.pollLast();
 
@@ -562,6 +611,7 @@ public final class GriefProtection {
 
             count++;
         }
+        } // synchronized
 
         System.out.println("[GriefProtection] Rolled back " + count + " block change(s) by " + player);
     }
@@ -586,8 +636,7 @@ public final class GriefProtection {
     private static void setBlockOwner(int x, int y, int z, short ownerId) {
         if (serverWorld != null && serverWorld.inBounds(x, y, z)) {
             serverWorld.setBlockOwnerId(x, y, z, ownerId);
-        }
-        if (chunkManager != null) {
+        } else if (chunkManager != null) {
             chunkManager.setBlockOwnerId(x, y, z, ownerId);
         }
     }
@@ -636,12 +685,12 @@ public final class GriefProtection {
         volatile boolean hasBeenKicked = false;
         /** Whether the player was kicked/banned by grief protection (for RTP hint on rejoin). */
         volatile boolean wasGriefKicked = false;
+        /** Whether the first-grief-block notification has been sent. */
+        volatile boolean hasBeenNotifiedFirstGrief = false;
         /** Timestamp of last rate-limit warning (throttle to once per 3s). */
         volatile long lastRateWarning = 0;
         /** Timestamp of last budget warning (throttle to once per 30s). */
         volatile long lastBudgetWarning = 0;
-        /** When this player's session started (for new-player detection). */
-        final long sessionStart = System.currentTimeMillis();
         /** Token bucket for rate limiting. */
         final RateTracker rateTracker = new RateTracker();
         /** Rolling buffer of recent block changes for rollback on kick/ban. */
@@ -658,9 +707,9 @@ public final class GriefProtection {
             return true;
         }
 
-        /** Whether this player is considered "new" (session < 30 min). */
-        boolean isNewPlayer() {
-            return (System.currentTimeMillis() - sessionStart) < NEW_PLAYER_THRESHOLD_MS;
+        /** Whether this player is considered "new" (lifetime play time < 30 min). */
+        boolean isNewPlayer(String playerName) {
+            return BlockOwnerRegistry.getEffectivePlayTimeMs(playerName) < NEW_PLAYER_THRESHOLD_MS;
         }
 
         /** Apply time-based decay to the grief score. */
@@ -680,6 +729,9 @@ public final class GriefProtection {
             }
             if (hasBeenKicked && griefScore < THRESHOLD_KICK) {
                 hasBeenKicked = false;
+            }
+            if (hasBeenNotifiedFirstGrief && griefScore == 0) {
+                hasBeenNotifiedFirstGrief = false;
             }
         }
     }

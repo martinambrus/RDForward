@@ -53,16 +53,16 @@ public final class BlockOwnerRegistry {
     // Budget constants
     // ========================================================================
 
-    /** Initial protection budget for new players (blocks). */
-    static final int INITIAL_BUDGET = 200;
-    /** Blocks earned per hour of active play. */
-    static final int ACCRUAL_PER_HOUR = 100;
-    /** Maximum total budget a player can accumulate. */
-    static final int MAX_BUDGET = 50_000;
+    /** Initial protection budget for new players (blocks). Configurable via grief-initial-budget. */
+    static int INITIAL_BUDGET = 200;
+    /** Blocks earned per hour of active play. Configurable via grief-accrual-per-hour. */
+    static int ACCRUAL_PER_HOUR = 100;
+    /** Maximum total budget a player can accumulate. Configurable via grief-max-budget. */
+    static int MAX_BUDGET = 50_000;
 
-    /** Days of inactivity after which a player's block ownership expires. */
-    static final int EXPIRY_DAYS = 30;
-    private static final long EXPIRY_MS = EXPIRY_DAYS * 24L * 60 * 60 * 1000;
+    /** Days of inactivity after which a player's block ownership expires. Configurable via grief-expiry-days. */
+    static int EXPIRY_DAYS = 30;
+    private static long EXPIRY_MS = EXPIRY_DAYS * 24L * 60 * 60 * 1000;
 
     // ========================================================================
     // State
@@ -103,6 +103,17 @@ public final class BlockOwnerRegistry {
         usedBlocks.clear();
         sessionStart.clear();
         nextId = 1;
+
+        // Load configurable values from server properties
+        try {
+            INITIAL_BUDGET = ServerProperties.getGriefInitialBudget();
+            ACCRUAL_PER_HOUR = ServerProperties.getGriefAccrualPerHour();
+            MAX_BUDGET = ServerProperties.getGriefMaxBudget();
+            EXPIRY_DAYS = ServerProperties.getGriefExpiryDays();
+            EXPIRY_MS = EXPIRY_DAYS * 24L * 60 * 60 * 1000;
+        } catch (Exception e) {
+            // Keep defaults if properties not loaded
+        }
 
         if (!registryFile.exists()) {
             System.out.println("No block owner registry found, starting fresh.");
@@ -306,7 +317,7 @@ public final class BlockOwnerRegistry {
     /**
      * Get the effective play time in milliseconds, including any ongoing session.
      */
-    private static long getEffectivePlayTimeMs(String playerName) {
+    public static long getEffectivePlayTimeMs(String playerName) {
         String key = playerName.toLowerCase();
         long accumulated = playTimeMs.getOrDefault(key, 0L);
         Long start = sessionStart.get(key);

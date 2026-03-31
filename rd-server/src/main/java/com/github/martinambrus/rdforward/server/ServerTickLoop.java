@@ -5,6 +5,7 @@ import com.github.martinambrus.rdforward.protocol.packet.classic.PingPacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
 
 import com.github.martinambrus.rdforward.server.api.BlockOwnerRegistry;
+import com.github.martinambrus.rdforward.server.api.GriefProtection;
 import com.github.martinambrus.rdforward.server.api.TeamManager;
 import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockSessionWrapper;
@@ -191,6 +192,7 @@ public class ServerTickLoop implements Runnable {
             world.savePlayersAsync(playerManager.getAllPlayers());
             BlockOwnerRegistry.saveIfDirty();
             TeamManager.saveIfDirty();
+            GriefProtection.evictStaleEntries();
             chunkManager.saveAllDirty();
         }
 

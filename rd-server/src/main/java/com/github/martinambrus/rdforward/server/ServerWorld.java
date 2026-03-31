@@ -59,7 +59,7 @@ public class ServerWorld {
      * 0 = unowned (natural/expired). Positive values are player IDs from
      * {@link com.github.martinambrus.rdforward.server.api.BlockOwnerRegistry}.
      */
-    private final short[] blockOwnerIds;
+    private volatile short[] blockOwnerIds;
     private final File saveFile;
     private final File playersFile;
     private volatile boolean dirty = false;
@@ -103,7 +103,7 @@ public class ServerWorld {
         this.height = height;
         this.depth = depth;
         this.blocks = new byte[width * height * depth];
-        this.blockOwnerIds = new short[width * height * depth];
+        this.blockOwnerIds = null; // lazy-allocated on first ownership write
         File dir = (dataDir != null) ? dataDir : new File(".");
         this.saveFile = new File(dir, SAVE_FILE_NAME);
         this.playersFile = new File(dir, PLAYERS_FILE_NAME);
@@ -171,7 +171,9 @@ public class ServerWorld {
         if (!inBounds(x, y, z)) return 0;
         rwLock.readLock().lock();
         try {
-            return blockOwnerIds[blockIndex(x, y, z)];
+            short[] owners = blockOwnerIds;
+            if (owners == null) return 0;
+            return owners[blockIndex(x, y, z)];
         } finally {
             rwLock.readLock().unlock();
         }
@@ -184,6 +186,10 @@ public class ServerWorld {
         if (!inBounds(x, y, z)) return;
         rwLock.writeLock().lock();
         try {
+            if (blockOwnerIds == null) {
+                if (ownerId == 0) return; // no-op: clearing an already-unowned block
+                blockOwnerIds = new short[width * height * depth];
+            }
             blockOwnerIds[blockIndex(x, y, z)] = ownerId;
             dirty = true;
         } finally {
@@ -315,12 +321,17 @@ public class ServerWorld {
             dis.readFully(blocks);
             // V2+: read block ownership IDs
             if (header.formatVersion >= ServerWorldHeader.FORMAT_V2_OWNERSHIP) {
-                for (int i = 0; i < blockOwnerIds.length; i++) {
-                    blockOwnerIds[i] = dis.readShort();
+                short[] owners = new short[width * height * depth];
+                for (int i = 0; i < owners.length; i++) {
+                    owners[i] = dis.readShort();
                 }
                 int ownedCount = 0;
-                for (short id : blockOwnerIds) {
+                for (short id : owners) {
                     if (id != 0) ownedCount++;
+                }
+                // Only keep the array if there are actual owners (lazy allocation)
+                if (ownedCount > 0) {
+                    blockOwnerIds = owners;
                 }
                 System.out.println("Loaded " + ownedCount + " owned block(s) from world save");
             }
@@ -369,7 +380,10 @@ public class ServerWorld {
         rwLock.readLock().lock();
         try {
             snapshot = Arrays.copyOf(blocks, blocks.length);
-            ownerSnapshot = Arrays.copyOf(blockOwnerIds, blockOwnerIds.length);
+            short[] owners = blockOwnerIds;
+            ownerSnapshot = (owners != null)
+                    ? Arrays.copyOf(owners, owners.length)
+                    : new short[width * height * depth];
             dirty = false;
         } finally {
             rwLock.readLock().unlock();
@@ -398,7 +412,10 @@ public class ServerWorld {
         rwLock.readLock().lock();
         try {
             snapshot = Arrays.copyOf(blocks, blocks.length);
-            ownerSnapshot = Arrays.copyOf(blockOwnerIds, blockOwnerIds.length);
+            short[] owners = blockOwnerIds;
+            ownerSnapshot = (owners != null)
+                    ? Arrays.copyOf(owners, owners.length)
+                    : new short[width * height * depth];
             dirty = false;
         } finally {
             rwLock.readLock().unlock();

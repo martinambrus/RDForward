@@ -25,8 +25,12 @@ public final class ServerLogger {
     private static final String LOG_DIR = "logs";
     private static final String CURRENT_LOG = "latest.log";
 
+    private static final int MAX_LOG_AGE_DAYS = 30;
+
     private static volatile FileOutputStream logFileStream;
-    private static final SimpleDateFormat DAY_FORMAT = new SimpleDateFormat("yyyy-MM-dd");
+
+    /** Shared lock for all rotation and log file write operations. */
+    private static final Object LOG_LOCK = new Object();
 
     /** The date string (yyyy-MM-dd) when the current log file was started. */
     private static volatile String currentLogDay;
@@ -59,7 +63,7 @@ public final class ServerLogger {
             // Compress any old uncompressed .log files left from before
             compressOldLogs(dir);
 
-            currentLogDay = DAY_FORMAT.format(new Date());
+            currentLogDay = new SimpleDateFormat("yyyy-MM-dd").format(new Date());
             nextRotationCheckMs = computeNextMidnightMs();
             logFileStream = new FileOutputStream(new File(dir, CURRENT_LOG), false);
 
@@ -93,7 +97,7 @@ public final class ServerLogger {
      */
     private static void rotateIfNeeded() {
         if (System.currentTimeMillis() < nextRotationCheckMs) return;
-        String today = DAY_FORMAT.format(new Date());
+        String today = new SimpleDateFormat("yyyy-MM-dd").format(new Date());
         if (today.equals(currentLogDay)) {
             // Not midnight yet — push the next check forward 60 seconds
             nextRotationCheckMs = System.currentTimeMillis() + 60_000;
@@ -116,7 +120,14 @@ public final class ServerLogger {
                 timestamp = currentLogDay + "_" + new SimpleDateFormat("HH-mm-ss").format(new Date());
                 rotated = new File(dir, timestamp + ".log");
             }
-            logFile.renameTo(rotated);
+
+            if (!logFile.renameTo(rotated)) {
+                System.err.println("[WARN] Log rotation failed: could not rename " + logFile + " to " + rotated + ". Continuing with current log file.");
+                // Re-open the existing file in append mode and keep going
+                logFileStream = new FileOutputStream(logFile, true);
+                nextRotationCheckMs = System.currentTimeMillis() + 60_000;
+                return;
+            }
 
             // Compress in a background thread to not block logging
             final File toCompress = rotated;
@@ -129,11 +140,12 @@ public final class ServerLogger {
             nextRotationCheckMs = computeNextMidnightMs();
             logFileStream = new FileOutputStream(new File(dir, CURRENT_LOG), false);
         } catch (IOException e) {
+            System.err.println("[WARN] Log rotation failed: " + e.getMessage());
             // If rotation fails, try to keep logging to the existing file
             try {
                 logFileStream = new FileOutputStream(new File(LOG_DIR, CURRENT_LOG), true);
             } catch (IOException fatal) {
-                // Nothing we can do
+                System.err.println("[ERROR] Could not reopen log file after failed rotation: " + fatal.getMessage());
             }
         }
     }
@@ -164,7 +176,7 @@ public final class ServerLogger {
                 gzos.write(buf, 0, len);
             }
         } catch (IOException e) {
-            // If compression fails, keep the uncompressed file
+            System.err.println("[WARN] Failed to gzip log file " + source.getName() + ": " + e.getMessage());
             return;
         }
         source.delete();
@@ -179,6 +191,18 @@ public final class ServerLogger {
         if (oldLogs == null) return;
         for (File old : oldLogs) {
             gzipAndDelete(old);
+        }
+
+        // Delete .gz files older than MAX_LOG_AGE_DAYS
+        long cutoffMs = System.currentTimeMillis() - MAX_LOG_AGE_DAYS * 24L * 60 * 60 * 1000;
+        File[] gzFiles = dir.listFiles((d, name) -> name.endsWith(".log.gz"));
+        if (gzFiles == null) return;
+        for (File gz : gzFiles) {
+            if (gz.lastModified() < cutoffMs) {
+                if (!gz.delete()) {
+                    System.err.println("[WARN] Failed to delete old log file: " + gz.getName());
+                }
+            }
         }
     }
 
@@ -199,39 +223,45 @@ public final class ServerLogger {
         }
 
         @Override
-        public synchronized void write(int b) throws IOException {
+        public void write(int b) throws IOException {
             console.write(b);
-            if (atLineStart) {
-                rotateIfNeeded();
-                writeTimestamp();
-                atLineStart = false;
-            }
-            logFileStream.write(b);
-            if (b == '\n') {
-                atLineStart = true;
-            }
-        }
-
-        @Override
-        public synchronized void write(byte[] buf, int off, int len) throws IOException {
-            console.write(buf, off, len);
-            for (int i = off; i < off + len; i++) {
+            synchronized (LOG_LOCK) {
                 if (atLineStart) {
                     rotateIfNeeded();
                     writeTimestamp();
                     atLineStart = false;
                 }
-                logFileStream.write(buf[i]);
-                if (buf[i] == '\n') {
+                logFileStream.write(b);
+                if (b == '\n') {
                     atLineStart = true;
                 }
             }
         }
 
         @Override
-        public synchronized void flush() throws IOException {
+        public void write(byte[] buf, int off, int len) throws IOException {
+            console.write(buf, off, len);
+            synchronized (LOG_LOCK) {
+                for (int i = off; i < off + len; i++) {
+                    if (atLineStart) {
+                        rotateIfNeeded();
+                        writeTimestamp();
+                        atLineStart = false;
+                    }
+                    logFileStream.write(buf[i]);
+                    if (buf[i] == '\n') {
+                        atLineStart = true;
+                    }
+                }
+            }
+        }
+
+        @Override
+        public void flush() throws IOException {
             console.flush();
-            logFileStream.flush();
+            synchronized (LOG_LOCK) {
+                logFileStream.flush();
+            }
         }
 
         private void writeTimestamp() throws IOException {

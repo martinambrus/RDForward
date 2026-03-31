@@ -223,17 +223,24 @@ public class RDServer {
             if (daysLeft >= 0 && daysLeft <= 7 && cp != null) {
                 if (daysLeft == 0) {
                     playerManager.sendChat(cp,
-                            "[Server] Your blocks have expired due to inactivity.");
+                            "[GriefProtection] Your blocks have expired due to inactivity.");
                 } else {
                     playerManager.sendChat(cp,
-                            "[Server] Your blocks will expire in " + daysLeft
+                            "[GriefProtection] Your blocks will expire in " + daysLeft
                             + " day(s) of inactivity. Play to reset the timer.");
                 }
             }
             // Remind players who were kicked/banned by grief protection about /rtp
             if (GriefProtection.wasGriefKicked(name) && cp != null) {
                 playerManager.sendChat(cp,
-                        "[Server] Use /rtp to teleport away from traps or encasements.");
+                        "[GriefProtection] Use /rtp to teleport away from traps or encasements.");
+            }
+            // Onboarding: tell new players about the protection system
+            if (cp != null && BlockOwnerRegistry.getEffectivePlayTimeMs(name) == 0
+                    && BlockOwnerRegistry.getId(name) == 0) {
+                playerManager.sendChat(cp,
+                        "[GriefProtection] Blocks you place are protected from griefing."
+                        + " Use /griefinfo for details.");
             }
         });
 
@@ -1078,21 +1085,39 @@ public class RDServer {
                 ctx.reply("Player not found");
                 return;
             }
-            // Find a random safe spot in the world
-            int worldW = world.getWidth();
-            int worldH = world.getHeight();
-            int worldD = world.getDepth();
+            // Determine if this is a finite or chunk-based world
+            boolean finite = protocolVersion.isFiniteWorld();
+            int worldH = finite ? world.getHeight() : 128; // Alpha chunks are 128 high
             java.util.Random rng = new java.util.Random();
-            // Margin from world edges to avoid boundary issues
-            int margin = 5;
             int maxAttempts = 50;
+            // Range: finite worlds use world bounds; chunk worlds use ±500 around sender
+            int rangeMin, rangeMaxX, rangeMaxZ;
+            if (finite) {
+                int margin = 5;
+                rangeMin = margin;
+                rangeMaxX = Math.max(1, world.getWidth() - 2 * margin);
+                rangeMaxZ = Math.max(1, world.getDepth() - 2 * margin);
+            } else {
+                rangeMin = 0; // not used for offset calculation
+                rangeMaxX = 1000;
+                rangeMaxZ = 1000;
+            }
             for (int attempt = 0; attempt < maxAttempts; attempt++) {
-                int rx = margin + rng.nextInt(Math.max(1, worldW - 2 * margin));
-                int rz = margin + rng.nextInt(Math.max(1, worldD - 2 * margin));
+                int rx, rz;
+                if (finite) {
+                    rx = rangeMin + rng.nextInt(rangeMaxX);
+                    rz = rangeMin + rng.nextInt(rangeMaxZ);
+                } else {
+                    // Random offset ±500 from sender position
+                    rx = (int) sender.getDoubleX() + rng.nextInt(rangeMaxX) - 500;
+                    rz = (int) sender.getDoubleZ() + rng.nextInt(rangeMaxZ) - 500;
+                }
                 // Find the highest solid block (surface) at this column
                 int surfaceY = -1;
                 for (int y = worldH - 1; y >= 0; y--) {
-                    if (world.getBlock(rx, y, rz) != 0) {
+                    byte block = finite ? world.getBlock(rx, y, rz)
+                                        : chunkManager.getBlock(rx, y, rz);
+                    if (block != 0) {
                         surfaceY = y;
                         break;
                     }
@@ -1100,25 +1125,38 @@ public class RDServer {
                 if (surfaceY < 0 || surfaceY >= worldH - 3) continue;
                 int feetY = surfaceY + 1;
                 // Check two blocks of air at feet and head level
-                if (world.getBlock(rx, feetY, rz) != 0) continue;
-                if (world.getBlock(rx, feetY + 1, rz) != 0) continue;
+                byte feetBlock = finite ? world.getBlock(rx, feetY, rz)
+                                        : chunkManager.getBlock(rx, feetY, rz);
+                if (feetBlock != 0) continue;
+                byte headBlock = finite ? world.getBlock(rx, feetY + 1, rz)
+                                        : chunkManager.getBlock(rx, feetY + 1, rz);
+                if (headBlock != 0) continue;
                 // Check air on all four sides at both feet and head height
                 boolean sidesOk = true;
                 int[][] sides = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
                 for (int[] side : sides) {
                     int sx = rx + side[0], sz = rz + side[1];
-                    if (!world.inBounds(sx, feetY, sz)
-                            || world.getBlock(sx, feetY, sz) != 0
-                            || world.getBlock(sx, feetY + 1, sz) != 0) {
+                    if (finite && !world.inBounds(sx, feetY, sz)) {
+                        sidesOk = false;
+                        break;
+                    }
+                    byte sf = finite ? world.getBlock(sx, feetY, sz)
+                                     : chunkManager.getBlock(sx, feetY, sz);
+                    byte sh = finite ? world.getBlock(sx, feetY + 1, sz)
+                                     : chunkManager.getBlock(sx, feetY + 1, sz);
+                    if (sf != 0 || sh != 0) {
                         sidesOk = false;
                         break;
                     }
                 }
                 if (!sidesOk) continue;
-                // Check sky visibility — no solid blocks above head
+                // Sky visibility check at the DESTINATION (not current pos).
+                // Allows cave escapes — only the target needs open sky.
                 boolean skyVisible = true;
                 for (int y = feetY + 2; y < worldH; y++) {
-                    if (world.getBlock(rx, y, rz) != 0) {
+                    byte above = finite ? world.getBlock(rx, y, rz)
+                                        : chunkManager.getBlock(rx, y, rz);
+                    if (above != 0) {
                         skyVisible = false;
                         break;
                     }
@@ -1131,10 +1169,10 @@ public class RDServer {
                 double eyeY = tFeetY + (double) 1.62f;
                 playerManager.teleportPlayer(sender, tx, eyeY, tz,
                         sender.getFloatYaw(), sender.getFloatPitch(), chunkManager);
-                ctx.reply("Teleported to " + rx + " " + feetY + " " + rz);
+                ctx.reply("[Server] Teleported to " + rx + " " + feetY + " " + rz);
                 return;
             }
-            ctx.reply("Could not find a safe spot. Try again.");
+            ctx.reply("[Server] Could not find a safe spot. Try again.");
         });
 
         CommandRegistry.registerOp("ban", "Ban a player", PermissionManager.OP_MANAGE, ctx -> {
@@ -1538,23 +1576,29 @@ public class RDServer {
                         ctx.reply("Usage: /trust add <player>");
                         return;
                     }
-                    if (args[1].equalsIgnoreCase(ctx.getSenderName())) {
-                        ctx.reply("You cannot add yourself to your trust list");
+                    String trustTarget = PlayerManager.sanitizeUsername(args[1]);
+                    if (trustTarget.isEmpty() || trustTarget.equals("Player")) {
+                        ctx.reply("[GriefProtection] Invalid player name");
                         return;
                     }
-                    if (TeamManager.addTeammate(ctx.getSenderName(), args[1])) {
-                        ctx.reply("Added " + args[1] + " to your trust list."
+                    if (trustTarget.equalsIgnoreCase(ctx.getSenderName())) {
+                        ctx.reply("[GriefProtection] You cannot add yourself to your trust list");
+                        return;
+                    }
+                    if (TeamManager.addTeammate(ctx.getSenderName(), trustTarget)) {
+                        ctx.reply("[GriefProtection] Added " + trustTarget + " to your trust list."
                                 + " They can now break your blocks without triggering grief protection.");
                         // Notify the trusted player so they can reciprocate
-                        TeamManager.setLastTruster(args[1], ctx.getSenderName());
-                        ConnectedPlayer target = playerManager.getPlayerByName(args[1]);
+                        TeamManager.setLastTruster(trustTarget, ctx.getSenderName());
+                        ConnectedPlayer target = playerManager.getPlayerByName(trustTarget);
                         if (target != null) {
                             playerManager.sendChat(target,
-                                    ctx.getSenderName() + " added you to their trust list."
+                                    "[GriefProtection] " + ctx.getSenderName()
+                                    + " added you to their trust list."
                                     + " To trust them back, type: /trustback");
                         }
                     } else {
-                        ctx.reply(args[1] + " is already in your trust list");
+                        ctx.reply("[GriefProtection] " + trustTarget + " is already in your trust list");
                     }
                     break;
                 case "remove":
@@ -1576,17 +1620,17 @@ public class RDServer {
                         // Not a number — treat as player name
                     }
                     if (TeamManager.removeTeammate(ctx.getSenderName(), removeTarget)) {
-                        ctx.reply("Removed " + removeTarget + " from your trust list");
+                        ctx.reply("[GriefProtection] Removed " + removeTarget + " from your trust list");
                     } else {
-                        ctx.reply(removeTarget + " is not in your trust list");
+                        ctx.reply("[GriefProtection] " + removeTarget + " is not in your trust list");
                     }
                     break;
                 case "list":
                     java.util.List<String> teammateList = TeamManager.getTeammatesList(ctx.getSenderName());
                     if (teammateList.isEmpty()) {
-                        ctx.reply("Your trust list is empty. Use /trust add <player> to add someone.");
+                        ctx.reply("[GriefProtection] Your trust list is empty. Use /trust add <player> to add someone.");
                     } else {
-                        StringBuilder sb = new StringBuilder("Trusted players:");
+                        StringBuilder sb = new StringBuilder("[GriefProtection] Trusted players:");
                         for (int i = 0; i < teammateList.size(); i++) {
                             sb.append(" ").append(i + 1).append(". ").append(teammateList.get(i));
                         }
@@ -1607,38 +1651,69 @@ public class RDServer {
             }
             String truster = TeamManager.getLastTruster(ctx.getSenderName());
             if (truster == null) {
-                ctx.reply("Nobody has added you to their trust list yet.");
+                ctx.reply("[GriefProtection] Nobody has added you to their trust list yet.");
                 return;
             }
             if (truster.equalsIgnoreCase(ctx.getSenderName())) {
-                ctx.reply("Cannot trust yourself");
+                ctx.reply("[GriefProtection] Cannot trust yourself");
                 return;
             }
             if (TeamManager.addTeammate(ctx.getSenderName(), truster)) {
-                ctx.reply("Added " + truster + " to your trust list. Trust is now mutual!");
+                ctx.reply("[GriefProtection] Added " + truster + " to your trust list. Trust is now mutual!");
                 ConnectedPlayer target = playerManager.getPlayerByName(truster);
                 if (target != null) {
                     playerManager.sendChat(target,
-                            ctx.getSenderName() + " trusted you back! Trust is now mutual.");
+                            "[GriefProtection] " + ctx.getSenderName()
+                            + " trusted you back! Trust is now mutual.");
                 }
             } else {
-                ctx.reply(truster + " is already in your trust list");
+                ctx.reply("[GriefProtection] " + truster + " is already in your trust list");
             }
         });
 
         // /griefinfo — grief protection information (available to all players)
+        // /griefinfo <player> — inspect another player's grief data (ops only)
         CommandRegistry.register("griefinfo", "Grief protection information", ctx -> {
+            String[] args = ctx.getArgs();
+            if (args.length > 0
+                    && !ctx.isConsole()
+                    && PermissionManager.getOpLevel(ctx.getSenderName()) >= PermissionManager.OP_BYPASS_SPAWN) {
+                // Op inspecting another player
+                String target = args[0];
+                short targetId = BlockOwnerRegistry.getId(target);
+                ctx.reply("[GriefProtection] === " + target + " ===");
+                if (targetId == 0) {
+                    ctx.reply("[GriefProtection] No block ownership data found for " + target);
+                } else {
+                    ctx.reply("[GriefProtection] Owner ID: " + targetId);
+                    ctx.reply("[GriefProtection] Budget: "
+                            + BlockOwnerRegistry.getRemainingBudget(target)
+                            + " / " + BlockOwnerRegistry.getTotalBudget(target) + " blocks");
+                    ctx.reply("[GriefProtection] Protected blocks placed: "
+                            + BlockOwnerRegistry.getUsedBlocks(target));
+                    int daysLeft = BlockOwnerRegistry.getDaysUntilExpiry(target);
+                    if (daysLeft >= 0) {
+                        ctx.reply("[GriefProtection] Expiry: " + (daysLeft == 0 ? "EXPIRED" : daysLeft + " day(s) until expiry"));
+                    }
+                }
+                return;
+            }
+            // Self-info (available to all players)
+            String self = ctx.isConsole() ? "console" : ctx.getSenderName();
             ctx.reply("");
-            ctx.reply("=== Grief Protection ===");
-            ctx.reply("Blocks you place are protected.");
-            ctx.reply("Breaking others' blocks gives grief points (5=warn, 10=kick, 20=tempban).");
+            ctx.reply("[GriefProtection] === Grief Protection ===");
+            ctx.reply("[GriefProtection] Blocks you place are protected.");
+            ctx.reply("[GriefProtection] Breaking others' blocks gives grief points.");
             ctx.reply("");
-            ctx.reply("Use \"/trust add <name>\" to allow <name> to break your blocks with no penalty.");
-            ctx.reply("Use /rtp to teleport away if trapped by another player's blocks.");
-            ctx.reply("");
-            ctx.reply("Protection budget: " + BlockOwnerRegistry.getRemainingBudget(ctx.getSenderName())
-                    + " / " + BlockOwnerRegistry.getTotalBudget(ctx.getSenderName())
-                    + " blocks. Grows as you play.");
+            ctx.reply("[GriefProtection] Use \"/trust add <name>\" to allow <name> to break your blocks.");
+            ctx.reply("[GriefProtection] Use /rtp to teleport away if trapped.");
+            if (!ctx.isConsole()) {
+                ctx.reply("");
+                ctx.reply("[GriefProtection] Budget: "
+                        + BlockOwnerRegistry.getRemainingBudget(self)
+                        + " / " + BlockOwnerRegistry.getTotalBudget(self)
+                        + " blocks. Grows as you play.");
+            }
         });
     }
 
