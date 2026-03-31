@@ -443,9 +443,8 @@ public final class GriefProtection {
                     + ", offense #" + (priorOffenses + 1) + ")");
             if (playerManager != null && serverWorld != null) {
                 playerManager.kickPlayer(player,
-                        "Kicked for breaking " + owner + "'s blocks (grief score: "
-                        + String.format("%.1f", data.griefScore) + "). "
-                        + "Banned for " + banDurationStr + ". Use /griefinfo after rejoining.",
+                        "Temporarily banned for griefing (" + banDurationStr + "). "
+                        + "Use /griefinfo after rejoining.",
                         serverWorld);
             }
             return EventResult.CANCEL;
@@ -460,9 +459,7 @@ public final class GriefProtection {
                     + " (grief score " + String.format("%.1f", data.griefScore) + ")");
             if (playerManager != null && serverWorld != null) {
                 playerManager.kickPlayer(player,
-                        "Kicked for breaking " + owner + "'s blocks (grief score: "
-                        + String.format("%.1f", data.griefScore) + "). "
-                        + "Use /griefinfo to learn about block protection.",
+                        "Kicked for griefing. Use /griefinfo to learn about block protection.",
                         serverWorld);
             }
             return EventResult.CANCEL;
@@ -565,7 +562,7 @@ public final class GriefProtection {
         if (playerManager == null) return;
         ConnectedPlayer cp = playerManager.getPlayerByName(player);
         if (cp != null) {
-            playerManager.sendChat(cp, "[GriefProtection] " + message);
+            playerManager.sendChat(cp, message);
         }
     }
 

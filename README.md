@@ -138,7 +138,7 @@ The server accepts connections from a wide range of Minecraft clients simultaneo
 | RubyDung | rd-132211 (the original) | TCP, Classic framing |
 | Classic | c0.30 | TCP, Classic framing |
 | Alpha | a1.0.15 through a1.2.6 | TCP, 4-byte length prefix |
-| Alphaver | Cypress (modified a1.0.16) | TCP, 4-byte length prefix |
+| Alphaver | All versions (Cypress through Lilypad) | TCP, 4-byte length prefix |
 | Beta | b1.0 through b1.8 | TCP, 4-byte length prefix |
 | Release (pre-Netty) | 1.0 through 1.6.4 | TCP, 4-byte length prefix |
 | Release (Netty) | 1.7.2 through 26.1 | TCP, VarInt framing |
