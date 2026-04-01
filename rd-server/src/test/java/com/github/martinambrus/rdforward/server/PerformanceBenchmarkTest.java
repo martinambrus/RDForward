@@ -1,5 +1,6 @@
 package com.github.martinambrus.rdforward.server;
 
+import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
 import com.github.martinambrus.rdforward.world.FlatWorldGenerator;
 import com.github.martinambrus.rdforward.world.alpha.AlphaChunk;
@@ -69,7 +70,7 @@ class PerformanceBenchmarkTest {
 
         // Warmup
         for (int i = 0; i < 5; i++) {
-            world.serializeForClassicProtocol();
+            world.serializeForClassicProtocol(ProtocolVersion.CLASSIC);
         }
 
         // Measure
@@ -77,7 +78,7 @@ class PerformanceBenchmarkTest {
         long start = System.nanoTime();
         int totalBytes = 0;
         for (int i = 0; i < iterations; i++) {
-            byte[] data = world.serializeForClassicProtocol();
+            byte[] data = world.serializeForClassicProtocol(ProtocolVersion.CLASSIC);
             totalBytes += data.length;
         }
         long elapsed = System.nanoTime() - start;

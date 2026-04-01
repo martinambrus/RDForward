@@ -13,13 +13,20 @@ The full project memory lives in `.claude/memory/MEMORY.md` and its referenced s
 - NEVER delete or reset world save files (server-world.dat, server-players.dat, or similar) without explicit user permission. These contain accumulated test data built up over many sessions.
 - Before ANY destructive file operation (rm, overwrite, reset) on non-code data files in the project root, ALWAYS ask the user first.
 
-## Backwards Compatibility
+## Backwards Compatibility (HIGHEST PRIORITY)
+
+Not breaking existing clients is the single most important constraint in this project. Every code change — whether adding a new protocol version, refactoring shared code, or fixing a bug — MUST preserve full compatibility with ALL previously supported clients. This takes precedence over clean code, performance, and new features.
 
 When adding support for new protocol versions (MCPE, Netty, Alpha, or otherwise):
 - ALWAYS test ALL previously supported versions after making changes. New version support must not break older versions.
 - Version-specific code paths (packet formats, field sizes, flag meanings) can differ between ANY two versions — never assume adjacent versions share the same format without verifying.
 - When adding version thresholds (e.g. `if (version >= V27)`), verify that ALL versions in the affected range behave the same way. A threshold that's correct for v27 may be wrong for v17.
 - When touching shared code paths (packet dispatch, chunk sending, login sequence), re-test at least one client from each supported version range.
+
+When refactoring or modifying shared methods:
+- If a method is used by multiple protocol versions, NEVER change its behavior globally. Add a version parameter and branch, or create a version-specific override.
+- Before editing any shared code, trace ALL callers to verify which clients are affected.
+- Guard new behavior behind version checks so only the targeted client type is affected.
 
 ## Lazy Loading and Code Decoupling
 

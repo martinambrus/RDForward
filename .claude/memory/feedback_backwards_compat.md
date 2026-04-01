@@ -1,15 +1,17 @@
 ---
-name: backwards-compatibility-testing
-description: Always test all supported protocol versions after changes — new version support must not break older versions
+name: backwards-compatibility-highest-priority
+description: Never break existing clients — this is the single highest priority constraint in the project, above clean code and new features
 type: feedback
 ---
 
-When adding new protocol version support, ALWAYS verify backwards compatibility with ALL previously supported versions.
+Not breaking existing clients is the HIGHEST PRIORITY constraint. Every code change — adding new protocol versions, refactoring shared code, or fixing bugs — MUST preserve full compatibility with ALL previously supported clients. This takes precedence over clean code, performance, and new features.
 
-**Why:** Adding v34/v38 MCPE support introduced regressions in v14 (0.8.0) and v17 (0.9.0) — wrong UseItem face threshold, wrong AdventureSettings flags, broken block breaking. Version-specific wire formats, flag meanings, and packet fields can differ between ANY two adjacent versions.
+**Why:** The project supports many protocol versions simultaneously (RubyDung, Classic 0.0.15a, Classic v7, Alpha v1-v6, Beta, Netty 1.7-1.21+, MCPE, Bedrock). Changes to shared code paths have repeatedly caused regressions in other versions (e.g. wrong MCPE flags, broken block formats, world serialization order differences between Classic versions).
 
 **How to apply:**
-- After any change to MCPE packet handling, test at least one client from each supported version range (v11-v13, v14, v17-v20, v27, v34, v38).
-- When adding version thresholds (e.g. `if (version >= V27)`), verify the threshold is correct for ALL versions in the affected range — don't assume adjacent versions share formats.
-- When touching shared code (packet dispatch, chunk sending, login sequence), re-test broadly.
+- If a shared method is used by multiple protocol versions, NEVER change its behavior globally. Add a version parameter and branch, or create a version-specific override.
+- Before editing any shared code, trace ALL callers to verify which clients are affected.
+- Guard new behavior behind version checks so only the targeted client type is affected.
+- After any change to packet handling, test at least one client from each supported version range.
+- When adding version thresholds (e.g. `if (version >= V27)`), verify the threshold is correct for ALL versions in the affected range.
 - The user expects to be told about regressions proactively, not discover them during testing.

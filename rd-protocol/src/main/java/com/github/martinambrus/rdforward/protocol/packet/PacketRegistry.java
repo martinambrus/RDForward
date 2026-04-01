@@ -35,8 +35,61 @@ public class PacketRegistry {
     private static final Map<String, PacketFactory> REGISTRY = new HashMap<String, PacketFactory>();
 
     static {
+        registerClassic015aPackets();
         registerClassicPackets();
         registerAlphaPackets();
+    }
+
+    /**
+     * Register Classic 0.0.15a packets — the first multiplayer version.
+     * Only 10 packet types (0x00-0x09). Simpler identification (just username),
+     * no relative movement, no chat, no disconnect, DespawnPlayer at 0x09.
+     */
+    private static void registerClassic015aPackets() {
+        ProtocolVersion v = ProtocolVersion.CLASSIC_0_0_15A;
+
+        // Client -> Server packets (3 types: identification, set block, position)
+        register(v, PacketDirection.CLIENT_TO_SERVER, 0x00, new PacketFactory() {
+            public Packet create() { return new PlayerIdentificationPacketV015a(); }
+        });
+        register(v, PacketDirection.CLIENT_TO_SERVER, 0x05, new PacketFactory() {
+            public Packet create() { return new SetBlockClientPacket(); }
+        });
+        register(v, PacketDirection.CLIENT_TO_SERVER, 0x08, new PacketFactory() {
+            public Packet create() { return new PlayerTeleportPacket(); }
+        });
+        // No C2S message (0x0D) — chat not supported in 0.0.15a
+
+        // Server -> Client packets (7 types)
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x00, new PacketFactory() {
+            public Packet create() { return new ServerIdentificationPacketV015a(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x01, new PacketFactory() {
+            public Packet create() { return new PingPacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x02, new PacketFactory() {
+            public Packet create() { return new LevelInitializePacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x03, new PacketFactory() {
+            public Packet create() { return new LevelDataChunkPacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x04, new PacketFactory() {
+            public Packet create() { return new LevelFinalizePacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x06, new PacketFactory() {
+            public Packet create() { return new SetBlockServerPacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x07, new PacketFactory() {
+            public Packet create() { return new SpawnPlayerPacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x08, new PacketFactory() {
+            public Packet create() { return new PlayerTeleportPacket(); }
+        });
+        // 0x09 = DespawnPlayer (not PositionOrientationUpdate like in v7)
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x09, new PacketFactory() {
+            public Packet create() { return new DespawnPlayerPacketV015a(); }
+        });
+        // No 0x0A-0x0F (no relative movement, no chat, no disconnect, no user type)
     }
 
     /**

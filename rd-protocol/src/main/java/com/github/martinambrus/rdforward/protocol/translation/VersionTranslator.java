@@ -5,19 +5,33 @@ import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.protocol.packet.PacketRegistry;
 import com.github.martinambrus.rdforward.protocol.packet.PacketDirection;
+import com.github.martinambrus.rdforward.protocol.packet.classic.DespawnPlayerPacket;
+import com.github.martinambrus.rdforward.protocol.packet.classic.DespawnPlayerPacketV015a;
+import com.github.martinambrus.rdforward.protocol.packet.classic.DisconnectPacket;
+import com.github.martinambrus.rdforward.protocol.packet.classic.MessagePacket;
+import com.github.martinambrus.rdforward.protocol.packet.classic.OrientationUpdatePacket;
+import com.github.martinambrus.rdforward.protocol.packet.classic.PlayerTeleportPacket;
+import com.github.martinambrus.rdforward.protocol.packet.classic.PositionOrientationUpdatePacket;
+import com.github.martinambrus.rdforward.protocol.packet.classic.PositionUpdatePacket;
+import com.github.martinambrus.rdforward.protocol.packet.classic.ServerIdentificationPacket;
+import com.github.martinambrus.rdforward.protocol.packet.classic.ServerIdentificationPacketV015a;
 import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
+import com.github.martinambrus.rdforward.protocol.packet.classic.SpawnPlayerPacket;
+import com.github.martinambrus.rdforward.protocol.packet.classic.UpdateUserTypePacket;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.BlockChangePacket;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.DestroyEntityPacket;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.EntityLookAndMovePacket;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.EntityLookPacket;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.EntityRelativeMovePacket;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.EntityTeleportPacket;
-import com.github.martinambrus.rdforward.protocol.packet.alpha.SpawnPlayerPacket;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.TimeUpdatePacket;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.UpdateHealthPacket;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Netty outbound channel handler that translates packets between protocol versions.
@@ -27,18 +41,16 @@ import io.netty.channel.ChannelPromise;
  * the client's protocol version before encoding.
  *
  * Translation layers (applied in order):
- *   1. Packet existence — drop packets whose ID doesn't exist in the client version
- *   2. Capability filter — drop packets requiring capabilities the client lacks
- *   3. Content translation — rewrite packet fields (e.g. block IDs)
+ *   1. Version-specific packet remapping (e.g., 0.0.15a delta→absolute conversion)
+ *   2. Packet existence — drop packets whose ID doesn't exist in the client version
+ *   3. Capability filter — drop packets requiring capabilities the client lacks
+ *   4. Content translation — rewrite packet fields (e.g. block IDs)
  *
- * Architecture (inspired by ViaVersion):
- * - One translator handles one version step (e.g., Classic -> RubyDung)
- * - For multi-version gaps, translators are chained in the pipeline
- * - Each translator only needs to know about its adjacent versions
- *
- * Pipeline for a RubyDung client on a Classic server:
- *   Inbound:  [PacketDecoder] -> [GameHandler]
- *   Outbound: [GameHandler] -> [VersionTranslator] -> [PacketEncoder]
+ * For 0.0.15a clients:
+ *   - Delta position packets (0x09/0x0A/0x0B) → absolute position (0x08)
+ *   - DespawnPlayer 0x0C → 0x09
+ *   - ServerIdentification → shorter v015a format
+ *   - Drop Message, Disconnect, UpdateUserType
  */
 public class VersionTranslator extends ChannelOutboundHandlerAdapter {
 
@@ -46,10 +58,21 @@ public class VersionTranslator extends ChannelOutboundHandlerAdapter {
 
     private final ProtocolVersion serverVersion;
     private final ProtocolVersion clientVersion;
+    private final boolean isClassic015a;
+
+    /**
+     * Per-entity position tracking for 0.0.15a clients.
+     * Stores the last known absolute position (fixed-point shorts) and orientation
+     * for each entity, needed to convert delta updates to absolute.
+     * Populated by SpawnPlayer and PlayerTeleport packets.
+     */
+    private final Map<Integer, short[]> entityPositions;
 
     public VersionTranslator(ProtocolVersion serverVersion, ProtocolVersion clientVersion) {
         this.serverVersion = serverVersion;
         this.clientVersion = clientVersion;
+        this.isClassic015a = (clientVersion == ProtocolVersion.CLASSIC_0_0_15A);
+        this.entityPositions = isClassic015a ? new HashMap<Integer, short[]>() : null;
     }
 
     @Override
@@ -61,26 +84,163 @@ public class VersionTranslator extends ChannelOutboundHandlerAdapter {
 
         Packet packet = (Packet) msg;
 
-        // Layer 1: Check if this packet ID exists in the client's version
+        // Layer 1: Version-specific packet remapping (before existence check)
+        if (isClassic015a) {
+            packet = remapForClassic015a(packet);
+            if (packet == null) {
+                promise.setSuccess();
+                return;
+            }
+        }
+
+        // Track entity positions from outgoing SpawnPlayer/PlayerTeleport
+        // (after remapping, so we capture the final absolute positions)
+        if (isClassic015a) {
+            trackEntityPosition(packet);
+        }
+
+        // Layer 2: Check if this packet ID exists in the client's version
         if (!PacketRegistry.hasPacket(clientVersion, PacketDirection.SERVER_TO_CLIENT, packet.getPacketId())) {
             logFiltered(packet, "no packet ID in client version");
             promise.setSuccess();
             return;
         }
 
-        // Layer 2: Check capability-based filtering
+        // Layer 3: Check capability-based filtering
         if (!passesCapabilityFilter(packet)) {
             logFiltered(packet, "client lacks required capability");
             promise.setSuccess();
             return;
         }
 
-        // Layer 3: Translate packet contents based on type
+        // Layer 4: Translate packet contents based on type
         Packet translated = translatePacket(packet);
         if (translated != null) {
             ctx.write(translated, promise);
         } else {
             promise.setSuccess();
+        }
+    }
+
+    /**
+     * Remap packets for Classic 0.0.15a clients.
+     * Converts delta movement to absolute, remaps DespawnPlayer ID,
+     * and drops unsupported packets.
+     * Returns null to drop the packet.
+     */
+    private Packet remapForClassic015a(Packet packet) {
+        // Convert delta position updates to absolute (0.0.15a only has absolute 0x08)
+        if (packet instanceof PositionOrientationUpdatePacket) {
+            return deltaToAbsolute((PositionOrientationUpdatePacket) packet);
+        }
+        if (packet instanceof PositionUpdatePacket) {
+            return deltaToAbsolute((PositionUpdatePacket) packet);
+        }
+        if (packet instanceof OrientationUpdatePacket) {
+            return orientationToAbsolute((OrientationUpdatePacket) packet);
+        }
+
+        // Remap DespawnPlayer from 0x0C to 0x09
+        if (packet instanceof DespawnPlayerPacket) {
+            DespawnPlayerPacket dp = (DespawnPlayerPacket) packet;
+            if (entityPositions != null) {
+                entityPositions.remove(dp.getPlayerId());
+            }
+            return new DespawnPlayerPacketV015a(dp.getPlayerId());
+        }
+
+        // Convert ServerIdentification to shorter v015a format
+        if (packet instanceof ServerIdentificationPacket) {
+            return new ServerIdentificationPacketV015a(
+                    ((ServerIdentificationPacket) packet).getServerName());
+        }
+
+        // Drop packets that don't exist in 0.0.15a
+        if (packet instanceof MessagePacket
+                || packet instanceof DisconnectPacket
+                || packet instanceof UpdateUserTypePacket) {
+            logFiltered(packet, "not supported in 0.0.15a");
+            return null;
+        }
+
+        return packet;
+    }
+
+    /**
+     * Convert PositionOrientationUpdate (delta) to PlayerTeleport (absolute).
+     */
+    private Packet deltaToAbsolute(PositionOrientationUpdatePacket delta) {
+        short[] pos = entityPositions != null ? entityPositions.get(delta.getPlayerId()) : null;
+        if (pos == null) {
+            // No tracked position — can't convert, drop
+            logFiltered(delta, "no tracked position for entity " + delta.getPlayerId());
+            return null;
+        }
+        short newX = (short) (pos[0] + delta.getChangeX());
+        short newY = (short) (pos[1] + delta.getChangeY());
+        short newZ = (short) (pos[2] + delta.getChangeZ());
+        // Update tracked position
+        pos[0] = newX;
+        pos[1] = newY;
+        pos[2] = newZ;
+        pos[3] = (short) delta.getYaw();
+        pos[4] = (short) delta.getPitch();
+        return new PlayerTeleportPacket(delta.getPlayerId(), newX, newY, newZ,
+                delta.getYaw(), delta.getPitch());
+    }
+
+    /**
+     * Convert PositionUpdate (delta, no orientation) to PlayerTeleport (absolute).
+     */
+    private Packet deltaToAbsolute(PositionUpdatePacket delta) {
+        short[] pos = entityPositions != null ? entityPositions.get(delta.getPlayerId()) : null;
+        if (pos == null) {
+            logFiltered(delta, "no tracked position for entity " + delta.getPlayerId());
+            return null;
+        }
+        short newX = (short) (pos[0] + delta.getChangeX());
+        short newY = (short) (pos[1] + delta.getChangeY());
+        short newZ = (short) (pos[2] + delta.getChangeZ());
+        pos[0] = newX;
+        pos[1] = newY;
+        pos[2] = newZ;
+        // Keep last known yaw/pitch
+        return new PlayerTeleportPacket(delta.getPlayerId(), newX, newY, newZ,
+                pos[3], pos[4]);
+    }
+
+    /**
+     * Convert OrientationUpdate (look only) to PlayerTeleport (absolute).
+     */
+    private Packet orientationToAbsolute(OrientationUpdatePacket orient) {
+        short[] pos = entityPositions != null ? entityPositions.get(orient.getPlayerId()) : null;
+        if (pos == null) {
+            logFiltered(orient, "no tracked position for entity " + orient.getPlayerId());
+            return null;
+        }
+        pos[3] = (short) orient.getYaw();
+        pos[4] = (short) orient.getPitch();
+        return new PlayerTeleportPacket(orient.getPlayerId(), pos[0], pos[1], pos[2],
+                orient.getYaw(), orient.getPitch());
+    }
+
+    /**
+     * Track entity positions from outgoing SpawnPlayer and PlayerTeleport packets.
+     * This builds the position state needed for delta-to-absolute conversion.
+     */
+    private void trackEntityPosition(Packet packet) {
+        if (entityPositions == null) return;
+
+        if (packet instanceof SpawnPlayerPacket) {
+            SpawnPlayerPacket sp = (SpawnPlayerPacket) packet;
+            entityPositions.put(sp.getPlayerId(),
+                    new short[]{sp.getX(), sp.getY(), sp.getZ(),
+                            (short) sp.getYaw(), (short) sp.getPitch()});
+        } else if (packet instanceof PlayerTeleportPacket) {
+            PlayerTeleportPacket tp = (PlayerTeleportPacket) packet;
+            entityPositions.put(tp.getPlayerId(),
+                    new short[]{tp.getX(), tp.getY(), tp.getZ(),
+                            (short) tp.getYaw(), (short) tp.getPitch()});
         }
     }
 
@@ -111,7 +271,7 @@ public class VersionTranslator extends ChannelOutboundHandlerAdapter {
      * Check if a packet is an entity-related packet (spawn, move, look, teleport, destroy).
      */
     private boolean isEntityPacket(Packet packet) {
-        return packet instanceof SpawnPlayerPacket
+        return packet instanceof com.github.martinambrus.rdforward.protocol.packet.alpha.SpawnPlayerPacket
                 || packet instanceof DestroyEntityPacket
                 || packet instanceof EntityRelativeMovePacket
                 || packet instanceof EntityLookPacket

@@ -1,5 +1,6 @@
 package com.github.martinambrus.rdforward.server;
 
+import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
 import org.junit.jupiter.api.Test;
 
@@ -129,7 +130,7 @@ class ServerWorldTest {
         ServerWorld world = new ServerWorld(4, 4, 4);
         world.setBlock(1, 2, 3, (byte) 10);
 
-        byte[] compressed = world.serializeForClassicProtocol();
+        byte[] compressed = world.serializeForClassicProtocol(ProtocolVersion.CLASSIC);
         assertTrue(compressed.length > 0);
 
         // Decompress and verify
@@ -141,7 +142,7 @@ class ServerWorldTest {
         byte[] blocks = new byte[volume];
         dis.readFully(blocks);
 
-        // Classic ordering is XZY: index at (1,2,3) = x*(depth*height) + z*height + y = 1*16 + 3*4 + 2 = 30
+        // Classic v7 ordering is XZY: index at (1,2,3) = x*(depth*height) + z*height + y = 1*16 + 3*4 + 2 = 30
         assertEquals(10, blocks[30] & 0xFF);
     }
 

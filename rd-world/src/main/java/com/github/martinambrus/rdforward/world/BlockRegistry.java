@@ -162,6 +162,8 @@ public final class BlockRegistry {
         switch (version) {
             case RUBYDUNG:
                 return blockId == AIR || blockId == GRASS || blockId == COBBLESTONE;
+            case CLASSIC_0_0_15A:
+                return blockId >= 0 && blockId <= 18;
             case CLASSIC:
                 return blockId >= 0 && blockId <= 49;
             case ALPHA_1_0_15:

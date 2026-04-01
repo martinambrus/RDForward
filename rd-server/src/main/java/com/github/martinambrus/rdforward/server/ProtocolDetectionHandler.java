@@ -285,6 +285,45 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
             pipeline.remove(this);
 
             pipeline.fireChannelRead(buf);
+        } else if (firstByte == 0x00 && buf.readableBytes() >= 2
+                && buf.getUnsignedByte(buf.readerIndex() + 1) != 0x00) {
+            // Real Classic client: first byte is packet ID 0x00 (PlayerIdentification).
+            // Second byte is either a protocol version (0x01-0x07 for Classic v3-v7)
+            // or the first character of a username (>= 0x20 for 0.0.15a, which has
+            // no protocol version byte).
+            // A Nati-framed client's first 4 bytes are a big-endian length prefix;
+            // for a 131-byte identification, bytes are 0x00 0x00 0x00 0x83 — so
+            // byte[1] == 0x00 distinguishes Nati from real Classic.
+            int secondByte = buf.getUnsignedByte(buf.readerIndex() + 1);
+            boolean isClassic015a = secondByte >= 0x20; // printable ASCII = username, not version
+
+            ProtocolVersion classicVersion = isClassic015a
+                    ? ProtocolVersion.CLASSIC_0_0_15A
+                    : ProtocolVersion.CLASSIC;
+
+            ChannelPipeline pipeline = ctx.pipeline();
+
+            pipeline.replace("decoder", "decoder",
+                    new RawPacketDecoder(PacketDirection.CLIENT_TO_SERVER, classicVersion));
+            pipeline.replace("encoder", "encoder", new RawPacketEncoder());
+
+            pipeline.addBefore("decoder", "flushConsolidation",
+                    new FlushConsolidationHandler(256, true));
+
+            // No translator needed for Classic v7 (native internal protocol).
+            // For 0.0.15a, ServerConnectionHandler inserts the VersionTranslator
+            // after login when it detects the version mismatch.
+
+            // Keep ServerConnectionHandler — it already handles Classic packets.
+            // No handler replacement needed.
+
+            pipeline.remove(this);
+
+            System.out.println("Detected real Classic client"
+                    + (isClassic015a ? " (0.0.15a — no protocol version byte)" : " (v7)")
+                    + ", pipeline reconfigured");
+
+            pipeline.fireChannelRead(buf);
         } else {
             // Nati client — remove self and forward from HEAD
             ChannelPipeline pipeline = ctx.pipeline();

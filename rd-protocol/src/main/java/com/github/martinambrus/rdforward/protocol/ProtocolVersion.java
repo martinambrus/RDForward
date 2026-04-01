@@ -39,67 +39,78 @@ public enum ProtocolVersion {
     RUBYDUNG(0, 0, Family.PRE_CLASSIC, "RubyDung", 3, "rd-132211"),
 
     /**
+     * Minecraft Classic 0.0.15a (May 2009) - first multiplayer version.
+     * 18 block types (stone through leaves), creative mode.
+     * No protocol version byte in identification packet (just username).
+     * Only absolute position updates (no delta/relative packets).
+     * No chat, no disconnect packet, no user type.
+     * DespawnPlayer at 0x09 instead of 0x0C.
+     * Uses -1 as synthetic version number (client sends no version).
+     */
+    CLASSIC_0_0_15A(-1, 1, Family.CLASSIC, "Classic 0.0.15a", 18, "c0.0.15a"),
+
+    /**
      * Minecraft Classic (c0.0.20a - c0.30).
      * 50 block types, creative mode, flat world.
      * Real MC protocol version 7.
      */
-    CLASSIC(7, 1, Family.CLASSIC, "Classic", 50, "c0.30"),
+    CLASSIC(7, 2, Family.CLASSIC, "Classic", 50, "c0.30"),
 
     /**
      * Minecraft Alpha 1.0.15 - first SMP version.
      * ~82 block types, survival mode, entities, inventory.
      * Real MC protocol version 13. Pre-rewrite SMP.
      */
-    ALPHA_1_0_15(13, 2, Family.ALPHA, "Alpha 1.0.15 (v13)", 82, "a1.0.15"),
+    ALPHA_1_0_15(13, 3, Family.ALPHA, "Alpha 1.0.15 (v13)", 82, "a1.0.15"),
 
     /**
      * Minecraft Alpha 1.0.16 - last pre-rewrite SMP version.
      * ~82 block types, survival mode, entities, inventory.
      * Real MC protocol version 14. Pre-rewrite SMP.
      */
-    ALPHA_1_0_16(14, 3, Family.ALPHA, "Alpha 1.0.16 (v14)", 82, "a1.0.16"),
+    ALPHA_1_0_16(14, 4, Family.ALPHA, "Alpha 1.0.16 (v14)", 82, "a1.0.16"),
 
     /**
      * Minecraft Alpha 1.0.17_04 - first post-rewrite SMP version.
      * ~82 block types, survival mode, entities, inventory.
      * Real MC protocol version 1. Same wire formats as v2/v3/v4/v5/v6.
      */
-    ALPHA_1_0_17(1, 4, Family.ALPHA, "Alpha 1.0.17 (v1)", 82, "a1.0.17"),
+    ALPHA_1_0_17(1, 5, Family.ALPHA, "Alpha 1.0.17 (v1)", 82, "a1.0.17"),
 
     /**
      * Minecraft Alpha 1.1.0-1.1.2_01 - post-rewrite SMP, pre-day/night cycle.
      * ~82 block types, survival mode, entities, inventory.
      * Real MC protocol version 2. Same wire formats as v3/v4/v5/v6.
      */
-    ALPHA_1_1_0(2, 5, Family.ALPHA, "Alpha 1.1.0 (v2)", 82, "a1.1.0"),
+    ALPHA_1_1_0(2, 6, Family.ALPHA, "Alpha 1.1.0 (v2)", 82, "a1.1.0"),
 
     /**
      * Minecraft Alpha 1.2.0-1.2.1_01 - first post-rewrite SMP with day/night cycle.
      * ~82 block types, health, time, mobs, explosions.
      * Real MC protocol version 3. Same wire formats as v4/v5/v6.
      */
-    ALPHA_1_2_0(3, 6, Family.ALPHA, "Alpha 1.2.0 (v3)", 82, "a1.2.0"),
+    ALPHA_1_2_0(3, 7, Family.ALPHA, "Alpha 1.2.0 (v3)", 82, "a1.2.0"),
 
     /**
      * Minecraft Alpha 1.2.2 - post-rewrite SMP.
      * ~82 block types, health, time, mobs, explosions.
      * Real MC protocol version 4. Same wire formats as v5/v6.
      */
-    ALPHA_1_2_2(4, 7, Family.ALPHA, "Alpha 1.2.2 (v4)", 82, "a1.2.2"),
+    ALPHA_1_2_2(4, 8, Family.ALPHA, "Alpha 1.2.2 (v4)", 82, "a1.2.2"),
 
     /**
      * Minecraft Alpha 1.2.3_01-1.2.3_04 - post-rewrite SMP.
      * ~82 block types, health, time, mobs, explosions.
      * Real MC protocol version 5. Same wire formats as v6.
      */
-    ALPHA_1_2_3(5, 8, Family.ALPHA, "Alpha 1.2.3 (v5)", 82, "a1.2.3"),
+    ALPHA_1_2_3(5, 9, Family.ALPHA, "Alpha 1.2.3 (v5)", 82, "a1.2.3"),
 
     /**
      * Minecraft Alpha 1.2.3_05-1.2.6 - post-rewrite SMP.
      * ~82 block types, health, time, mobs, explosions.
      * Real MC protocol version 6. Post-rewrite SMP (lower number than v14!).
      */
-    ALPHA_1_2_5(6, 9, Family.ALPHA, "Alpha 1.2.x (v6)", 82, "a1.2.6"),
+    ALPHA_1_2_5(6, 10, Family.ALPHA, "Alpha 1.2.x (v6)", 82, "a1.2.6"),
 
     /**
      * Minecraft Beta 1.0-1.1 - first Beta release.
@@ -107,7 +118,7 @@ public enum ProtocolVersion {
      * new block placement wire format (coordinates first), shorter HoldingChange.
      * Real MC protocol version 7 (clashes with Classic v7 — use family-aware lookup).
      */
-    BETA_1_0(7, 10, Family.BETA, "Beta 1.0 (v7)", 92, "b1.0"),
+    BETA_1_0(7, 11, Family.BETA, "Beta 1.0 (v7)", 92, "b1.0"),
 
     /**
      * Minecraft Beta 1.1_02 through 1.2_02 - protocol version 8.
@@ -119,7 +130,7 @@ public enum ProtocolVersion {
      * trailing byte is also a phantom KeepAlive.
      * Real MC protocol version 8.
      */
-    BETA_1_2(8, 11, Family.BETA, "Beta 1.2 (v8)", 92, "b1.2"),
+    BETA_1_2(8, 12, Family.BETA, "Beta 1.2 (v8)", 92, "b1.2"),
 
     /**
      * Minecraft Beta 1.3-1.3_01 - protocol version 9.
@@ -129,7 +140,7 @@ public enum ProtocolVersion {
      * Login format unchanged, phantom KeepAlive trick still applies.
      * Real MC protocol version 9.
      */
-    BETA_1_3(9, 12, Family.BETA, "Beta 1.3 (v9)", 92, "b1.3"),
+    BETA_1_3(9, 13, Family.BETA, "Beta 1.3 (v9)", 92, "b1.3"),
 
     /**
      * Minecraft Beta 1.4-1.4_01 - protocol version 10.
@@ -140,7 +151,7 @@ public enum ProtocolVersion {
      * Phantom KeepAlive trick still applies.
      * Real MC protocol version 10 (clashes with pre-rewrite Alpha v10).
      */
-    BETA_1_4(10, 13, Family.BETA, "Beta 1.4 (v10)", 92, "b1.4"),
+    BETA_1_4(10, 14, Family.BETA, "Beta 1.4 (v10)", 92, "b1.4"),
 
     /**
      * Minecraft Beta 1.5-1.5_01 - protocol version 11.
@@ -151,7 +162,7 @@ public enum ProtocolVersion {
      * Wire format otherwise identical to v10.
      * Real MC protocol version 11 (clashes with pre-rewrite Alpha v11/1.0.12).
      */
-    BETA_1_5(11, 14, Family.BETA, "Beta 1.5 (v11)", 92, "b1.5"),
+    BETA_1_5(11, 15, Family.BETA, "Beta 1.5 (v11)", 92, "b1.5"),
 
     /**
      * Minecraft Beta 1.6-1.6_test - protocol version 12.
@@ -161,7 +172,7 @@ public enum ProtocolVersion {
      * uses String16 (same as v11). Login format unchanged.
      * Real MC protocol version 12.
      */
-    BETA_1_6(12, 15, Family.BETA, "Beta 1.6 (v12)", 92, "b1.6"),
+    BETA_1_6(12, 16, Family.BETA, "Beta 1.6 (v12)", 92, "b1.6"),
 
     /**
      * Minecraft Beta 1.6.1-1.7_01 - protocol version 13.
@@ -171,7 +182,7 @@ public enum ProtocolVersion {
      * (Beta 1.5+ uses String16, Alpha uses writeUTF).
      * Real MC protocol version 13.
      */
-    BETA_1_7(13, 16, Family.BETA, "Beta 1.7 (v13)", 92, "b1.7"),
+    BETA_1_7(13, 17, Family.BETA, "Beta 1.7 (v13)", 92, "b1.7"),
 
     /**
      * Minecraft Beta 1.7.2-1.7.3 - protocol version 14.
@@ -180,7 +191,7 @@ public enum ProtocolVersion {
      * 1.0.16 (v14) — disambiguated by String16 detection in Handshake.
      * Real MC protocol version 14.
      */
-    BETA_1_7_3(14, 17, Family.BETA, "Beta 1.7.3 (v14)", 92, "b1.7.3"),
+    BETA_1_7_3(14, 18, Family.BETA, "Beta 1.7.3 (v14)", 92, "b1.7.3"),
 
     /**
      * Minecraft Beta 1.8-1.8.1 - protocol version 17.
@@ -192,7 +203,7 @@ public enum ProtocolVersion {
      * String encoding uses String16 (same as v11+).
      * Real MC protocol version 17.
      */
-    BETA_1_8(17, 18, Family.BETA, "Beta 1.8 (v17)", 92, "b1.8"),
+    BETA_1_8(17, 19, Family.BETA, "Beta 1.8 (v17)", 92, "b1.8"),
 
     /**
      * Minecraft Beta 1.9 Prerelease 5-6 - protocol version 21.
@@ -204,7 +215,7 @@ public enum ProtocolVersion {
      * ViaLegacy skips this version entirely (jumps v17 to v22).
      * Real MC protocol version 21.
      */
-    BETA_1_9_PRE5(21, 19, Family.BETA, "Beta 1.9-pre5 (v21)", 92, "b1.9-pre5"),
+    BETA_1_9_PRE5(21, 20, Family.BETA, "Beta 1.9-pre5 (v21)", 92, "b1.9-pre5"),
 
     /**
      * Minecraft Release 1.0.0 (the first official release after Beta).
@@ -215,7 +226,7 @@ public enum ProtocolVersion {
      * New C2S packets: EnchantItem (0x6C), PlayerAbilities (0xCA, now a real packet).
      * Real MC protocol version 22.
      */
-    RELEASE_1_0(22, 20, Family.RELEASE, "Release 1.0.0 (v22)", 92, "1.0"),
+    RELEASE_1_0(22, 21, Family.RELEASE, "Release 1.0.0 (v22)", 92, "1.0"),
 
     /**
      * Minecraft Release 1.1 (January 2012).
@@ -224,7 +235,7 @@ public enum ProtocolVersion {
      * from v22 (conditional NBT for damageable items).
      * Real MC protocol version 23.
      */
-    RELEASE_1_1(23, 21, Family.RELEASE, "Release 1.1 (v23)", 92, "1.1"),
+    RELEASE_1_1(23, 22, Family.RELEASE, "Release 1.1 (v23)", 92, "1.1"),
 
     /**
      * Minecraft Release 1.2.1 (March 2012).
@@ -232,7 +243,7 @@ public enum ProtocolVersion {
      * Chunk format overhauled to section-based with 256 height + biome data.
      * InputPacket (0x1B) removed. Real MC protocol version 28.
      */
-    RELEASE_1_2_1(28, 22, Family.RELEASE, "Release 1.2.1 (v28)", 92, "1.2.1"),
+    RELEASE_1_2_1(28, 23, Family.RELEASE, "Release 1.2.1 (v28)", 92, "1.2.1"),
 
     /**
      * Minecraft Release 1.2.4-1.2.5 (March 2012).
@@ -241,7 +252,7 @@ public enum ProtocolVersion {
      * same format as v22). No other wire format changes.
      * Real MC protocol version 29.
      */
-    RELEASE_1_2_4(29, 23, Family.RELEASE, "Release 1.2.4 (v29)", 92, "1.2.5"),
+    RELEASE_1_2_4(29, 24, Family.RELEASE, "Release 1.2.4 (v29)", 92, "1.2.5"),
 
     /**
      * Minecraft Release 1.3.1 (August 2012).
@@ -253,7 +264,7 @@ public enum ProtocolVersion {
      * DestroyEntity changed to variable-length array. SpawnPlayer gained metadata.
      * Real MC protocol version 39.
      */
-    RELEASE_1_3_1(39, 24, Family.RELEASE, "Release 1.3.1 (v39)", 92, "1.3.2"),
+    RELEASE_1_3_1(39, 25, Family.RELEASE, "Release 1.3.1 (v39)", 92, "1.3.2"),
 
     /**
      * Minecraft Release 1.4.2 (October 2012).
@@ -262,7 +273,7 @@ public enum ProtocolVersion {
      * only send empty metadata (0x7F terminator), so no impact.
      * Real MC protocol version 47.
      */
-    RELEASE_1_4_2(47, 25, Family.RELEASE, "Release 1.4.2 (v47)", 92, "1.4.2"),
+    RELEASE_1_4_2(47, 26, Family.RELEASE, "Release 1.4.2 (v47)", 92, "1.4.2"),
 
     /**
      * Minecraft Release 1.4.4-1.4.5 (November 2012).
@@ -272,7 +283,7 @@ public enum ProtocolVersion {
      * but we don't send map data. No C2S format changes.
      * Real MC protocol version 49.
      */
-    RELEASE_1_4_4(49, 26, Family.RELEASE, "Release 1.4.4 (v49)", 92, "1.4.5"),
+    RELEASE_1_4_4(49, 27, Family.RELEASE, "Release 1.4.4 (v49)", 92, "1.4.5"),
 
     /**
      * Minecraft Release 1.4.6-1.4.7 (December 2012).
@@ -283,7 +294,7 @@ public enum ProtocolVersion {
      * creative mode and doesn't need drop replenishment.
      * Real MC protocol version 51.
      */
-    RELEASE_1_4_6(51, 27, Family.RELEASE, "Release 1.4.6 (v51)", 92, "1.4.7"),
+    RELEASE_1_4_6(51, 28, Family.RELEASE, "Release 1.4.6 (v51)", 92, "1.4.7"),
 
     /**
      * Minecraft Release 1.5-1.5.1 (March 2013).
@@ -293,7 +304,7 @@ public enum ProtocolVersion {
      * All silently consumed. No packet class changes needed.
      * Real MC protocol version 60.
      */
-    RELEASE_1_5(60, 28, Family.RELEASE, "Release 1.5.1 (v60)", 92, "1.5.1"),
+    RELEASE_1_5(60, 29, Family.RELEASE, "Release 1.5.1 (v60)", 92, "1.5.1"),
 
     /**
      * Minecraft Release 1.5.2 (May 2013).
@@ -301,7 +312,7 @@ public enum ProtocolVersion {
      * transformations). Pure protocol version bump.
      * Real MC protocol version 61.
      */
-    RELEASE_1_5_2(61, 29, Family.RELEASE, "Release 1.5.2 (v61)", 92, "1.5.2"),
+    RELEASE_1_5_2(61, 30, Family.RELEASE, "Release 1.5.2 (v61)", 92, "1.5.2"),
 
     /**
      * Minecraft Release 1.6.1 (July 2013).
@@ -310,7 +321,7 @@ public enum ProtocolVersion {
      * Login, encryption, handshake, chunk format all unchanged from v39+.
      * Real MC protocol version 73.
      */
-    RELEASE_1_6_1(73, 30, Family.RELEASE, "Release 1.6.1 (v73)", 92, "1.6.1"),
+    RELEASE_1_6_1(73, 31, Family.RELEASE, "Release 1.6.1 (v73)", 92, "1.6.1"),
 
     /**
      * Minecraft Release 1.6.2 (July 2013).
@@ -318,7 +329,7 @@ public enum ProtocolVersion {
      * Wire format otherwise identical to v73.
      * Real MC protocol version 74.
      */
-    RELEASE_1_6_2(74, 31, Family.RELEASE, "Release 1.6.2 (v74)", 92, "1.6.2"),
+    RELEASE_1_6_2(74, 32, Family.RELEASE, "Release 1.6.2 (v74)", 92, "1.6.2"),
 
     /**
      * Minecraft Release 1.6.4 (September 2013).
@@ -326,7 +337,7 @@ public enum ProtocolVersion {
      * Pure protocol version bump.
      * Real MC protocol version 78.
      */
-    RELEASE_1_6_4(78, 32, Family.RELEASE, "Release 1.6.4 (v78)", 92, "1.6.4"),
+    RELEASE_1_6_4(78, 33, Family.RELEASE, "Release 1.6.4 (v78)", 92, "1.6.4"),
 
     /**
      * Minecraft Release 1.7.2-1.7.5 (October 2013).
@@ -339,7 +350,7 @@ public enum ProtocolVersion {
      * fromNumber(4, Family.RELEASE) disambiguates.
      * Real MC protocol version 4.
      */
-    RELEASE_1_7_2(4, 33, Family.RELEASE, "Release 1.7.2 (v4)", 92, "1.7.5"),
+    RELEASE_1_7_2(4, 34, Family.RELEASE, "Release 1.7.2 (v4)", 92, "1.7.5"),
 
     /**
      * Minecraft Release 1.7.6-1.7.10 (April 2014).
@@ -349,7 +360,7 @@ public enum ProtocolVersion {
      * VarInt framing, and fromNumber(5, Family.RELEASE) disambiguates.
      * Real MC protocol version 5.
      */
-    RELEASE_1_7_6(5, 34, Family.RELEASE, "Release 1.7.6 (v5)", 92, "1.7.10"),
+    RELEASE_1_7_6(5, 35, Family.RELEASE, "Release 1.7.6 (v5)", 92, "1.7.10"),
 
     /**
      * Minecraft Release 1.8-1.8.9 (September 2014).
@@ -361,7 +372,7 @@ public enum ProtocolVersion {
      * Netty protocol version 47 (clashes with pre-Netty Release 1.4.2 v47 — disambiguated
      * in NettyConnectionHandler by hardcoding pv==47 to RELEASE_1_8 for Netty clients).
      */
-    RELEASE_1_8(47, 35, Family.RELEASE, "Release 1.8 (v47)", 92, "1.8.9"),
+    RELEASE_1_8(47, 36, Family.RELEASE, "Release 1.8 (v47)", 92, "1.8.9"),
 
     /**
      * Minecraft Release 1.9 (February 2016).
@@ -371,28 +382,28 @@ public enum ProtocolVersion {
      * block storage, new mandatory packets (TeleportConfirm, UnloadChunk, UseItem).
      * Netty protocol version 107.
      */
-    RELEASE_1_9(107, 36, Family.RELEASE, "Release 1.9 (v107)", 92, "1.9"),
+    RELEASE_1_9(107, 37, Family.RELEASE, "Release 1.9 (v107)", 92, "1.9"),
 
     /**
      * Minecraft Release 1.9.1 (March 2016).
      * Wire format identical to v107. Pure protocol version bump.
      * Netty protocol version 108.
      */
-    RELEASE_1_9_1(108, 37, Family.RELEASE, "Release 1.9.1 (v108)", 92, "1.9.1"),
+    RELEASE_1_9_1(108, 38, Family.RELEASE, "Release 1.9.1 (v108)", 92, "1.9.1"),
 
     /**
      * Minecraft Release 1.9.2 (March 2016).
      * Wire format identical to v107. Pure protocol version bump.
      * Netty protocol version 109.
      */
-    RELEASE_1_9_2(109, 38, Family.RELEASE, "Release 1.9.2 (v109)", 92, "1.9.2"),
+    RELEASE_1_9_2(109, 39, Family.RELEASE, "Release 1.9.2 (v109)", 92, "1.9.2"),
 
     /**
      * Minecraft Release 1.9.4 (May 2016).
      * Wire format identical to v107. Pure protocol version bump.
      * Netty protocol version 110.
      */
-    RELEASE_1_9_4(110, 39, Family.RELEASE, "Release 1.9.4 (v110)", 92, "1.9.4"),
+    RELEASE_1_9_4(110, 40, Family.RELEASE, "Release 1.9.4 (v110)", 92, "1.9.4"),
 
     /**
      * Minecraft Release 1.10-1.10.2 (June 2016).
@@ -401,7 +412,7 @@ public enum ProtocolVersion {
      * resource pack status hash removed (we don't handle), new sound IDs.
      * Netty protocol version 210.
      */
-    RELEASE_1_10(210, 40, Family.RELEASE, "Release 1.10.2 (v210)", 92, "1.10.2"),
+    RELEASE_1_10(210, 41, Family.RELEASE, "Release 1.10.2 (v210)", 92, "1.10.2"),
 
     /**
      * Minecraft Release 1.11 (November 2016).
@@ -409,14 +420,14 @@ public enum ProtocolVersion {
      * fields changed from unsigned bytes to floats.
      * All packet IDs identical to v210. Netty protocol version 315.
      */
-    RELEASE_1_11(315, 41, Family.RELEASE, "Release 1.11 (v315)", 92, "1.11"),
+    RELEASE_1_11(315, 42, Family.RELEASE, "Release 1.11 (v315)", 92, "1.11"),
 
     /**
      * Minecraft Release 1.11.1-1.11.2 (December 2016).
      * Wire format identical to v315. Pure protocol version bump.
      * Netty protocol version 316.
      */
-    RELEASE_1_11_2(316, 42, Family.RELEASE, "Release 1.11.2 (v316)", 92, "1.11.2"),
+    RELEASE_1_11_2(316, 43, Family.RELEASE, "Release 1.11.2 (v316)", 92, "1.11.2"),
 
     /**
      * Minecraft Release 1.12 (June 2017).
@@ -427,7 +438,7 @@ public enum ProtocolVersion {
      * C2S movement packets reordered (OnGround before Position).
      * Netty protocol version 335.
      */
-    RELEASE_1_12(335, 43, Family.RELEASE, "Release 1.12 (v335)", 92, "1.12"),
+    RELEASE_1_12(335, 44, Family.RELEASE, "Release 1.12 (v335)", 92, "1.12"),
 
     /**
      * Minecraft Release 1.12.1 (August 2017).
@@ -435,14 +446,14 @@ public enum ProtocolVersion {
      * C2S CraftingRecipePlacement (0x01) removed, PlaceRecipe added at 0x12.
      * Netty protocol version 338.
      */
-    RELEASE_1_12_1(338, 44, Family.RELEASE, "Release 1.12.1 (v338)", 92, "1.12.1"),
+    RELEASE_1_12_1(338, 45, Family.RELEASE, "Release 1.12.1 (v338)", 92, "1.12.1"),
 
     /**
      * Minecraft Release 1.12.2 (September 2017).
      * KeepAlive changed from VarInt to Long (8 bytes) for both C2S and S2C.
      * All packet IDs identical to v338. Netty protocol version 340.
      */
-    RELEASE_1_12_2(340, 45, Family.RELEASE, "Release 1.12.2 (v340)", 92, "1.12.2"),
+    RELEASE_1_12_2(340, 46, Family.RELEASE, "Release 1.12.2 (v340)", 92, "1.12.2"),
 
     /**
      * Minecraft Release 1.13-1.13.1 (July 2018) - "The Flattening".
@@ -453,14 +464,14 @@ public enum ProtocolVersion {
      * byte[256] to int[256]. Global palette bitsPerBlock changed from 13 to 14.
      * Netty protocol version 393.
      */
-    RELEASE_1_13(393, 46, Family.RELEASE, "Release 1.13 (v393)", 92, "1.13"),
+    RELEASE_1_13(393, 47, Family.RELEASE, "Release 1.13 (v393)", 92, "1.13"),
 
     /**
      * Minecraft Release 1.13.1.
      * No packet format changes from 1.13. Same S2C/C2S packet IDs and wire formats.
      * Netty protocol version 401.
      */
-    RELEASE_1_13_1(401, 47, Family.RELEASE, "Release 1.13.1 (v401)", 92, "1.13.1"),
+    RELEASE_1_13_1(401, 48, Family.RELEASE, "Release 1.13.1 (v401)", 92, "1.13.1"),
 
     /**
      * Minecraft Release 1.13.2.
@@ -468,7 +479,7 @@ public enum ProtocolVersion {
      * short itemId (-1 = empty). All other packets and IDs unchanged from 1.13.
      * Netty protocol version 404.
      */
-    RELEASE_1_13_2(404, 48, Family.RELEASE, "Release 1.13.2 (v404)", 92, "1.13.2"),
+    RELEASE_1_13_2(404, 49, Family.RELEASE, "Release 1.13.2 (v404)", 92, "1.13.2"),
 
     /**
      * Minecraft Release 1.14 (April 2019).
@@ -480,7 +491,7 @@ public enum ProtocolVersion {
      * Item slot format unchanged from v404 (boolean+VarInt).
      * Netty protocol version 477.
      */
-    RELEASE_1_14(477, 49, Family.RELEASE, "Release 1.14 (v477)", 92, "1.14"),
+    RELEASE_1_14(477, 50, Family.RELEASE, "Release 1.14 (v477)", 92, "1.14"),
 
     /**
      * Minecraft Release 1.14.1 (May 2019).
@@ -489,7 +500,7 @@ public enum ProtocolVersion {
      * shifted (irrelevant — we don't send entity metadata for mobs).
      * Netty protocol version 480.
      */
-    RELEASE_1_14_1(480, 50, Family.RELEASE, "Release 1.14.1 (v480)", 92, "1.14.1"),
+    RELEASE_1_14_1(480, 51, Family.RELEASE, "Release 1.14.1 (v480)", 92, "1.14.1"),
 
     /**
      * Minecraft Release 1.14.2 (May 2019).
@@ -497,7 +508,7 @@ public enum ProtocolVersion {
      * Pure protocol version bump (bug fixes only).
      * Netty protocol version 485.
      */
-    RELEASE_1_14_2(485, 51, Family.RELEASE, "Release 1.14.2 (v485)", 92, "1.14.2"),
+    RELEASE_1_14_2(485, 52, Family.RELEASE, "Release 1.14.2 (v485)", 92, "1.14.2"),
 
     /**
      * Minecraft Release 1.14.3 (June 2019).
@@ -505,7 +516,7 @@ public enum ProtocolVersion {
      * We don't send this packet, so effectively wire-compatible with v477.
      * Netty protocol version 490.
      */
-    RELEASE_1_14_3(490, 52, Family.RELEASE, "Release 1.14.3 (v490)", 92, "1.14.3"),
+    RELEASE_1_14_3(490, 53, Family.RELEASE, "Release 1.14.3 (v490)", 92, "1.14.3"),
 
     /**
      * Minecraft Release 1.14.4 (July 2019).
@@ -513,7 +524,7 @@ public enum ProtocolVersion {
      * We don't send this packet, so effectively wire-compatible with v477.
      * Netty protocol version 498.
      */
-    RELEASE_1_14_4(498, 53, Family.RELEASE, "Release 1.14.4 (v498)", 92, "1.14.4"),
+    RELEASE_1_14_4(498, 54, Family.RELEASE, "Release 1.14.4 (v498)", 92, "1.14.4"),
 
     /**
      * Minecraft Release 1.15 (December 2019).
@@ -522,7 +533,7 @@ public enum ProtocolVersion {
      * Biomes changed from int[256] to int[1024] (3D biome storage).
      * Netty protocol version 573.
      */
-    RELEASE_1_15(573, 54, Family.RELEASE, "Release 1.15 (v573)", 92, "1.15"),
+    RELEASE_1_15(573, 55, Family.RELEASE, "Release 1.15 (v573)", 92, "1.15"),
 
     /**
      * Minecraft Release 1.15.1 (December 2019).
@@ -530,7 +541,7 @@ public enum ProtocolVersion {
      * Pure protocol version bump (bug fixes only).
      * Netty protocol version 575.
      */
-    RELEASE_1_15_1(575, 55, Family.RELEASE, "Release 1.15.1 (v575)", 92, "1.15.1"),
+    RELEASE_1_15_1(575, 56, Family.RELEASE, "Release 1.15.1 (v575)", 92, "1.15.1"),
 
     /**
      * Minecraft Release 1.15.2 (January 2020).
@@ -538,7 +549,7 @@ public enum ProtocolVersion {
      * Pure protocol version bump (bug fixes only).
      * Netty protocol version 578.
      */
-    RELEASE_1_15_2(578, 56, Family.RELEASE, "Release 1.15.2 (v578)", 92, "1.15.2"),
+    RELEASE_1_15_2(578, 57, Family.RELEASE, "Release 1.15.2 (v578)", 92, "1.15.2"),
 
     /**
      * Minecraft Release 1.16 (June 2020) - "The Nether Update".
@@ -549,7 +560,7 @@ public enum ProtocolVersion {
      * C2S: GENERATE_JIGSAW inserted at 0x0F, shifting all C2S >= 0x0F by +1.
      * Netty protocol version 735.
      */
-    RELEASE_1_16(735, 57, Family.RELEASE, "Release 1.16 (v735)", 92, "1.16"),
+    RELEASE_1_16(735, 58, Family.RELEASE, "Release 1.16 (v735)", 92, "1.16"),
 
     /**
      * Minecraft Release 1.16.1 (June 2020).
@@ -557,7 +568,7 @@ public enum ProtocolVersion {
      * Pure protocol version bump (client-side Realms hotfix).
      * Netty protocol version 736.
      */
-    RELEASE_1_16_1(736, 58, Family.RELEASE, "Release 1.16.1 (v736)", 92, "1.16.1"),
+    RELEASE_1_16_1(736, 59, Family.RELEASE, "Release 1.16.1 (v736)", 92, "1.16.1"),
 
     /**
      * Minecraft Release 1.16.2 (August 2020).
@@ -569,20 +580,20 @@ public enum ProtocolVersion {
      * C2S: RECIPE_BOOK_UPDATE split into two packets, shifting >= 0x1F by +1.
      * Netty protocol version 751.
      */
-    RELEASE_1_16_2(751, 59, Family.RELEASE, "Release 1.16.2 (v751)", 92, "1.16.2"),
+    RELEASE_1_16_2(751, 60, Family.RELEASE, "Release 1.16.2 (v751)", 92, "1.16.2"),
 
     /**
      * Bug-fix release with no wire format changes from 1.16.2.
      * Netty protocol version 753.
      */
-    RELEASE_1_16_3(753, 60, Family.RELEASE, "Release 1.16.3 (v753)", 92, "1.16.3"),
+    RELEASE_1_16_3(753, 61, Family.RELEASE, "Release 1.16.3 (v753)", 92, "1.16.3"),
 
     /**
      * Release 1.16.4 / 1.16.5 (November 2020 / January 2021).
      * Bug-fix release with no wire format changes from 1.16.3.
      * Netty protocol version 754.
      */
-    RELEASE_1_16_4(754, 61, Family.RELEASE, "Release 1.16.4 (v754)", 92, "1.16.5"),
+    RELEASE_1_16_4(754, 62, Family.RELEASE, "Release 1.16.4 (v754)", 92, "1.16.5"),
 
     /**
      * Minecraft Release 1.17 (June 2021) - "Caves & Cliffs: Part I".
@@ -596,7 +607,7 @@ public enum ProtocolVersion {
      * amethyst, candles, dripstone, etc.
      * Netty protocol version 755.
      */
-    RELEASE_1_17(755, 62, Family.RELEASE, "Release 1.17 (v755)", 92, "1.17"),
+    RELEASE_1_17(755, 63, Family.RELEASE, "Release 1.17 (v755)", 92, "1.17"),
 
     /**
      * Minecraft Release 1.17.1 (July 2021) - hotfix release.
@@ -607,7 +618,7 @@ public enum ProtocolVersion {
      * No packet ID shifts, no block state/item ID changes.
      * Netty protocol version 756.
      */
-    RELEASE_1_17_1(756, 63, Family.RELEASE, "Release 1.17.1 (v756)", 92, "1.17.1"),
+    RELEASE_1_17_1(756, 64, Family.RELEASE, "Release 1.17.1 (v756)", 92, "1.17.1"),
 
     /**
      * Minecraft Release 1.18-1.18.1 (November 2021) - "Caves & Cliffs: Part II".
@@ -618,7 +629,7 @@ public enum ProtocolVersion {
      * Block state/item IDs unchanged from 1.17.
      * Netty protocol version 757.
      */
-    RELEASE_1_18(757, 64, Family.RELEASE, "Release 1.18 (v757)", 92, "1.18.1"),
+    RELEASE_1_18(757, 65, Family.RELEASE, "Release 1.18 (v757)", 92, "1.18.1"),
 
     /**
      * Minecraft Release 1.18.2 (February 2022).
@@ -627,7 +638,7 @@ public enum ProtocolVersion {
      * No packet ID shifts, no block state/item ID changes, no chunk format changes.
      * Netty protocol version 758.
      */
-    RELEASE_1_18_2(758, 65, Family.RELEASE, "Release 1.18.2 (v758)", 92, "1.18.2"),
+    RELEASE_1_18_2(758, 66, Family.RELEASE, "Release 1.18.2 (v758)", 92, "1.18.2"),
 
     /**
      * Minecraft Release 1.19 (June 2022) - "The Wild Update".
@@ -638,7 +649,7 @@ public enum ProtocolVersion {
      * LoginSuccess gains empty property array, block state IDs shifted for most blocks.
      * Netty protocol version 759.
      */
-    RELEASE_1_19(759, 66, Family.RELEASE, "Release 1.19 (v759)", 93, "1.19"),
+    RELEASE_1_19(759, 67, Family.RELEASE, "Release 1.19 (v759)", 93, "1.19"),
 
     /**
      * Minecraft Release 1.19.1-1.19.2 (August 2022).
@@ -648,7 +659,7 @@ public enum ProtocolVersion {
      * expanded from 1 to 7 entries. No block state, chunk format, or tag changes.
      * Netty protocol version 760.
      */
-    RELEASE_1_19_1(760, 67, Family.RELEASE, "Release 1.19.1 (v760)", 93, "1.19.2"),
+    RELEASE_1_19_1(760, 68, Family.RELEASE, "Release 1.19.1 (v760)", 93, "1.19.2"),
 
     /**
      * Minecraft Release 1.19.3 (December 2022).
@@ -659,7 +670,7 @@ public enum ProtocolVersion {
      * Block state IDs unchanged from V759/V760. Chunk format unchanged.
      * Netty protocol version 761.
      */
-    RELEASE_1_19_3(761, 68, Family.RELEASE, "Release 1.19.3 (v761)", 93, "1.19.3"),
+    RELEASE_1_19_3(761, 69, Family.RELEASE, "Release 1.19.3 (v761)", 93, "1.19.3"),
 
     /**
      * Minecraft Release 1.19.4 (March 2023).
@@ -670,7 +681,7 @@ public enum ProtocolVersion {
      * by has_precipitation Byte. Block state IDs and chunk format unchanged from V761.
      * Netty protocol version 762.
      */
-    RELEASE_1_19_4(762, 69, Family.RELEASE, "Release 1.19.4 (v762)", 93, "1.19.4"),
+    RELEASE_1_19_4(762, 70, Family.RELEASE, "Release 1.19.4 (v762)", 93, "1.19.4"),
 
     /**
      * Minecraft Release 1.20-1.20.1 (June 2023) - "Trails & Tales".
@@ -680,7 +691,7 @@ public enum ProtocolVersion {
      * removal (replaceable_plants). Block state IDs, chunk format, item IDs unchanged.
      * Netty protocol version 763.
      */
-    RELEASE_1_20(763, 70, Family.RELEASE, "Release 1.20 (v763)", 93, "1.20.1"),
+    RELEASE_1_20(763, 71, Family.RELEASE, "Release 1.20 (v763)", 93, "1.20.1"),
 
     /**
      * Minecraft Release 1.20.2 (September 2023).
@@ -691,7 +702,7 @@ public enum ProtocolVersion {
      * our basic block set.
      * Netty protocol version 764.
      */
-    RELEASE_1_20_2(764, 71, Family.RELEASE, "Release 1.20.2 (v764)", 93, "1.20.2"),
+    RELEASE_1_20_2(764, 72, Family.RELEASE, "Release 1.20.2 (v764)", 93, "1.20.2"),
 
     /**
      * Minecraft Release 1.20.3-1.20.4 (December 2023).
@@ -702,7 +713,7 @@ public enum ProtocolVersion {
      * Block state IDs unchanged for our basic block set. Chunk format unchanged.
      * Netty protocol version 765.
      */
-    RELEASE_1_20_3(765, 72, Family.RELEASE, "Release 1.20.3 (v765)", 93, "1.20.4"),
+    RELEASE_1_20_3(765, 73, Family.RELEASE, "Release 1.20.3 (v765)", 93, "1.20.4"),
 
     /**
      * Minecraft Release 1.20.5-1.20.6 (April 2024).
@@ -714,7 +725,7 @@ public enum ProtocolVersion {
      * Block state IDs unchanged for our basic block set. Chunk format unchanged.
      * Netty protocol version 766.
      */
-    RELEASE_1_20_5(766, 73, Family.RELEASE, "Release 1.20.5 (v766)", 93, "1.20.6"),
+    RELEASE_1_20_5(766, 74, Family.RELEASE, "Release 1.20.5 (v766)", 93, "1.20.6"),
 
     /**
      * Minecraft Release 1.21-1.21.1 (June 2024) - "Tricky Trials".
@@ -724,7 +735,7 @@ public enum ProtocolVersion {
      * don't send (attribute modifiers UUID->String, particle system).
      * Netty protocol version 767.
      */
-    RELEASE_1_21(767, 74, Family.RELEASE, "Release 1.21 (v767)", 93, "1.21.1"),
+    RELEASE_1_21(767, 75, Family.RELEASE, "Release 1.21 (v767)", 93, "1.21.1"),
 
     /**
      * Minecraft Release 1.21.2-1.21.3 (October 2024).
@@ -736,7 +747,7 @@ public enum ProtocolVersion {
      * 20 new entity types shift player from 128→148.
      * Netty protocol version 768.
      */
-    RELEASE_1_21_2(768, 75, Family.RELEASE, "Release 1.21.2 (v768)", 93, "1.21.3"),
+    RELEASE_1_21_2(768, 76, Family.RELEASE, "Release 1.21.2 (v768)", 93, "1.21.3"),
 
     /**
      * Minecraft Release 1.21.4 (December 2024).
@@ -747,7 +758,7 @@ public enum ProtocolVersion {
      * item +5 weapon preference tags -flowers -tall_flowers -trim_templates.
      * Netty protocol version 769.
      */
-    RELEASE_1_21_4(769, 76, Family.RELEASE, "Release 1.21.4 (v769)", 93, "1.21.4"),
+    RELEASE_1_21_4(769, 77, Family.RELEASE, "Release 1.21.4 (v769)", 93, "1.21.4"),
 
     /**
      * Minecraft Release 1.21.5 (2025).
@@ -759,7 +770,7 @@ public enum ProtocolVersion {
      * cow_variant, chicken_variant, wolf_sound_variant.
      * Netty protocol version 770.
      */
-    RELEASE_1_21_5(770, 77, Family.RELEASE, "Release 1.21.5 (v770)", 93, "1.21.5"),
+    RELEASE_1_21_5(770, 78, Family.RELEASE, "Release 1.21.5 (v770)", 93, "1.21.5"),
 
     /**
      * Minecraft Release 1.21.6 "Chase the Skies".
@@ -768,7 +779,7 @@ public enum ProtocolVersion {
      * 1 new registry: dialog. Tag changes: block +3 net, item +3, entity_type +2.
      * Netty protocol version 771.
      */
-    RELEASE_1_21_6(771, 78, Family.RELEASE, "Release 1.21.6 (v771)", 94, "1.21.6"),
+    RELEASE_1_21_6(771, 79, Family.RELEASE, "Release 1.21.6 (v771)", 94, "1.21.6"),
 
     /**
      * Minecraft Release 1.21.7-1.21.8 (2025).
@@ -777,7 +788,7 @@ public enum ProtocolVersion {
      * and 1 new music disc (lava_chicken). Protocol version 772 shared with 1.21.8.
      * Netty protocol version 772.
      */
-    RELEASE_1_21_7(772, 79, Family.RELEASE, "Release 1.21.7 (v772)", 94, "1.21.8"),
+    RELEASE_1_21_7(772, 80, Family.RELEASE, "Release 1.21.7 (v772)", 94, "1.21.8"),
 
     /**
      * Minecraft Release 1.21.9-1.21.10 (2025) - "The Copper Age".
@@ -788,7 +799,7 @@ public enum ProtocolVersion {
      * No C2S packet ID changes. No chunk format changes.
      * Netty protocol version 773.
      */
-    RELEASE_1_21_9(773, 80, Family.RELEASE, "Release 1.21.9 (v773)", 94, "1.21.10"),
+    RELEASE_1_21_9(773, 81, Family.RELEASE, "Release 1.21.9 (v773)", 94, "1.21.10"),
 
     /**
      * Minecraft Release 1.21.11 (2025).
@@ -799,7 +810,7 @@ public enum ProtocolVersion {
      * Biome tags restructured (5 removed, 1 added). New timeline tag registry.
      * Netty protocol version 774.
      */
-    RELEASE_1_21_11(774, 81, Family.RELEASE, "Release 1.21.11 (v774)", 94, "1.21.11"),
+    RELEASE_1_21_11(774, 82, Family.RELEASE, "Release 1.21.11 (v774)", 94, "1.21.11"),
 
     /**
      * Minecraft 26.1 "Tiny Takeover" (March 2026).
@@ -811,7 +822,7 @@ public enum ProtocolVersion {
      * New block/item/entity_type/fluid tags. No new registries.
      * Netty protocol version 775.
      */
-    RELEASE_26_1(775, 82, Family.RELEASE, "Release 26.1 (v775)", 94, "26.1"),
+    RELEASE_26_1(775, 83, Family.RELEASE, "Release 26.1 (v775)", 94, "26.1"),
 
     /**
      * Minecraft Legacy Console Edition TU19 (v1.6.0560.0).
@@ -821,7 +832,7 @@ public enum ProtocolVersion {
      * MINECRAFT_NET_VERSION = 560 (netcode version, unique to LCE).
      * No encryption. PlayerUID = uint64 (8 bytes XUID).
      */
-    LCE_TU19(560, 84, Family.LCE, "LCE TU19", 92, "lce-tu19"),
+    LCE_TU19(560, 85, Family.LCE, "LCE TU19", 92, "lce-tu19"),
 
     /**
      * Minecraft Bedrock Edition (1.26.10+).
@@ -829,7 +840,7 @@ public enum ProtocolVersion {
      * Protocol version 944 matches the CloudburstMC codec for 1.26.10.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(944, 85, Family.BEDROCK, "Bedrock", 92, "bedrock-1.26.10");
+    BEDROCK(944, 86, Family.BEDROCK, "Bedrock", 92, "bedrock-1.26.10");
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
@@ -1126,7 +1137,7 @@ public enum ProtocolVersion {
      * Alpha+ uses the pre-Netty format (string16, variable-length fields).
      */
     public boolean isClassicFormat() {
-        return this == RUBYDUNG || this == CLASSIC;
+        return this == RUBYDUNG || this == CLASSIC_0_0_15A || this == CLASSIC;
     }
 
     /**
@@ -1136,7 +1147,7 @@ public enum ProtocolVersion {
      * finite → server-world.dat, chunk-based → Alpha/McRegion chunk files.
      */
     public boolean isFiniteWorld() {
-        return this == RUBYDUNG || this == CLASSIC;
+        return this == RUBYDUNG || this == CLASSIC_0_0_15A || this == CLASSIC;
     }
 
     /**

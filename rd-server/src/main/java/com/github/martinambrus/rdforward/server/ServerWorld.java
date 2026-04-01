@@ -1,5 +1,6 @@
 package com.github.martinambrus.rdforward.server;
 
+import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import com.github.martinambrus.rdforward.world.BlockRegistry;
 import com.github.martinambrus.rdforward.world.WorldGenerator;
@@ -266,21 +267,28 @@ public class ServerWorld {
      *   [width * height * depth bytes] block data
      *   All GZip compressed
      *
-     * The block ordering in Classic is: for x, for z, for y — i.e., XZY.
+     * Classic v7 expects XZY block ordering (x outermost, y innermost).
+     * Classic 0.0.15a's Level.setData swaps Y/Z dimensions, so its getTile
+     * reads blocks in the same YZX order as our internal storage — no
+     * reordering needed.
      */
-    public byte[] serializeForClassicProtocol() throws IOException {
+    public byte[] serializeForClassicProtocol(ProtocolVersion version) throws IOException {
         int volume = width * height * depth;
         byte[] snapshot = getBlockSnapshot();
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (GZIPOutputStream gzip = new GZIPOutputStream(baos);
              DataOutputStream dos = new DataOutputStream(gzip)) {
-            // Write volume as 4-byte big-endian int
             dos.writeInt(volume);
-            // Write blocks in XZY order (Classic protocol order)
-            for (int x = 0; x < width; x++) {
-                for (int z = 0; z < depth; z++) {
-                    for (int y = 0; y < height; y++) {
-                        dos.writeByte(snapshot[(y * depth + z) * width + x]);
+            if (version == ProtocolVersion.CLASSIC_0_0_15A) {
+                // 0.0.15a swaps Y/Z in setData, so internal YZX order matches
+                dos.write(snapshot);
+            } else {
+                // Classic v7 expects XZY order — reorder from internal YZX
+                for (int x = 0; x < width; x++) {
+                    for (int z = 0; z < depth; z++) {
+                        for (int y = 0; y < height; y++) {
+                            dos.writeByte(snapshot[(y * depth + z) * width + x]);
+                        }
                     }
                 }
             }

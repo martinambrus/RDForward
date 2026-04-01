@@ -99,6 +99,8 @@ public class RDServer {
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
     private Channel serverChannel;
+    /** Secondary listener on port 5565 for Classic 0.0.15a (hardcoded port in client). */
+    private Channel classicChannel;
     private Channel bedrockChannel;
     private com.github.martinambrus.rdforward.server.lce.LCELanAdvertiser lceLanAdvertiser;
     private Channel udpFrontEndChannel;
@@ -306,6 +308,16 @@ public class RDServer {
         System.out.println("RDForward server started on port " + port
                 + " (protocol: " + protocolVersion.getDisplayName()
                 + ", version " + protocolVersion.getVersionNumber() + ")");
+
+        // Classic 0.0.15a hardcodes port 5565 — bind there too if main port differs
+        if (port != 5565) {
+            try {
+                classicChannel = bootstrap.bind(5565).sync().channel();
+                System.out.println("Classic 0.0.15a listener started on port 5565");
+            } catch (Exception e) {
+                System.err.println("Could not bind Classic 0.0.15a port 5565: " + e.getMessage());
+            }
+        }
 
         // Start unified UDP server (legacy MCPE + modern Bedrock on port 19132)
         startUnifiedUdpServer();
@@ -758,6 +770,9 @@ public class RDServer {
         }
         if (bedrockChannel != null) {
             bedrockChannel.close();
+        }
+        if (classicChannel != null) {
+            classicChannel.close();
         }
         if (serverChannel != null) {
             serverChannel.close();

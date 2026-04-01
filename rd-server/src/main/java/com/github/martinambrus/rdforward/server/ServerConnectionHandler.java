@@ -2,6 +2,7 @@ package com.github.martinambrus.rdforward.server;
 
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.codec.PacketDecoder;
+import com.github.martinambrus.rdforward.protocol.codec.RawPacketDecoder;
 import com.github.martinambrus.rdforward.protocol.event.EventResult;
 import com.github.martinambrus.rdforward.world.BlockRegistry;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
@@ -69,6 +70,10 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
             handlePlayerIdentification(ctx, (PlayerIdentificationPacket) packet);
             return;
         }
+        if (!loginComplete && packet instanceof PlayerIdentificationPacketV015a) {
+            handlePlayerIdentificationV015a(ctx, (PlayerIdentificationPacketV015a) packet);
+            return;
+        }
 
         if (!loginComplete) {
             // Non-identification packet before login — close immediately to prevent
@@ -92,14 +97,26 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
 
     private void handlePlayerIdentification(ChannelHandlerContext ctx, PlayerIdentificationPacket identification) {
         clientVersion = ProtocolVersion.fromNumber(identification.getProtocolVersion());
-        String username = identification.getUsername();
-
         if (clientVersion == null) {
             ctx.writeAndFlush(new DisconnectPacket("Unknown protocol version: " + identification.getProtocolVersion()));
             ctx.close();
             return;
         }
+        completeLogin(ctx, identification.getUsername());
+    }
 
+    private void handlePlayerIdentificationV015a(ChannelHandlerContext ctx, PlayerIdentificationPacketV015a identification) {
+        // 0.0.15a has no protocol version byte — version was already determined
+        // by ProtocolDetectionHandler based on the packet format
+        clientVersion = ProtocolVersion.CLASSIC_0_0_15A;
+        completeLogin(ctx, identification.getUsername());
+    }
+
+    /**
+     * Common login logic shared by all Classic identification packet formats.
+     * Called after clientVersion has been set.
+     */
+    private void completeLogin(ChannelHandlerContext ctx, String username) {
         // Reject Classic clients in online mode (no auth mechanism in Classic protocol)
         if (ServerProperties.isOnlineMode()) {
             ctx.writeAndFlush(new DisconnectPacket(
@@ -130,22 +147,32 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
             ctx.pipeline().addAfter("encoder", "translator",
                     new VersionTranslator(serverVersion, clientVersion));
 
-            PacketDecoder decoder = ctx.pipeline().get(PacketDecoder.class);
-            if (decoder != null) {
-                decoder.setProtocolVersion(clientVersion);
+            // Update decoder version — try both Nati-framed and raw decoders
+            PacketDecoder natiDecoder = ctx.pipeline().get(PacketDecoder.class);
+            if (natiDecoder != null) {
+                natiDecoder.setProtocolVersion(clientVersion);
+            }
+            RawPacketDecoder rawDecoder = ctx.pipeline().get(RawPacketDecoder.class);
+            if (rawDecoder != null) {
+                rawDecoder.setProtocolVersion(clientVersion);
             }
 
             System.out.println("Client '" + username + "' connected with "
                     + clientVersion.getDisplayName() + " protocol — version translator active");
         }
 
-        // Send Server Identification
-        ctx.writeAndFlush(new ServerIdentificationPacket(
-                serverVersion.getVersionNumber(),
-                ServerProperties.getMotd(),
-                "Welcome to RDForward!",
-                ServerIdentificationPacket.USER_TYPE_NORMAL
-        ));
+        // Send Server Identification (version-appropriate format)
+        if (clientVersion == ProtocolVersion.CLASSIC_0_0_15A) {
+            ctx.writeAndFlush(new ServerIdentificationPacketV015a(
+                    ServerProperties.getMotd()));
+        } else {
+            ctx.writeAndFlush(new ServerIdentificationPacket(
+                    serverVersion.getVersionNumber(),
+                    ServerProperties.getMotd(),
+                    "Welcome to RDForward!",
+                    ServerIdentificationPacket.USER_TYPE_NORMAL
+            ));
+        }
 
         // Send world data via Classic level transfer
         sendWorldData(ctx);
@@ -231,7 +258,7 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
         ctx.writeAndFlush(new LevelInitializePacket());
 
         try {
-            byte[] compressed = world.serializeForClassicProtocol();
+            byte[] compressed = world.serializeForClassicProtocol(clientVersion);
             int totalLength = compressed.length;
             int offset = 0;
 

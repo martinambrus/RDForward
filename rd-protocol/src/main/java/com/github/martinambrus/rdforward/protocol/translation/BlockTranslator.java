@@ -62,6 +62,11 @@ public class BlockTranslator {
      * Returns null if no mapping exists.
      */
     private static Map<Integer, Integer> loadTableForPair(ProtocolVersion from, ProtocolVersion to) {
+        // Classic v7 -> Classic 0.0.15a
+        if (from == ProtocolVersion.CLASSIC && to == ProtocolVersion.CLASSIC_0_0_15A) {
+            return loadProperties("classic-to-classic015a.properties");
+        }
+
         // Classic <-> RubyDung
         if (from == ProtocolVersion.CLASSIC && to == ProtocolVersion.RUBYDUNG) {
             return loadProperties("classic-to-rubydung.properties");

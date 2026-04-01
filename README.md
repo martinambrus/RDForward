@@ -52,7 +52,7 @@ can join a shared world, see each other, place/break blocks, and chat.
 ```bash
 ./gradlew :rd-server:runServer
 ```
-The server listens on port **25565** by default.
+The server listens on port **25565** by default (plus port **5565** for Classic 0.0.15a clients, which have the port hardcoded).
 
 **Start one or more clients (auto-connects to localhost):**
 ```bash
@@ -136,7 +136,7 @@ The server accepts connections from a wide range of Minecraft clients simultaneo
 | Protocol Family | Versions | Transport |
 |-----------------|----------|-----------|
 | RubyDung | rd-132211 (the original) | TCP, Classic framing |
-| Classic | c0.30 | TCP, Classic framing |
+| Classic | c0.0.15a, c0.30 | TCP, Classic framing |
 | Alpha | a1.0.15 through a1.2.6 | TCP, 4-byte length prefix |
 | Alphaver | All versions (Cypress through Lilypad) | TCP, 4-byte length prefix |
 | Beta | b1.0 through b1.8 | TCP, 4-byte length prefix |
@@ -146,7 +146,7 @@ The server accepts connections from a wide range of Minecraft clients simultaneo
 | MCPE (legacy) | 0.6.1 through 0.16.0 (protocols 9-91) | UDP, RakNet |
 | Bedrock | 1.26.10 (protocol 944) | UDP, RakNet |
 
-Protocol detection is automatic — the server identifies the client type from the first bytes of the connection and configures the Netty pipeline accordingly. LCE clients are detected by a server-sends-first handshake (300ms timeout), while all other TCP protocols are identified from the first client byte. Alphaver clients (which report the same protocol version as standard Alpha 1.1.0) are detected reactively after login via a client-specific skin request packet.
+Protocol detection is automatic — the server identifies the client type from the first bytes of the connection and configures the Netty pipeline accordingly. Classic 0.0.15a is distinguished from Classic v7 by the second byte (username character vs protocol version byte). LCE clients are detected by a server-sends-first handshake (300ms timeout), while all other TCP protocols are identified from the first client byte. Alphaver clients (which report the same protocol version as standard Alpha 1.1.0) are detected reactively after login via a client-specific skin request packet.
 
 ## Key Design Decisions
 
@@ -236,6 +236,7 @@ The server generates a `server.properties` file on first run with vanilla-compat
 |----------|---------|-------------|
 | `server-port` | 25565 | TCP port for Java Edition clients |
 | `bedrock-port` | 19132 | UDP port for Bedrock/MCPE clients |
+| *(auto)* | 5565 | TCP port for Classic 0.0.15a clients (hardcoded in original client) |
 | *(auto)* | 25566 | UDP port for LCE LAN discovery broadcasts (not configurable) |
 | `server-version` | rd-132211 | World format — launcher-style ID (e.g. `rd-132211`, `a1.2.6`, `b1.7.3`, `1.8.9`) |
 | `gamemode` | creative | `creative` or `survival` |
