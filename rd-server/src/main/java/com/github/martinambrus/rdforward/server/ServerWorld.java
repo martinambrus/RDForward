@@ -279,8 +279,9 @@ public class ServerWorld {
         try (GZIPOutputStream gzip = new GZIPOutputStream(baos);
              DataOutputStream dos = new DataOutputStream(gzip)) {
             dos.writeInt(volume);
-            if (version == ProtocolVersion.CLASSIC_0_0_15A) {
-                // 0.0.15a swaps Y/Z in setData, so internal YZX order matches
+            if (version == ProtocolVersion.CLASSIC_0_0_15A
+                    || version == ProtocolVersion.CLASSIC_0_0_16A) {
+                // 0.0.15a and 0.0.16a swap Y/Z in setData, so internal YZX order matches
                 dos.write(snapshot);
             } else {
                 // Classic v7 expects XZY order — reorder from internal YZX

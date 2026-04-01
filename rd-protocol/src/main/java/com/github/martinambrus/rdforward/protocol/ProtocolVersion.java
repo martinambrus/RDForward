@@ -50,11 +50,22 @@ public enum ProtocolVersion {
     CLASSIC_0_0_15A(-1, 1, Family.CLASSIC, "Classic 0.0.15a", 18, "c0.0.15a"),
 
     /**
+     * Minecraft Classic 0.0.16a (June 2009) - second multiplayer version.
+     * 18 block types (same as 0.0.15a), creative mode.
+     * Has protocol version byte (3) but no unused/userType trailing byte
+     * in identification packets. Supports chat, disconnect, delta movement,
+     * and all Classic packets except UpdateUserType (0x0F).
+     * Real MC protocol version 3 (clashes with Alpha 1.2.0 — safe because
+     * Classic is detected by packet format, not Handshake byte).
+     */
+    CLASSIC_0_0_16A(3, 2, Family.CLASSIC, "Classic 0.0.16a", 18, "c0.0.16a_02"),
+
+    /**
      * Minecraft Classic (c0.0.20a - c0.30).
      * 50 block types, creative mode, flat world.
      * Real MC protocol version 7.
      */
-    CLASSIC(7, 2, Family.CLASSIC, "Classic", 50, "c0.30"),
+    CLASSIC(7, 3, Family.CLASSIC, "Classic", 50, "c0.30"),
 
     /**
      * Minecraft Alpha 1.0.15 - first SMP version.
@@ -1125,10 +1136,11 @@ public enum ProtocolVersion {
 
     /**
      * Check if this version is at least as new as the given version.
-     * Uses sortOrder (chronological) rather than versionNumber (non-monotonic).
+     * Uses ordinal (declaration order = chronological) rather than
+     * versionNumber (non-monotonic).
      */
     public boolean isAtLeast(ProtocolVersion other) {
-        return this.sortOrder >= other.sortOrder;
+        return this.ordinal() >= other.ordinal();
     }
 
     /**
@@ -1137,7 +1149,7 @@ public enum ProtocolVersion {
      * Alpha+ uses the pre-Netty format (string16, variable-length fields).
      */
     public boolean isClassicFormat() {
-        return this == RUBYDUNG || this == CLASSIC_0_0_15A || this == CLASSIC;
+        return this == RUBYDUNG || this == CLASSIC_0_0_15A || this == CLASSIC_0_0_16A || this == CLASSIC;
     }
 
     /**
@@ -1147,7 +1159,7 @@ public enum ProtocolVersion {
      * finite → server-world.dat, chunk-based → Alpha/McRegion chunk files.
      */
     public boolean isFiniteWorld() {
-        return this == RUBYDUNG || this == CLASSIC_0_0_15A || this == CLASSIC;
+        return this == RUBYDUNG || this == CLASSIC_0_0_15A || this == CLASSIC_0_0_16A || this == CLASSIC;
     }
 
     /**

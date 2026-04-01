@@ -70,6 +70,10 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
             handlePlayerIdentification(ctx, (PlayerIdentificationPacket) packet);
             return;
         }
+        if (!loginComplete && packet instanceof PlayerIdentificationPacketV016a) {
+            handlePlayerIdentificationV016a(ctx, (PlayerIdentificationPacketV016a) packet);
+            return;
+        }
         if (!loginComplete && packet instanceof PlayerIdentificationPacketV015a) {
             handlePlayerIdentificationV015a(ctx, (PlayerIdentificationPacketV015a) packet);
             return;
@@ -102,6 +106,13 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
             ctx.close();
             return;
         }
+        completeLogin(ctx, identification.getUsername());
+    }
+
+    private void handlePlayerIdentificationV016a(ChannelHandlerContext ctx, PlayerIdentificationPacketV016a identification) {
+        // 0.0.16a sends protocol version 3 but version was already determined
+        // by ProtocolDetectionHandler based on the protocol version byte
+        clientVersion = ProtocolVersion.CLASSIC_0_0_16A;
         completeLogin(ctx, identification.getUsername());
     }
 
@@ -165,6 +176,11 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
         if (clientVersion == ProtocolVersion.CLASSIC_0_0_15A) {
             ctx.writeAndFlush(new ServerIdentificationPacketV015a(
                     ServerProperties.getMotd()));
+        } else if (clientVersion == ProtocolVersion.CLASSIC_0_0_16A) {
+            ctx.writeAndFlush(new ServerIdentificationPacketV016a(
+                    clientVersion.getVersionNumber(),
+                    ServerProperties.getMotd(),
+                    "Welcome to RDForward!"));
         } else {
             ctx.writeAndFlush(new ServerIdentificationPacket(
                     serverVersion.getVersionNumber(),

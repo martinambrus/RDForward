@@ -297,9 +297,16 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
             int secondByte = buf.getUnsignedByte(buf.readerIndex() + 1);
             boolean isClassic015a = secondByte >= 0x20; // printable ASCII = username, not version
 
-            ProtocolVersion classicVersion = isClassic015a
-                    ? ProtocolVersion.CLASSIC_0_0_15A
-                    : ProtocolVersion.CLASSIC;
+            ProtocolVersion classicVersion;
+            if (isClassic015a) {
+                classicVersion = ProtocolVersion.CLASSIC_0_0_15A;
+            } else if (secondByte < 7) {
+                // Protocol version 3-6: Classic 0.0.16a-0.0.19a (no unused byte
+                // in identification, no UpdateUserType packet)
+                classicVersion = ProtocolVersion.CLASSIC_0_0_16A;
+            } else {
+                classicVersion = ProtocolVersion.CLASSIC;
+            }
 
             ChannelPipeline pipeline = ctx.pipeline();
 
@@ -319,8 +326,9 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
 
             pipeline.remove(this);
 
-            System.out.println("Detected real Classic client"
-                    + (isClassic015a ? " (0.0.15a — no protocol version byte)" : " (v7)")
+            String classicDesc = isClassic015a ? " (0.0.15a — no protocol version byte)"
+                    : " (v" + secondByte + ")";
+            System.out.println("Detected real Classic client" + classicDesc
                     + ", pipeline reconfigured");
 
             pipeline.fireChannelRead(buf);
