@@ -18,7 +18,7 @@ import java.util.Map;
  *   v14 = Alpha 1.0.16, v13 = Alpha 1.0.15, ..., v1 = Alpha 1.0.17,
  *   v2 = Alpha 1.1.0, ..., v6 = Alpha 1.2.3-1.2.6
  *
- * Because of this, isAtLeast() uses a separate sortOrder field that reflects
+ * Because of this, isAtLeast() uses enum ordinal (declaration order) that reflects
  * the true chronological order rather than the raw protocol number.
  *
  * Using real MC version numbers means our protocol upgrade path follows
