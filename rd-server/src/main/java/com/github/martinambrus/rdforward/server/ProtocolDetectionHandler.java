@@ -12,7 +12,7 @@ import com.github.martinambrus.rdforward.protocol.packet.PacketDirection;
 import com.github.martinambrus.rdforward.protocol.packet.PacketRegistry;
 import com.github.martinambrus.rdforward.protocol.McDataTypes;
 import com.github.martinambrus.rdforward.server.api.ServerProperties;
-import com.github.martinambrus.rdforward.server.eaglecraft.EagleCraftPipelineConfigurer;
+import com.github.martinambrus.rdforward.server.eaglercraft.EaglerCraftPipelineConfigurer;
 import com.github.martinambrus.rdforward.server.lce.LCEConnectionHandler;
 import com.github.martinambrus.rdforward.server.lce.ClassicToLCETranslator;
 import io.netty.buffer.ByteBuf;
@@ -338,10 +338,10 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
 
             pipeline.fireChannelRead(buf);
         } else if (firstByte == 0x47) {
-            // 0x47 = 'G' from HTTP "GET /" — EagleCraft WebSocket upgrade request.
-            // Delegate to EagleCraftPipelineConfigurer (lazy-loading boundary:
+            // 0x47 = 'G' from HTTP "GET /" — EaglerCraft WebSocket upgrade request.
+            // Delegate to EaglerCraftPipelineConfigurer (lazy-loading boundary:
             // HTTP/WebSocket classes are not loaded until this branch executes).
-            EagleCraftPipelineConfigurer.configure(
+            EaglerCraftPipelineConfigurer.configure(
                     ctx, buf, serverVersion, world, playerManager, chunkManager);
             return;
         } else {

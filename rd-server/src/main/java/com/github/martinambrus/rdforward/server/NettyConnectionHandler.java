@@ -66,18 +66,18 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     // Online-mode authentication result (null in offline mode)
     private String authenticatedUuid;
 
-    // EagleCraft WebSocket client flag — skips encryption and compression
+    // EaglerCraft WebSocket client flag — skips encryption and compression
     private boolean eaglecraftClient = false;
 
     /**
-     * Initiate a direct-to-PLAY login for an EagleCraft client.
+     * Initiate a direct-to-PLAY login for an EaglerCraft client.
      *
-     * EagleCraft clients complete their own handshake before the MC protocol starts.
+     * EaglerCraft clients complete their own handshake before the MC protocol starts.
      * The proxy (EaglerXServer) normally handles MC login with the backend, so the
      * client never sends MC Handshake/Login packets. We must skip straight to PLAY.
      *
-     * Called from {@link com.github.martinambrus.rdforward.server.eaglecraft.EagleCraftHandshakeHandler}
-     * after the EagleCraft handshake completes.
+     * Called from {@link com.github.martinambrus.rdforward.server.eaglercraft.EaglerCraftHandshakeHandler}
+     * after the EaglerCraft handshake completes.
      */
     public void initiateEaglecraftLogin(ChannelHandlerContext ctx, String username, int mcProtocol) {
         this.eaglecraftClient = true;
@@ -98,19 +98,19 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.pipeline().remove("loginTimeout");
         }
 
-        // EagleCraft clients go directly to PLAY after the EagleCraft handshake.
+        // EaglerCraft clients go directly to PLAY after the EaglerCraft handshake.
         // No MC LoginSuccess is expected — the client already received username/UUID
-        // in the EagleCraft SERVER_ALLOW_LOGIN packet.
+        // in the EaglerCraft SERVER_ALLOW_LOGIN packet.
         state = ConnectionState.PLAY;
 
         // Set codec protocol version — normally done by handleHandshake()
-        // but EagleCraft skips the MC handshake.
+        // but EaglerCraft skips the MC handshake.
         NettyPacketDecoder decoder = ctx.pipeline().get(NettyPacketDecoder.class);
         if (decoder != null) decoder.setProtocolVersion(mcProtocol);
         NettyPacketEncoder encoder = ctx.pipeline().get(NettyPacketEncoder.class);
         if (encoder != null) encoder.setProtocolVersion(mcProtocol);
 
-        System.out.println("[EagleCraft] Direct-to-PLAY login for " + username
+        System.out.println("[EaglerCraft] Direct-to-PLAY login for " + username
                 + " (MC protocol " + mcProtocol + ", " + clientVersion.getDisplayName() + ")");
 
         handleJoinGame(ctx);
@@ -360,7 +360,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         if (ServerProperties.isOnlineMode() && !eaglecraftClient) {
             // Online mode: send EncryptionRequest to initiate Mojang session authentication.
-            // EagleCraft clients cannot do RSA encryption (browser sandbox), so they
+            // EaglerCraft clients cannot do RSA encryption (browser sandbox), so they
             // always use offline-mode login regardless of server configuration.
             try {
                 KeyPair rsaKeyPair = getOrCreateRsaKeyPair();
@@ -404,7 +404,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         // Enable compression for 1.8+ clients (protocol 47+).
         // SetCompression MUST be sent before LoginSuccess.
-        // EagleCraft clients do not support MC-level compression (WebSocket handles framing).
+        // EaglerCraft clients do not support MC-level compression (WebSocket handles framing).
         if (!eaglecraftClient && clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
             ctx.writeAndFlush(new SetCompressionPacket(COMPRESSION_THRESHOLD));
 

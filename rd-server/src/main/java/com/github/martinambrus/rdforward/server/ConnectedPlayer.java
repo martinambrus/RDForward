@@ -69,7 +69,7 @@ public class ConnectedPlayer {
     // Alphaver client flag (based on Alpha 1.0.16 with modified packet formats)
     private volatile boolean alphaverClient = false;
 
-    // EagleCraft WebSocket client flag
+    // EaglerCraft WebSocket client flag
     private volatile boolean eaglecraftClient = false;
 
     // Teleport grace: skip chunk-boundary checks on movement packets for a

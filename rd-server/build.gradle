@@ -3,7 +3,7 @@ description = 'RDForward Server - dedicated server runtime'
 dependencies {
     implementation project(':rd-protocol')
     implementation project(':rd-world')
-    // Netty HTTP/WebSocket codec for EagleCraft WebSocket support
+    // Netty HTTP/WebSocket codec for EaglerCraft WebSocket support
     implementation 'io.netty:netty-codec-http:4.1.131.Final'
     // CloudburstMC Protocol: Bedrock Edition codec, RakNet transport, compression
     implementation 'org.cloudburstmc.protocol:bedrock-connection:3.0.0.Beta12-SNAPSHOT'

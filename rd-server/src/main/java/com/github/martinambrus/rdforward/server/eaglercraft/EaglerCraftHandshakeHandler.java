@@ -1,9 +1,14 @@
-package com.github.martinambrus.rdforward.server.eaglecraft;
+package com.github.martinambrus.rdforward.server.eaglercraft;
 
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.codec.NettyPacketDecoder;
 import com.github.martinambrus.rdforward.protocol.codec.NettyPacketEncoder;
+import com.github.martinambrus.rdforward.protocol.codec.RawPacketDecoder;
+import com.github.martinambrus.rdforward.protocol.codec.RawPacketEncoder;
 import com.github.martinambrus.rdforward.protocol.packet.ConnectionState;
+import com.github.martinambrus.rdforward.protocol.packet.PacketDirection;
+import com.github.martinambrus.rdforward.server.AlphaConnectionHandler;
+import com.github.martinambrus.rdforward.server.ClassicToAlphaTranslator;
 import com.github.martinambrus.rdforward.server.ClassicToNettyTranslator;
 import com.github.martinambrus.rdforward.server.ChunkManager;
 import com.github.martinambrus.rdforward.server.NettyConnectionHandler;
@@ -19,22 +24,24 @@ import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
-import static com.github.martinambrus.rdforward.server.eaglecraft.EagleCraftConstants.*;
+import static com.github.martinambrus.rdforward.server.eaglercraft.EaglerCraftConstants.*;
 
 /**
- * Handles the EagleCraft pre-Minecraft handshake that occurs over WebSocket
- * before the standard MC protocol 47 login sequence begins.
+ * Handles the EaglerCraft pre-Minecraft handshake that occurs over WebSocket
+ * before the standard MC protocol begins.
  *
- * State machine:
+ * For EaglerCraftX (1.8.8/1.12.2) clients:
  *   STATE_OPENED -> receive CLIENT_VERSION (0x01), send SERVER_VERSION (0x02)
  *   STATE_CLIENT_VERSION -> receive CLIENT_REQUEST_LOGIN (0x04), send SERVER_ALLOW_LOGIN (0x05)
  *   STATE_CLIENT_LOGIN -> receive CLIENT_PROFILE_DATA (0x07) repeatable, then CLIENT_FINISH_LOGIN (0x08)
  *   STATE_CLIENT_COMPLETE -> send SERVER_FINISH_LOGIN (0x09), remove self, add MC pipeline
  *
- * After completion, the pipeline is reconfigured for standard MC protocol 47
- * and the NettyConnectionHandler takes over.
+ * For EaglerCraft 1.5.2 clients:
+ *   The first binary frame starts with 0x02 (MC pre-Netty Handshake) instead of
+ *   0x01 (EaglerCraftX CLIENT_VERSION). This handler detects this and reconfigures
+ *   the pipeline for pre-Netty MC protocol via AlphaConnectionHandler.
  */
-public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
+public class EaglerCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
 
     private final ProtocolVersion serverVersion;
     private final ServerWorld world;
@@ -50,7 +57,7 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
     private int selectedMcProtocol;
     private byte[] skinData;
 
-    public EagleCraftHandshakeHandler(ProtocolVersion serverVersion, ServerWorld world,
+    public EaglerCraftHandshakeHandler(ProtocolVersion serverVersion, ServerWorld world,
                                       PlayerManager playerManager, ChunkManager chunkManager) {
         this.serverVersion = serverVersion;
         this.world = world;
@@ -90,11 +97,12 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
     }
 
     /**
-     * STATE_OPENED: Expect CLIENT_VERSION (0x01).
+     * STATE_OPENED: Expect CLIENT_VERSION (0x01) for EaglerCraftX,
+     * or MC Handshake (0x02) for EaglerCraft 1.5.2.
      *
-     * Wire format:
+     * EaglerCraftX wire format:
      *   [byte 0x01] already consumed
-     *   [byte 0x02] legacy version marker (EagleCraft 1.8 sends 0x01 0x02)
+     *   [byte 0x02] legacy version marker (EaglerCraft 1.8 sends 0x01 0x02)
      *   [short] eagler protocol version count (1-16)
      *   [short...] eagler protocol versions
      *   [short] MC protocol version count (1-16)
@@ -106,8 +114,20 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
      *   [boolean] auth enabled
      *   [byte] auth username length
      *   [bytes] auth username
+     *
+     * EaglerCraft 1.5.2 wire format:
+     *   [byte 0x02] MC pre-Netty Handshake packet ID, already consumed
+     *   Standard pre-Netty handshake fields follow
      */
     private void handleClientVersion(ChannelHandlerContext ctx, ByteBuf buf, int packetType) {
+        if (packetType == 0x02) {
+            // Pre-Netty MC Handshake (0x02) — EaglerCraft 1.5.2 client.
+            // This is NOT an EaglerCraftX CLIENT_VERSION packet.
+            // Reconfigure the pipeline for pre-Netty MC protocol.
+            handleEaglerCraft152(ctx, buf);
+            return;
+        }
+
         if (packetType != PROTOCOL_CLIENT_VERSION) {
             sendError(ctx, "Expected CLIENT_VERSION");
             return;
@@ -124,6 +144,77 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
             // Very old format (v1) or unknown — try v1 fallback
             selectedEaglerProtocol = EAGLER_PROTOCOL_V1;
             parseV1ClientVersion(ctx, buf, legacyByte);
+        }
+    }
+
+    /**
+     * Handle an EaglerCraft 1.5.2 client.
+     *
+     * EaglerCraft 1.5.2 sends standard MC pre-Netty packets directly over WebSocket
+     * (no custom EaglerCraft handshake). The first byte (0x02) is the MC Handshake
+     * packet ID which we've already consumed.
+     *
+     * We reconstitute the full packet, reconfigure the pipeline with pre-Netty codecs
+     * (RawPacketDecoder/Encoder + AlphaConnectionHandler), and fire the packet through.
+     */
+    private void handleEaglerCraft152(ChannelHandlerContext ctx, ByteBuf buf) {
+        // Reconstitute the full packet: prepend the 0x02 byte we already consumed
+        ByteBuf fullPacket = ctx.alloc().buffer(1 + buf.readableBytes());
+        fullPacket.writeByte(0x02);
+        fullPacket.writeBytes(buf);
+
+        try {
+            ChannelPipeline pipeline = ctx.pipeline();
+
+            // Mark as EaglerCraft connection
+            ctx.channel().attr(ATTR_IS_EAGLECRAFT).set(Boolean.TRUE);
+
+            // Remove MOTD query handler and handshake timeout (no longer needed)
+            if (pipeline.get("eaglerQuery") != null) {
+                pipeline.remove("eaglerQuery");
+            }
+            if (pipeline.get("eaglerTimeout") != null) {
+                pipeline.remove("eaglerTimeout");
+            }
+
+            // Add pre-Netty packet codecs.
+            // Named "decoder"/"encoder" so AlphaConnectionHandler can install
+            // cipher handlers with addBefore("decoder"/"encoder") as it does
+            // for regular TCP pre-Netty clients.
+            RawPacketDecoder decoder = new RawPacketDecoder(
+                    PacketDirection.CLIENT_TO_SERVER, ProtocolVersion.ALPHA_1_2_5);
+            // Enable skip-unknown mode: EaglerCraft 1.5.2 sends Plugin Message (0xFA)
+            // packets for skin data ("EAG|MySkin") which may arrive before the handshake
+            // resolves the protocol version. WebSocket frame boundaries guarantee each
+            // decode() call gets exactly one complete packet, making skip safe.
+            decoder.setSkipUnknownPackets(true);
+            pipeline.addAfter("wsFrameDecoder", "decoder", decoder);
+
+            pipeline.addAfter("wsFrameEncoder", "encoder", new RawPacketEncoder());
+
+            pipeline.addAfter("encoder", "prioritizer", new PrioritizingOutboundHandler());
+            pipeline.addAfter("prioritizer", "alphaTranslator", new ClassicToAlphaTranslator());
+
+            AlphaConnectionHandler handler = new AlphaConnectionHandler(
+                    serverVersion, world, playerManager, chunkManager);
+            pipeline.addAfter("decoder", "handler", handler);
+
+            // Remove self
+            pipeline.remove(this);
+
+            System.out.println("[EaglerCraft] Detected 1.5.2 client (pre-Netty MC handshake), "
+                    + "reconfiguring pipeline for AlphaConnectionHandler");
+
+            // Fire the reconstituted packet directly into the RawPacketDecoder,
+            // bypassing the WebSocket layer. pipeline.fireChannelRead() would fire
+            // from HEAD, which passes through wsProtocol — the WebSocket codec would
+            // misinterpret the raw MC bytes as a malformed WebSocket frame
+            // ("fragmented control frame"). Instead, fire from wsFrameDecoder's context
+            // so the next handler (RawPacketDecoder) receives it directly.
+            pipeline.context("wsFrameDecoder").fireChannelRead(fullPacket);
+        } catch (Exception e) {
+            fullPacket.release();
+            throw e;
         }
     }
 
@@ -182,7 +273,7 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
             buf.skipBytes(authUserLen);
         }
 
-        System.out.println("[EagleCraft] Client connected: " + brand + " " + clientVersion
+        System.out.println("[EaglerCraft] Client connected: " + brand + " " + clientVersion
                 + " (eagler v" + selectedEaglerProtocol + ", auth=" + authEnabled + ")");
 
         sendServerVersion(ctx);
@@ -195,7 +286,7 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
         selectedEaglerProtocol = EAGLER_PROTOCOL_V1;
         selectedMcProtocol = MC_PROTOCOL_47; // V1 clients are always 1.8
         // Skip any remaining fields in the v1 CLIENT_VERSION
-        System.out.println("[EagleCraft] V1 client connected (legacy protocol)");
+        System.out.println("[EaglerCraft] V1 client connected (legacy protocol)");
         sendServerVersion(ctx);
         state = STATE_CLIENT_VERSION;
     }
@@ -271,7 +362,7 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
         // Generate offline UUID
         uuid = ClassicToNettyTranslator.generateOfflineUuid(username);
 
-        System.out.println("[EagleCraft] Login request from: " + username);
+        System.out.println("[EaglerCraft] Login request from: " + username);
 
         sendAllowLogin(ctx);
         state = STATE_CLIENT_LOGIN;
@@ -326,7 +417,7 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
 
             if (PROFILE_DATA_TYPE_SKIN.equals(dataType) || "skin".equals(dataType)) {
                 skinData = data;
-                System.out.println("[EagleCraft] Received skin data from " + username
+                System.out.println("[EaglerCraft] Received skin data from " + username
                         + " (" + data.length + " bytes, type=" + getSkinTypeDescription(data) + ")");
             }
             // May receive more profile data packets — stay in STATE_CLIENT_LOGIN
@@ -365,7 +456,7 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
         }
 
         // Reconfigure pipeline for MC PLAY state (protocol 47 or 340).
-        // EagleCraft clients go directly to PLAY after the EagleCraft handshake —
+        // EaglerCraft clients go directly to PLAY after the EaglerCraft handshake —
         // no MC Handshake/Login packets, no LoginSuccess expected.
         ChannelPipeline pipeline = ctx.pipeline();
 
@@ -406,7 +497,7 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
         // Remove self before triggering login (so pipeline is clean)
         pipeline.remove(this);
 
-        System.out.println("[EagleCraft] Handshake complete for " + username
+        System.out.println("[EaglerCraft] Handshake complete for " + username
                 + ", initiating direct-to-PLAY login");
 
         // Trigger the MC join sequence directly (LoginSuccess + JoinGame + chunks).
@@ -416,7 +507,7 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
     }
 
     private void sendDenyLogin(ChannelHandlerContext ctx, String message) {
-        System.out.println("[EagleCraft] Login denied for "
+        System.out.println("[EaglerCraft] Login denied for "
                 + (username != null ? username : "unknown") + ": " + message);
         byte[] msgBytes = message.getBytes(StandardCharsets.UTF_8);
         int len = Math.min(msgBytes.length, 255);
@@ -429,14 +520,14 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
     }
 
     private void sendVersionMismatch(ChannelHandlerContext ctx) {
-        System.out.println("[EagleCraft] Version mismatch, no supported protocol version found");
+        System.out.println("[EaglerCraft] Version mismatch, no supported protocol version found");
         ByteBuf out = ctx.alloc().buffer(1);
         out.writeByte(PROTOCOL_VERSION_MISMATCH);
         ctx.writeAndFlush(out).addListener(f -> ctx.close());
     }
 
     private void sendError(ChannelHandlerContext ctx, String message) {
-        System.out.println("[EagleCraft] Error for "
+        System.out.println("[EaglerCraft] Error for "
                 + (username != null ? username : "unknown") + ": " + message);
         byte[] msgBytes = message.getBytes(StandardCharsets.UTF_8);
         int len = Math.min(msgBytes.length, 255);
@@ -451,7 +542,7 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        System.err.println("[EagleCraft] Handshake error for "
+        System.err.println("[EaglerCraft] Handshake error for "
                 + (username != null ? username : "unknown") + ": " + cause.getMessage());
         ctx.close();
     }

@@ -1,16 +1,16 @@
-package com.github.martinambrus.rdforward.server.eaglecraft;
+package com.github.martinambrus.rdforward.server.eaglercraft;
 
 import io.netty.util.AttributeKey;
 
 /**
- * Constants for the EagleCraft WebSocket protocol handshake.
+ * Constants for the EaglerCraft WebSocket protocol handshake.
  *
  * Packet type bytes, state machine states, and channel attributes
- * used during the pre-Minecraft EagleCraft handshake.
+ * used during the pre-Minecraft EaglerCraft handshake.
  */
-public final class EagleCraftConstants {
+public final class EaglerCraftConstants {
 
-    private EagleCraftConstants() {}
+    private EaglerCraftConstants() {}
 
     // ---- Packet type bytes (from HandshakePacketTypes) ----
 
@@ -62,12 +62,18 @@ public final class EagleCraftConstants {
     /** Profile data type string for skins. */
     public static final String PROFILE_DATA_TYPE_SKIN = "skin_v1";
 
-    // ---- Supported EagleCraft handshake protocol versions ----
-    // We support V2 (the most widely used by EagleCraft 1.8.8 clients).
+    // ---- Supported EaglerCraft handshake protocol versions ----
+    // We support V2 and V3 (used by EaglerCraftX 1.8.8/1.12.2 clients).
 
     public static final int EAGLER_PROTOCOL_V1 = 1;
     public static final int EAGLER_PROTOCOL_V2 = 2;
     public static final int EAGLER_PROTOCOL_V3 = 3;
+
+    /** EaglerCraft 1.5.2 variant protocol (signals "skip encryption" to the server). */
+    public static final int EAGLER_152_PROTOCOL_VARIANT = 69;
+
+    /** Minecraft protocol version for MC 1.5.2. */
+    public static final int MC_PROTOCOL_61 = 61;
 
     /** Minecraft protocol version for MC 1.8. */
     public static final int MC_PROTOCOL_47 = 47;
@@ -82,7 +88,7 @@ public final class EagleCraftConstants {
 
     // ---- Channel attributes ----
 
-    /** Username negotiated during the EagleCraft handshake. */
+    /** Username negotiated during the EaglerCraft handshake. */
     public static final AttributeKey<String> ATTR_EAGLER_USERNAME =
             AttributeKey.valueOf("eaglerUsername");
 
@@ -90,7 +96,7 @@ public final class EagleCraftConstants {
     public static final AttributeKey<byte[]> ATTR_EAGLER_SKIN =
             AttributeKey.valueOf("eaglerSkin");
 
-    /** Whether this connection is an EagleCraft client. */
+    /** Whether this connection is an EaglerCraft client. */
     public static final AttributeKey<Boolean> ATTR_IS_EAGLECRAFT =
             AttributeKey.valueOf("isEaglecraft");
 }

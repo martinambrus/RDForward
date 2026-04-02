@@ -1,4 +1,4 @@
-package com.github.martinambrus.rdforward.server.eaglecraft;
+package com.github.martinambrus.rdforward.server.eaglercraft;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandler;

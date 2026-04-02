@@ -1,4 +1,4 @@
-package com.github.martinambrus.rdforward.server.eaglecraft;
+package com.github.martinambrus.rdforward.server.eaglercraft;
 
 import org.junit.jupiter.api.Test;
 
@@ -7,15 +7,15 @@ import java.lang.reflect.Method;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Unit tests for EagleCraftQueryHandler's JSON escaping logic.
+ * Unit tests for EaglerCraftQueryHandler's JSON escaping logic.
  * Tests the private escapeJson method via reflection since it is
  * a pure function with no external dependencies.
  */
-class EagleCraftQueryHandlerTest {
+class EaglerCraftQueryHandlerTest {
 
     private static String escapeJson(String input) {
         try {
-            Method method = EagleCraftQueryHandler.class.getDeclaredMethod("escapeJson", String.class);
+            Method method = EaglerCraftQueryHandler.class.getDeclaredMethod("escapeJson", String.class);
             method.setAccessible(true);
             return (String) method.invoke(null, input);
         } catch (Exception e) {

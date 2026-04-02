@@ -1,4 +1,4 @@
-package com.github.martinambrus.rdforward.server.eaglecraft;
+package com.github.martinambrus.rdforward.server.eaglercraft;
 
 import com.github.martinambrus.rdforward.server.ConnectedPlayer;
 import com.github.martinambrus.rdforward.server.PlayerManager;
@@ -10,21 +10,21 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 
 /**
- * Handles EagleCraft server list MOTD queries over WebSocket.
+ * Handles EaglerCraft server list MOTD queries over WebSocket.
  *
- * EagleCraft clients query the server list by connecting via WebSocket and
+ * EaglerCraft clients query the server list by connecting via WebSocket and
  * sending a text frame {@code "accept:motd"}. The server responds with a
  * JSON text frame containing server info, then closes the connection.
  *
  * This handler intercepts {@link TextWebSocketFrame} messages and responds
  * to MOTD queries. Binary frames pass through to the next handler
- * ({@link WebSocketFrameToByteBuf} → {@link EagleCraftHandshakeHandler}).
+ * ({@link WebSocketFrameToByteBuf} → {@link EaglerCraftHandshakeHandler}).
  */
-public class EagleCraftQueryHandler extends ChannelInboundHandlerAdapter {
+public class EaglerCraftQueryHandler extends ChannelInboundHandlerAdapter {
 
     private final PlayerManager playerManager;
 
-    public EagleCraftQueryHandler(PlayerManager playerManager) {
+    public EaglerCraftQueryHandler(PlayerManager playerManager) {
         this.playerManager = playerManager;
     }
 
@@ -34,7 +34,7 @@ public class EagleCraftQueryHandler extends ChannelInboundHandlerAdapter {
             TextWebSocketFrame textFrame = (TextWebSocketFrame) msg;
             try {
                 String text = textFrame.text().trim();
-                // EagleCraft clients may send "accept:motd", "Accept: MOTD", etc.
+                // EaglerCraft clients may send "accept:motd", "Accept: MOTD", etc.
                 String lower = text.toLowerCase();
                 if (lower.startsWith("accept:")) {
                     String queryType = lower.substring(7).trim();
@@ -102,7 +102,7 @@ public class EagleCraftQueryHandler extends ChannelInboundHandlerAdapter {
         }
         players.append("]");
 
-        // EagleCraft MOTD JSON response format
+        // EaglerCraft MOTD JSON response format
         String json = "{"
                 + "\"name\":\"RDForward\","
                 + "\"brand\":\"RDForward\","
@@ -113,7 +113,7 @@ public class EagleCraftQueryHandler extends ChannelInboundHandlerAdapter {
                 + "\"type\":\"motd\","
                 + "\"data\":{"
                     + "\"cache\":false,"
-                    + "\"motd\":[\"" + motd + "\",\"EagleCraft 1.8 / 1.12.2\"],"
+                    + "\"motd\":[\"" + motd + "\",\"EaglerCraft Compatible\"],"
                     + "\"icon\":false,"
                     + "\"online\":" + online + ","
                     + "\"max\":" + max + ","
@@ -127,7 +127,7 @@ public class EagleCraftQueryHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        System.err.println("[EagleCraft Query] Exception: " + cause.getMessage());
+        System.err.println("[EaglerCraft Query] Exception: " + cause.getMessage());
         ctx.close();
     }
 }

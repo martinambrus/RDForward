@@ -1,4 +1,4 @@
-package com.github.martinambrus.rdforward.server.eaglecraft;
+package com.github.martinambrus.rdforward.server.eaglercraft;
 
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.server.ChunkManager;
@@ -14,7 +14,7 @@ import io.netty.handler.flush.FlushConsolidationHandler;
 import io.netty.handler.timeout.ReadTimeoutHandler;
 
 /**
- * Configures the Netty pipeline for an EagleCraft WebSocket client.
+ * Configures the Netty pipeline for an EaglerCraft WebSocket client.
  *
  * This class is the lazy-loading boundary: all {@code io.netty.handler.codec.http.*}
  * imports live here and are NOT loaded by the JVM until a WebSocket client actually
@@ -26,12 +26,14 @@ import io.netty.handler.timeout.ReadTimeoutHandler;
  * Outbound: wsFrameEncoder -> httpCodec
  * </pre>
  *
- * Once the EagleCraft handshake completes, {@link EagleCraftHandshakeHandler} removes
+ * Once the EaglerCraft handshake completes, {@link EaglerCraftHandshakeHandler} removes
  * itself and adds the standard MC protocol codecs (NettyPacketDecoder/Encoder etc.).
+ * For EaglerCraft 1.5.2, the handshake handler detects the pre-Netty MC handshake
+ * and reconfigures for pre-Netty codecs instead.
  */
-public final class EagleCraftPipelineConfigurer {
+public final class EaglerCraftPipelineConfigurer {
 
-    private EagleCraftPipelineConfigurer() {}
+    private EaglerCraftPipelineConfigurer() {}
 
     /**
      * Reconfigure the pipeline for a WebSocket connection.
@@ -66,7 +68,7 @@ public final class EagleCraftPipelineConfigurer {
         // WebSocket protocol handler: handles the HTTP 101 upgrade automatically.
         // Constructor: (path, subprotocols, allowExtensions, maxFrameSize, checkStartsWith)
         // checkStartsWith=true means any path starting with "/" is accepted
-        // (i.e. all paths), matching EagleCraft's official server behavior.
+        // (i.e. all paths), matching EaglerCraft's official server behavior.
         // After upgrade, inbound messages become BinaryWebSocketFrame/TextWebSocketFrame.
         pipeline.addAfter("httpAggregator", "wsProtocol",
                 new WebSocketServerProtocolHandler("/", null, true, 65536, true));
@@ -75,10 +77,10 @@ public final class EagleCraftPipelineConfigurer {
         pipeline.addBefore("httpCodec", "flushConsolidation",
                 new FlushConsolidationHandler(256, true));
 
-        // EagleCraft MOTD query handler: intercepts TextWebSocketFrame "accept:motd"
+        // EaglerCraft MOTD query handler: intercepts TextWebSocketFrame "accept:motd"
         // for server list display. Binary frames pass through to the handshake handler.
         pipeline.addAfter("wsProtocol", "eaglerQuery",
-                new EagleCraftQueryHandler(playerManager));
+                new EaglerCraftQueryHandler(playerManager));
 
         // Inbound: unwrap BinaryWebSocketFrame -> ByteBuf
         pipeline.addAfter("eaglerQuery", "wsFrameDecoder",
@@ -90,16 +92,18 @@ public final class EagleCraftPipelineConfigurer {
         pipeline.addAfter("httpCodec", "wsFrameEncoder",
                 ByteBufToWebSocketFrame.INSTANCE);
 
-        // Handshake timeout: close the connection if the EagleCraft handshake
+        // Handshake timeout: close the connection if the EaglerCraft handshake
         // does not complete within 30 seconds (prevents idle connections).
-        // Removed by EagleCraftHandshakeHandler.completeHandshake() on success.
+        // Removed by EaglerCraftHandshakeHandler.completeHandshake() on success.
         pipeline.addAfter("wsFrameDecoder", "eaglerTimeout",
                 new ReadTimeoutHandler(30));
 
-        // EagleCraft handshake handler: processes the pre-MC handshake,
+        // EaglerCraft handshake handler: processes the pre-MC handshake,
         // then removes itself and adds NettyPacketDecoder/Encoder/handler.
+        // For EaglerCraft 1.5.2, detects the pre-Netty MC handshake (0x02)
+        // and reconfigures for AlphaConnectionHandler instead.
         pipeline.addAfter("eaglerTimeout", "eaglerHandshake",
-                new EagleCraftHandshakeHandler(serverVersion, world, playerManager, chunkManager));
+                new EaglerCraftHandshakeHandler(serverVersion, world, playerManager, chunkManager));
 
         // Remove the old ServerConnectionHandler (Nati/Classic handler)
         pipeline.remove("handler");
@@ -107,7 +111,7 @@ public final class EagleCraftPipelineConfigurer {
         // Remove ProtocolDetectionHandler
         pipeline.remove(ctx.handler());
 
-        System.out.println("Detected WebSocket client (EagleCraft), pipeline reconfigured");
+        System.out.println("[EaglerCraft] Detected WebSocket client, pipeline reconfigured");
 
         // Re-fire the ByteBuf from pipeline HEAD so HttpServerCodec processes
         // the HTTP GET request for the WebSocket upgrade.

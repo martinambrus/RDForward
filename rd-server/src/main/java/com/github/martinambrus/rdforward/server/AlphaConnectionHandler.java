@@ -28,6 +28,10 @@ import javax.crypto.Cipher;
 
 import java.util.Map;
 
+import static com.github.martinambrus.rdforward.server.eaglercraft.EaglerCraftConstants.ATTR_IS_EAGLECRAFT;
+import static com.github.martinambrus.rdforward.server.eaglercraft.EaglerCraftConstants.EAGLER_152_PROTOCOL_VARIANT;
+import static com.github.martinambrus.rdforward.server.eaglercraft.EaglerCraftConstants.MC_PROTOCOL_61;
+
 /**
  * Handles individual Alpha client connections on the server side.
  *
@@ -262,8 +266,15 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 encoder.setUseString16(true);
             }
 
-            // Determine client version immediately from handshake protocol version
-            clientVersion = ProtocolVersion.fromNumber(packet.getProtocolVersion(),
+            // Determine client version immediately from handshake protocol version.
+            // EaglerCraft 1.5.2 may send protocol 69 instead of 61; normalize it.
+            // Guarded by ATTR_IS_EAGLECRAFT so only WebSocket clients are affected.
+            int handshakeProtocol = packet.getProtocolVersion();
+            if (handshakeProtocol == EAGLER_152_PROTOCOL_VARIANT
+                    && Boolean.TRUE.equals(ctx.channel().attr(ATTR_IS_EAGLECRAFT).get())) {
+                handshakeProtocol = MC_PROTOCOL_61;
+            }
+            clientVersion = ProtocolVersion.fromNumber(handshakeProtocol,
                     ProtocolVersion.Family.RELEASE);
             if (clientVersion == null) {
                 String[] messages = buildUnsupportedVersionMessages(packet.getProtocolVersion());
@@ -278,6 +289,23 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             // Update decoder protocol version for v39 packet registry
             if (decoder != null) {
                 decoder.setProtocolVersion(clientVersion);
+            }
+
+            // EaglerCraft 1.5.2 runs in a browser and was designed for BungeeCord
+            // which skips encryption entirely: after the handshake, the server sends
+            // Login (0x01) directly. No EncryptionKeyRequest, no ClientStatus.
+            if (Boolean.TRUE.equals(ctx.channel().attr(ATTR_IS_EAGLECRAFT).get())) {
+                if (ServerProperties.isOnlineMode()) {
+                    System.out.println("[EaglerCraft] Rejected " + pendingUsername
+                            + ": online-mode not supported for EaglerCraft 1.5.2");
+                    ctx.writeAndFlush(new DisconnectPacket(
+                            "This server requires online-mode authentication"));
+                    ctx.close();
+                    return;
+                }
+                System.out.println("[EaglerCraft] Skipping encryption, direct login for " + pendingUsername);
+                handleLogin(ctx, clientVersion.getVersionNumber());
+                return;
             }
 
             // Generate RSA keypair and verify token for encryption handshake
@@ -544,6 +572,11 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             ctx.writeAndFlush(new DisconnectPacket("Server is full!"));
             ctx.close();
             return;
+        }
+
+        // Propagate EaglerCraft flag from channel attribute to player object
+        if (Boolean.TRUE.equals(ctx.channel().attr(ATTR_IS_EAGLECRAFT).get())) {
+            player.setEaglecraftClient(true);
         }
 
         // Entity ID: playerId + 1 (entity 0 is sometimes special in Alpha)
