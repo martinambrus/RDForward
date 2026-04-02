@@ -136,7 +136,7 @@ The server accepts connections from a wide range of Minecraft clients simultaneo
 | Protocol Family | Versions | Transport |
 |-----------------|----------|-----------|
 | RubyDung | rd-132211 (the original) | TCP, Classic framing |
-| Classic | c0.0.15a through c0.30 | TCP, Classic framing |
+| Classic | c0.0.15a through c0.30, [ClassiCube](https://www.classicube.net/) | TCP, Classic framing |
 | Alpha | a1.0.15 through a1.2.6 | TCP, 4-byte length prefix |
 | Alphaver | All versions (Cypress through Lilypad) | TCP, 4-byte length prefix |
 | Beta | b1.0 through b1.8 | TCP, 4-byte length prefix |
