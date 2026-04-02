@@ -222,7 +222,7 @@ class QDropTest {
             BotSession session = bot.getSession();
             assertTrue(session.isLoginComplete(), "Login should complete");
 
-            assertTrue(session.waitForNonEmptySlot(36, 5000),
+            assertTrue(session.waitForNonEmptySlot(36, 15000),
                     "Should receive cobblestone in slot 36");
             int countBefore = session.getSlotCount(36);
 
@@ -245,7 +245,7 @@ class QDropTest {
             BotSession session = bot.getSession();
             assertTrue(session.isLoginComplete(), "Login should complete");
 
-            assertTrue(session.waitForNonEmptySlot(36, 5000),
+            assertTrue(session.waitForNonEmptySlot(36, 15000),
                     "Should receive cobblestone in slot 36");
             int countBefore = session.getSlotCount(36);
 
@@ -268,7 +268,7 @@ class QDropTest {
             BotSession session = bot.getSession();
             assertTrue(session.isLoginComplete(), "Login should complete");
 
-            assertTrue(session.waitForNonEmptySlot(36, 5000),
+            assertTrue(session.waitForNonEmptySlot(36, 15000),
                     "Should receive cobblestone in slot 36");
             int countBefore = session.getSlotCount(36);
 

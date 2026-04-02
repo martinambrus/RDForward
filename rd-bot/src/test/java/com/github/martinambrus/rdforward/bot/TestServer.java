@@ -2,6 +2,8 @@ package com.github.martinambrus.rdforward.bot;
 
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.server.RDServer;
+import com.github.martinambrus.rdforward.server.api.GriefProtection;
+import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import io.netty.channel.nio.NioEventLoopGroup;
 
 import java.io.File;
@@ -32,10 +34,24 @@ public class TestServer {
      * Deletes stale world/player files to ensure a clean state.
      */
     public void start() throws InterruptedException {
+        start(0);
+    }
+
+    /**
+     * Start the server on a random port with a specific spawn protection radius.
+     * Deletes stale world/player files to ensure a clean state.
+     *
+     * @param spawnProtection the spawn protection radius (0 to disable)
+     */
+    public void start(int spawnProtection) throws InterruptedException {
         deleteStaleFiles();
+        ServerProperties.set("spawn-protection", String.valueOf(spawnProtection));
         server = new RDServer(0);
         server.setBedrockPort(0); // random port for test isolation
         server.start();
+        // Disable grief protection for tests — bots don't send position
+        // updates, so the reach check would reject all block operations.
+        GriefProtection.disable();
         port = server.getActualPort();
         botGroup = new NioEventLoopGroup(2);
     }

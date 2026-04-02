@@ -50,6 +50,7 @@ class BedrockBlockScenarioTest {
             int broken = session.waitForBlockChange(x, 42, z, 3000);
             assertTrue(broken >= 0, "Break should produce UpdateBlockPacket");
 
+            Thread.sleep(300); // exceed 250ms Bedrock block placement cooldown
             session.getBlockChanges().remove(packCoords(x, 42, z));
             session.sendBlockPlace(x, 41, z, 1, 4);
 
@@ -58,10 +59,12 @@ class BedrockBlockScenarioTest {
                     "Surface placement should produce non-zero runtime ID (grass)");
 
             // Now place below surface: break Y=41, re-place on Y=40 face=1
+            Thread.sleep(300); // exceed 250ms Bedrock block placement cooldown
             session.sendDigging(0, x, 41, z, 1);
             int brokenBelow = session.waitForBlockChange(x, 41, z, 3000);
             assertTrue(brokenBelow >= 0, "Break below surface should succeed");
 
+            Thread.sleep(300); // exceed 250ms Bedrock block placement cooldown
             session.getBlockChanges().remove(packCoords(x, 41, z));
             session.sendBlockPlace(x, 40, z, 1, 4);
 
@@ -88,6 +91,9 @@ class BedrockBlockScenarioTest {
 
             int x = 142, z = 142;
             for (int i = 0; i < 5; i++) {
+                if (i > 0) {
+                    Thread.sleep(300); // exceed 250ms Bedrock block placement cooldown
+                }
                 int targetY = 42 + i;
                 session.sendBlockPlace(x, targetY, z, 1, 4);
                 int blockType = session.waitForBlockChange(x, targetY + 1, z, 3000);
@@ -164,6 +170,7 @@ class BedrockBlockScenarioTest {
             assertTrue(bedrockSees > 0, "Bedrock should see Netty's placement");
 
             // Bedrock breaks at (150, 43, 150)
+            Thread.sleep(300); // exceed 250ms Bedrock block placement cooldown
             bedrockSession.getBlockChanges().remove(packCoords(150, 43, 150));
             bedrockSession.sendDigging(0, 150, 43, 150, 1);
             int nettySeesBreak = nettySession.waitForBlockChangeValue(150, 43, 150, 0, 3000);
@@ -204,6 +211,7 @@ class BedrockBlockScenarioTest {
             assertTrue(bedrockSees > 0, "Bedrock should see Alpha's placement");
 
             // Bedrock breaks at (160, 43, 160)
+            Thread.sleep(300); // exceed 250ms Bedrock block placement cooldown
             bedrockSession.getBlockChanges().remove(packCoords(160, 43, 160));
             bedrockSession.sendDigging(0, 160, 43, 160, 1);
             int alphaSeesBreak = alphaSession.waitForBlockChangeValue(160, 43, 160, 0, 3000);

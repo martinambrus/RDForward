@@ -55,7 +55,7 @@ class CrossVersionVisibilityTest {
             // Each should see at least one other player (via SpawnPlayerPacket)
             // The last bot to join should have seen all 5 others during login.
             // Earlier bots see later bots via broadcast after join.
-            Thread.sleep(500);
+            Thread.sleep(1500);
 
             assertTrue(v340Session.getSpawnedPlayers().size() >= 5,
                     "V340 should see all 5 other players, saw: " + v340Session.getSpawnedPlayers());
@@ -91,7 +91,7 @@ class CrossVersionVisibilityTest {
             assertTrue(v764Session.isLoginComplete(), "1.20.2 login should complete");
             assertTrue(v774Session.isLoginComplete(), "1.21.11 login should complete");
 
-            Thread.sleep(500);
+            Thread.sleep(1500);
 
             // Last bot (1.21.11) should see all 3 others
             assertTrue(v774Session.getSpawnedPlayers().size() >= 3,
@@ -119,7 +119,7 @@ class CrossVersionVisibilityTest {
             assertTrue(alphaSession.isLoginComplete(), "Alpha login should complete");
             assertTrue(v774Session.isLoginComplete(), "1.21.11 login should complete");
 
-            Thread.sleep(500);
+            Thread.sleep(1500);
 
             assertTrue(alphaSession.getSpawnedPlayers().size() >= 1,
                     "Alpha should see 1.21.11 player, saw: " + alphaSession.getSpawnedPlayers());

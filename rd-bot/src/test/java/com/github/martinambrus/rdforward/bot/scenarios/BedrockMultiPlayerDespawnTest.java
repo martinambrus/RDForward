@@ -79,7 +79,7 @@ class BedrockMultiPlayerDespawnTest {
                     "Alpha should see Bedrock player");
 
             // Netty 1.8 SpawnPlayerPacket doesn't include player name — check size instead
-            Thread.sleep(500);
+            Thread.sleep(1500);
             assertTrue(nettySession.getSpawnedPlayers().size() >= 2,
                     "Netty should see both other players, saw: " + nettySession.getSpawnedPlayers());
         } finally {

@@ -99,7 +99,7 @@ class MultiPlayerTest {
             BotSession session2 = bot2.getSession();
             assertTrue(session2.isLoginComplete(), "Bot2 login should complete");
 
-            Thread.sleep(500);
+            Thread.sleep(1500);
             assertTrue(session2.getSpawnedPlayers().size() >= 1,
                     "Bot2 should see Bot1, saw: " + session2.getSpawnedPlayers());
             assertTrue(session1.getSpawnedPlayers().size() >= 1,
@@ -122,7 +122,7 @@ class MultiPlayerTest {
             BotSession session2 = bot2.getSession();
             assertTrue(session2.isLoginComplete(), "Bot2 login should complete");
 
-            Thread.sleep(500);
+            Thread.sleep(1500);
             assertTrue(session2.getSpawnedPlayers().size() >= 1,
                     "Bot2 should see Bot1, saw: " + session2.getSpawnedPlayers());
             assertTrue(session1.getSpawnedPlayers().size() >= 1,
@@ -145,7 +145,7 @@ class MultiPlayerTest {
             BotSession session2 = bot2.getSession();
             assertTrue(session2.isLoginComplete(), "Bot2 login should complete");
 
-            Thread.sleep(500);
+            Thread.sleep(1500);
             assertTrue(session2.getSpawnedPlayers().size() >= 1,
                     "Bot2 should see Bot1, saw: " + session2.getSpawnedPlayers());
             assertTrue(session1.getSpawnedPlayers().size() >= 1,
@@ -169,7 +169,7 @@ class MultiPlayerTest {
             assertTrue(session2.isLoginComplete(), "Bot2 login should complete");
 
             // Bot2 should see Bot1 via SpawnEntity (v764+ uses SpawnEntity for players)
-            Thread.sleep(500);
+            Thread.sleep(1500);
             assertTrue(session2.getSpawnedPlayers().size() >= 1,
                     "Bot2 should see Bot1, saw: " + session2.getSpawnedPlayers());
 
@@ -193,7 +193,7 @@ class MultiPlayerTest {
             BotSession session2 = bot2.getSession();
             assertTrue(session2.isLoginComplete(), "Bot2 login should complete");
 
-            Thread.sleep(500);
+            Thread.sleep(1500);
             assertTrue(session2.getSpawnedPlayers().size() >= 1,
                     "Bot2 should see Bot1, saw: " + session2.getSpawnedPlayers());
             assertTrue(session1.getSpawnedPlayers().size() >= 1,

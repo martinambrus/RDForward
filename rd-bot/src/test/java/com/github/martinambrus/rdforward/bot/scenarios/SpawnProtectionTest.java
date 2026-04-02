@@ -26,7 +26,9 @@ class SpawnProtectionTest {
     @BeforeAll
     static void startServer() throws InterruptedException {
         testServer = new TestServer();
-        testServer.start();
+        // Start with spawn protection enabled (radius 16) since this class
+        // specifically tests spawn protection behavior.
+        testServer.start(16);
     }
 
     @AfterAll

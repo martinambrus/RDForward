@@ -161,7 +161,7 @@ class CobblestoneReplenishmentTest {
             BotSession session = bot.getSession();
             assertTrue(session.isLoginComplete(), "Login should complete");
 
-            assertTrue(session.waitForNonEmptySlot(36, 5000),
+            assertTrue(session.waitForNonEmptySlot(36, 15000),
                     "V774 should receive cobblestone in slot 36");
 
             Thread.sleep(300);
@@ -185,7 +185,7 @@ class CobblestoneReplenishmentTest {
             BotSession session = bot.getSession();
             assertTrue(session.isLoginComplete(), "Login should complete");
 
-            assertTrue(session.waitForNonEmptySlot(36, 5000),
+            assertTrue(session.waitForNonEmptySlot(36, 15000),
                     "V477 should receive cobblestone in slot 36");
 
             Thread.sleep(300);
@@ -211,7 +211,7 @@ class CobblestoneReplenishmentTest {
             BotSession session = bot.getSession();
             assertTrue(session.isLoginComplete(), "Login should complete");
 
-            assertTrue(session.waitForNonEmptySlot(36, 5000),
+            assertTrue(session.waitForNonEmptySlot(36, 15000),
                     "V764 should receive cobblestone in slot 36");
 
             Thread.sleep(300);

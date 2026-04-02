@@ -714,6 +714,10 @@ public class PacketRegistry {
                 });
                 // InputPacket (0x1B) removed in 12w01a (between v23 and v28)
                 REGISTRY.remove(registryKey(betaV, PacketDirection.CLIENT_TO_SERVER, 0x1B));
+                // EntityHeadRotation (0x23) added in Release 1.2.1 (v28)
+                register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x23, new PacketFactory() {
+                    public Packet create() { return new EntityHeadRotationPacket(); }
+                });
             }
 
             // Release v39+ (Release 1.3.1+): Mandatory encryption, new handshake,
@@ -721,7 +725,7 @@ public class PacketRegistry {
             // int removed, BlockChange block ID byte->short, PlayerAbilities format
             // changed, item slot NBT unconditional, BlockPlacement gains cursor bytes,
             // DestroyEntity variable-length, SpawnPlayer gained metadata.
-            if (betaV.getVersionNumber() >= 39) {
+            if (betaV.isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
                 // S2C packets
                 register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x01, new PacketFactory() {
                     public Packet create() { return new LoginS2CPacketV39(); }
@@ -781,6 +785,13 @@ public class PacketRegistry {
                 REGISTRY.remove(registryKey(betaV, PacketDirection.SERVER_TO_CLIENT, 0x02));
                 // S2C PreChunk (0x32) removed in v39
                 REGISTRY.remove(registryKey(betaV, PacketDirection.SERVER_TO_CLIENT, 0x32));
+            }
+
+            // Release v47+ (Release 1.4.2+): TimeUpdate changed from 1 long to 2 longs.
+            if (betaV.getVersionNumber() >= 47) {
+                register(betaV, PacketDirection.SERVER_TO_CLIENT, 0x04, new PacketFactory() {
+                    public Packet create() { return new TimeUpdatePacketV47(); }
+                });
             }
 
             // Release v73+ (Release 1.6.1+): PlayerAbilities speeds changed from byte to float.

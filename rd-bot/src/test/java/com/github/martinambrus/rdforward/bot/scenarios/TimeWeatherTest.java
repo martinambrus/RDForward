@@ -40,14 +40,17 @@ class TimeWeatherTest {
             assertTrue(session.isLoginComplete(), "Login should complete");
 
             // Wait for at least one time update to arrive
-            boolean received = session.waitForTimeUpdate(0, 3000);
+            boolean received = session.waitForTimeUpdate(0, 5000);
             assertTrue(received, "Should receive time updates");
 
+            // Small delay to ensure we capture the count after any burst of
+            // login-time updates settles and the next broadcast starts fresh.
+            Thread.sleep(200);
             long firstTime = session.getLastTimeOfDay();
             int firstCount = session.getTimeUpdateCount();
 
-            // Wait for another time update
-            received = session.waitForTimeUpdate(firstCount, 3000);
+            // Wait for another time update (broadcasts every ~1 second)
+            received = session.waitForTimeUpdate(firstCount, 5000);
             assertTrue(received, "Should receive a second time update");
 
             long secondTime = session.getLastTimeOfDay();
@@ -84,7 +87,7 @@ class TimeWeatherTest {
                     "Time should be near 18000 but was " + time);
 
             // Also verify chat confirmation
-            String msg = session.waitForChat("Set time to 18000", 3000);
+            String msg = session.waitForChat("Set the time to 18000", 3000);
             assertNotNull(msg, "Should receive confirmation message");
         } finally {
             op.disconnect();
@@ -95,14 +98,16 @@ class TimeWeatherTest {
     @Test
     void timeFreezeStopsAdvancement() throws Exception {
         PermissionManager.addOp("FreezeOp");
-        BotClient op = testServer.createBot(ProtocolVersion.BETA_1_7_3, "FreezeOp");
+        // Use 1.6.4+ so the server sends negative timeOfDay for frozen time
+        // (pre-1.6.1 clients receive Math.abs(timeOfDay) instead).
+        BotClient op = testServer.createBot(ProtocolVersion.RELEASE_1_6_4, "FreezeOp");
         try {
             BotSession session = op.getSession();
             assertTrue(session.isLoginComplete());
 
             // Set a known time first
             session.sendChat("/time set 6000");
-            session.waitForChat("Set time to 6000", 3000);
+            session.waitForChat("Set the time to 6000", 3000);
 
             // Wait for time update with the new time
             int countBefore = session.getTimeUpdateCount();

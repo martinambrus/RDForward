@@ -76,6 +76,11 @@ public final class ServerProperties {
     private static volatile boolean loaded = false;
     private static volatile File loadedFile;
 
+    /** Set a property value directly (for tests and programmatic configuration). */
+    public static void set(String key, String value) {
+        props.setProperty(key, value);
+    }
+
     /**
      * Load server.properties from the current working directory.
      */

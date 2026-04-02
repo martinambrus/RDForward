@@ -102,20 +102,9 @@ public class ClientConnectionHandler extends SimpleChannelInboundHandler<Packet>
             dis.readFully(blocks);
             dis.close();
 
-            // Classic sends blocks in XZY order, convert to our internal YZX order
-            // (matching RubyDung's Level indexing: (y * depth + z) * width + x)
-            byte[] reordered = new byte[width * height * depth];
-            for (int x = 0; x < width; x++) {
-                for (int z = 0; z < depth; z++) {
-                    for (int y = 0; y < height; y++) {
-                        int classicIndex = (x * depth + z) * height + y;
-                        int internalIndex = (y * depth + z) * width + x;
-                        reordered[internalIndex] = blocks[classicIndex];
-                    }
-                }
-            }
-
-            state.setWorldData(reordered, width, height, depth);
+            // Server sends blocks in YZX order: (y * depth + z) * width + x
+            // This matches RubyDung's Level indexing, so no reorder needed.
+            state.setWorldData(blocks, width, height, depth);
             System.out.println("World loaded: " + width + "x" + height + "x" + depth
                 + " (" + volume + " blocks)");
         } catch (IOException e) {

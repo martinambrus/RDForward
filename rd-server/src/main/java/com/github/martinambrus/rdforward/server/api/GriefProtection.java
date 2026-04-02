@@ -140,6 +140,11 @@ public final class GriefProtection {
     private static volatile ChunkManager chunkManager;
     private static volatile boolean enabled = false;
 
+    /** Disable grief protection (reach checks, rate limits, grief scoring). */
+    public static void disable() {
+        enabled = false;
+    }
+
     // ========================================================================
     // Initialization
     // ========================================================================

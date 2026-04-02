@@ -232,8 +232,11 @@ class BedrockInventoryInteractionTest {
             assertTrue(session.isLoginComplete(), "Login should complete");
             Thread.sleep(500);
 
-            // Place 10 blocks rapidly (no inventory to deplete in creative)
+            // Place 10 blocks with cooldown delays (no inventory to deplete in creative)
             for (int i = 0; i < 10; i++) {
+                if (i > 0) {
+                    Thread.sleep(300); // exceed 250ms Bedrock block placement cooldown
+                }
                 session.sendBlockPlace(180 + i, 42, 180, 1, 4);
             }
 
@@ -261,11 +264,15 @@ class BedrockInventoryInteractionTest {
 
             // Place and then break 5 blocks
             for (int i = 0; i < 5; i++) {
+                if (i > 0) {
+                    Thread.sleep(300); // exceed 250ms Bedrock block placement cooldown
+                }
                 int x = 190 + i;
                 session.sendBlockPlace(x, 42, 190, 1, 4);
                 int placed = session.waitForBlockChange(x, 43, 190, 3000);
                 assertTrue(placed > 0, "Block " + (i + 1) + " should be placed");
 
+                Thread.sleep(300); // exceed 250ms Bedrock block placement cooldown
                 session.getBlockChanges().remove(packCoords(x, 43, 190));
                 session.sendDigging(0, x, 43, 190, 1);
                 int broken = session.waitForBlockChange(x, 43, 190, 3000);

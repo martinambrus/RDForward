@@ -8,7 +8,7 @@ import io.netty.buffer.ByteBuf;
  * Classic protocol 0x03 (Server -> Client): Level Data Chunk.
  *
  * Contains a 1024-byte chunk of GZip-compressed world data.
- * The world data is the block array in XZY order, prefixed with
+ * The world data is the block array in YZX order, prefixed with
  * a 4-byte big-endian int (total block count), then GZip compressed,
  * and split into 1024-byte chunks sent via multiple packets.
  *
