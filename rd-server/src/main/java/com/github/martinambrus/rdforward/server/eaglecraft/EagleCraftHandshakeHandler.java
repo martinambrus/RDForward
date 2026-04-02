@@ -17,6 +17,7 @@ import io.netty.channel.ChannelPipeline;
 
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 import static com.github.martinambrus.rdforward.server.eaglecraft.EagleCraftConstants.*;
 
@@ -39,6 +40,8 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
     private final ServerWorld world;
     private final PlayerManager playerManager;
     private final ChunkManager chunkManager;
+
+    private static final Pattern USERNAME_PATTERN = Pattern.compile("^[A-Za-z0-9_]+$");
 
     private int state = STATE_OPENED;
     private String username;
@@ -252,7 +255,7 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
         username = buf.readCharSequence(usernameLen, StandardCharsets.US_ASCII).toString();
 
         // Validate username
-        if (username.isEmpty() || username.length() > 16 || !username.matches("^[A-Za-z0-9_]+$")) {
+        if (username.isEmpty() || username.length() > 16 || !USERNAME_PATTERN.matcher(username).matches()) {
             sendDenyLogin(ctx, "Invalid username");
             return;
         }
@@ -366,9 +369,12 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
         // no MC Handshake/Login packets, no LoginSuccess expected.
         ChannelPipeline pipeline = ctx.pipeline();
 
-        // Remove MOTD query handler (no longer needed after handshake)
+        // Remove MOTD query handler and handshake timeout (no longer needed)
         if (pipeline.get("eaglerQuery") != null) {
             pipeline.remove("eaglerQuery");
+        }
+        if (pipeline.get("eaglerTimeout") != null) {
+            pipeline.remove("eaglerTimeout");
         }
 
         // Inbound: wsFrameDecoder -> packetDecoder
@@ -402,10 +408,6 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
 
         System.out.println("[EagleCraft] Handshake complete for " + username
                 + ", initiating direct-to-PLAY login");
-        // Debug: dump pipeline
-        for (java.util.Map.Entry<String, io.netty.channel.ChannelHandler> e : pipeline) {
-            System.out.println("  pipeline: " + e.getKey() + " = " + e.getValue().getClass().getSimpleName());
-        }
 
         // Trigger the MC join sequence directly (LoginSuccess + JoinGame + chunks).
         // Use the handler's own context, not ours (we've been removed from the pipeline).
@@ -414,6 +416,8 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
     }
 
     private void sendDenyLogin(ChannelHandlerContext ctx, String message) {
+        System.out.println("[EagleCraft] Login denied for "
+                + (username != null ? username : "unknown") + ": " + message);
         byte[] msgBytes = message.getBytes(StandardCharsets.UTF_8);
         int len = Math.min(msgBytes.length, 255);
 
@@ -425,12 +429,15 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
     }
 
     private void sendVersionMismatch(ChannelHandlerContext ctx) {
+        System.out.println("[EagleCraft] Version mismatch, no supported protocol version found");
         ByteBuf out = ctx.alloc().buffer(1);
         out.writeByte(PROTOCOL_VERSION_MISMATCH);
         ctx.writeAndFlush(out).addListener(f -> ctx.close());
     }
 
     private void sendError(ChannelHandlerContext ctx, String message) {
+        System.out.println("[EagleCraft] Error for "
+                + (username != null ? username : "unknown") + ": " + message);
         byte[] msgBytes = message.getBytes(StandardCharsets.UTF_8);
         int len = Math.min(msgBytes.length, 255);
 

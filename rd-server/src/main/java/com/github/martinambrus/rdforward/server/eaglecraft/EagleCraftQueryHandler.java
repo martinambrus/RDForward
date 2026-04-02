@@ -30,12 +30,10 @@ public class EagleCraftQueryHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        System.out.println("[EagleCraft Query] Received: " + msg.getClass().getSimpleName());
         if (msg instanceof TextWebSocketFrame) {
             TextWebSocketFrame textFrame = (TextWebSocketFrame) msg;
             try {
                 String text = textFrame.text().trim();
-                System.out.println("[EagleCraft Query] Text: " + text);
                 // EagleCraft clients may send "accept:motd", "Accept: MOTD", etc.
                 String lower = text.toLowerCase();
                 if (lower.startsWith("accept:")) {
@@ -52,15 +50,39 @@ public class EagleCraftQueryHandler extends ChannelInboundHandlerAdapter {
             }
         } else {
             // Binary frames pass through to the handshake handler
-            System.out.println("[EagleCraft Query] Passing through: " + msg.getClass().getSimpleName());
             super.channelRead(ctx, msg);
         }
     }
 
+    /**
+     * Escape a string for safe inclusion in a JSON string value.
+     * Handles all characters required by RFC 7159.
+     */
+    private static String escapeJson(String s) {
+        StringBuilder sb = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"':  sb.append("\\\""); break;
+                case '\\': sb.append("\\\\"); break;
+                case '\b': sb.append("\\b");  break;
+                case '\f': sb.append("\\f");  break;
+                case '\n': sb.append("\\n");  break;
+                case '\r': sb.append("\\r");  break;
+                case '\t': sb.append("\\t");  break;
+                default:
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+            }
+        }
+        return sb.toString();
+    }
+
     private void sendMotdResponse(ChannelHandlerContext ctx) {
-        try {
-        System.err.println("[EagleCraft Query] sendMotdResponse entered");
-        String motd = ServerProperties.getMotd().replace("\"", "\\\"");
+        String motd = escapeJson(ServerProperties.getMotd());
         int online = playerManager.getPlayerCount();
         int max = PlayerManager.getMaxPlayers();
 
@@ -72,7 +94,7 @@ public class EagleCraftQueryHandler extends ChannelInboundHandlerAdapter {
         for (ConnectedPlayer p : allPlayers) {
             if (idx >= 10) break;
             if (idx > 0) players.append(",");
-            players.append("\"").append(p.getUsername().replace("\"", "\\\"")).append("\"");
+            players.append("\"").append(escapeJson(p.getUsername())).append("\"");
             idx++;
         }
         if (total > 10) {
@@ -91,7 +113,7 @@ public class EagleCraftQueryHandler extends ChannelInboundHandlerAdapter {
                 + "\"type\":\"motd\","
                 + "\"data\":{"
                     + "\"cache\":false,"
-                    + "\"motd\":[\"" + motd + "\",\"EagleCraft 1.8\"],"
+                    + "\"motd\":[\"" + motd + "\",\"EagleCraft 1.8 / 1.12.2\"],"
                     + "\"icon\":false,"
                     + "\"online\":" + online + ","
                     + "\"max\":" + max + ","
@@ -99,27 +121,13 @@ public class EagleCraftQueryHandler extends ChannelInboundHandlerAdapter {
                 + "}"
                 + "}";
 
-        System.out.println("[EagleCraft Query] Sending MOTD response (" + json.length() + " chars)");
-        System.out.println("[EagleCraft Query] Sending MOTD JSON");
         ctx.writeAndFlush(new TextWebSocketFrame(json))
-                .addListener(f -> {
-                    System.out.println("[EagleCraft Query] Write complete, success=" + f.isSuccess());
-                    if (!f.isSuccess() && f.cause() != null) {
-                        f.cause().printStackTrace();
-                    }
-                    ctx.close();
-                });
-        } catch (Exception e) {
-            System.err.println("[EagleCraft Query] sendMotdResponse EXCEPTION: " + e);
-            e.printStackTrace();
-            ctx.close();
-        }
+                .addListener(f -> ctx.close());
     }
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        System.err.println("[EagleCraft Query] Exception: " + cause);
-        cause.printStackTrace();
+        System.err.println("[EagleCraft Query] Exception: " + cause.getMessage());
         ctx.close();
     }
 }

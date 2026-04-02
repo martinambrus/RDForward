@@ -69,9 +69,6 @@ public final class EagleCraftConstants {
     public static final int EAGLER_PROTOCOL_V2 = 2;
     public static final int EAGLER_PROTOCOL_V3 = 3;
 
-    /** The protocol version we select during handshake. */
-    public static final int SELECTED_EAGLER_PROTOCOL = EAGLER_PROTOCOL_V2;
-
     /** Minecraft protocol version for MC 1.8. */
     public static final int MC_PROTOCOL_47 = 47;
 

@@ -13,5 +13,4 @@ dependencies {
     api 'io.netty:netty-handler:4.1.131.Final'
     api 'io.netty:netty-resolver:4.1.131.Final'
     api 'io.netty:netty-transport:4.1.131.Final'
-    api 'io.netty:netty-codec-http:4.1.131.Final'
 }

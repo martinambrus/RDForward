@@ -11,6 +11,7 @@ import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
 import io.netty.handler.flush.FlushConsolidationHandler;
+import io.netty.handler.timeout.ReadTimeoutHandler;
 
 /**
  * Configures the Netty pipeline for an EagleCraft WebSocket client.
@@ -89,9 +90,15 @@ public final class EagleCraftPipelineConfigurer {
         pipeline.addAfter("httpCodec", "wsFrameEncoder",
                 ByteBufToWebSocketFrame.INSTANCE);
 
+        // Handshake timeout: close the connection if the EagleCraft handshake
+        // does not complete within 30 seconds (prevents idle connections).
+        // Removed by EagleCraftHandshakeHandler.completeHandshake() on success.
+        pipeline.addAfter("wsFrameDecoder", "eaglerTimeout",
+                new ReadTimeoutHandler(30));
+
         // EagleCraft handshake handler: processes the pre-MC handshake,
         // then removes itself and adds NettyPacketDecoder/Encoder/handler.
-        pipeline.addAfter("wsFrameDecoder", "eaglerHandshake",
+        pipeline.addAfter("eaglerTimeout", "eaglerHandshake",
                 new EagleCraftHandshakeHandler(serverVersion, world, playerManager, chunkManager));
 
         // Remove the old ServerConnectionHandler (Nati/Classic handler)

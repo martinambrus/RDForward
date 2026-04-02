@@ -69,10 +69,6 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     // EagleCraft WebSocket client flag — skips encryption and compression
     private boolean eaglecraftClient = false;
 
-    public void setEaglecraftClient(boolean eaglecraftClient) {
-        this.eaglecraftClient = eaglecraftClient;
-    }
-
     /**
      * Initiate a direct-to-PLAY login for an EagleCraft client.
      *
@@ -87,7 +83,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         this.eaglecraftClient = true;
         this.pendingUsername = username;
 
-        // Resolve ProtocolVersion from the negotiated MC protocol number
+        // Resolve ProtocolVersion from the negotiated MC protocol number.
+        // Protocol 47 is shared by RELEASE_1_4_2 and RELEASE_1_8 in the enum,
+        // so fromNumber(47) returns the wrong one (1.4.2). Hardcode 1.8 here.
         if (mcProtocol == 47) {
             this.clientVersion = ProtocolVersion.RELEASE_1_8;
         } else {

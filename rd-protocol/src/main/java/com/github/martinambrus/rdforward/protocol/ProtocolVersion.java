@@ -1156,13 +1156,22 @@ public enum ProtocolVersion {
     }
 
     /**
+     * Check if this version is RubyDung or any Classic version.
+     * Used by isClassicFormat() and isFiniteWorld() — update here
+     * when adding new Classic protocol versions.
+     */
+    private boolean isClassicFamily() {
+        return this == RUBYDUNG || this == CLASSIC_0_0_15A || this == CLASSIC_0_0_16A
+                || this == CLASSIC_0_0_20A || this == CLASSIC;
+    }
+
+    /**
      * Check if this version uses the Classic wire format.
      * Classic and RubyDung use Classic format (fixed-size strings/arrays).
      * Alpha+ uses the pre-Netty format (string16, variable-length fields).
      */
     public boolean isClassicFormat() {
-        return this == RUBYDUNG || this == CLASSIC_0_0_15A || this == CLASSIC_0_0_16A
-                || this == CLASSIC_0_0_20A || this == CLASSIC;
+        return isClassicFamily();
     }
 
     /**
@@ -1172,8 +1181,7 @@ public enum ProtocolVersion {
      * finite → server-world.dat, chunk-based → Alpha/McRegion chunk files.
      */
     public boolean isFiniteWorld() {
-        return this == RUBYDUNG || this == CLASSIC_0_0_15A || this == CLASSIC_0_0_16A
-                || this == CLASSIC_0_0_20A || this == CLASSIC;
+        return isClassicFamily();
     }
 
     /**
