@@ -470,7 +470,7 @@ public class ClassicToNettyTranslator extends ChannelOutboundHandlerAdapter {
      * Generate an offline-mode UUID v3 from a username (same as MC offline mode).
      * Format: "OfflinePlayer:" + username -> MD5 -> UUID v3 with hyphens.
      */
-    static String generateOfflineUuid(String username) {
+    public static String generateOfflineUuid(String username) {
         try {
             java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
             byte[] hash = md.digest(("OfflinePlayer:" + username).getBytes(

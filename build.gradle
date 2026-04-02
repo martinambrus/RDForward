@@ -106,6 +106,7 @@ ext {
         'io.netty:netty-resolver:4.1.131.Final',
         'io.netty:netty-transport:4.1.131.Final',
         'io.netty:netty-transport-native-unix-common:4.1.131.Final',
+        'io.netty:netty-codec-http:4.1.131.Final',
         // Querz NBT (rd-world) - JitPack
         'com.github.Querz:NBT:6.1@https://jitpack.io',
         // JUnit 5

@@ -12,6 +12,7 @@ import com.github.martinambrus.rdforward.protocol.packet.PacketDirection;
 import com.github.martinambrus.rdforward.protocol.packet.PacketRegistry;
 import com.github.martinambrus.rdforward.protocol.McDataTypes;
 import com.github.martinambrus.rdforward.server.api.ServerProperties;
+import com.github.martinambrus.rdforward.server.eaglecraft.EagleCraftPipelineConfigurer;
 import com.github.martinambrus.rdforward.server.lce.LCEConnectionHandler;
 import com.github.martinambrus.rdforward.server.lce.ClassicToLCETranslator;
 import io.netty.buffer.ByteBuf;
@@ -336,6 +337,13 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
                     + ", pipeline reconfigured");
 
             pipeline.fireChannelRead(buf);
+        } else if (firstByte == 0x47) {
+            // 0x47 = 'G' from HTTP "GET /" — EagleCraft WebSocket upgrade request.
+            // Delegate to EagleCraftPipelineConfigurer (lazy-loading boundary:
+            // HTTP/WebSocket classes are not loaded until this branch executes).
+            EagleCraftPipelineConfigurer.configure(
+                    ctx, buf, serverVersion, world, playerManager, chunkManager);
+            return;
         } else {
             // Nati client — remove self and forward from HEAD
             ChannelPipeline pipeline = ctx.pipeline();

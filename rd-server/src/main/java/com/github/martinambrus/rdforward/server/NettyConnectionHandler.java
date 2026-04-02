@@ -66,6 +66,50 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     // Online-mode authentication result (null in offline mode)
     private String authenticatedUuid;
 
+    // EagleCraft WebSocket client flag — skips encryption and compression
+    private boolean eaglecraftClient = false;
+
+    public void setEaglecraftClient(boolean eaglecraftClient) {
+        this.eaglecraftClient = eaglecraftClient;
+    }
+
+    /**
+     * Initiate a direct-to-PLAY login for an EagleCraft client.
+     *
+     * EagleCraft clients complete their own handshake before the MC protocol starts.
+     * The proxy (EaglerXServer) normally handles MC login with the backend, so the
+     * client never sends MC Handshake/Login packets. We must skip straight to PLAY.
+     *
+     * Called from {@link com.github.martinambrus.rdforward.server.eaglecraft.EagleCraftHandshakeHandler}
+     * after the EagleCraft handshake completes.
+     */
+    public void initiateEaglecraftLogin(ChannelHandlerContext ctx, String username) {
+        this.eaglecraftClient = true;
+        this.pendingUsername = username;
+        this.clientVersion = ProtocolVersion.RELEASE_1_8;
+
+        // Remove login timeout if present
+        if (ctx.pipeline().get("loginTimeout") != null) {
+            ctx.pipeline().remove("loginTimeout");
+        }
+
+        // EagleCraft clients go directly to PLAY after the EagleCraft handshake.
+        // No MC LoginSuccess is expected — the client already received username/UUID
+        // in the EagleCraft SERVER_ALLOW_LOGIN packet.
+        state = ConnectionState.PLAY;
+
+        // Set codec protocol version to 47 (1.8) — normally done by handleHandshake()
+        // but EagleCraft skips the MC handshake.
+        NettyPacketDecoder decoder = ctx.pipeline().get(NettyPacketDecoder.class);
+        if (decoder != null) decoder.setProtocolVersion(47);
+        NettyPacketEncoder encoder = ctx.pipeline().get(NettyPacketEncoder.class);
+        if (encoder != null) encoder.setProtocolVersion(47);
+
+        System.out.println("[EagleCraft] Direct-to-PLAY login for " + username);
+
+        handleJoinGame(ctx);
+    }
+
     /** Lazily generate a single RSA keypair shared by all connections. */
     private static KeyPair getOrCreateRsaKeyPair() throws java.security.NoSuchAlgorithmException {
         KeyPair kp = sharedRsaKeyPair;
@@ -308,8 +352,10 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     private void handleLoginStart(ChannelHandlerContext ctx, String username) {
         pendingUsername = username;
 
-        if (ServerProperties.isOnlineMode()) {
-            // Online mode: send EncryptionRequest to initiate Mojang session authentication
+        if (ServerProperties.isOnlineMode() && !eaglecraftClient) {
+            // Online mode: send EncryptionRequest to initiate Mojang session authentication.
+            // EagleCraft clients cannot do RSA encryption (browser sandbox), so they
+            // always use offline-mode login regardless of server configuration.
             try {
                 KeyPair rsaKeyPair = getOrCreateRsaKeyPair();
                 verifyToken = new byte[4];
@@ -352,7 +398,8 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
 
         // Enable compression for 1.8+ clients (protocol 47+).
         // SetCompression MUST be sent before LoginSuccess.
-        if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+        // EagleCraft clients do not support MC-level compression (WebSocket handles framing).
+        if (!eaglecraftClient && clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
             ctx.writeAndFlush(new SetCompressionPacket(COMPRESSION_THRESHOLD));
 
             // Insert compress/decompress handlers into the pipeline.
@@ -736,6 +783,9 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         if (player == null) {
             sendPlayDisconnect(ctx, "Server is full!");
             return;
+        }
+        if (eaglecraftClient) {
+            player.setEaglecraftClient(true);
         }
 
         boolean isV775 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_26_1);

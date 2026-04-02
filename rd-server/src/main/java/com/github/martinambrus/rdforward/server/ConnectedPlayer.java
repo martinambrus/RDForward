@@ -69,6 +69,9 @@ public class ConnectedPlayer {
     // Alphaver client flag (based on Alpha 1.0.16 with modified packet formats)
     private volatile boolean alphaverClient = false;
 
+    // EagleCraft WebSocket client flag
+    private volatile boolean eaglecraftClient = false;
+
     // Teleport grace: skip chunk-boundary checks on movement packets for a
     // short duration after teleport, giving old clients time to process the
     // position + chunk data. Prevents false "stuck at unloaded chunk" kicks.
@@ -200,6 +203,8 @@ public class ConnectedPlayer {
     public ProtocolVersion getProtocolVersion() { return protocolVersion; }
     public boolean isAlphaverClient() { return alphaverClient; }
     public void setAlphaverClient(boolean alphaverClient) { this.alphaverClient = alphaverClient; }
+    public boolean isEaglecraftClient() { return eaglecraftClient; }
+    public void setEaglecraftClient(boolean eaglecraftClient) { this.eaglecraftClient = eaglecraftClient; }
 
     /**
      * Check if the player is currently in teleport grace period.
