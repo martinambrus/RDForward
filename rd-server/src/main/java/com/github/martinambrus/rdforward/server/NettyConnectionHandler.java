@@ -83,10 +83,17 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
      * Called from {@link com.github.martinambrus.rdforward.server.eaglecraft.EagleCraftHandshakeHandler}
      * after the EagleCraft handshake completes.
      */
-    public void initiateEaglecraftLogin(ChannelHandlerContext ctx, String username) {
+    public void initiateEaglecraftLogin(ChannelHandlerContext ctx, String username, int mcProtocol) {
         this.eaglecraftClient = true;
         this.pendingUsername = username;
-        this.clientVersion = ProtocolVersion.RELEASE_1_8;
+
+        // Resolve ProtocolVersion from the negotiated MC protocol number
+        if (mcProtocol == 47) {
+            this.clientVersion = ProtocolVersion.RELEASE_1_8;
+        } else {
+            ProtocolVersion resolved = ProtocolVersion.fromNumber(mcProtocol, ProtocolVersion.Family.RELEASE);
+            this.clientVersion = resolved != null ? resolved : ProtocolVersion.RELEASE_1_8;
+        }
 
         // Remove login timeout if present
         if (ctx.pipeline().get("loginTimeout") != null) {
@@ -98,14 +105,15 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // in the EagleCraft SERVER_ALLOW_LOGIN packet.
         state = ConnectionState.PLAY;
 
-        // Set codec protocol version to 47 (1.8) — normally done by handleHandshake()
+        // Set codec protocol version — normally done by handleHandshake()
         // but EagleCraft skips the MC handshake.
         NettyPacketDecoder decoder = ctx.pipeline().get(NettyPacketDecoder.class);
-        if (decoder != null) decoder.setProtocolVersion(47);
+        if (decoder != null) decoder.setProtocolVersion(mcProtocol);
         NettyPacketEncoder encoder = ctx.pipeline().get(NettyPacketEncoder.class);
-        if (encoder != null) encoder.setProtocolVersion(47);
+        if (encoder != null) encoder.setProtocolVersion(mcProtocol);
 
-        System.out.println("[EagleCraft] Direct-to-PLAY login for " + username);
+        System.out.println("[EagleCraft] Direct-to-PLAY login for " + username
+                + " (MC protocol " + mcProtocol + ", " + clientVersion.getDisplayName() + ")");
 
         handleJoinGame(ctx);
     }

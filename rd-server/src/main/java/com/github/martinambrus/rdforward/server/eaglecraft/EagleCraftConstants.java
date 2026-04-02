@@ -75,6 +75,9 @@ public final class EagleCraftConstants {
     /** Minecraft protocol version for MC 1.8. */
     public static final int MC_PROTOCOL_47 = 47;
 
+    /** Minecraft protocol version for MC 1.12.2. */
+    public static final int MC_PROTOCOL_340 = 340;
+
     // ---- Server identity ----
 
     public static final String SERVER_BRAND = "RDForward";

@@ -44,6 +44,7 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
     private String username;
     private String uuid;
     private int selectedEaglerProtocol;
+    private int selectedMcProtocol;
     private byte[] skinData;
 
     public EagleCraftHandshakeHandler(ProtocolVersion serverVersion, ServerWorld world,
@@ -143,19 +144,21 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
             return;
         }
 
-        // Read MC protocol versions
+        // Read MC protocol versions — pick the highest we support (340 > 47)
         int mcVersionCount = buf.readUnsignedShort();
         if (mcVersionCount < 1 || mcVersionCount > 16) {
             sendError(ctx, "Invalid MC version count");
             return;
         }
-        boolean mc47Found = false;
+        selectedMcProtocol = 0;
         for (int i = 0; i < mcVersionCount; i++) {
             int mcVer = buf.readUnsignedShort();
-            if (mcVer == MC_PROTOCOL_47) mc47Found = true;
+            if ((mcVer == MC_PROTOCOL_47 || mcVer == MC_PROTOCOL_340) && mcVer > selectedMcProtocol) {
+                selectedMcProtocol = mcVer;
+            }
         }
-        if (!mc47Found) {
-            sendDenyLogin(ctx, "Server requires MC protocol 47 (1.8)");
+        if (selectedMcProtocol == 0) {
+            sendDenyLogin(ctx, "Server requires MC protocol 47 (1.8) or 340 (1.12.2)");
             return;
         }
 
@@ -187,6 +190,7 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
         // V1 format is simpler: the legacyByte we already read is the only version indicator
         // V1 clients send [0x01] [0x01] — the first 0x01 is type, second is protocol version
         selectedEaglerProtocol = EAGLER_PROTOCOL_V1;
+        selectedMcProtocol = MC_PROTOCOL_47; // V1 clients are always 1.8
         // Skip any remaining fields in the v1 CLIENT_VERSION
         System.out.println("[EagleCraft] V1 client connected (legacy protocol)");
         sendServerVersion(ctx);
@@ -199,7 +203,7 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
      * V1/V2 wire format:
      *   [byte 0x02]
      *   [short] selected eagler protocol
-     *   [short] selected MC protocol (47)
+     *   [short] selected MC protocol (47 or 340)
      *   [byte] server brand length
      *   [bytes] server brand (US-ASCII)
      *   [byte] server version length
@@ -215,7 +219,7 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
         ByteBuf out = ctx.alloc().buffer(size);
         out.writeByte(PROTOCOL_SERVER_VERSION);
         out.writeShort(selectedEaglerProtocol);
-        out.writeShort(MC_PROTOCOL_47);
+        out.writeShort(selectedMcProtocol);
         out.writeByte(brandBytes.length);
         out.writeBytes(brandBytes);
         out.writeByte(versionBytes.length);
@@ -357,7 +361,7 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
             ctx.channel().attr(ATTR_EAGLER_SKIN).set(skinData);
         }
 
-        // Reconfigure pipeline for MC protocol 47 PLAY state.
+        // Reconfigure pipeline for MC PLAY state (protocol 47 or 340).
         // EagleCraft clients go directly to PLAY after the EagleCraft handshake —
         // no MC Handshake/Login packets, no LoginSuccess expected.
         ChannelPipeline pipeline = ctx.pipeline();
@@ -406,7 +410,7 @@ public class EagleCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
         // Trigger the MC join sequence directly (LoginSuccess + JoinGame + chunks).
         // Use the handler's own context, not ours (we've been removed from the pipeline).
         ChannelHandlerContext handlerCtx = pipeline.context(handler);
-        handler.initiateEaglecraftLogin(handlerCtx, username);
+        handler.initiateEaglecraftLogin(handlerCtx, username, selectedMcProtocol);
     }
 
     private void sendDenyLogin(ChannelHandlerContext ctx, String message) {

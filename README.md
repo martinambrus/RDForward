@@ -144,7 +144,7 @@ The server accepts connections from a wide range of Minecraft clients simultaneo
 | Release (Netty) | 1.7.2 through 26.1 | TCP, VarInt framing |
 | Legacy Console (LCE) | TU19 (v1.6.0560.0) | TCP, 4-byte length prefix |
 | MCPE (legacy) | 0.6.1 through 0.16.0 (protocols 9-91) | UDP, RakNet |
-| EagleCraft | 1.8.8 (EaglercraftX u53) | WebSocket, protocol 47 |
+| EagleCraft | 1.8.8, 1.12.2 (EaglercraftX) | WebSocket, protocol 47/340 |
 | Bedrock | 1.26.10 (protocol 944) | UDP, RakNet |
 
 Protocol detection is automatic — the server identifies the client type from the first bytes of the connection and configures the Netty pipeline accordingly. Classic versions are distinguished by the second byte: 0.0.15a sends a username character (no protocol version byte), 0.0.16a-0.0.19a send protocol 3-5 (129-byte identification), 0.0.20a-0.27 send protocol 6 (130-byte identification), and 0.28-0.30 send protocol 7. EagleCraft clients are detected by the HTTP `GET` request (first byte `0x47`), which triggers a WebSocket upgrade followed by EagleCraft's custom pre-MC handshake before entering standard protocol 47 play. LCE clients are detected by a server-sends-first handshake (300ms timeout), while all other TCP protocols are identified from the first client byte. Alphaver clients (which report the same protocol version as standard Alpha 1.1.0) are detected reactively after login via a client-specific skin request packet.
