@@ -279,21 +279,12 @@ public class ServerWorld {
         try (GZIPOutputStream gzip = new GZIPOutputStream(baos);
              DataOutputStream dos = new DataOutputStream(gzip)) {
             dos.writeInt(volume);
-            if (version == ProtocolVersion.CLASSIC_0_0_15A
-                    || version == ProtocolVersion.CLASSIC_0_0_16A
-                    || version == ProtocolVersion.CLASSIC_0_0_20A) {
-                // 0.0.15a through 0.0.20a swap Y/Z in setData, so internal YZX order matches
-                dos.write(snapshot);
-            } else {
-                // Classic v7 expects XZY order — reorder from internal YZX
-                for (int x = 0; x < width; x++) {
-                    for (int z = 0; z < depth; z++) {
-                        for (int y = 0; y < height; y++) {
-                            dos.writeByte(snapshot[(y * depth + z) * width + x]);
-                        }
-                    }
-                }
-            }
+            // All Classic versions (c0.0.15a through c0.30) use the same
+            // block index formula: (y * height + z) * width + x where
+            // height=Z_size and width=X_size (Classic swaps the names).
+            // This is identical to our internal YZX layout, so no
+            // reordering is needed — write the raw snapshot directly.
+            dos.write(snapshot);
         }
         return baos.toByteArray();
     }
