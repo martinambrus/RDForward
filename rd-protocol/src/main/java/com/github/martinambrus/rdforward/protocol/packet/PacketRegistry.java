@@ -37,6 +37,7 @@ public class PacketRegistry {
     static {
         registerClassic015aPackets();
         registerClassic016aPackets();
+        registerClassic020aPackets();
         registerClassicPackets();
         registerAlphaPackets();
     }
@@ -96,7 +97,7 @@ public class PacketRegistry {
     /**
      * Register Classic 0.0.16a packets — same as full Classic but without the
      * trailing unused/userType byte on identification (0x00) and no UpdateUserType (0x0F).
-     * Covers Classic versions with protocol version 3-6 (c0.0.16a through c0.0.19a).
+     * Covers Classic versions with protocol version 3-5 (c0.0.16a through c0.0.19a_06).
      */
     private static void registerClassic016aPackets() {
         ProtocolVersion v = ProtocolVersion.CLASSIC_0_0_16A;
@@ -159,6 +160,74 @@ public class PacketRegistry {
             public Packet create() { return new DisconnectPacket(); }
         });
         // No 0x0F UpdateUserType — doesn't exist in 0.0.16a
+    }
+
+    /**
+     * Register Classic 0.0.20a packets — same identification format as Classic v7
+     * (130 bytes, WITH trailing unused/userType byte) but no UpdateUserType (0x0F).
+     * Covers Classic protocol version 6 (c0.0.20a through c0.27).
+     */
+    private static void registerClassic020aPackets() {
+        ProtocolVersion v = ProtocolVersion.CLASSIC_0_0_20A;
+
+        // Client -> Server packets (4 types: same as Classic v7, same identification format)
+        register(v, PacketDirection.CLIENT_TO_SERVER, 0x00, new PacketFactory() {
+            public Packet create() { return new PlayerIdentificationPacket(); }
+        });
+        register(v, PacketDirection.CLIENT_TO_SERVER, 0x05, new PacketFactory() {
+            public Packet create() { return new SetBlockClientPacket(); }
+        });
+        register(v, PacketDirection.CLIENT_TO_SERVER, 0x08, new PacketFactory() {
+            public Packet create() { return new PlayerTeleportPacket(); }
+        });
+        register(v, PacketDirection.CLIENT_TO_SERVER, 0x0D, new PacketFactory() {
+            public Packet create() { return new MessagePacket(); }
+        });
+
+        // Server -> Client packets (same as Classic v7 except no 0x0F UpdateUserType)
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x00, new PacketFactory() {
+            public Packet create() { return new ServerIdentificationPacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x01, new PacketFactory() {
+            public Packet create() { return new PingPacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x02, new PacketFactory() {
+            public Packet create() { return new LevelInitializePacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x03, new PacketFactory() {
+            public Packet create() { return new LevelDataChunkPacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x04, new PacketFactory() {
+            public Packet create() { return new LevelFinalizePacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x06, new PacketFactory() {
+            public Packet create() { return new SetBlockServerPacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x07, new PacketFactory() {
+            public Packet create() { return new SpawnPlayerPacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x08, new PacketFactory() {
+            public Packet create() { return new PlayerTeleportPacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x09, new PacketFactory() {
+            public Packet create() { return new PositionOrientationUpdatePacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x0A, new PacketFactory() {
+            public Packet create() { return new PositionUpdatePacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x0B, new PacketFactory() {
+            public Packet create() { return new OrientationUpdatePacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x0C, new PacketFactory() {
+            public Packet create() { return new DespawnPlayerPacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x0D, new PacketFactory() {
+            public Packet create() { return new MessagePacket(); }
+        });
+        register(v, PacketDirection.SERVER_TO_CLIENT, 0x0E, new PacketFactory() {
+            public Packet create() { return new DisconnectPacket(); }
+        });
+        // No 0x0F UpdateUserType — doesn't exist in 0.0.20a (added in protocol 7)
     }
 
     /**

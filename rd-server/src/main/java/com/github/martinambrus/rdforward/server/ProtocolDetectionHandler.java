@@ -300,8 +300,12 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
             ProtocolVersion classicVersion;
             if (isClassic015a) {
                 classicVersion = ProtocolVersion.CLASSIC_0_0_15A;
+            } else if (secondByte == 6) {
+                // Protocol version 6: Classic 0.0.20a-0.27 (HAS unused/userType
+                // trailing byte in identification, but no UpdateUserType packet)
+                classicVersion = ProtocolVersion.CLASSIC_0_0_20A;
             } else if (secondByte < 7) {
-                // Protocol version 3-6: Classic 0.0.16a-0.0.19a (no unused byte
+                // Protocol version 3-5: Classic 0.0.16a-0.0.19a (no unused byte
                 // in identification, no UpdateUserType packet)
                 classicVersion = ProtocolVersion.CLASSIC_0_0_16A;
             } else {

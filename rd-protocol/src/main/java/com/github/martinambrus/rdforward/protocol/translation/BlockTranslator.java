@@ -22,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * Supported translation pairs:
  * - Classic -> RubyDung (50 -> 3 blocks)
+ * - Classic -> Classic 0.0.20a (50 -> 41 blocks)
  * - Alpha -> RubyDung (82 -> 3 blocks)
  * - Alpha -> Classic (82 -> 50 blocks)
  * - RubyDung -> Classic (3 -> 50, pass-through)
@@ -65,6 +66,11 @@ public class BlockTranslator {
         // Classic v7 -> Classic 0.0.15a
         if (from == ProtocolVersion.CLASSIC && to == ProtocolVersion.CLASSIC_0_0_15A) {
             return loadProperties("classic-to-classic015a.properties");
+        }
+
+        // Classic v7 -> Classic 0.0.20a
+        if (from == ProtocolVersion.CLASSIC && to == ProtocolVersion.CLASSIC_0_0_20A) {
+            return loadProperties("classic-to-classic020a.properties");
         }
 
         // Classic <-> RubyDung

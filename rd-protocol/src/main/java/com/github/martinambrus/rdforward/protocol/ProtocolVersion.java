@@ -57,11 +57,23 @@ public enum ProtocolVersion {
      * and all Classic packets except UpdateUserType (0x0F).
      * Real MC protocol version 3 (clashes with Alpha 1.2.0 — safe because
      * Classic is detected by packet format, not Handshake byte).
+     * Covers protocol versions 3-5 (c0.0.16a through c0.0.19a_06).
      */
     CLASSIC_0_0_16A(3, 2, Family.CLASSIC, "Classic 0.0.16a", 18, "c0.0.16a_02"),
 
     /**
-     * Minecraft Classic (c0.0.20a - c0.30).
+     * Minecraft Classic 0.0.20a (July 2009).
+     * 41 block types (added cloth x16, flowers, mushrooms, gold block).
+     * Same 130-byte identification format as Classic v7 (WITH trailing
+     * unused/userType byte), but NO UpdateUserType (0x0F) packet.
+     * Real MC protocol version 6 (clashes with Alpha 1.2.5 — safe because
+     * Classic is detected by packet format, not Handshake byte).
+     * Covers protocol version 6 (c0.0.20a through c0.27).
+     */
+    CLASSIC_0_0_20A(6, 2, Family.CLASSIC, "Classic 0.0.20a", 41, "c0.0.20a_02"),
+
+    /**
+     * Minecraft Classic (c0.28 - c0.30).
      * 50 block types, creative mode, flat world.
      * Real MC protocol version 7.
      */
@@ -1149,7 +1161,8 @@ public enum ProtocolVersion {
      * Alpha+ uses the pre-Netty format (string16, variable-length fields).
      */
     public boolean isClassicFormat() {
-        return this == RUBYDUNG || this == CLASSIC_0_0_15A || this == CLASSIC_0_0_16A || this == CLASSIC;
+        return this == RUBYDUNG || this == CLASSIC_0_0_15A || this == CLASSIC_0_0_16A
+                || this == CLASSIC_0_0_20A || this == CLASSIC;
     }
 
     /**
@@ -1159,7 +1172,8 @@ public enum ProtocolVersion {
      * finite → server-world.dat, chunk-based → Alpha/McRegion chunk files.
      */
     public boolean isFiniteWorld() {
-        return this == RUBYDUNG || this == CLASSIC_0_0_15A || this == CLASSIC_0_0_16A || this == CLASSIC;
+        return this == RUBYDUNG || this == CLASSIC_0_0_15A || this == CLASSIC_0_0_16A
+                || this == CLASSIC_0_0_20A || this == CLASSIC;
     }
 
     /**

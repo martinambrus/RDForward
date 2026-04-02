@@ -280,8 +280,9 @@ public class ServerWorld {
              DataOutputStream dos = new DataOutputStream(gzip)) {
             dos.writeInt(volume);
             if (version == ProtocolVersion.CLASSIC_0_0_15A
-                    || version == ProtocolVersion.CLASSIC_0_0_16A) {
-                // 0.0.15a and 0.0.16a swap Y/Z in setData, so internal YZX order matches
+                    || version == ProtocolVersion.CLASSIC_0_0_16A
+                    || version == ProtocolVersion.CLASSIC_0_0_20A) {
+                // 0.0.15a through 0.0.20a swap Y/Z in setData, so internal YZX order matches
                 dos.write(snapshot);
             } else {
                 // Classic v7 expects XZY order — reorder from internal YZX

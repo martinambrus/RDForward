@@ -183,7 +183,7 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
                     "Welcome to RDForward!"));
         } else {
             ctx.writeAndFlush(new ServerIdentificationPacket(
-                    serverVersion.getVersionNumber(),
+                    clientVersion.getVersionNumber(),
                     ServerProperties.getMotd(),
                     "Welcome to RDForward!",
                     ServerIdentificationPacket.USER_TYPE_NORMAL
