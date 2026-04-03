@@ -136,28 +136,31 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         this.chunkManager = chunkManager;
     }
 
+    /** Convenience overload defaulting to Beta 1.7.3. */
+    public void initiateEaglecraftLogin(ChannelHandlerContext ctx, String username) {
+        initiateEaglecraftLogin(ctx, username, ProtocolVersion.BETA_1_7_3);
+    }
+
     /**
-     * Initiate a direct-to-PLAY login for an EaglerCraft Beta 1.7.3 client.
+     * Initiate a direct-to-PLAY login for an EaglerCraft pre-Netty client
+     * at the specified protocol version.
      *
      * EaglerCraft clients complete their own handshake (v2/v3) before the MC
      * protocol starts. The client never sends MC Handshake/Login packets.
-     * We set up the codec for Beta 1.7.3 and jump straight into handleLogin.
+     * String16 mode is inferred from the version (Beta 1.5+).
      *
      * Called from {@link com.github.martinambrus.rdforward.server.eaglercraft.EaglerCraftHandshakeHandler}
-     * after the EaglerCraft handshake completes with MC protocol 14.
+     * after the EaglerCraft handshake completes.
      */
-    public void initiateEaglecraftLogin(ChannelHandlerContext ctx, String username) {
+    public void initiateEaglecraftLogin(ChannelHandlerContext ctx, String username, ProtocolVersion version) {
         this.pendingUsername = username;
-        this.clientVersion = ProtocolVersion.BETA_1_7_3;
-        this.detectedString16 = true;
-
-        // Codec is already configured for String16 + BETA_1_7_3 by
-        // EaglerCraftHandshakeHandler.completeHandshakePreNetty.
+        this.clientVersion = version;
+        this.detectedString16 = version.isAtLeast(ProtocolVersion.BETA_1_5);
 
         System.out.println("[EaglerCraft] Direct-to-PLAY login for " + username
-                + " (MC protocol 14, Beta 1.7.3)");
+                + " (MC protocol " + version.getVersionNumber() + ", " + version.getDisplayName() + ")");
 
-        handleLogin(ctx, 14);
+        handleLogin(ctx, version.getVersionNumber());
     }
 
     @Override

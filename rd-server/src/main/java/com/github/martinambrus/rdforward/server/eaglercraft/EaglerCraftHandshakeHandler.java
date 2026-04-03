@@ -45,10 +45,10 @@ import static com.github.martinambrus.rdforward.server.eaglercraft.EaglerCraftCo
  *   |
  *   +-- 0x01 (CLIENT_VERSION) → Read second byte ("legacyByte")
  *       |
- *       +-- 0x02 or 0x03 → EaglerCraft v2/v3 handshake (1.8.8 / 1.12.2 / Beta 1.7.3)
+ *       +-- 0x02 or 0x03 → EaglerCraft v2/v3 handshake (1.8.8 / 1.12.2 / Beta 1.7.3 / Beta 1.3)
  *       |                   Full handshake: CLIENT_VERSION → LOGIN → FINISH_LOGIN.
- *       |                   MC protocol negotiated from version list (14, 47, 340).
- *       |                   Pipeline → AlphaConnectionHandler (protocol 14) or
+ *       |                   MC protocol negotiated from version list (9, 14, 47, 340).
+ *       |                   Pipeline → AlphaConnectionHandler (protocol 9/14) or
  *       |                              NettyConnectionHandler (protocol 47/340).
  *       |
  *       +-- 0x00          → Raw MC Login Request (PeytonPlayz595 Beta 1.7.3)
@@ -82,6 +82,16 @@ public class EaglerCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
     private final ChunkManager chunkManager;
 
     private static final Pattern USERNAME_PATTERN = Pattern.compile("^[A-Za-z0-9_]+$");
+
+    /** Pre-Netty MC protocols that use RawPacketDecoder + AlphaConnectionHandler. */
+    private static boolean isPreNettyMcProtocol(int ver) {
+        return ver == MC_PROTOCOL_9 || ver == MC_PROTOCOL_14;
+    }
+
+    /** MC protocol versions this server supports for EaglerCraft clients. */
+    private static boolean isSupportedMcProtocol(int ver) {
+        return isPreNettyMcProtocol(ver) || ver == MC_PROTOCOL_47 || ver == MC_PROTOCOL_340;
+    }
 
     private int state = STATE_OPENED;
     private String username;
@@ -328,13 +338,12 @@ public class EaglerCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
         selectedMcProtocol = 0;
         for (int i = 0; i < mcVersionCount; i++) {
             int mcVer = buf.readUnsignedShort();
-            if ((mcVer == MC_PROTOCOL_14 || mcVer == MC_PROTOCOL_47 || mcVer == MC_PROTOCOL_340)
-                    && mcVer > selectedMcProtocol) {
+            if (isSupportedMcProtocol(mcVer) && mcVer > selectedMcProtocol) {
                 selectedMcProtocol = mcVer;
             }
         }
         if (selectedMcProtocol == 0) {
-            sendDenyLogin(ctx, "Server requires MC protocol 14 (Beta 1.7.3), 47 (1.8), or 340 (1.12.2)");
+            sendDenyLogin(ctx, "Server requires MC protocol 9 (Beta 1.3), 14 (Beta 1.7.3), 47 (1.8), or 340 (1.12.2)");
             return;
         }
 
@@ -370,7 +379,7 @@ public class EaglerCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
         // Check for optional MC protocol version in remaining bytes
         if (buf.readableBytes() >= 2) {
             int mcVer = buf.readUnsignedShort();
-            if (mcVer == MC_PROTOCOL_14 || mcVer == MC_PROTOCOL_47 || mcVer == MC_PROTOCOL_340) {
+            if (isSupportedMcProtocol(mcVer)) {
                 selectedMcProtocol = mcVer;
                 v1McProtocolExplicit = true;
             } else {
@@ -594,7 +603,7 @@ public class EaglerCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
             // V1 client didn't declare its MC protocol — we can't tell Beta 1.7.3
             // (pre-Netty) from 1.8 (Netty) until we see the first MC frame.
             completeHandshakeV1Detect(ctx, pipeline);
-        } else if (selectedMcProtocol == MC_PROTOCOL_14) {
+        } else if (isPreNettyMcProtocol(selectedMcProtocol)) {
             completeHandshakePreNetty(ctx, pipeline);
         } else {
             completeHandshakeNetty(ctx, pipeline);
@@ -738,22 +747,32 @@ public class EaglerCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
     }
 
     /**
-     * Set up a pre-Netty pipeline for EaglerCraft Beta 1.7.3 (protocol 14).
+     * Set up a pre-Netty pipeline for EaglerCraft Beta clients.
      *
      * Pre-Netty packets use fixed/self-describing layouts: [1 byte packetId][payload].
      * WebSocket frame boundaries delimit packets (no length prefix needed).
-     * String16 encoding is used (Beta 1.5+ standard).
+     * String16 encoding is used for Beta 1.5+ (v11+); earlier versions use writeUTF.
      */
     private void completeHandshakePreNetty(ChannelHandlerContext ctx, ChannelPipeline pipeline) {
+        ProtocolVersion mcVersion = ProtocolVersion.fromNumber(
+                selectedMcProtocol, ProtocolVersion.Family.BETA);
+        if (mcVersion == null) {
+            System.err.println("[EaglerCraft] BUG: No ProtocolVersion for MC protocol "
+                    + selectedMcProtocol + " in BETA family");
+            ctx.close();
+            return;
+        }
+        boolean useString16 = mcVersion.isAtLeast(ProtocolVersion.BETA_1_5);
+
         AlphaConnectionHandler handler = addPreNettyPipeline(pipeline,
-                ProtocolVersion.BETA_1_7_3, true,
+                mcVersion, useString16,
                 serverVersion, world, playerManager, chunkManager);
 
         System.out.println("[EaglerCraft] Handshake complete for " + username
-                + ", initiating direct-to-PLAY login (Beta 1.7.3)");
+                + ", initiating direct-to-PLAY login (" + mcVersion.getDisplayName() + ")");
 
         ChannelHandlerContext handlerCtx = pipeline.context(handler);
-        handler.initiateEaglecraftLogin(handlerCtx, username);
+        handler.initiateEaglecraftLogin(handlerCtx, username, mcVersion);
     }
 
     /**

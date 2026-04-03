@@ -1,6 +1,7 @@
 package com.github.martinambrus.rdforward.server.eaglercraft;
 
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
+import com.github.martinambrus.rdforward.protocol.codec.RawPacketDecoder;
 import com.github.martinambrus.rdforward.server.AlphaConnectionHandler;
 import com.github.martinambrus.rdforward.server.ChunkManager;
 import com.github.martinambrus.rdforward.server.NettyConnectionHandler;
@@ -26,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for EaglerCraftHandshakeHandler covering:
- * - EaglerCraft v2/v3 handshake protocol negotiation (MC protocols 14, 47, 340)
+ * - EaglerCraft v2/v3 handshake protocol negotiation (MC protocols 9, 14, 47, 340)
  * - Pre-Netty detection (0x02 first byte for EaglerCraft 1.5.2 / Beta 1.7.3)
  * - Pipeline reconfiguration (AlphaConnectionHandler for pre-Netty, NettyConnectionHandler for Netty)
  * - Version mismatch and deny responses
@@ -164,6 +165,20 @@ class EaglerCraftHandshakeHandlerTest {
     }
 
     @Test
+    void serverVersionResponseForProtocol9() {
+        EmbeddedChannel ch = createChannel();
+        ch.writeInbound(buildClientVersion(MC_PROTOCOL_9));
+
+        ByteBuf resp = ch.readOutbound();
+        assertNotNull(resp, "Expected SERVER_VERSION response");
+        assertEquals(PROTOCOL_SERVER_VERSION, resp.readUnsignedByte());
+        assertEquals(EAGLER_PROTOCOL_V2, resp.readUnsignedShort());
+        assertEquals(MC_PROTOCOL_9, resp.readUnsignedShort());
+        resp.release();
+        ch.finishAndReleaseAll();
+    }
+
+    @Test
     void serverVersionResponseForProtocol47() {
         EmbeddedChannel ch = createChannel();
         ch.writeInbound(buildClientVersion(MC_PROTOCOL_47));
@@ -265,11 +280,90 @@ class EaglerCraftHandshakeHandlerTest {
         assertNull(ch.pipeline().get(NettyConnectionHandler.class),
                 "Protocol 14 should NOT install NettyConnectionHandler");
 
+        // Verify decoder was configured for Beta 1.7.3
+        RawPacketDecoder decoder14 = ch.pipeline().get(RawPacketDecoder.class);
+        assertNotNull(decoder14, "RawPacketDecoder should be installed");
+        assertEquals(ProtocolVersion.BETA_1_7_3, decoder14.getProtocolVersion(),
+                "Decoder should be configured for Beta 1.7.3 (v14)");
+
         // Verify channel attributes
         assertTrue(Boolean.TRUE.equals(ch.attr(ATTR_IS_EAGLECRAFT).get()));
         assertEquals("EagleBeta173", ch.attr(ATTR_EAGLER_USERNAME).get());
 
         drainOutbound(ch);
+        ch.finishAndReleaseAll();
+    }
+
+    @Test
+    void fullHandshakeProtocol9InstallsAlphaHandler() {
+        EmbeddedChannel ch = createChannel();
+
+        // Step 1: CLIENT_VERSION → SERVER_VERSION
+        ch.writeInbound(buildClientVersion(MC_PROTOCOL_9));
+        drainOutbound(ch);
+
+        // Step 2: CLIENT_REQUEST_LOGIN → SERVER_ALLOW_LOGIN
+        ch.writeInbound(buildClientRequestLogin("EagleBeta13"));
+        drainOutbound(ch);
+
+        // Step 3: CLIENT_FINISH_LOGIN → triggers completeHandshake
+        ch.writeInbound(buildClientFinishLogin());
+
+        // Verify SERVER_FINISH_LOGIN was sent
+        ByteBuf first = ch.readOutbound();
+        assertNotNull(first, "Expected SERVER_FINISH_LOGIN");
+        assertEquals(PROTOCOL_SERVER_FINISH_LOGIN, first.readUnsignedByte());
+        first.release();
+
+        // Verify pipeline was reconfigured for pre-Netty (Beta 1.3)
+        assertNull(ch.pipeline().get(EaglerCraftHandshakeHandler.class),
+                "Handshake handler should be removed after completion");
+        assertNotNull(ch.pipeline().get(AlphaConnectionHandler.class),
+                "Protocol 9 should install AlphaConnectionHandler");
+        assertNull(ch.pipeline().get(NettyConnectionHandler.class),
+                "Protocol 9 should NOT install NettyConnectionHandler");
+
+        // Verify decoder was configured for Beta 1.3 (not Beta 1.7.3)
+        RawPacketDecoder decoder = ch.pipeline().get(RawPacketDecoder.class);
+        assertNotNull(decoder, "RawPacketDecoder should be installed");
+        assertEquals(ProtocolVersion.BETA_1_3, decoder.getProtocolVersion(),
+                "Decoder should be configured for Beta 1.3 (v9), not Beta 1.7.3");
+
+        // Verify channel attributes
+        assertTrue(Boolean.TRUE.equals(ch.attr(ATTR_IS_EAGLECRAFT).get()));
+        assertEquals("EagleBeta13", ch.attr(ATTR_EAGLER_USERNAME).get());
+
+        drainOutbound(ch);
+        ch.finishAndReleaseAll();
+    }
+
+    @Test
+    void protocol9SelectedOverUnsupported() {
+        EmbeddedChannel ch = createChannel();
+        ch.writeInbound(buildClientVersion(MC_PROTOCOL_9, 999));
+
+        ByteBuf resp = ch.readOutbound();
+        assertNotNull(resp);
+        resp.readUnsignedByte();  // SERVER_VERSION type
+        resp.readUnsignedShort(); // eagler protocol
+        assertEquals(MC_PROTOCOL_9, resp.readUnsignedShort(),
+                "Server should select 9 (only supported option)");
+        resp.release();
+        ch.finishAndReleaseAll();
+    }
+
+    @Test
+    void protocol14SelectedOver9() {
+        EmbeddedChannel ch = createChannel();
+        ch.writeInbound(buildClientVersion(MC_PROTOCOL_9, MC_PROTOCOL_14));
+
+        ByteBuf resp = ch.readOutbound();
+        assertNotNull(resp);
+        resp.readUnsignedByte();
+        resp.readUnsignedShort();
+        assertEquals(MC_PROTOCOL_14, resp.readUnsignedShort(),
+                "Server should select 14 over 9 (14 > 9)");
+        resp.release();
         ch.finishAndReleaseAll();
     }
 
@@ -572,6 +666,29 @@ class EaglerCraftHandshakeHandlerTest {
         assertNull(ch.pipeline().get(EaglerCraftHandshakeHandler.class));
         assertNotNull(ch.pipeline().get(AlphaConnectionHandler.class),
                 "V1 with explicit MC protocol 14 should install AlphaConnectionHandler directly");
+        assertNull(ch.pipeline().get("v1Detect"),
+                "V1 with explicit MC protocol should NOT install v1Detect handler");
+
+        ch.finishAndReleaseAll();
+    }
+
+    @Test
+    void v1WithExplicitProtocol9InstallsAlphaHandler() {
+        EmbeddedChannel ch = createChannel();
+
+        ch.writeInbound(buildV1ClientVersionWithMcProtocol(MC_PROTOCOL_9));
+        drainOutbound(ch);
+
+        ch.writeInbound(buildV1ClientRequestLogin("BetaB13"));
+        drainOutbound(ch);
+
+        ch.writeInbound(buildClientFinishLogin());
+        drainOutbound(ch);
+
+        // V1 with explicit protocol 9 → direct pre-Netty pipeline (no detection needed)
+        assertNull(ch.pipeline().get(EaglerCraftHandshakeHandler.class));
+        assertNotNull(ch.pipeline().get(AlphaConnectionHandler.class),
+                "V1 with explicit MC protocol 9 should install AlphaConnectionHandler directly");
         assertNull(ch.pipeline().get("v1Detect"),
                 "V1 with explicit MC protocol should NOT install v1Detect handler");
 
