@@ -45,10 +45,10 @@ import static com.github.martinambrus.rdforward.server.eaglercraft.EaglerCraftCo
  *   |
  *   +-- 0x01 (CLIENT_VERSION) → Read second byte ("legacyByte")
  *       |
- *       +-- 0x02 or 0x03 → EaglerCraft v2/v3 handshake (1.8.8 / 1.12.2 / Beta 1.7.3 / Beta 1.3)
+ *       +-- 0x02 or 0x03 → EaglerCraft v2/v3 handshake (1.8.8 / 1.12.2 / Beta 1.7.3 / Beta 1.3 / Alpha 1.2.6)
  *       |                   Full handshake: CLIENT_VERSION → LOGIN → FINISH_LOGIN.
- *       |                   MC protocol negotiated from version list (9, 14, 47, 340).
- *       |                   Pipeline → AlphaConnectionHandler (protocol 9/14) or
+ *       |                   MC protocol negotiated from version list (6, 9, 14, 47, 340).
+ *       |                   Pipeline → AlphaConnectionHandler (protocol 6/9/14) or
  *       |                              NettyConnectionHandler (protocol 47/340).
  *       |
  *       +-- 0x00          → Raw MC Login Request (PeytonPlayz595 Beta 1.7.3)
@@ -85,7 +85,7 @@ public class EaglerCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
 
     /** Pre-Netty MC protocols that use RawPacketDecoder + AlphaConnectionHandler. */
     private static boolean isPreNettyMcProtocol(int ver) {
-        return ver == MC_PROTOCOL_9 || ver == MC_PROTOCOL_14;
+        return ver == MC_PROTOCOL_6 || ver == MC_PROTOCOL_9 || ver == MC_PROTOCOL_14;
     }
 
     /** MC protocol versions this server supports for EaglerCraft clients. */
@@ -252,17 +252,16 @@ public class EaglerCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
     /**
      * Handle a raw MC Login Request (0x01) sent directly over WebSocket.
      *
-     * PeytonPlayz595's Beta 1.7.3 EaglerCraft client sends MC Login (0x01)
-     * as its first WebSocket binary frame, skipping both the EaglerCraft
-     * handshake and the MC Handshake (0x02).
+     * Some EaglerCraft clients send MC Login (0x01) as their first WebSocket
+     * binary frame, skipping both the EaglerCraft handshake and the MC Handshake (0x02).
      *
      * At this point, packetType (0x01) and legacyByte (0x00, first byte of
      * the protocol version int) have already been consumed.
      *
-     * Login C2S wire format (Beta 1.7.3):
+     * Login C2S wire format:
      *   [byte 0x01] packet ID — already consumed as packetType
      *   [int] protocol version — first byte (0x00) consumed as legacyByte
-     *   [String16] username
+     *   [String16 or writeUTF] username (encoding depends on MC version)
      *   [long] map seed (ignored)
      *   [byte] dimension (ignored)
      */
@@ -270,22 +269,43 @@ public class EaglerCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
         // Read remaining 3 bytes of protocol version (first byte was 0x00)
         int protocolVersion = buf.readUnsignedMedium();
 
-        // Read String16 username (reuse McDataTypes — reads length prefix + UTF-16BE).
-        // Validate full String16 length upfront: 2 bytes for char count + charCount*2 bytes.
+        // Read username — auto-detect encoding (writeUTF for Alpha/early Beta,
+        // String16 for Beta 1.5+). readStringAuto peeks at the first data byte:
+        // 0x00 = String16 high byte (UTF-16BE), non-zero = writeUTF (raw UTF-8).
         if (buf.readableBytes() < 2) {
             sendError(ctx, "Incomplete MC Login (missing username)");
             return;
         }
-        int charCount = buf.getShort(buf.readerIndex());
-        if (charCount < 0 || buf.readableBytes() < 2 + charCount * 2) {
-            sendError(ctx, "Incomplete MC Login (truncated username, need "
-                    + (2 + charCount * 2) + " bytes, have " + buf.readableBytes() + ")");
-            return;
-        }
-        String loginUsername = McDataTypes.readString16(buf);
+        Object[] autoResult = McDataTypes.readStringAuto(buf);
+        String loginUsername = (String) autoResult[0];
+        boolean detectedString16 = (Boolean) autoResult[1];
+
+        // Set username for logging (sendError uses this.username)
+        username = loginUsername;
 
         System.out.println("[EaglerCraft] Detected raw MC Login Request over WebSocket from "
-                + loginUsername + " (protocol version " + protocolVersion + ")");
+                + loginUsername + " (protocol version " + protocolVersion
+                + ", encoding=" + (detectedString16 ? "String16" : "writeUTF") + ")");
+
+        // Resolve the ProtocolVersion from the protocol number.
+        // String16 detection disambiguates version clashes (e.g., v14 is both
+        // Alpha 1.0.16 and Beta 1.7.3).
+        ProtocolVersion mcVersion;
+        if (detectedString16) {
+            mcVersion = ProtocolVersion.fromNumber(protocolVersion,
+                    ProtocolVersion.Family.BETA, ProtocolVersion.Family.RELEASE);
+        } else {
+            mcVersion = ProtocolVersion.fromNumber(protocolVersion,
+                    ProtocolVersion.Family.ALPHA, ProtocolVersion.Family.BETA);
+        }
+        if (mcVersion == null) {
+            // This client speaks raw MC protocol (not EaglerCraft handshake), so
+            // sendError's EaglerCraft error frame would be unintelligible. Just log and close.
+            System.out.println("[EaglerCraft] Rejected raw MC Login from " + loginUsername
+                    + ": unsupported protocol version " + protocolVersion);
+            ctx.close();
+            return;
+        }
 
         // Remaining fields (mapSeed, dimension) released with the buffer in channelRead.
 
@@ -297,16 +317,16 @@ public class EaglerCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
         if (pipeline.get("eaglerTimeout") != null) pipeline.remove("eaglerTimeout");
 
         AlphaConnectionHandler handler = addPreNettyPipeline(pipeline,
-                ProtocolVersion.BETA_1_7_3, true,
+                mcVersion, detectedString16,
                 serverVersion, world, playerManager, chunkManager);
 
         pipeline.remove(this);
 
         System.out.println("[EaglerCraft] Pipeline reconfigured for raw MC Login, "
-                + "initiating direct-to-PLAY login (Beta 1.7.3)");
+                + "initiating direct-to-PLAY login (" + mcVersion.getDisplayName() + ")");
 
         ChannelHandlerContext handlerCtx = pipeline.context(handler);
-        handler.initiateEaglecraftLogin(handlerCtx, loginUsername);
+        handler.initiateEaglecraftLogin(handlerCtx, loginUsername, mcVersion);
     }
 
     private void parseNewFormatClientVersion(ChannelHandlerContext ctx, ByteBuf buf) {
@@ -343,7 +363,7 @@ public class EaglerCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
             }
         }
         if (selectedMcProtocol == 0) {
-            sendDenyLogin(ctx, "Server requires MC protocol 9 (Beta 1.3), 14 (Beta 1.7.3), 47 (1.8), or 340 (1.12.2)");
+            sendDenyLogin(ctx, "Server requires MC protocol 6 (Alpha 1.2.6), 9 (Beta 1.3), 14 (Beta 1.7.3), 47 (1.8), or 340 (1.12.2)");
             return;
         }
 
@@ -754,11 +774,20 @@ public class EaglerCraftHandshakeHandler extends ChannelInboundHandlerAdapter {
      * String16 encoding is used for Beta 1.5+ (v11+); earlier versions use writeUTF.
      */
     private void completeHandshakePreNetty(ChannelHandlerContext ctx, ChannelPipeline pipeline) {
+        // Search BETA first: protocol 14 exists in both ALPHA (1.0.16) and BETA (1.7.3).
+        // fromNumber returns the first enum-order match, and ALPHA_1_0_16 is declared
+        // before BETA_1_7_3. EaglerCraft v2/v3 clients negotiating protocol 14 are always
+        // Beta 1.7.3, so BETA must take priority. Protocol 6 has no BETA entry, so the
+        // fallback to ALPHA correctly resolves it to ALPHA_1_2_5.
         ProtocolVersion mcVersion = ProtocolVersion.fromNumber(
                 selectedMcProtocol, ProtocolVersion.Family.BETA);
         if (mcVersion == null) {
+            mcVersion = ProtocolVersion.fromNumber(
+                    selectedMcProtocol, ProtocolVersion.Family.ALPHA);
+        }
+        if (mcVersion == null) {
             System.err.println("[EaglerCraft] BUG: No ProtocolVersion for MC protocol "
-                    + selectedMcProtocol + " in BETA family");
+                    + selectedMcProtocol + " in BETA/ALPHA families");
             ctx.close();
             return;
         }

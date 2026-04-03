@@ -139,7 +139,7 @@ public final class McDataTypes {
         }
         byte[] bytes = new byte[byteCount];
         buf.readBytes(bytes);
-        return new String(bytes, Charset.forName("UTF-8"));
+        return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
     }
 
     /**
@@ -148,7 +148,7 @@ public final class McDataTypes {
      * Wire format: [2 bytes: byte count] [N bytes: Modified UTF-8 encoded characters]
      */
     public static void writeJavaUTF(ByteBuf buf, String value) {
-        byte[] bytes = value.getBytes(Charset.forName("UTF-8"));
+        byte[] bytes = value.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         buf.writeShort(bytes.length);
         buf.writeBytes(bytes);
     }
@@ -186,7 +186,7 @@ public final class McDataTypes {
             // writeUTF format: length is byte count, read length bytes as UTF-8
             byte[] bytes = new byte[length];
             buf.readBytes(bytes);
-            return new Object[]{new String(bytes, Charset.forName("UTF-8")), false};
+            return new Object[]{new String(bytes, java.nio.charset.StandardCharsets.UTF_8), false};
         }
     }
 

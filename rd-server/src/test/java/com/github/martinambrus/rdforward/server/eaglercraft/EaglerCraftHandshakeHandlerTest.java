@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for EaglerCraftHandshakeHandler covering:
- * - EaglerCraft v2/v3 handshake protocol negotiation (MC protocols 9, 14, 47, 340)
+ * - EaglerCraft v2/v3 handshake protocol negotiation (MC protocols 6, 9, 14, 47, 340)
  * - Pre-Netty detection (0x02 first byte for EaglerCraft 1.5.2 / Beta 1.7.3)
  * - Pipeline reconfiguration (AlphaConnectionHandler for pre-Netty, NettyConnectionHandler for Netty)
  * - Version mismatch and deny responses
@@ -174,6 +174,20 @@ class EaglerCraftHandshakeHandlerTest {
         assertEquals(PROTOCOL_SERVER_VERSION, resp.readUnsignedByte());
         assertEquals(EAGLER_PROTOCOL_V2, resp.readUnsignedShort());
         assertEquals(MC_PROTOCOL_9, resp.readUnsignedShort());
+        resp.release();
+        ch.finishAndReleaseAll();
+    }
+
+    @Test
+    void serverVersionResponseForProtocol6() {
+        EmbeddedChannel ch = createChannel();
+        ch.writeInbound(buildClientVersion(MC_PROTOCOL_6));
+
+        ByteBuf resp = ch.readOutbound();
+        assertNotNull(resp, "Expected SERVER_VERSION response");
+        assertEquals(PROTOCOL_SERVER_VERSION, resp.readUnsignedByte());
+        assertEquals(EAGLER_PROTOCOL_V2, resp.readUnsignedShort());
+        assertEquals(MC_PROTOCOL_6, resp.readUnsignedShort());
         resp.release();
         ch.finishAndReleaseAll();
     }
@@ -353,6 +367,21 @@ class EaglerCraftHandshakeHandlerTest {
     }
 
     @Test
+    void protocol6SelectedOverUnsupported() {
+        EmbeddedChannel ch = createChannel();
+        ch.writeInbound(buildClientVersion(MC_PROTOCOL_6, 999));
+
+        ByteBuf resp = ch.readOutbound();
+        assertNotNull(resp);
+        resp.readUnsignedByte();  // SERVER_VERSION type
+        resp.readUnsignedShort(); // eagler protocol
+        assertEquals(MC_PROTOCOL_6, resp.readUnsignedShort(),
+                "Server should select 6 (only supported option)");
+        resp.release();
+        ch.finishAndReleaseAll();
+    }
+
+    @Test
     void protocol14SelectedOver9() {
         EmbeddedChannel ch = createChannel();
         ch.writeInbound(buildClientVersion(MC_PROTOCOL_9, MC_PROTOCOL_14));
@@ -364,6 +393,69 @@ class EaglerCraftHandshakeHandlerTest {
         assertEquals(MC_PROTOCOL_14, resp.readUnsignedShort(),
                 "Server should select 14 over 9 (14 > 9)");
         resp.release();
+        ch.finishAndReleaseAll();
+    }
+
+    @Test
+    void fullHandshakeProtocol6InstallsAlphaHandler() {
+        EmbeddedChannel ch = createChannel();
+
+        // Step 1: CLIENT_VERSION → SERVER_VERSION
+        ch.writeInbound(buildClientVersion(MC_PROTOCOL_6));
+        drainOutbound(ch);
+
+        // Step 2: CLIENT_REQUEST_LOGIN → SERVER_ALLOW_LOGIN
+        ch.writeInbound(buildClientRequestLogin("EagleAlpha126"));
+        drainOutbound(ch);
+
+        // Step 3: CLIENT_FINISH_LOGIN → triggers completeHandshake
+        ch.writeInbound(buildClientFinishLogin());
+
+        // Verify SERVER_FINISH_LOGIN was sent
+        ByteBuf first = ch.readOutbound();
+        assertNotNull(first, "Expected SERVER_FINISH_LOGIN");
+        assertEquals(PROTOCOL_SERVER_FINISH_LOGIN, first.readUnsignedByte());
+        first.release();
+
+        // Verify pipeline was reconfigured for pre-Netty (Alpha 1.2.6)
+        assertNull(ch.pipeline().get(EaglerCraftHandshakeHandler.class),
+                "Handshake handler should be removed after completion");
+        assertNotNull(ch.pipeline().get(AlphaConnectionHandler.class),
+                "Protocol 6 should install AlphaConnectionHandler");
+        assertNull(ch.pipeline().get(NettyConnectionHandler.class),
+                "Protocol 6 should NOT install NettyConnectionHandler");
+
+        // Verify decoder was configured for Alpha 1.2.6 (ALPHA_1_2_5, v6)
+        RawPacketDecoder decoder = ch.pipeline().get(RawPacketDecoder.class);
+        assertNotNull(decoder, "RawPacketDecoder should be installed");
+        assertEquals(ProtocolVersion.ALPHA_1_2_5, decoder.getProtocolVersion(),
+                "Decoder should be configured for Alpha 1.2.x (v6), not Beta");
+
+        // Verify channel attributes
+        assertTrue(Boolean.TRUE.equals(ch.attr(ATTR_IS_EAGLECRAFT).get()));
+        assertEquals("EagleAlpha126", ch.attr(ATTR_EAGLER_USERNAME).get());
+
+        drainOutbound(ch);
+        ch.finishAndReleaseAll();
+    }
+
+    /** Regression test: protocol 14 must still resolve to BETA_1_7_3, not ALPHA_1_0_16. */
+    @Test
+    void protocol14StillResolvesToBeta173AfterAlphaSupport() {
+        EmbeddedChannel ch = createChannel();
+
+        ch.writeInbound(buildClientVersion(MC_PROTOCOL_14));
+        drainOutbound(ch);
+        ch.writeInbound(buildClientRequestLogin("RegressBeta"));
+        drainOutbound(ch);
+        ch.writeInbound(buildClientFinishLogin());
+        drainOutbound(ch);
+
+        RawPacketDecoder decoder = ch.pipeline().get(RawPacketDecoder.class);
+        assertNotNull(decoder);
+        assertEquals(ProtocolVersion.BETA_1_7_3, decoder.getProtocolVersion(),
+                "Protocol 14 must resolve to BETA_1_7_3 (not ALPHA_1_0_16) for EaglerCraft v2/v3 clients");
+
         ch.finishAndReleaseAll();
     }
 
@@ -578,6 +670,39 @@ class EaglerCraftHandshakeHandlerTest {
     }
 
     @Test
+    void rawMcLoginWithWriteUtfInstallsAlphaHandlerForAlpha126() {
+        EmbeddedChannel ch = createChannel();
+
+        // Build a raw MC Login Request with writeUTF encoding (Alpha 1.2.6).
+        // Wire format: [0x01][int:6][writeUTF:"Alpha126"][long:0][byte:0]
+        // writeUTF: [short byteCount][UTF-8 bytes] (NOT String16's char count + UTF-16BE)
+        ByteBuf buf = Unpooled.buffer();
+        buf.writeByte(0x01);        // MC Login packet ID
+        buf.writeInt(6);            // protocol version (Alpha 1.2.6)
+        String user = "Alpha126";
+        byte[] userBytes = user.getBytes(StandardCharsets.UTF_8);
+        buf.writeShort(userBytes.length);   // writeUTF: byte count
+        buf.writeBytes(userBytes);          // writeUTF: raw UTF-8 bytes
+        buf.writeLong(0);           // map seed
+        buf.writeByte(0);           // dimension
+
+        ch.writeInbound(buf);
+
+        // Verify pipeline reconfigured for pre-Netty Alpha
+        assertNull(ch.pipeline().get(EaglerCraftHandshakeHandler.class),
+                "Handshake handler should be removed");
+        assertNotNull(ch.pipeline().get(AlphaConnectionHandler.class),
+                "Raw MC Login with protocol 6 should install AlphaConnectionHandler");
+
+        // Verify channel attributes
+        assertTrue(Boolean.TRUE.equals(ch.attr(ATTR_IS_EAGLECRAFT).get()));
+        assertEquals("Alpha126", ch.attr(ATTR_EAGLER_USERNAME).get());
+
+        drainOutbound(ch);
+        ch.finishAndReleaseAll();
+    }
+
+    @Test
     void rawMcLoginDoesNotTriggerForNonZeroFirstByte() {
         // If legacyByte != 0x00, it should NOT be detected as raw MC Login.
         // legacyByte 0x02/0x03 → v2/v3 path, anything else → v1 path.
@@ -689,6 +814,29 @@ class EaglerCraftHandshakeHandlerTest {
         assertNull(ch.pipeline().get(EaglerCraftHandshakeHandler.class));
         assertNotNull(ch.pipeline().get(AlphaConnectionHandler.class),
                 "V1 with explicit MC protocol 9 should install AlphaConnectionHandler directly");
+        assertNull(ch.pipeline().get("v1Detect"),
+                "V1 with explicit MC protocol should NOT install v1Detect handler");
+
+        ch.finishAndReleaseAll();
+    }
+
+    @Test
+    void v1WithExplicitProtocol6InstallsAlphaHandler() {
+        EmbeddedChannel ch = createChannel();
+
+        ch.writeInbound(buildV1ClientVersionWithMcProtocol(MC_PROTOCOL_6));
+        drainOutbound(ch);
+
+        ch.writeInbound(buildV1ClientRequestLogin("AlphaV1"));
+        drainOutbound(ch);
+
+        ch.writeInbound(buildClientFinishLogin());
+        drainOutbound(ch);
+
+        // V1 with explicit protocol 6 → direct pre-Netty pipeline (no detection needed)
+        assertNull(ch.pipeline().get(EaglerCraftHandshakeHandler.class));
+        assertNotNull(ch.pipeline().get(AlphaConnectionHandler.class),
+                "V1 with explicit MC protocol 6 should install AlphaConnectionHandler directly");
         assertNull(ch.pipeline().get("v1Detect"),
                 "V1 with explicit MC protocol should NOT install v1Detect handler");
 

@@ -72,6 +72,9 @@ public final class EaglerCraftConstants {
     /** EaglerCraft 1.5.2 variant protocol (signals "skip encryption" to the server). */
     public static final int EAGLER_152_PROTOCOL_VARIANT = 69;
 
+    /** Minecraft protocol version for MC Alpha 1.2.6 (post-rewrite SMP). */
+    public static final int MC_PROTOCOL_6 = 6;
+
     /** Minecraft protocol version for MC Beta 1.3. */
     public static final int MC_PROTOCOL_9 = 9;
 
