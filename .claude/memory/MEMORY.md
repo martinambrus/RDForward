@@ -19,7 +19,7 @@
 - [feedback_lazy_loading.md](feedback_lazy_loading.md): Lazy-load all protocol infrastructure and decouple version-specific code into per-session codecs
 
 ## Workflow Preferences
-- [feedback_restart_server.md](feedback_restart_server.md): Rebuild and restart the server proactively after code changes
+- [feedback_restart_server.md](feedback_restart_server.md): Never start/restart the server unless user permits it
 - [feedback_server_start.md](feedback_server_start.md): Use plain Bash & to start the server, never run_in_background
 - [feedback_wait_for_confirmation.md](feedback_wait_for_confirmation.md): Wait for user to confirm they tested before drawing conclusions from logs
 

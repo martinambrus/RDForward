@@ -142,8 +142,8 @@ class ServerWorldTest {
         byte[] blocks = new byte[volume];
         dis.readFully(blocks);
 
-        // Classic v7 ordering is XZY: index at (1,2,3) = x*(depth*height) + z*height + y = 1*16 + 3*4 + 2 = 30
-        assertEquals(10, blocks[30] & 0xFF);
+        // Internal/Classic YZX ordering: index at (1,2,3) = (y*depth + z)*width + x = (2*4 + 3)*4 + 1 = 45
+        assertEquals(10, blocks[45] & 0xFF);
     }
 
     @Test

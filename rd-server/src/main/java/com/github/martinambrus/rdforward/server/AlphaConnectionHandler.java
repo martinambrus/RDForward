@@ -136,6 +136,30 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         this.chunkManager = chunkManager;
     }
 
+    /**
+     * Initiate a direct-to-PLAY login for an EaglerCraft Beta 1.7.3 client.
+     *
+     * EaglerCraft clients complete their own handshake (v2/v3) before the MC
+     * protocol starts. The client never sends MC Handshake/Login packets.
+     * We set up the codec for Beta 1.7.3 and jump straight into handleLogin.
+     *
+     * Called from {@link com.github.martinambrus.rdforward.server.eaglercraft.EaglerCraftHandshakeHandler}
+     * after the EaglerCraft handshake completes with MC protocol 14.
+     */
+    public void initiateEaglecraftLogin(ChannelHandlerContext ctx, String username) {
+        this.pendingUsername = username;
+        this.clientVersion = ProtocolVersion.BETA_1_7_3;
+        this.detectedString16 = true;
+
+        // Codec is already configured for String16 + BETA_1_7_3 by
+        // EaglerCraftHandshakeHandler.completeHandshakePreNetty.
+
+        System.out.println("[EaglerCraft] Direct-to-PLAY login for " + username
+                + " (MC protocol 14, Beta 1.7.3)");
+
+        handleLogin(ctx, 14);
+    }
+
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, Packet packet) {
         if (!loginComplete) {
