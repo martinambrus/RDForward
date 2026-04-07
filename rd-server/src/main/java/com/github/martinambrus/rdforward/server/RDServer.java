@@ -25,6 +25,10 @@ import com.github.martinambrus.rdforward.server.bedrock.BedrockChunkConverter;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockLoginHandler;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockProtocolConstants;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockRegistryData;
+import com.github.martinambrus.rdforward.server.hytale.HytaleBlockMapper;
+import com.github.martinambrus.rdforward.server.hytale.HytaleChunkConverter;
+import com.github.martinambrus.rdforward.server.hytale.HytaleProtocolConstants;
+import com.github.martinambrus.rdforward.server.hytale.HytaleServerBootstrap;
 import com.github.martinambrus.rdforward.server.mcpe.BedrockOutboundRedirector;
 import com.github.martinambrus.rdforward.server.mcpe.LegacyRakNetServer;
 import com.github.martinambrus.rdforward.server.mcpe.MCPEConstants;
@@ -109,6 +113,9 @@ public class RDServer {
     private volatile BedrockBlockMapper bedrockBlockMapper;
     private volatile BedrockChunkConverter bedrockChunkConverter;
     private volatile BedrockRegistryData bedrockRegistryData;
+    private volatile HytaleBlockMapper hytaleBlockMapper;
+    private volatile HytaleChunkConverter hytaleChunkConverter;
+    private HytaleServerBootstrap hytaleServer;
     private volatile boolean stopped = false;
 
     private File getDataDir() {
@@ -159,6 +166,36 @@ public class RDServer {
             }
         }
         return data;
+    }
+
+    /** Lazy getter for HytaleBlockMapper — loaded on first Hytale client connection. */
+    private HytaleBlockMapper getHytaleBlockMapper() {
+        HytaleBlockMapper mapper = hytaleBlockMapper;
+        if (mapper == null) {
+            synchronized (this) {
+                mapper = hytaleBlockMapper;
+                if (mapper == null) {
+                    mapper = new HytaleBlockMapper();
+                    hytaleBlockMapper = mapper;
+                }
+            }
+        }
+        return mapper;
+    }
+
+    /** Lazy getter for HytaleChunkConverter — loaded on first Hytale client connection. */
+    private HytaleChunkConverter getHytaleChunkConverter() {
+        HytaleChunkConverter converter = hytaleChunkConverter;
+        if (converter == null) {
+            synchronized (this) {
+                converter = hytaleChunkConverter;
+                if (converter == null) {
+                    converter = new HytaleChunkConverter(getHytaleBlockMapper());
+                    hytaleChunkConverter = converter;
+                }
+            }
+        }
+        return converter;
     }
 
     public RDServer(int port) {
@@ -321,6 +358,9 @@ public class RDServer {
 
         // Start unified UDP server (legacy MCPE + modern Bedrock on port 19132)
         startUnifiedUdpServer();
+
+        // Start Hytale QUIC server on port 5520
+        startHytaleServer();
     }
 
     /**
@@ -748,6 +788,33 @@ public class RDServer {
     }
 
     /**
+     * Start the Hytale QUIC server on port 5520.
+     * Hytale infrastructure (block mapper, chunk converter) is lazy-loaded
+     * on first client connection via getHytaleBlockMapper() / getHytaleChunkConverter().
+     */
+    private void startHytaleServer() {
+        int hytalePort = HytaleProtocolConstants.DEFAULT_PORT;
+        try {
+            hytaleServer = new HytaleServerBootstrap(
+                    workerGroup, world, playerManager, chunkManager,
+                    getHytaleBlockMapper(), getHytaleChunkConverter());
+            Channel ch = hytaleServer.start(hytalePort);
+            if (ch != null) {
+                System.out.println("Hytale server started on port " + hytalePort
+                        + " (protocol version " + HytaleProtocolConstants.PROTOCOL_VERSION
+                        + ", CRC " + HytaleProtocolConstants.PROTOCOL_CRC + ")");
+                // Try to restore auth from saved tokens
+                com.github.martinambrus.rdforward.server.hytale.HytaleAuthManager.getInstance().tryRestoreAuth();
+            } else {
+                System.err.println("Hytale support disabled (QUIC server failed to start).");
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to start Hytale server: " + e.getMessage());
+            System.err.println("Hytale support disabled. TCP and UDP servers still running.");
+        }
+    }
+
+    /**
      * Stop the server and release all resources.
      */
     public void stop() {
@@ -1014,6 +1081,18 @@ public class RDServer {
             System.out.println("[INFO] Server stop initiated by " + ctx.getSenderName());
             ctx.reply("Stopping server...");
             stop();
+        });
+
+        CommandRegistry.registerOp("hytale-auth", "Authenticate server with Hytale session service (console only)", PermissionManager.OP_ADMIN, ctx -> {
+            if (!ctx.isConsole()) {
+                ctx.reply("This command can only be run from the server console.");
+                return;
+            }
+            ctx.reply("Starting Hytale OAuth device flow...");
+            // Run in background thread to avoid blocking the console reader
+            new Thread(() -> {
+                com.github.martinambrus.rdforward.server.hytale.HytaleAuthManager.getInstance().startDeviceFlow();
+            }, "HytaleAuth").start();
         });
 
         CommandRegistry.registerOp("op", "Grant operator status to a player", PermissionManager.OP_MANAGE, ctx -> {
@@ -1976,15 +2055,44 @@ public class RDServer {
             worldWidth, worldHeight, worldDepth);
         server.setBedrockPort(ServerProperties.getBedrockPort());
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            // Log what triggered the shutdown
+            System.err.println("[SHUTDOWN] JVM shutting down. All thread stack traces:");
+            for (java.util.Map.Entry<Thread, StackTraceElement[]> entry
+                    : Thread.getAllStackTraces().entrySet()) {
+                Thread t = entry.getKey();
+                System.err.println("  Thread: " + t.getName() + " (daemon=" + t.isDaemon()
+                        + ", state=" + t.getState() + ")");
+                for (StackTraceElement ste : entry.getValue()) {
+                    System.err.println("    at " + ste);
+                }
+            }
             server.stop();
             ServerLogger.close();
         }, "RDForward-Shutdown"));
 
+        // Catch uncaught exceptions on ALL threads to diagnose unexpected JVM exits
+        Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
+            System.err.println("[FATAL] Uncaught " + e.getClass().getSimpleName()
+                    + " on thread " + t.getName() + ": " + e.getMessage());
+            e.printStackTrace();
+        });
+
         try {
             server.start();
             server.runConsole();
+            System.out.println("[DEBUG] runConsole() returned — stdin closed");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+
+        // Keep main thread alive after stdin closes
+        System.out.println("[DEBUG] Main thread entering keep-alive loop");
+        while (!server.stopped) {
+            try {
+                Thread.sleep(10000);
+            } catch (InterruptedException e) {
+                break;
+            }
         }
     }
 }

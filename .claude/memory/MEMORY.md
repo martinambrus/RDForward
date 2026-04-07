@@ -19,13 +19,18 @@
 - [feedback_lazy_loading.md](feedback_lazy_loading.md): Lazy-load all protocol infrastructure and decouple version-specific code into per-session codecs
 
 ## Workflow Preferences
-- [feedback_restart_server.md](feedback_restart_server.md): Never start/restart the server unless user permits it
+- [feedback_restart_server.md](feedback_restart_server.md): Rebuild and restart the server proactively after code changes
 - [feedback_server_start.md](feedback_server_start.md): Use plain Bash & to start the server, never run_in_background
 - [feedback_wait_for_confirmation.md](feedback_wait_for_confirmation.md): Wait for user to confirm they tested before drawing conclusions from logs
 
 ## E2E Test Rules
 - NEVER run two Gradle test suites in parallel. They share the Gradle daemon and will conflict/kill each other. Always run sequentially.
 - Do NOT re-run already-completed cross-version tests. Only run missing/untested pairs. Use temporary test classes that check for existing baselines and skip completed pairs. Only re-run cross tests when the user explicitly asks.
+- [feedback_e2e_spawn_protection.md](feedback_e2e_spawn_protection.md): E2ETestServer disables spawn protection via server.properties so agents can break/place blocks at spawn
+
+## Hytale Protocol
+- [hytale-protocol.md](hytale-protocol.md): Wire formats — DrawType enum, BlockType layout, reserved IDs, client log path
+- [hytale-server-flow.md](hytale-server-flow.md): Complete connection flow from decompiled server — packet sequence, registry order, entity creation
 
 ## Architecture
 - Multi-module Gradle project: rd-protocol, rd-world, rd-server, rd-client, rd-game, rd-e2e-agent (Java 8), rd-e2e (Java 21)

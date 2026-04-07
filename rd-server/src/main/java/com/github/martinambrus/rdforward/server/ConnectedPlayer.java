@@ -3,6 +3,7 @@ package com.github.martinambrus.rdforward.server;
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockSessionWrapper;
+import com.github.martinambrus.rdforward.server.hytale.HytaleSessionWrapper;
 import com.github.martinambrus.rdforward.server.mcpe.MCPESessionWrapper;
 import io.netty.channel.Channel;
 
@@ -34,6 +35,9 @@ public class ConnectedPlayer {
 
     // Legacy MCPE session wrapper (null for non-MCPE clients)
     private volatile MCPESessionWrapper mcpeSession;
+
+    // Hytale session wrapper (null for non-Hytale clients)
+    private volatile HytaleSessionWrapper hytaleSession;
 
     // MCPE skin data (null for non-MCPE clients; raw RGBA bytes, 64x64 or 64x32)
     private volatile byte[] mcpeSkinData;
@@ -104,7 +108,7 @@ public class ConnectedPlayer {
         }
     }
 
-    /** Route packet to Bedrock/MCPE transport if applicable. Returns true if handled. */
+    /** Route packet to Bedrock/MCPE/Hytale transport if applicable. Returns true if handled. */
     private boolean sendViaNonTcp(Packet packet) {
         if (bedrockSession != null) {
             bedrockSession.translateAndSend(packet);
@@ -112,6 +116,10 @@ public class ConnectedPlayer {
         }
         if (mcpeSession != null) {
             mcpeSession.translateAndSend(packet);
+            return true;
+        }
+        if (hytaleSession != null) {
+            hytaleSession.translateAndSend(packet);
             return true;
         }
         return false;
@@ -167,6 +175,10 @@ public class ConnectedPlayer {
             mcpeSession.disconnect("Disconnected");
             return;
         }
+        if (hytaleSession != null) {
+            hytaleSession.disconnect("Disconnected");
+            return;
+        }
         if (channel != null && channel.isActive()) {
             channel.close();
         }
@@ -186,6 +198,14 @@ public class ConnectedPlayer {
 
     public MCPESessionWrapper getMcpeSession() {
         return mcpeSession;
+    }
+
+    public void setHytaleSession(HytaleSessionWrapper session) {
+        this.hytaleSession = session;
+    }
+
+    public HytaleSessionWrapper getHytaleSession() {
+        return hytaleSession;
     }
 
     public void setMcpeSkin(int slim, byte[] skinData) {

@@ -1311,6 +1311,11 @@ public class ChunkManager {
             player.getMcpeSession().sendChunkData(serverWorld, chunk.getXPos(), chunk.getZPos());
             return true;
         }
+        // Hytale (QUIC) — uses 32x32x32 super-chunks via HytaleChunkConverter
+        if (player.getHytaleSession() != null) {
+            player.getHytaleSession().sendChunkData(serverWorld, chunk);
+            return true;
+        }
 
         // Check chunk packet cache for TCP clients
         // All v2 (Alpha 1.1.0) clients use BUCKET_ALPHAVER so they get the
@@ -1393,6 +1398,10 @@ public class ChunkManager {
         }
         if (player.getMcpeSession() != null) {
             player.getMcpeSession().sendChunkData(serverWorld, chunk.getXPos(), chunk.getZPos());
+            return true;
+        }
+        if (player.getHytaleSession() != null) {
+            player.getHytaleSession().sendChunkData(serverWorld, chunk);
             return true;
         }
 
@@ -1832,7 +1841,8 @@ public class ChunkManager {
     private void sendChunkUnload(ConnectedPlayer player, ChunkCoord coord) {
         // Bedrock/MCPE clients manage their own chunk cache — no explicit unload needed.
         // Server-side tracking in playerChunks still removes the coord so re-sends work.
-        if (player.getBedrockSession() != null || player.getMcpeSession() != null) return;
+        if (player.getBedrockSession() != null || player.getMcpeSession() != null
+                || player.getHytaleSession() != null) return;
 
         if (player.getProtocolVersion().getFamily() == ProtocolVersion.Family.LCE) {
             player.writePacket(new com.github.martinambrus.rdforward.protocol.packet.lce.LCEChunkVisibilityPacket(

@@ -28,6 +28,10 @@ When refactoring or modifying shared methods:
 - Before editing any shared code, trace ALL callers to verify which clients are affected.
 - Guard new behavior behind version checks so only the targeted client type is affected.
 
+## Preserving Key Findings
+
+When debugging protocol issues, fixing crashes, or discovering important implementation details (e.g., reserved IDs, required field values, wire format quirks), ALWAYS save these findings to project memory files so they survive context compaction. Critical findings that took significant debugging effort to discover must be persisted immediately — don't rely on conversation context alone.
+
 ## Lazy Loading and Code Decoupling
 
 Performance is a top priority. Protocol adapters, registries, and version-specific code must be loaded and executed only when actually needed:

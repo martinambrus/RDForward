@@ -863,14 +863,22 @@ public enum ProtocolVersion {
      * Protocol version 944 matches the CloudburstMC codec for 1.26.10.
      * Block count uses the same internal 0-91 range as Alpha.
      */
-    BEDROCK(944, 86, Family.BEDROCK, "Bedrock", 92, "bedrock-1.26.10");
+    BEDROCK(944, 86, Family.BEDROCK, "Bedrock", 92, "bedrock-1.26.10"),
+
+    /**
+     * Hytale (2025+).
+     * Uses QUIC/UDP on port 5520 with a completely different protocol.
+     * Protocol version 1, CRC -1356075132 matches the current Hytale build.
+     * Block count uses the same internal 0-91 range as Alpha.
+     */
+    HYTALE(1, 87, Family.HYTALE, "Hytale", 92, "hytale-1.0");
 
     /**
      * Protocol family grouping. Used to show relevant supported versions
      * when rejecting a client with an unsupported protocol version.
      */
     public enum Family {
-        PRE_CLASSIC, CLASSIC, ALPHA, BETA, RELEASE, LCE, BEDROCK
+        PRE_CLASSIC, CLASSIC, ALPHA, BETA, RELEASE, LCE, BEDROCK, HYTALE
     }
 
     private final int versionNumber;
