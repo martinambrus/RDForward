@@ -53,7 +53,7 @@ rd-api/
       UniversalMod.java               # Both server + client
       Reloadable.java                 # Optional interface: mod supports hot-reload
     event/
-      Event.java                      # Keep current Event<T> pattern (moved from rd-protocol)
+      Event.java                      # Signature-compatible with Fabric's Event<T> (moved from rd-protocol)
       EventResult.java                # PASS / SUCCESS / FAIL (moved from rd-protocol)
       Cancellable.java                # Marker interface for cancellable events
       EventPriority.java              # LOWEST, LOW, NORMAL, HIGH, HIGHEST, MONITOR
@@ -92,9 +92,17 @@ rd-api/
       VersionCapability.java          # Enum of features (WEATHER, TAB_LIST, etc.)
       VersionSupport.java             # Static: isSupported(capability, version)
     client/
-      ClientEvents.java               # Key press, render frame, connect/disconnect
-      KeyBinding.java                  # Key binding definition
-      GameOverlay.java                 # HUD overlay interface
+      ClientEvents.java               # All client-side event definitions (Event<T> pattern)
+      DrawContext.java                 # 2D rendering helper passed to HUD/overlay callbacks
+      GameOverlay.java                 # Persistent HUD overlay interface (render each frame)
+      GameScreen.java                  # Full-screen UI that captures input
+      KeyBinding.java                  # Named key binding with edge-detected press callback
+      KeyBindingRegistry.java          # Interface: register key bindings
+      OverlayRegistry.java            # Interface: register/unregister HUD overlays
+      ScreenManager.java              # Interface: open/close screens, query active screen
+      ClientWorld.java                # Read-only view of the client-side world (blocks, dimensions)
+      ClientPlayer.java              # Read-only local player state (position, rotation, name)
+      ChatAccess.java                 # Interface: send/receive chat messages on the client
     registry/
       Registry.java                   # Generic typed registry (name -> value)
       RegistryKey.java                # Namespaced key ("modid:name")
@@ -255,6 +263,281 @@ Primary format is JSON. The mod loader also accepts `rdmod.yml` and `rdmod.toml`
 }
 ```
 
+### 1.4 Client API interfaces
+
+The client API follows the same principles as the server API: interfaces only, zero implementation in `rd-api`. The RD client currently supports chat, block/chunk rendering, placing, breaking, player movement, respawning, and simple blocky remote players. The API exposes hooks for these capabilities and — critically — render callbacks that let mods ADD functionality the base game does not have (text overlays, custom HUD elements, full-screen UIs).
+
+Fabric and Forge client APIs are well-defined callback interfaces (not primarily Mixin-based). ~70-85% of real client mods use these published APIs exclusively. Both are highly stubbable: methods referencing Minecraft-specific UI (hunger bar, XP bar, boss health, advancement toasts, particles, shaders, custom entity models, inventories, crafting) simply noop in our bridges.
+
+#### Client events
+
+All client events use the same `Event<T>` pattern as server events, signature-compatible with Fabric.
+
+```java
+public final class ClientEvents {
+
+    // -- Lifecycle --
+    /** Fires once when the game window is ready and GL context is initialized. */
+    public static final Event<ClientReady> CLIENT_READY = Event.create(...);
+
+    /** Fires when the game is shutting down (window closed). */
+    public static final Event<ClientStopping> CLIENT_STOPPING = Event.create(...);
+
+    // -- Tick --
+    /** Fires once per game tick (20 TPS), after player physics. */
+    public static final Event<ClientTick> CLIENT_TICK = Event.create(...);
+
+    // -- Rendering --
+    /**
+     * Fires after 3D world rendering, before 2D overlay pass.
+     * Use for world-space overlays (waypoint markers, block highlights).
+     * GL modelview matrix is still in camera space.
+     */
+    public static final Event<RenderWorld> RENDER_WORLD = Event.create(...);
+
+    /**
+     * Fires during the 2D overlay pass, after built-in HUD but before buffer swap.
+     * Use for custom HUD elements, text overlays, debug info.
+     * Receives a DrawContext for 2D rendering without raw GL calls.
+     */
+    public static final Event<RenderHud> RENDER_HUD = Event.create(...);
+
+    // -- Input --
+    /** Fires on key press (edge-triggered, not held). */
+    public static final Event<KeyPress> KEY_PRESS = Event.create(...);
+
+    /** Fires on key release. */
+    public static final Event<KeyRelease> KEY_RELEASE = Event.create(...);
+
+    /** Fires on mouse button press/release. */
+    public static final Event<MouseClick> MOUSE_CLICK = Event.create(...);
+
+    // -- Chat --
+    /** Fires when a chat message is received (from server or local). Cancellable. */
+    public static final Event<ChatReceived> CHAT_RECEIVED = Event.create(...);
+
+    /** Fires when the player sends a chat message. Cancellable (prevents send). */
+    public static final Event<ChatSend> CHAT_SEND = Event.create(...);
+
+    // -- Networking --
+    /** Fires when the client connects to a server. */
+    public static final Event<ServerConnect> SERVER_CONNECT = Event.create(...);
+
+    /** Fires when the client disconnects from a server. */
+    public static final Event<ServerDisconnect> SERVER_DISCONNECT = Event.create(...);
+
+    // -- Screens --
+    /** Fires when a GameScreen is opened. */
+    public static final Event<ScreenOpen> SCREEN_OPEN = Event.create(...);
+
+    /** Fires when a GameScreen is closed. */
+    public static final Event<ScreenClose> SCREEN_CLOSE = Event.create(...);
+
+    // -- Callback interfaces --
+    @FunctionalInterface public interface ClientReady { void onReady(); }
+    @FunctionalInterface public interface ClientStopping { void onStopping(); }
+    @FunctionalInterface public interface ClientTick { void onTick(); }
+    @FunctionalInterface public interface RenderWorld { void onRenderWorld(float partialTick); }
+    @FunctionalInterface public interface RenderHud { void onRenderHud(DrawContext ctx); }
+    @FunctionalInterface public interface KeyPress { EventResult onKeyPress(int keyCode, int mods); }
+    @FunctionalInterface public interface KeyRelease { void onKeyRelease(int keyCode, int mods); }
+    @FunctionalInterface public interface MouseClick { EventResult onClick(int button, boolean pressed, double x, double y); }
+    @FunctionalInterface public interface ChatReceived { EventResult onReceived(String message); }
+    @FunctionalInterface public interface ChatSend { EventResult onSend(String message); }
+    @FunctionalInterface public interface ServerConnect { void onConnect(String host, int port); }
+    @FunctionalInterface public interface ServerDisconnect { void onDisconnect(String reason); }
+    @FunctionalInterface public interface ScreenOpen { void onOpen(GameScreen screen); }
+    @FunctionalInterface public interface ScreenClose { void onClose(GameScreen screen); }
+}
+```
+
+#### DrawContext — 2D rendering helper
+
+The key to extensibility. Mods receive a `DrawContext` in `RENDER_HUD` callbacks and can draw arbitrary 2D content without raw GL calls. The implementation wraps the existing Java2D-to-GL-texture pipeline used by `HudRenderer` and `ChatRenderer`.
+
+```java
+public interface DrawContext {
+    /** Draw text at the given screen position. Color is ARGB. */
+    void drawText(String text, int x, int y, int color);
+
+    /** Draw text with a shadow offset for readability. */
+    void drawTextWithShadow(String text, int x, int y, int color);
+
+    /** Measure the pixel width of a string. */
+    int getTextWidth(String text);
+
+    /** Get the line height for the current font. */
+    int getTextHeight();
+
+    /** Draw a filled rectangle. Color is ARGB. */
+    void fillRect(int x, int y, int width, int height, int color);
+
+    /** Draw a textured rectangle (GL texture ID). */
+    void drawTexture(int textureId, int x, int y, int width, int height);
+
+    /** Current screen dimensions. */
+    int getScreenWidth();
+    int getScreenHeight();
+}
+```
+
+#### GameOverlay — persistent HUD element
+
+Already exists in `rd-client`. The rd-api version is the interface contract; the client implementation calls `OverlayRegistry.renderAll()` each frame.
+
+```java
+public interface GameOverlay {
+    void render(int screenWidth, int screenHeight);
+    boolean isVisible();
+    void cleanup();
+}
+```
+
+#### GameScreen — full-screen UI
+
+Already exists in `rd-client`. Captures input exclusively (mouse visible, player movement blocked).
+
+```java
+public interface GameScreen {
+    void open(long window);
+    void close();
+    boolean isActive();
+    void render(int screenWidth, int screenHeight);
+    boolean handleKey(int key, int scancode, int action, int mods);
+    void handleChar(int codepoint);
+    boolean handleClick(int button, int action, double mouseX, double mouseY);
+    void cleanup();
+}
+```
+
+#### KeyBinding — named key binding
+
+Already exists in `rd-client`. Edge-detected (fires once per press, not per frame).
+
+```java
+public interface KeyBinding {
+    String getName();
+    int getKeyCode();
+    /** Called internally by the registry each frame. */
+    void update(boolean isPressed);
+}
+```
+
+#### Client-side read-only accessors
+
+```java
+/** Read-only view of the client-side world. */
+public interface ClientWorld {
+    int getWidth();
+    int getHeight();
+    int getDepth();
+    boolean isSolid(int x, int y, int z);
+    boolean isInBounds(int x, int y, int z);
+}
+
+/** Read-only view of the local player. */
+public interface ClientPlayer {
+    String getName();
+    double getX();
+    double getY();
+    double getZ();
+    float getYaw();
+    float getPitch();
+}
+
+/** Client-side chat access. */
+public interface ChatAccess {
+    /** Display a message in the local chat (client-side only, not sent to server). */
+    void addLocalMessage(String message);
+    /** Send a message to the server. */
+    void sendMessage(String message);
+}
+```
+
+#### Registries
+
+```java
+public interface KeyBindingRegistry {
+    void register(KeyBinding binding);
+}
+
+public interface OverlayRegistry {
+    void register(GameOverlay overlay);
+    void unregister(GameOverlay overlay);
+}
+
+public interface ScreenManager {
+    void openScreen(GameScreen screen);
+    void closeScreen();
+    GameScreen getActiveScreen();
+}
+```
+
+#### Where hooks fire in the render pipeline
+
+Reference: `RubyDung.render()` + `RubyDungMixin.onRenderBeforeSwap()`
+
+```
+1. Mouse look + pick (raycasting)
+2. Process input events
+   -> ClientEvents.KEY_PRESS / KEY_RELEASE / MOUSE_CLICK fire here
+3. GL clear + setup camera
+4. Render 3D world (level pass 0, fog, level pass 1)
+5. Render hit highlight
+   -> ClientEvents.RENDER_WORLD fires here (GL still in camera space)
+6. [Mixin inject before glfwSwapBuffers]
+   a. Remote player rendering
+   b. HUD text (HudRenderer)
+   c. Chat (ChatRenderer + ChatInput)
+   d. OverlayRegistry.renderAll()       <- GameOverlay instances
+   e. ClientEvents.RENDER_HUD fires     <- mods get DrawContext
+7. glfwSwapBuffers
+8. glfwPollEvents
+```
+
+#### Client mod example
+
+```java
+public class MyClientMod implements ClientMod {
+    private GameOverlay coordinateOverlay;
+
+    @Override
+    public void onClientReady() {
+        // Register a persistent HUD overlay showing coordinates
+        coordinateOverlay = new GameOverlay() {
+            @Override
+            public void render(int screenWidth, int screenHeight) {
+                // Raw GL rendering for persistent overlays
+            }
+            @Override
+            public boolean isVisible() { return true; }
+            @Override
+            public void cleanup() {}
+        };
+        OverlayRegistry.register(coordinateOverlay);
+
+        // Register a key binding
+        KeyBindingRegistry.register(new KeyBinding("Toggle coords", GLFW_KEY_F3, () -> {
+            // Toggle overlay visibility
+        }));
+
+        // Use the event-based HUD hook with DrawContext
+        ClientEvents.RENDER_HUD.register(ctx -> {
+            ctx.drawTextWithShadow("Hello from mod!", 10, 50, 0xFFFFFFFF);
+        });
+
+        // React to chat messages
+        ClientEvents.CHAT_RECEIVED.register(message -> {
+            if (message.contains("secret")) return EventResult.CANCEL; // hide it
+            return EventResult.PASS;
+        });
+    }
+
+    @Override
+    public void onClientStop() {}
+}
+```
+
 ---
 
 ## Phase 2: Mod Loader (`rd-mod-loader` module)
@@ -287,6 +570,13 @@ rd-mod-loader/
       RDScheduler.java          # Wraps existing Scheduler as api.scheduler.Scheduler
       RDCommandRegistry.java    # Wraps existing CommandRegistry + namespaced commands + conflict resolution
       RDPermissionManager.java  # Wraps existing PermissionManager
+      RDDrawContext.java        # Implements DrawContext wrapping Java2D-to-GL-texture pipeline
+      RDClientWorld.java        # Wraps Level as api.client.ClientWorld
+      RDClientPlayer.java       # Wraps Player as api.client.ClientPlayer
+      RDChatAccess.java         # Wraps ChatRenderer + RDClient as api.client.ChatAccess
+      RDKeyBindingRegistry.java # Wraps existing KeyBindingRegistry with ownership tracking
+      RDOverlayRegistry.java    # Wraps existing OverlayRegistry with ownership tracking
+      RDScreenManager.java      # Wraps GameScreen lifecycle
 ```
 
 ### 2.2 Classloading architecture
@@ -1211,13 +1501,26 @@ rd-bridge-fabric/
         DedicatedServerModInitializer.java
       fabric/api/
         event/
-          Event.java           # Near-1:1 mapping to our Event<T>!
+          Event.java           # Thin type alias delegating to rd-api Event<T>
           EventResult.java
         lifecycle/v1/
           ServerLifecycleEvents.java
           ServerTickEvents.java
+        client/lifecycle/v1/
+          ClientLifecycleEvents.java
+        client/event/lifecycle/v1/
+          ClientTickEvents.java
+        client/rendering/v1/
+          HudRenderCallback.java        # -> ClientEvents.RENDER_HUD
+          WorldRenderEvents.java        # -> ClientEvents.RENDER_WORLD
+          WorldRenderContext.java        # Stub context (noop beyond partialTick)
+        client/keybinding/v1/
+          KeyBindingHelper.java         # -> KeyBindingRegistry.register()
+        client/screen/v1/
+          ScreenEvents.java             # -> ClientEvents.SCREEN_OPEN/CLOSE
         networking/v1/
           ServerPlayNetworking.java
+          ClientPlayNetworking.java     # -> PluginChannel adapter
           PayloadTypeRegistry.java
         command/v2/
           CommandRegistrationCallback.java
@@ -1227,29 +1530,56 @@ rd-bridge-fabric/
         entrypoint/EntrypointContainer.java
     com/github/martinambrus/rdforward/bridge/fabric/
       FabricBridge.java
-      FabricModLoader.java      # Loads fabric.mod.json mods
-      FabricEventAdapter.java   # Our events <-> Fabric events (mostly 1:1)
+      FabricModLoader.java              # Loads fabric.mod.json mods
+      FabricEventAdapter.java           # Server events <-> Fabric events
+      FabricClientEventAdapter.java     # Client events <-> Fabric client events
       FabricPlayerAdapter.java
+      FabricDrawContextAdapter.java     # Wraps rd-api DrawContext as Fabric DrawContext
 ```
 
-### 8.2 Key insight: Near-1:1 event mapping
+### 8.2 Key insight: Signature-compatible Event<T>
 
-Our existing `Event<T>` in `rd-protocol` is already modeled on Fabric's event pattern:
-- Both use `Event.create(emptyInvoker, invokerFactory)`
-- Both use `event.register(listener)` and `event.invoker().method()`
-- The bridge is nearly trivial — we mostly just re-export under `net.fabricmc.fabric.api.event.Event`
+Our `Event<T>` in `rd-api` is deliberately **signature-compatible** with Fabric's `Event<T>`:
+- Same factory: `Event.create(emptyInvoker, invokerFactory)`
+- Same registration: `event.register(listener)`
+- Same dispatch: `event.invoker().method()`
 
-### 8.3 Initial scope
+Because the method signatures match, the Fabric bridge's `net.fabricmc.fabric.api.event.Event` is a **thin type alias** that delegates directly to `com.github.martinambrus.rdforward.api.event.Event` — no adapter logic, no translation overhead. A Fabric mod's event registration code works against our event system with zero conversion at the call boundary.
+
+The only additions our `Event<T>` has beyond Fabric's are `clearListeners()` and `listenerCount()`, which the bridge simply doesn't expose.
+
+### 8.3 Initial scope — server side
 
 | Fabric Feature | RDForward Equivalent | Status |
 |----------------|---------------------|--------|
 | `ModInitializer.onInitialize()` | `ServerMod.onEnable()` | Direct map |
-| `ClientModInitializer` | `ClientMod.onClientReady()` | Direct map |
 | `ServerLifecycleEvents.SERVER_STARTED` | Server ready event | Direct map |
 | `ServerTickEvents.END_SERVER_TICK` | `ServerEvents.SERVER_TICK` | Direct map |
 | `CommandRegistrationCallback` | `CommandRegistry.register()` | Adapter |
-| `Event<T>` | `Event<T>` | Near-identical |
+| `Event<T>` | `Event<T>` | Signature-compatible (type alias) |
 | `FabricLoader.getInstance()` | `ModManager` queries | Adapter |
+
+### 8.4 Initial scope — client side
+
+| Fabric Feature | RDForward Equivalent | Status |
+|----------------|---------------------|--------|
+| `ClientModInitializer` | `ClientMod.onClientReady()` | Direct map |
+| `ClientLifecycleEvents.CLIENT_STARTED` | `ClientEvents.CLIENT_READY` | Direct map |
+| `ClientLifecycleEvents.CLIENT_STOPPING` | `ClientEvents.CLIENT_STOPPING` | Direct map |
+| `ClientTickEvents.END_CLIENT_TICK` | `ClientEvents.CLIENT_TICK` | Direct map |
+| `HudRenderCallback` | `ClientEvents.RENDER_HUD` | Direct map (our DrawContext replaces Fabric's) |
+| `WorldRenderEvents.END` | `ClientEvents.RENDER_WORLD` | Direct map |
+| `KeyBindingHelper.registerKeyBinding()` | `KeyBindingRegistry.register()` | Direct map |
+| `ScreenEvents.BEFORE_INIT` | `ClientEvents.SCREEN_OPEN` | Simplified (single event, not before/after) |
+| `ClientPlayNetworking` | `PluginChannel` (rd-api/network/) | Adapter |
+
+**Noop stubs** (methods exist to satisfy compilation but do nothing):
+- Fabric rendering APIs beyond HUD/world overlays: particle rendering, entity rendering, block model customization, shader effects, armor rendering
+- Fabric screen APIs beyond open/close: widget layout, text field helpers, tooltip rendering
+- Fabric item/inventory APIs: item rendering, custom model predicates, item tooltip events
+- Fabric world APIs beyond block queries: biome access, entity queries, sound playback
+
+These noops allow Fabric client mods to compile and load. Mods that only use events, HUD rendering, key bindings, and chat will work. Mods that depend on Minecraft-specific rendering (custom models, shaders, particles) will silently noop for those calls.
 
 ---
 
@@ -1258,12 +1588,28 @@ Our existing `Event<T>` in `rd-protocol` is already modeled on Fabric's event pa
 These are NOT implemented in the initial version but the architecture supports them.
 
 ### 9.1 Forge bridge (`rd-bridge-forge`)
+
+**Server side:**
 - `@Mod` annotation scanning for mod discovery
 - `MinecraftForge.EVENT_BUS` adapter backed by our event system
 - `@SubscribeEvent` method discovery via reflection
 - `IForgeRegistries` stubs mapping to our registry system
 - Capability system adapter (`IItemHandler`, `IFluidHandler`, `IEnergyStorage`)
 - `FMLCommonSetupEvent` / `FMLClientSetupEvent` lifecycle mapping
+
+**Client side (planned mapping):**
+
+| Forge Feature | RDForward Equivalent | Status |
+|---------------|---------------------|--------|
+| `RenderGuiOverlayEvent` | `ClientEvents.RENDER_HUD` | Direct map (Pre fires, Post noops) |
+| `RenderLevelStageEvent` | `ClientEvents.RENDER_WORLD` | Simplified (single stage) |
+| `InputEvent.Key` | `ClientEvents.KEY_PRESS` / `KEY_RELEASE` | Direct map |
+| `TickEvent.ClientTickEvent` | `ClientEvents.CLIENT_TICK` | Direct map (START/END phases) |
+| `RegisterKeyMappingsEvent` | `KeyBindingRegistry.register()` | Direct map |
+| `ScreenEvent` | `ClientEvents.SCREEN_OPEN` / `SCREEN_CLOSE` | Simplified |
+| `ClientPlayerNetworkEvent` | `ClientEvents.SERVER_CONNECT` / `DISCONNECT` | Direct map |
+
+Same noop strategy as Fabric: methods referencing Minecraft-specific UI (hunger bar, XP bar, boss health, advancement toasts, particles, shaders, entity models, inventories) silently noop.
 
 ### 9.2 NeoForge bridge (`rd-bridge-neoforge`)
 - NeoForge is a Forge fork with API changes
@@ -1339,13 +1685,15 @@ dependencies {
 ## Implementation Order
 
 ### Step 1: Create `rd-api` module
-- Move `Event<T>` and `EventResult` from `rd-protocol` to `rd-api` (keep re-exports in rd-protocol for backward compat)
-- Define all API interfaces: `Server`, `Player`, `World`, `Block`, `Location`, `BlockType`
+- Move `Event<T>` and `EventResult` from `rd-protocol` to `rd-api` (keep re-exports in rd-protocol for backward compat). Preserve the existing method signatures (`create`, `register`, `invoker`) so `Event<T>` remains signature-compatible with Fabric's — this makes the Fabric bridge a thin type alias with zero translation overhead
+- Define server API interfaces: `Server`, `Player`, `World`, `Block`, `Location`, `BlockType`
+- Define client API interfaces: `ClientEvents`, `DrawContext`, `GameOverlay`, `GameScreen`, `KeyBinding`, `KeyBindingRegistry`, `OverlayRegistry`, `ScreenManager`, `ClientWorld`, `ClientPlayer`, `ChatAccess`
 - Define `ServerMod`, `ClientMod`, `Reloadable` lifecycle interfaces
 - Define `ModDescriptor` and JSON parser
 - Define `VersionCapability` and `VersionSupport`
 - Define `EventPriority`, `PrioritizedEvent` (with stop-on-cancel + MONITOR pass-through), `EventOwnership`, `ListenerInfo`
 - Define `OwnedEvent`, `OwnedCommandRegistry`, `OwnedScheduler` wrappers
+- Move existing `GameOverlay`, `GameScreen`, `KeyBinding` interfaces from `rd-client` to `rd-api` (keep re-exports or thin wrappers in rd-client for backward compat)
 
 ### Step 2: Create `rd-mod-loader` module (core)
 - Implement `ModClassLoader` (parent-child URLClassLoader)
@@ -1407,11 +1755,14 @@ dependencies {
 - Test with a simple Bukkit-style plugin
 
 ### Step 9: Create `rd-bridge-fabric` module
-- Fabric API stubs (minimal subset)
-- `FabricBridge` adapter classes
+- Fabric server API stubs (minimal subset): `ModInitializer`, `ServerLifecycleEvents`, `ServerTickEvents`, `CommandRegistrationCallback`
+- Fabric client API stubs: `ClientModInitializer`, `ClientLifecycleEvents`, `ClientTickEvents`, `HudRenderCallback`, `WorldRenderEvents`, `KeyBindingHelper`, `ScreenEvents`, `ClientPlayNetworking`
+- `FabricBridge` + `FabricClientEventAdapter` adapter classes
+- `FabricDrawContextAdapter` wrapping rd-api `DrawContext` as Fabric's `DrawContext`
 - `FabricModLoader` for `fabric.mod.json` discovery
-- Verify near-1:1 event mapping
-- Test with a simple Fabric-style mod
+- Noop stubs for unsupported Fabric APIs (particles, entity rendering, shaders, item models, tooltips, etc.)
+- Verify `Event<T>` type alias delegation works with zero overhead
+- Test with a simple Fabric-style mod using both server and client entrypoints
 
 ### Step 10: API-only distribution
 - Gradle task in `rd-api`: produce `rdforward-api-<version>.jar` (interfaces only)
@@ -1434,6 +1785,12 @@ dependencies {
 | `rd-server/.../server/api/Scheduler.java` | Implement rd-api `Scheduler` interface; add ownership |
 | `rd-server/.../server/api/ModConfig.java` | Implement rd-api `ModConfig` interface |
 | `rd-server/.../server/api/PermissionManager.java` | Implement rd-api `PermissionManager` interface |
+| `rd-client/.../client/ui/GameOverlay.java` | Move to rd-api interface, keep rd-client wrapper |
+| `rd-client/.../client/ui/GameScreen.java` | Move to rd-api interface, keep rd-client wrapper |
+| `rd-client/.../client/api/KeyBinding.java` | Move to rd-api interface, keep rd-client wrapper |
+| `rd-client/.../client/api/KeyBindingRegistry.java` | Implement rd-api `KeyBindingRegistry`; add ownership tracking |
+| `rd-client/.../client/api/OverlayRegistry.java` | Implement rd-api `OverlayRegistry`; add ownership tracking |
+| `rd-client/.../mixin/RubyDungMixin.java` | Add `ClientEvents` fire points: RENDER_WORLD (after 3D), RENDER_HUD (before swap), KEY_PRESS, MOUSE_CLICK, CLIENT_TICK |
 
 ### New config files (auto-generated at runtime)
 
@@ -1495,13 +1852,35 @@ dependencies {
 - Verify `/reload` cleanly replaces the mod
 - Verify admin event/command overrides persist and reapply
 
-### 7. Bridge tests
+### 7. Bridge tests — server
 - **Bukkit**: Load a `JavaPlugin` with `plugin.yml`, verify `onEnable()`, events, commands
 - **Bukkit**: Verify `ignoreCancelled=false` handlers do NOT receive cancelled events (intentional incompatibility)
 - **Bukkit**: Verify one-time warning logged for `ignoreCancelled=false` handlers
-- **Fabric**: Load a `ModInitializer` with `fabric.mod.json`, verify `onInitialize()`, events
+- **Fabric server**: Load a `ModInitializer` with `fabric.mod.json`, verify `onInitialize()`, events
+- **Fabric server**: Verify `Event<T>` type alias delegates to rd-api Event with zero conversion overhead
 
-### 8. E2E test
+### 8. Bridge tests — client
+- **Fabric client**: Load a `ClientModInitializer`, verify `onInitializeClient()` fires
+- **Fabric client**: `HudRenderCallback.EVENT.register()` fires during render with DrawContext
+- **Fabric client**: `ClientTickEvents.END_CLIENT_TICK.register()` fires each game tick
+- **Fabric client**: `KeyBindingHelper.registerKeyBinding()` creates working key binding
+- **Fabric client**: Noop stubs compile and execute without error (particle, entity render, etc.)
+- **Fabric client**: `ClientPlayNetworking` registration succeeds (adapter to PluginChannel)
+
+### 9. Client API unit tests
+- `ClientEvents.RENDER_HUD` fires with a valid DrawContext during 2D pass
+- `ClientEvents.RENDER_WORLD` fires after 3D rendering, GL matrix is in camera space
+- `ClientEvents.KEY_PRESS` fires on key press, returns EventResult (cancellable)
+- `ClientEvents.CHAT_RECEIVED` cancellation prevents message from appearing in ChatRenderer
+- `DrawContext.drawText()` rasterizes text to GL texture correctly
+- `DrawContext.fillRect()` draws colored quad at correct screen coordinates
+- `GameOverlay` registered via `OverlayRegistry` renders each frame when `isVisible()` returns true
+- `GameScreen.open()` captures input, `close()` releases it
+- `KeyBinding` edge detection: fires once per press, not per held frame
+- `ClientWorld.isSolid()` returns correct block state from Level
+- `ChatAccess.addLocalMessage()` appears in ChatRenderer without server round-trip
+
+### 10. E2E test — server
 - Place test mod in `mods/`
 - Start server
 - Connect client
@@ -1513,17 +1892,27 @@ dependencies {
 - `/reload test-mod` -> verify clean reload
 - All existing e2e tests still pass (no regressions)
 
-### 9. Build verification
+### 11. E2E test — client
+- Load a client mod that registers a GameOverlay (coordinate display)
+- Verify overlay renders on screen during gameplay
+- Load a client mod that registers RENDER_HUD with DrawContext text
+- Verify text appears on screen
+- Load a client mod that registers a key binding
+- Verify key press triggers the callback
+- Load a client mod that cancels CHAT_RECEIVED for messages containing a keyword
+- Verify matching messages are hidden, non-matching messages display normally
+
+### 12. Build verification
 - `./gradlew buildAll` succeeds
 - API-only JARs are produced and contain only interfaces
 - Mod JAR compiled against API-only JAR loads successfully at runtime
 
-### 10. Memory leak verification
+### 13. Memory leak verification
 - Load/unload a mod 100 times in a loop
 - Monitor heap size — should stay flat (no cumulative growth)
 - All WeakReference probes report classloader collected
 
-### 11. Admin config persistence verification
+### 14. Admin config persistence verification
 - Set event overrides + command assignments
 - Restart server
 - Verify all overrides and assignments reapplied from config files
