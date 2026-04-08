@@ -558,9 +558,8 @@ public final class GriefProtection {
 
         // Calculate how many blocks the next 10 minutes of play will earn
         int nextAccrual = BlockOwnerRegistry.ACCRUAL_PER_HOUR / 6; // per 10-min interval
-        warn(player, "Protection budget depleted! Blocks you place now are"
-                + " unprotected. You will earn " + nextAccrual
-                + " more protected blocks for every 10 minutes of play.");
+        warn(player, "[GriefProtection] Budget depleted \u2014 new blocks are unprotected.");
+        warn(player, "[GriefProtection] Earn " + nextAccrual + " more per 10 min of play.");
     }
 
     private static void warn(String player, String message) {

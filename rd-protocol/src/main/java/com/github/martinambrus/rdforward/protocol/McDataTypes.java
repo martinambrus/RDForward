@@ -129,14 +129,16 @@ public final class McDataTypes {
 
     /**
      * Read a Java Modified UTF-8 string (Alpha format: short byte-count prefix + UTF-8 bytes).
-     * This matches Java's DataInputStream.readUTF() format used by the original MC Alpha client.
-     * Wire format: [2 bytes: byte count] [N bytes: Modified UTF-8 encoded characters]
+     * This matches Java's DataInputStream.readUTF() format used by the original MC Alpha client,
+     * which encodes the length as an UNSIGNED 16-bit value (0..65535). Using a signed read here
+     * caused spurious "byte count is negative" errors when junk/garbage bytes (e.g. 0xFFFF from
+     * an abruptly closing client) were interpreted as -1 instead of 65535. With the unsigned
+     * read, garbage lengths simply trigger an IndexOutOfBoundsException in readBytes(), which
+     * the frame decoder handles gracefully by waiting for more data until the channel closes.
+     * Wire format: [2 bytes: unsigned byte count] [N bytes: Modified UTF-8 encoded characters]
      */
     public static String readJavaUTF(ByteBuf buf) {
-        short byteCount = buf.readShort();
-        if (byteCount < 0) {
-            throw new IllegalStateException("JavaUTF byte count is negative: " + byteCount);
-        }
+        int byteCount = buf.readUnsignedShort();
         byte[] bytes = new byte[byteCount];
         buf.readBytes(bytes);
         return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);

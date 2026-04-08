@@ -31,7 +31,10 @@ import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket;
 import org.cloudburstmc.protocol.bedrock.packet.SetTimePacket;
 
 import java.net.InetSocketAddress;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -252,17 +255,65 @@ public class PlayerManager {
     }
 
     /**
-     * Broadcast a chat message to all players.
+     * Maximum chat message length supported by the oldest clients we serve.
+     * Beta 1.7.3's Packet3Chat caps incoming strings at 119 UTF-16 chars and
+     * disconnects on overflow. This is the lowest common denominator across
+     * all supported legacy clients, so we split anything longer.
+     */
+    public static final int MAX_CHAT_CHARS = 119;
+
+    /**
+     * Split a chat message into chunks that each fit in {@link #MAX_CHAT_CHARS}.
+     * Prefers a clean break at the last full-stop within the limit; falls back
+     * to a hard cut at MAX_CHAT_CHARS when no usable full-stop exists.
+     * Returns the original message in a single-element list when it already fits.
+     */
+    public static List<String> splitChatMessage(String message) {
+        if (message == null || message.isEmpty()) {
+            return Collections.singletonList(message == null ? "" : message);
+        }
+        if (message.length() <= MAX_CHAT_CHARS) {
+            return Collections.singletonList(message);
+        }
+        List<String> parts = new ArrayList<>();
+        String remaining = message;
+        while (remaining.length() > MAX_CHAT_CHARS) {
+            String head = remaining.substring(0, MAX_CHAT_CHARS);
+            int splitAt = head.lastIndexOf('.');
+            if (splitAt > 0) {
+                parts.add(remaining.substring(0, splitAt + 1));
+                remaining = remaining.substring(splitAt + 1).stripLeading();
+            } else {
+                parts.add(head);
+                remaining = remaining.substring(MAX_CHAT_CHARS);
+            }
+            if (remaining.isEmpty()) break;
+        }
+        if (!remaining.isEmpty()) {
+            parts.add(remaining);
+        }
+        return parts;
+    }
+
+    /**
+     * Broadcast a chat message to all players. Long messages are auto-split
+     * into multiple chat packets so legacy clients don't disconnect.
      */
     public void broadcastChat(byte senderId, String message) {
-        broadcastPacket(new MessagePacket(senderId, message));
+        for (String chunk : splitChatMessage(message)) {
+            broadcastPacket(new MessagePacket(senderId, chunk));
+        }
     }
 
     /**
      * Send a chat message to a specific player (e.g., command response).
+     * Long messages are auto-split into multiple chat packets so legacy
+     * clients don't disconnect.
      */
     public void sendChat(ConnectedPlayer player, String message) {
-        player.sendPacket(new MessagePacket((byte) 0, message));
+        for (String chunk : splitChatMessage(message)) {
+            player.sendPacket(new MessagePacket((byte) 0, chunk));
+        }
     }
 
     /**

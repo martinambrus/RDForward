@@ -127,7 +127,10 @@ public class EaglerCraftQueryHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        System.err.println("[EaglerCraft Query] Exception: " + cause.getMessage());
+        // Query support is not implemented yet, so probes from EaglerCraft launchers and
+        // server-list scanners frequently abort mid-handshake. Logging every aborted probe
+        // (which used to print "[EaglerCraft Query] Exception: null" on every disconnect)
+        // floods the log with no actionable information. Just close the channel quietly.
         ctx.close();
     }
 }
