@@ -258,7 +258,8 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_11)) {
             versionName = "1.21.11";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_9)) {
-            versionName = "1.21.9";
+            // v773 covers both 1.21.9 and 1.21.10; report the latest patch.
+            versionName = "1.21.10";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_7)) {
             versionName = "1.21.7";
         } else if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_21_6)) {
@@ -563,8 +564,13 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
             // V766+: SelectKnownPacks round-trip before sending registry data.
             // Send SelectKnownPacks S2C, then wait for client response.
-            // 26.1 clients only confirm "26.1" pack (not older ones), so send
-            // only that pack to avoid unconfirmed-pack entry resolution failures.
+            // v775 clients (26.1, 26.1.1 and 26.1.2 all share protocol 775)
+            // only confirm their own single core pack version — 26.1 confirms
+            // "26.1", 26.1.1 confirms "26.1.1", 26.1.2 confirms "26.1.2".
+            // SelectKnownPacksS2CPacketV775 advertises all three so each
+            // client resolves null-data registry entries from its own built-in
+            // pack. Sending an unknown pack version is a no-op for a client
+            // that doesn't have it.
             ctx.writeAndFlush(clientVersion.isAtLeast(ProtocolVersion.RELEASE_26_1)
                     ? new SelectKnownPacksS2CPacketV775()
                     : new SelectKnownPacksS2CPacket());

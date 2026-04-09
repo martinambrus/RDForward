@@ -822,7 +822,7 @@ public enum ProtocolVersion {
      * No C2S packet ID changes. No chunk format changes.
      * Netty protocol version 773.
      */
-    RELEASE_1_21_9(773, 81, Family.RELEASE, "Release 1.21.9 (v773)", 94, "1.21.10"),
+    RELEASE_1_21_9(773, 81, Family.RELEASE, "Release 1.21.9-1.21.10 (v773)", 94, "1.21.10"),
 
     /**
      * Minecraft Release 1.21.11 (2025).
@@ -836,16 +836,24 @@ public enum ProtocolVersion {
     RELEASE_1_21_11(774, 82, Family.RELEASE, "Release 1.21.11 (v774)", 94, "1.21.11"),
 
     /**
-     * Minecraft 26.1 "Tiny Takeover" (March 2026).
-     * New versioning scheme (year.drop). No S2C/C2S packet ID changes from v774.
+     * Minecraft 26.1 "Tiny Takeover" (March 2026), 26.1.1 (April 1, 2026) and
+     * 26.1.2 (April 9, 2026). New versioning scheme (year.drop). No S2C/C2S
+     * packet ID changes from v774.
      * +202 block states: note_block gains 4 trumpet instruments (+200),
      * golden_dandelion (+1), potted_golden_dandelion (+1).
      * +1 item: golden_dandelion at item ID 230.
      * No new entity types (player stays at 155).
      * New block/item/entity_type/fluid tags. No new registries.
      * Netty protocol version 775.
+     *
+     * 26.1.1 is a chat-reporting hotfix (MC-307140) and 26.1.2 is an exploit /
+     * UI hotfix — both share protocol 775 with 26.1 and introduce no wire-format
+     * changes. Each point release does ship its own built-in "core" datapack
+     * named after the version ("26.1", "26.1.1", "26.1.2"), so
+     * SelectKnownPacksS2CPacketV775 advertises all three pack versions and the
+     * client confirms whichever matches its own.
      */
-    RELEASE_26_1(775, 83, Family.RELEASE, "Release 26.1 (v775)", 94, "26.1"),
+    RELEASE_26_1(775, 83, Family.RELEASE, "Release 26.1-26.1.2 (v775)", 94, "26.1"),
 
     /**
      * Minecraft Legacy Console Edition TU19 (v1.6.0560.0).
@@ -1078,6 +1086,7 @@ public enum ProtocolVersion {
             case 772: return "Release 1.21.7-1.21.8";
             case 773: return "Release 1.21.9-1.21.10";
             case 774: return "Release 1.21.11";
+            case 775: return "Release 26.1-26.1.2";
             default: return null;
         }
     }
@@ -1142,6 +1151,7 @@ public enum ProtocolVersion {
             case 772: return "1.21.7-1.21.8";
             case 773: return "1.21.9-1.21.10";
             case 774: return "1.21.11";
+            case 775: return "26.1-26.1.2";
             default:  return null;
         }
     }
