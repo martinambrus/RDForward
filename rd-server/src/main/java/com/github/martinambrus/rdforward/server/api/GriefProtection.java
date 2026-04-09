@@ -221,6 +221,9 @@ public final class GriefProtection {
                     newOwnerId = ownerId;
                 }
                 if (!isOp) {
+                    // Budget recovered for at least one slot — re-arm the depletion
+                    // notification so the next depletion event is announced again.
+                    getOrCreateData(player).budgetDepletedNotified = false;
                     checkBudgetWarning(player);
                 }
             } else {
@@ -549,11 +552,28 @@ public final class GriefProtection {
                 + remaining + " blocks) remaining.");
     }
 
-    /** Notify a player that their protection budget is fully depleted. Throttled to once per 30s. */
+    /**
+     * Notify a player that their protection budget is fully depleted.
+     *
+     * <p>The first notification for each depletion event is ALWAYS delivered,
+     * bypassing the shared {@code lastBudgetWarning} throttle — losing this
+     * message would leave the player silently placing unprotected blocks
+     * without realizing it. Follow-up reminders (after the player keeps trying
+     * to place once already notified) are throttled to once per 30s to avoid
+     * chat spam. The notified flag is reset in the BLOCK_PLACE handler the
+     * moment the player successfully consumes a protection slot again, so the
+     * next depletion event re-fires the unconditional notification.
+     */
     private static void notifyBudgetDepleted(String player) {
         PlayerGriefData data = getOrCreateData(player);
         long now = System.currentTimeMillis();
-        if (now - data.lastBudgetWarning < 30_000) return;
+
+        if (data.budgetDepletedNotified) {
+            // Already notified for this depletion event — apply the normal
+            // throttle so subsequent placement attempts don't spam chat.
+            if (now - data.lastBudgetWarning < 30_000) return;
+        }
+        data.budgetDepletedNotified = true;
         data.lastBudgetWarning = now;
 
         // Calculate how many blocks the next 10 minutes of play will earn
@@ -723,6 +743,15 @@ public final class GriefProtection {
         volatile long lastRateWarning = 0;
         /** Timestamp of last budget warning (throttle to once per 30s). */
         volatile long lastBudgetWarning = 0;
+        /**
+         * Whether the player has been notified that their protection budget
+         * is depleted for the CURRENT depletion event. Reset to false each
+         * time the player successfully consumes a protection slot, so the
+         * next depletion is announced again. Tracked separately from
+         * {@code lastBudgetWarning} so the depletion message can bypass the
+         * shared low-budget-warning throttle on first notification.
+         */
+        volatile boolean budgetDepletedNotified = false;
         /** Token bucket for rate limiting. */
         final RateTracker rateTracker = new RateTracker();
         /** Rolling buffer of recent block changes for rollback on kick/ban. */
