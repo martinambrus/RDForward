@@ -1,7 +1,7 @@
 package com.github.martinambrus.rdforward.server.bedrock;
 
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
-import com.github.martinambrus.rdforward.protocol.event.EventResult;
+import com.github.martinambrus.rdforward.api.event.EventResult;
 import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
 import com.github.martinambrus.rdforward.server.ChunkManager;
 import com.github.martinambrus.rdforward.server.ConnectedPlayer;
@@ -9,7 +9,7 @@ import com.github.martinambrus.rdforward.server.PlayerManager;
 import com.github.martinambrus.rdforward.server.ServerWorld;
 import com.github.martinambrus.rdforward.server.api.CommandRegistry;
 import com.github.martinambrus.rdforward.server.api.ServerProperties;
-import com.github.martinambrus.rdforward.server.event.ServerEvents;
+import com.github.martinambrus.rdforward.api.event.server.ServerEvents;
 import com.github.martinambrus.rdforward.world.BlockRegistry;
 import org.cloudburstmc.math.vector.Vector2f;
 import org.cloudburstmc.math.vector.Vector3f;

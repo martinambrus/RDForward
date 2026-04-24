@@ -1,6 +1,7 @@
 description = 'RDForward Server - dedicated server runtime'
 
 dependencies {
+    implementation project(':rd-api')
     implementation project(':rd-protocol')
     implementation project(':rd-world')
     // Netty HTTP/WebSocket codec for EaglerCraft WebSocket support
@@ -20,7 +21,7 @@ jar {
 task fatJar(type: Jar) {
     description = 'Builds a self-contained server JAR with all dependencies bundled'
     group = 'build'
-    dependsOn classes, ':rd-protocol:jar', ':rd-world:jar'
+    dependsOn classes, ':rd-api:jar', ':rd-protocol:jar', ':rd-world:jar', ':rd-mod-loader:jar'
 
     archiveClassifier = 'all'
 
@@ -31,6 +32,26 @@ task fatJar(type: Jar) {
     from sourceSets.main.output
     from({
         configurations.runtimeClasspath.filter { it.isFile() && it.name.endsWith('.jar') }
+            .collect { zipTree(it) }
+    }) {
+        exclude 'META-INF/MANIFEST.MF'
+        exclude 'META-INF/*.SF'
+        exclude 'META-INF/*.DSA'
+        exclude 'META-INF/*.RSA'
+    }
+    // Bundle rd-mod-loader + its runtime deps (Gson) so the reflective
+    // ModSystem bootstrap in RDServer can find the loader on the classpath.
+    from({
+        zipTree(project(':rd-mod-loader').tasks.named('jar').get().archiveFile.get().asFile)
+    }) {
+        exclude 'META-INF/MANIFEST.MF'
+        exclude 'META-INF/*.SF'
+        exclude 'META-INF/*.DSA'
+        exclude 'META-INF/*.RSA'
+    }
+    from({
+        project(':rd-mod-loader').configurations.runtimeClasspath
+            .filter { it.isFile() && it.name.endsWith('.jar') }
             .collect { zipTree(it) }
     }) {
         exclude 'META-INF/MANIFEST.MF'

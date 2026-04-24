@@ -1,12 +1,12 @@
 package com.github.martinambrus.rdforward.server.api;
 
-import com.github.martinambrus.rdforward.protocol.event.EventResult;
+import com.github.martinambrus.rdforward.api.event.EventResult;
 import com.github.martinambrus.rdforward.server.ChunkManager;
 import com.github.martinambrus.rdforward.server.ConnectedPlayer;
 import com.github.martinambrus.rdforward.server.DebugLog;
 import com.github.martinambrus.rdforward.server.PlayerManager;
 import com.github.martinambrus.rdforward.server.ServerWorld;
-import com.github.martinambrus.rdforward.server.event.ServerEvents;
+import com.github.martinambrus.rdforward.api.event.server.ServerEvents;
 
 import java.util.ArrayDeque;
 import java.util.concurrent.ConcurrentHashMap;

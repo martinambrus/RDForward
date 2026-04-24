@@ -8,6 +8,15 @@ pluginManagement {
 
 rootProject.name = 'RDForward'
 
+include 'rd-api'
+include 'rd-mod-loader'
+include 'rd-test-mod'
+include 'rd-bridge-bukkit'
+include 'rd-bridge-fabric'
+include 'rd-bridge-paper'
+include 'rd-bridge-forge'
+include 'rd-bridge-neoforge'
+include 'rd-bridge-pocketmine'
 include 'rd-game'
 include 'rd-protocol'
 include 'rd-world'

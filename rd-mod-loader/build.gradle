@@ -1,0 +1,13 @@
+description = 'RDForward Mod Loader - runtime mod discovery, loading, and lifecycle management'
+
+dependencies {
+    implementation project(':rd-api')
+    implementation project(':rd-protocol')
+    implementation project(':rd-world')
+    implementation project(':rd-server')
+    implementation 'com.google.code.gson:gson:2.11.0'
+    // Alternative descriptor formats per plan §1: YAML via SnakeYAML,
+    // TOML via tomlj (Apache-2.0, pure Java).
+    implementation 'org.yaml:snakeyaml:2.2'
+    implementation 'org.tomlj:tomlj:1.1.1'
+}

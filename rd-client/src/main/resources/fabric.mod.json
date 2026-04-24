@@ -11,8 +11,13 @@
   "environment": "*",
   "entrypoints": {
     "main": [],
-    "client": [],
+    "client": [
+      "com.github.martinambrus.rdforward.client.mod.ClientModBridge"
+    ],
     "server": []
+  },
+  "custom": {
+    "rdforward-client-entrypoint-hint": "External client mods should declare a 'rdforward-client' entrypoint pointing at a class that implements com.github.martinambrus.rdforward.api.mod.ClientMod."
   },
   "mixins": [
     "rdforward.mixins.json"

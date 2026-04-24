@@ -1,0 +1,10 @@
+{
+  "id": "rd-test-mod",
+  "version": "0.1.0",
+  "name": "RDForward Test Mod",
+  "description": "Exercises events, commands, scheduler, and Reloadable for integration testing.",
+  "authors": ["RDForward"],
+  "entrypoints": {
+    "server": "com.github.martinambrus.rdtestmod.TestMod"
+  }
+}

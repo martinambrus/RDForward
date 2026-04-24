@@ -1,0 +1,31 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'RDForward PocketMine Bridge - loads PocketMine-shaped Java plugins (PluginBase + plugin.yml + @HandleEvent) as RDForward mods'
+
+java {
+    withJavadocJar()
+}
+
+tasks.withType(Javadoc).configureEach {
+    options.addStringOption('Xdoclint:none', '-quiet')
+}
+
+dependencies {
+    implementation project(':rd-api')
+    implementation project(':rd-mod-loader')
+    implementation project(':rd-server')
+    implementation 'org.yaml:snakeyaml:2.3'
+}
+
+task distApi(type: Copy) {
+    description = 'Gather PocketMine bridge classes + sources + javadoc JARs for mod-author distribution'
+    group = 'build'
+    dependsOn jar, sourcesJar, javadocJar
+
+    from(jar.archiveFile) { rename { "rdforward-pocketmine-api-${project.version}.jar" } }
+    from(sourcesJar.archiveFile) { rename { "rdforward-pocketmine-api-${project.version}-sources.jar" } }
+    from(javadocJar.archiveFile) { rename { "rdforward-pocketmine-api-${project.version}-javadoc.jar" } }
+    into layout.buildDirectory.dir('dist')
+}

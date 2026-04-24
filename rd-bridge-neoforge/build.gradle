@@ -1,0 +1,32 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'RDForward NeoForge Bridge - loads NeoForge mods (@Mod + neoforge.mods.toml + ctor-injected IEventBus) as RDForward mods'
+
+java {
+    withJavadocJar()
+}
+
+tasks.withType(Javadoc).configureEach {
+    options.addStringOption('Xdoclint:none', '-quiet')
+}
+
+dependencies {
+    implementation project(':rd-api')
+    implementation project(':rd-mod-loader')
+    implementation project(':rd-server')
+    implementation project(':rd-bridge-forge')
+    implementation 'com.moandjiezana.toml:toml4j:0.7.2'
+}
+
+task distApi(type: Copy) {
+    description = 'Gather NeoForge bridge classes + sources + javadoc JARs for mod-author distribution'
+    group = 'build'
+    dependsOn jar, sourcesJar, javadocJar
+
+    from(jar.archiveFile) { rename { "rdforward-neoforge-api-${project.version}.jar" } }
+    from(sourcesJar.archiveFile) { rename { "rdforward-neoforge-api-${project.version}-sources.jar" } }
+    from(javadocJar.archiveFile) { rename { "rdforward-neoforge-api-${project.version}-javadoc.jar" } }
+    into layout.buildDirectory.dir('dist')
+}

@@ -8,7 +8,7 @@ import com.github.martinambrus.rdforward.protocol.codec.PacketDecompressDecoder;
 import com.github.martinambrus.rdforward.protocol.crypto.CipherDecoder;
 import com.github.martinambrus.rdforward.protocol.crypto.CipherEncoder;
 import com.github.martinambrus.rdforward.protocol.crypto.MinecraftCipher;
-import com.github.martinambrus.rdforward.protocol.event.EventResult;
+import com.github.martinambrus.rdforward.api.event.EventResult;
 import com.github.martinambrus.rdforward.protocol.packet.ConnectionState;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.protocol.packet.alpha.*;
@@ -18,7 +18,7 @@ import com.github.martinambrus.rdforward.protocol.packet.netty.*;
 import com.github.martinambrus.rdforward.server.api.CommandRegistry;
 import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import com.github.martinambrus.rdforward.server.auth.MojangSessionVerifier;
-import com.github.martinambrus.rdforward.server.event.ServerEvents;
+import com.github.martinambrus.rdforward.api.event.server.ServerEvents;
 import com.github.martinambrus.rdforward.protocol.BlockStateMapper;
 import com.github.martinambrus.rdforward.world.BlockRegistry;
 import io.netty.channel.ChannelHandlerContext;
@@ -1267,6 +1267,12 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 player.updateRtt(player.getKeepAliveSentNanos());
                 player.setLastKeepAliveResponseTime(System.currentTimeMillis());
             }
+        } else if (packet instanceof NettyPluginMessagePacket pm17) {
+            com.github.martinambrus.rdforward.server.network.PluginChannelManager
+                    .dispatchInbound(player, pm17.getChannel(), pm17.getData());
+        } else if (packet instanceof NettyPluginMessagePacketV47 pm47) {
+            com.github.martinambrus.rdforward.server.network.PluginChannelManager
+                    .dispatchInbound(player, pm47.getChannel(), pm47.getData());
         } else if (packet instanceof HoldingChangePacketBeta
                 || packet instanceof AnimationPacket
                 || packet instanceof AnimationPacketV47
@@ -1287,8 +1293,6 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                 || packet instanceof NettyTabCompletePacketV47
                 || packet instanceof NettyClientSettingsPacket
                 || packet instanceof NettyClientSettingsPacketV47
-                || packet instanceof NettyPluginMessagePacket
-                || packet instanceof NettyPluginMessagePacketV47
                 || packet instanceof NettyUseEntityPacket
                 || packet instanceof NettyUseEntityPacketV47
                 || packet instanceof UseItemPacketV109

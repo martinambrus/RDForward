@@ -29,8 +29,8 @@ import com.github.martinambrus.rdforward.server.mcpe.BedrockOutboundRedirector;
 import com.github.martinambrus.rdforward.server.mcpe.LegacyRakNetServer;
 import com.github.martinambrus.rdforward.server.mcpe.MCPEConstants;
 import com.github.martinambrus.rdforward.server.mcpe.UdpFrontEndHandler;
-import com.github.martinambrus.rdforward.protocol.event.EventResult;
-import com.github.martinambrus.rdforward.server.event.ServerEvents;
+import com.github.martinambrus.rdforward.api.event.EventResult;
+import com.github.martinambrus.rdforward.api.event.server.ServerEvents;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
@@ -49,7 +49,9 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
+import java.nio.file.Path;
 import java.util.Collection;
 
 /**
@@ -110,6 +112,15 @@ public class RDServer {
     private volatile BedrockChunkConverter bedrockChunkConverter;
     private volatile BedrockRegistryData bedrockRegistryData;
     private volatile boolean stopped = false;
+
+    /**
+     * Handle returned by the mod loader's {@code ModSystem.boot(...)}.
+     * Held as {@link Object} so rd-server does not need a compile-time
+     * dependency on rd-mod-loader — the loader is discovered reflectively
+     * so stripped-down builds (protocol tests, e2e harness) can run
+     * without it.
+     */
+    private Object modSystemHandle;
 
     private File getDataDir() {
         return (dataDir != null) ? dataDir : new File(".");
@@ -276,6 +287,8 @@ public class RDServer {
         if (protocolVersion == ProtocolVersion.RUBYDUNG) {
             world.migrateRubyDungBlocks();
         }
+
+        bootModSystem();
 
         tickLoop.start();
 
@@ -755,6 +768,7 @@ public class RDServer {
         stopped = true;
 
         System.out.println("Stopping server...");
+        stopModSystem();
         if (lceLanAdvertiser != null) lceLanAdvertiser.stop();
         tickLoop.stop();
 
@@ -790,6 +804,39 @@ public class RDServer {
         Scheduler.reset();
 
         System.out.println("RDForward server stopped.");
+    }
+
+    /**
+     * Discover and boot the mod loader if it is on the runtime classpath.
+     * Absence of the {@code ModSystem} class is not an error — stripped
+     * builds simply run without mods.
+     */
+    private void bootModSystem() {
+        try {
+            Class<?> cls = Class.forName("com.github.martinambrus.rdforward.modloader.ModSystem");
+            Method boot = cls.getMethod("boot", Object.class, Path.class);
+            File modsRoot = new File(getDataDir(), "mods");
+            Path modsPath = modsRoot.toPath();
+            modSystemHandle = boot.invoke(null, this, modsPath);
+            System.out.println("Mod loader booted — mods directory: " + modsPath);
+        } catch (ClassNotFoundException e) {
+            // no mod loader on classpath — running in minimal mode, skip silently
+        } catch (Throwable t) {
+            System.err.println("Mod loader failed to boot: " + t);
+            t.printStackTrace();
+        }
+    }
+
+    /** Shut down the mod system if it was booted. Safe to call multiple times. */
+    private void stopModSystem() {
+        if (modSystemHandle == null) return;
+        try {
+            modSystemHandle.getClass().getMethod("stop").invoke(modSystemHandle);
+        } catch (Throwable t) {
+            System.err.println("Mod loader shutdown threw: " + t);
+        } finally {
+            modSystemHandle = null;
+        }
     }
 
     /**

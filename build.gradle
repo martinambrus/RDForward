@@ -140,6 +140,10 @@ ext {
         'net.bytebuddy:byte-buddy:1.17.5',
         // Image comparison (rd-e2e) — screenshot baseline diffing
         'com.github.romankh3:image-comparison:4.4.0',
+        // Gson (rd-mod-loader) — rdmod.json descriptor parsing
+        'com.google.code.gson:gson:2.11.0',
+        // toml4j (rd-bridge-forge, rd-bridge-neoforge) — mods.toml parsing
+        'com.moandjiezana.toml:toml4j:0.7.2',
     ]
 }
 

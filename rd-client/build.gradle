@@ -9,6 +9,7 @@ processResources {
 }
 
 dependencies {
+    implementation project(':rd-api')
     implementation project(':rd-game')
     implementation project(':rd-protocol')
     implementation project(':rd-world')

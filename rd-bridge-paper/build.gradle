@@ -1,0 +1,32 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'RDForward Paper Bridge - loads Paper plugins (paper-plugin.yml + Adventure + Brigadier) as RDForward mods'
+
+java {
+    withJavadocJar()
+}
+
+tasks.withType(Javadoc).configureEach {
+    options.addStringOption('Xdoclint:none', '-quiet')
+}
+
+dependencies {
+    implementation project(':rd-api')
+    implementation project(':rd-mod-loader')
+    implementation project(':rd-server')
+    implementation project(':rd-bridge-bukkit')
+    implementation 'org.yaml:snakeyaml:2.3'
+}
+
+task distApi(type: Copy) {
+    description = 'Gather Paper bridge classes + sources + javadoc JARs for mod-author distribution'
+    group = 'build'
+    dependsOn jar, sourcesJar, javadocJar
+
+    from(jar.archiveFile) { rename { "rdforward-paper-api-${project.version}.jar" } }
+    from(sourcesJar.archiveFile) { rename { "rdforward-paper-api-${project.version}-sources.jar" } }
+    from(javadocJar.archiveFile) { rename { "rdforward-paper-api-${project.version}-javadoc.jar" } }
+    into layout.buildDirectory.dir('dist')
+}

@@ -14,6 +14,9 @@ import io.netty.buffer.ByteBuf;
  */
 public class NettyPluginMessagePacket implements Packet {
 
+    private String channel;
+    private byte[] data = new byte[0];
+
     public NettyPluginMessagePacket() {}
 
     @Override
@@ -24,8 +27,12 @@ public class NettyPluginMessagePacket implements Packet {
 
     @Override
     public void read(ByteBuf buf) {
-        McDataTypes.readVarIntString(buf); // channel
+        this.channel = McDataTypes.readVarIntString(buf);
         int length = buf.readShort();
-        buf.skipBytes(length);
+        this.data = new byte[length];
+        buf.readBytes(this.data);
     }
+
+    public String getChannel() { return channel; }
+    public byte[] getData() { return data; }
 }

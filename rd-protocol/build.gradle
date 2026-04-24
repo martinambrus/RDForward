@@ -5,6 +5,8 @@ plugins {
 description = 'RDForward Protocol - networking, packet definitions, and version translation'
 
 dependencies {
+    // rd-api exposes the mod-facing ProtocolVersion interface that this enum implements
+    api project(':rd-api')
     // Netty for scalable networking (same library modern MC uses)
     // Exposed as 'api' so modules depending on rd-protocol get Netty on their classpath
     api 'io.netty:netty-buffer:4.1.131.Final'

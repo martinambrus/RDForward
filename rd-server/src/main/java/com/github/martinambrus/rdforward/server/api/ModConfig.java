@@ -23,7 +23,7 @@ import java.util.Properties;
  *   boolean enabled = config.getBoolean("enableFeature", true);
  * </pre>
  */
-public class ModConfig {
+public class ModConfig implements com.github.martinambrus.rdforward.api.config.ModConfig {
 
     private static final File CONFIG_DIR = new File("config");
 

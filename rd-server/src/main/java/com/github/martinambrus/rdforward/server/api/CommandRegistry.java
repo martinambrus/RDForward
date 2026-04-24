@@ -133,6 +133,15 @@ public final class CommandRegistry {
         commands.clear();
     }
 
+    /**
+     * Remove a previously-registered command.
+     *
+     * @return {@code true} if a command with that name was removed
+     */
+    public static boolean unregister(String name) {
+        return commands.remove(name) != null;
+    }
+
     public static class RegisteredCommand {
         public final String name;
         public final String description;

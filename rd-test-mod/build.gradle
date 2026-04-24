@@ -1,0 +1,9 @@
+description = 'RDForward Test Mod - integration test harness for rd-mod-loader'
+
+dependencies {
+    compileOnly project(':rd-api')
+}
+
+jar {
+    archiveBaseName = 'rd-test-mod'
+}

@@ -1,0 +1,31 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'RDForward Forge Bridge - loads Forge mods (@Mod + mods.toml + dual event bus) as RDForward mods'
+
+java {
+    withJavadocJar()
+}
+
+tasks.withType(Javadoc).configureEach {
+    options.addStringOption('Xdoclint:none', '-quiet')
+}
+
+dependencies {
+    implementation project(':rd-api')
+    implementation project(':rd-mod-loader')
+    implementation project(':rd-server')
+    implementation 'com.moandjiezana.toml:toml4j:0.7.2'
+}
+
+task distApi(type: Copy) {
+    description = 'Gather Forge bridge classes + sources + javadoc JARs for mod-author distribution'
+    group = 'build'
+    dependsOn jar, sourcesJar, javadocJar
+
+    from(jar.archiveFile) { rename { "rdforward-forge-api-${project.version}.jar" } }
+    from(sourcesJar.archiveFile) { rename { "rdforward-forge-api-${project.version}-sources.jar" } }
+    from(javadocJar.archiveFile) { rename { "rdforward-forge-api-${project.version}-javadoc.jar" } }
+    into layout.buildDirectory.dir('dist')
+}

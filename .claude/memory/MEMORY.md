@@ -18,6 +18,9 @@
 ## Performance Principles
 - [feedback_lazy_loading.md](feedback_lazy_loading.md): Lazy-load all protocol infrastructure and decouple version-specific code into per-session codecs
 
+## Server API Work (PLAN-SERVER-API.md)
+- [server-api-decisions.md](server-api-decisions.md): Q1 merged Event/PrioritizedEvent, Q2 Fabric-repackaged client mods, Q3 clean rewrite no backward compat
+
 ## Workflow Preferences
 - [feedback_restart_server.md](feedback_restart_server.md): Never start/restart the server unless user permits it
 - [feedback_server_start.md](feedback_server_start.md): Use plain Bash & to start the server, never run_in_background

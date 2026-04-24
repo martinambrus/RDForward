@@ -1,9 +1,12 @@
 package com.github.martinambrus.rdforward.mixin;
 
+import com.github.martinambrus.rdforward.api.client.ClientEvents;
+import com.github.martinambrus.rdforward.api.event.EventResult;
 import com.github.martinambrus.rdforward.client.ChatInput;
 import com.github.martinambrus.rdforward.client.ChatRenderer;
 import com.github.martinambrus.rdforward.client.HudRenderer;
 import com.github.martinambrus.rdforward.client.MenuRenderer;
+import com.github.martinambrus.rdforward.client.mod.impl.RDDrawContext;
 import com.github.martinambrus.rdforward.multiplayer.MultiplayerState;
 import com.github.martinambrus.rdforward.client.NameTagRenderer;
 import com.github.martinambrus.rdforward.multiplayer.RDClient;
@@ -17,6 +20,7 @@ import com.mojang.rubydung.level.Level;
 import com.mojang.rubydung.phys.AABB;
 import com.mojang.rubydung.level.LevelListener;
 import org.lwjgl.glfw.GLFW;
+import org.lwjgl.opengl.GL11;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -217,9 +221,26 @@ public class RubyDungMixin {
         MultiplayerState state = MultiplayerState.getInstance();
         RDClient client = RDClient.getInstance();
 
-        // Poll chat messages from server and feed to ChatRenderer
+        // Fire KEY_PRESS / MOUSE_CLICK for any queued input events. Iterate the
+        // queues non-destructively so RubyDung's own handling still runs after.
+        for (int[] ev : keyEvents) {
+            boolean pressed = ev[1] == 1;
+            if (!pressed) continue;
+            int mods = ev.length > 2 ? ev[2] : 0;
+            ClientEvents.KEY_PRESS.invoker().onKeyPress(ev[0], mods);
+        }
+        for (int[] ev : mouseEvents) {
+            int button = ev[0];
+            boolean pressed = ev.length > 1 && ev[1] == 1;
+            ClientEvents.MOUSE_CLICK.invoker().onClick(button, pressed, 0, 0);
+        }
+
+        // Poll chat messages from server and feed to ChatRenderer. Fire
+        // CHAT_RECEIVED first; a CANCEL return value hides the message.
         String chatMsg;
         while ((chatMsg = state.pollChatMessage()) != null) {
+            EventResult r = ClientEvents.CHAT_RECEIVED.invoker().onReceived(chatMsg);
+            if (r == EventResult.CANCEL) continue;
             ChatRenderer.addMessage(chatMsg);
         }
 
@@ -368,6 +389,11 @@ public class RubyDungMixin {
         int[] w = new int[1], h = new int[1];
         GLFW.glfwGetWindowSize(RubyDung.window, w, h);
 
+        // Fire RENDER_WORLD before the HUD setup — GL is still in 3D camera
+        // space so world-space markers (waypoints, block highlights) can draw
+        // at correct positions.
+        ClientEvents.RENDER_WORLD.invoker().onRenderWorld(partialTick);
+
         // Render menu overlay if in menu state
         if (rdforward$showMenu) {
             MenuRenderer.render(w[0], h[0]);
@@ -388,6 +414,37 @@ public class RubyDungMixin {
 
         // Render mod overlays
         OverlayRegistry.renderAll(w[0], h[0]);
+
+        // Fire RENDER_HUD last under a 2D ortho projection so mods receive
+        // a usable DrawContext without having to set up GL state themselves.
+        rdforward$renderHudEvent(w[0], h[0]);
+    }
+
+    private void rdforward$renderHudEvent(int screenWidth, int screenHeight) {
+        GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
+        GL11.glMatrixMode(GL11.GL_PROJECTION);
+        GL11.glPushMatrix();
+        GL11.glLoadIdentity();
+        GL11.glOrtho(0, screenWidth, screenHeight, 0, -1, 1);
+        GL11.glMatrixMode(GL11.GL_MODELVIEW);
+        GL11.glPushMatrix();
+        GL11.glLoadIdentity();
+        GL11.glDisable(GL11.GL_DEPTH_TEST);
+        GL11.glDisable(GL11.GL_LIGHTING);
+        GL11.glDisable(GL11.GL_FOG);
+        GL11.glDisable(GL11.GL_CULL_FACE);
+        GL11.glEnable(GL11.GL_BLEND);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+
+        try {
+            ClientEvents.RENDER_HUD.invoker().onRenderHud(new RDDrawContext(screenWidth, screenHeight));
+        } finally {
+            GL11.glMatrixMode(GL11.GL_MODELVIEW);
+            GL11.glPopMatrix();
+            GL11.glMatrixMode(GL11.GL_PROJECTION);
+            GL11.glPopMatrix();
+            GL11.glPopAttrib();
+        }
     }
 
     /**
@@ -433,6 +490,12 @@ public class RubyDungMixin {
         }
     }
 
+    /** Fires CLIENT_TICK after the game finishes its own tick logic for this frame. */
+    @Inject(method = "tick", at = @At("TAIL"))
+    private void onTickFireEvent(CallbackInfo ci) {
+        ClientEvents.CLIENT_TICK.invoker().onTick();
+    }
+
     // -- Internal helpers --
 
     private void rdforward$connectToServer() {
@@ -442,6 +505,7 @@ public class RubyDungMixin {
         rdforward$multiplayerMode = true;
         rdforward$worldApplied = false;
         RubyDung.suppressLocalSave = true;
+        ClientEvents.SERVER_CONNECT.invoker().onConnect(rdforward$serverHost, rdforward$serverPort);
         System.out.println("[RDForward] Switched to MULTIPLAYER mode");
     }
 
@@ -449,6 +513,7 @@ public class RubyDungMixin {
         RDClient.getInstance().disconnect();
         rdforward$multiplayerMode = false;
         RubyDung.suppressLocalSave = false;
+        ClientEvents.SERVER_DISCONNECT.invoker().onDisconnect("client-disconnect");
 
         // Restore the original single-player world
         if (rdforward$savedLocalBlocks != null && level != null) {

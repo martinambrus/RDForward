@@ -221,9 +221,12 @@ public class ChatInput {
 
     private static void send() {
         String message = inputBuffer.toString().trim();
-        if (!message.isEmpty()) {
-            RDClient.getInstance().sendChat(message);
-        }
+        if (message.isEmpty()) return;
+        com.github.martinambrus.rdforward.api.event.EventResult r =
+                com.github.martinambrus.rdforward.api.client.ClientEvents.CHAT_SEND
+                        .invoker().onSend(message);
+        if (r == com.github.martinambrus.rdforward.api.event.EventResult.CANCEL) return;
+        RDClient.getInstance().sendChat(message);
     }
 
     // -- Texture rendering --

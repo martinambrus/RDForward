@@ -1,0 +1,34 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'RDForward Modding API - compile-time interfaces for mod development (zero internal deps)'
+
+// Publish a javadoc JAR alongside the main JAR and sources JAR so mod
+// authors can attach full documentation in their IDE without having to
+// build the project themselves.
+java {
+    withJavadocJar()
+}
+
+// Relax javadoc's HTML + missing-tag linter; our module javadocs embed
+// angle-bracket generic references in prose that the lint reads as HTML.
+tasks.withType(Javadoc).configureEach {
+    options.addStringOption('Xdoclint:none', '-quiet')
+}
+
+// Collect the three API artifacts (classes, sources, javadoc) into a
+// single folder suitable for being zipped up and shipped alongside the
+// server release. Mod authors grab rd-api-<version>.jar from here and
+// declare it as a compileOnly dependency — the runtime copy comes from
+// the server classpath.
+task distApi(type: Copy) {
+    description = 'Gather rd-api classes + sources + javadoc JARs for mod-author distribution'
+    group = 'build'
+    dependsOn jar, sourcesJar, javadocJar
+
+    from jar.archiveFile
+    from sourcesJar.archiveFile
+    from javadocJar.archiveFile
+    into layout.buildDirectory.dir('dist')
+}

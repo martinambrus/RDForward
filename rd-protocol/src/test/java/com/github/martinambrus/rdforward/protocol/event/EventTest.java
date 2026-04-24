@@ -1,5 +1,7 @@
 package com.github.martinambrus.rdforward.protocol.event;
 
+import com.github.martinambrus.rdforward.api.event.Event;
+import com.github.martinambrus.rdforward.api.event.EventResult;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.atomic.AtomicInteger;

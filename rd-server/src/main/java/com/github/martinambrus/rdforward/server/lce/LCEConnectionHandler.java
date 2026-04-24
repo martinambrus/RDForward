@@ -7,8 +7,8 @@ import com.github.martinambrus.rdforward.protocol.packet.classic.PlayerTeleportP
 import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
 import com.github.martinambrus.rdforward.protocol.packet.lce.*;
 import com.github.martinambrus.rdforward.server.*;
-import com.github.martinambrus.rdforward.protocol.event.EventResult;
-import com.github.martinambrus.rdforward.server.event.ServerEvents;
+import com.github.martinambrus.rdforward.api.event.EventResult;
+import com.github.martinambrus.rdforward.api.event.server.ServerEvents;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.timeout.ReadTimeoutException;

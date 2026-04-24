@@ -1,0 +1,31 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'RDForward Bukkit Bridge - loads Bukkit plugins as RDForward mods'
+
+java {
+    withJavadocJar()
+}
+
+tasks.withType(Javadoc).configureEach {
+    options.addStringOption('Xdoclint:none', '-quiet')
+}
+
+dependencies {
+    implementation project(':rd-api')
+    implementation project(':rd-mod-loader')
+    implementation project(':rd-server')
+    implementation 'org.yaml:snakeyaml:2.3'
+}
+
+task distApi(type: Copy) {
+    description = 'Gather Bukkit bridge classes + sources + javadoc JARs for mod-author distribution'
+    group = 'build'
+    dependsOn jar, sourcesJar, javadocJar
+
+    from(jar.archiveFile) { rename { "rdforward-bukkit-api-${project.version}.jar" } }
+    from(sourcesJar.archiveFile) { rename { "rdforward-bukkit-api-${project.version}-sources.jar" } }
+    from(javadocJar.archiveFile) { rename { "rdforward-bukkit-api-${project.version}-javadoc.jar" } }
+    into layout.buildDirectory.dir('dist')
+}

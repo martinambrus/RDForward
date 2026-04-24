@@ -29,7 +29,7 @@ import java.util.Map;
  * packet. The server then builds the appropriate translator pipeline
  * for that connection's Netty channel.
  */
-public enum ProtocolVersion {
+public enum ProtocolVersion implements com.github.martinambrus.rdforward.api.version.ProtocolVersion {
 
     /**
      * RubyDung (2009) - the original prototype.
@@ -1163,6 +1163,12 @@ public enum ProtocolVersion {
      */
     public boolean isAtLeast(ProtocolVersion other) {
         return this.ordinal() >= other.ordinal();
+    }
+
+    @Override
+    public boolean isAtLeast(com.github.martinambrus.rdforward.api.version.ProtocolVersion other) {
+        if (other instanceof ProtocolVersion pv) return isAtLeast(pv);
+        return this.getSortOrder() >= other.getSortOrder();
     }
 
     /**

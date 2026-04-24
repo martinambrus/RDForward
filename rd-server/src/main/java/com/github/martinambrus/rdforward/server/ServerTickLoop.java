@@ -9,7 +9,7 @@ import com.github.martinambrus.rdforward.server.api.GriefProtection;
 import com.github.martinambrus.rdforward.server.api.TeamManager;
 import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockSessionWrapper;
-import com.github.martinambrus.rdforward.server.event.ServerEvents;
+import com.github.martinambrus.rdforward.api.event.server.ServerEvents;
 import org.cloudburstmc.protocol.bedrock.packet.NetworkStackLatencyPacket;
 
 import java.util.List;

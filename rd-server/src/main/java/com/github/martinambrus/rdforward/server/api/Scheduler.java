@@ -1,6 +1,6 @@
 package com.github.martinambrus.rdforward.server.api;
 
-import com.github.martinambrus.rdforward.server.event.ServerEvents;
+import com.github.martinambrus.rdforward.api.event.server.ServerEvents;
 
 import java.util.Iterator;
 import java.util.Queue;

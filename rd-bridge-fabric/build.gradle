@@ -1,0 +1,37 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'RDForward Fabric Bridge - loads server-side Fabric mods as RDForward mods'
+
+java {
+    withJavadocJar()
+}
+
+tasks.withType(Javadoc).configureEach {
+    options.addStringOption('Xdoclint:none', '-quiet')
+}
+
+dependencies {
+    implementation project(':rd-api')
+    implementation project(':rd-mod-loader')
+    implementation project(':rd-server')
+    implementation 'com.google.code.gson:gson:2.11.0'
+    // rd-client is pulled in only for compile-time access to KeyBindingRegistry
+    // (the bridge's KeyBindingHelper target). At runtime the client host
+    // supplies the classes; on a dedicated server the client bridge is
+    // never loaded, so the module stays transitively slim.
+    compileOnly project(':rd-client')
+    testImplementation project(':rd-client')
+}
+
+task distApi(type: Copy) {
+    description = 'Gather Fabric bridge classes + sources + javadoc JARs for mod-author distribution'
+    group = 'build'
+    dependsOn jar, sourcesJar, javadocJar
+
+    from(jar.archiveFile) { rename { "rdforward-fabric-api-${project.version}.jar" } }
+    from(sourcesJar.archiveFile) { rename { "rdforward-fabric-api-${project.version}-sources.jar" } }
+    from(javadocJar.archiveFile) { rename { "rdforward-fabric-api-${project.version}-javadoc.jar" } }
+    into layout.buildDirectory.dir('dist')
+}
