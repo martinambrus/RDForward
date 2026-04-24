@@ -1,3 +1,4 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package net.minecraftforge.common;
 
 import com.github.martinambrus.rdforward.bridge.forge.ForgeEventBus;

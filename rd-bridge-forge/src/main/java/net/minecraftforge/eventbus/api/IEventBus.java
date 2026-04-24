@@ -1,3 +1,4 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package net.minecraftforge.eventbus.api;
 
 import java.util.function.Consumer;

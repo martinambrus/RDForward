@@ -12,11 +12,51 @@ tasks.withType(Javadoc).configureEach {
     options.addStringOption('Xdoclint:none', '-quiet')
 }
 
+compileJava {
+    options.compilerArgs.addAll(['-Xmaxerrs', '5000'])
+}
+
+// Default :test excludes @Tag("thirdparty") so CI stays fast and does
+// not depend on the staged third-party fixture jars. The dedicated
+// :testThirdParty task runs only those tagged tests — invoke it
+// explicitly when validating generated stubs against a real plugin.
+test {
+    useJUnitPlatform { excludeTags 'thirdparty' }
+}
+
+tasks.register('testThirdParty', Test) {
+    description = 'Runs smoke tests tagged @Tag("thirdparty") against staged third-party plugin jars.'
+    group = 'verification'
+    useJUnitPlatform { includeTags 'thirdparty' }
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    testLogging { showStandardStreams = true }
+}
+
 dependencies {
     implementation project(':rd-api')
     implementation project(':rd-mod-loader')
     implementation project(':rd-server')
     implementation 'org.yaml:snakeyaml:2.3'
+
+    // compileOnly: libraries referenced in paper-api signatures that the
+    // runtime server ships itself. Bundling them here would duplicate state
+    // with the host server and risk classloader conflicts.
+    compileOnly 'com.google.guava:guava:33.5.0-jre'
+    compileOnly 'com.google.code.gson:gson:2.11.0'
+    compileOnly 'it.unimi.dsi:fastutil:8.5.15'
+    compileOnly 'net.md-5:bungeecord-chat:1.21-R0.2-deprecated+build.21'
+    compileOnly 'org.apache.maven.resolver:maven-resolver-api:1.9.18'
+    compileOnly 'org.slf4j:slf4j-api:2.0.17'
+
+    // Third-party smoke tests (tag=thirdparty) load real plugin jars such
+    // as LuckPerms; those plugins expect the paper-server-provided libs
+    // to be on the runtime classpath. In production rd-server is
+    // responsible for shipping them; for the smoke test we pull them in
+    // on testRuntimeOnly so the test classloader resolves them.
+    testRuntimeOnly 'com.google.guava:guava:33.5.0-jre'
+    testRuntimeOnly 'com.google.code.gson:gson:2.11.0'
+    testRuntimeOnly 'org.slf4j:slf4j-api:2.0.17'
 }
 
 task distApi(type: Copy) {

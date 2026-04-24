@@ -1,3 +1,4 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package com.github.martinambrus.rdforward.bridge.bukkit;
 
 import com.github.martinambrus.rdforward.api.server.Server;
@@ -54,7 +55,7 @@ public final class BukkitBridge {
         private final Server rd;
         private final PluginManager pluginManager = new StubPluginManager();
         private final BukkitScheduler scheduler;
-        private final ConsoleCommandSender console = new ConsoleCommandSender();
+        private final ConsoleCommandSender console = new DefaultConsoleCommandSender();
         private final World defaultWorld;
 
         BukkitServerAdapter(Server rd) {

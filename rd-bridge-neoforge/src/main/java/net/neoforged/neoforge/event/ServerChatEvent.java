@@ -1,3 +1,4 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package net.neoforged.neoforge.event;
 
 /** NeoForge's chat event. Extends the Forge stub so single-bus dispatch works. */

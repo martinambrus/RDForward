@@ -1,3 +1,4 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package net.fabricmc.loader.api.entrypoint;
 
 import net.fabricmc.loader.api.ModContainer;

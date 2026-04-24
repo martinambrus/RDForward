@@ -1,0 +1,63 @@
+package org.joml;
+
+/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
+@SuppressWarnings({"unchecked", "rawtypes", "unused"})
+public interface Vector2dc {
+    double x();
+    double y();
+    java.nio.ByteBuffer get(java.nio.ByteBuffer arg0);
+    java.nio.ByteBuffer get(int arg0, java.nio.ByteBuffer arg1);
+    java.nio.DoubleBuffer get(java.nio.DoubleBuffer arg0);
+    java.nio.DoubleBuffer get(int arg0, java.nio.DoubleBuffer arg1);
+    org.joml.Vector2dc getToAddress(long arg0);
+    org.joml.Vector2d sub(double arg0, double arg1, org.joml.Vector2d arg2);
+    org.joml.Vector2d sub(org.joml.Vector2dc arg0, org.joml.Vector2d arg1);
+    org.joml.Vector2d sub(org.joml.Vector2fc arg0, org.joml.Vector2d arg1);
+    org.joml.Vector2d mul(double arg0, org.joml.Vector2d arg1);
+    org.joml.Vector2d mul(double arg0, double arg1, org.joml.Vector2d arg2);
+    org.joml.Vector2d mul(org.joml.Vector2dc arg0, org.joml.Vector2d arg1);
+    org.joml.Vector2d div(double arg0, org.joml.Vector2d arg1);
+    org.joml.Vector2d div(double arg0, double arg1, org.joml.Vector2d arg2);
+    org.joml.Vector2d div(org.joml.Vector2fc arg0, org.joml.Vector2d arg1);
+    org.joml.Vector2d div(org.joml.Vector2dc arg0, org.joml.Vector2d arg1);
+    org.joml.Vector2d mul(org.joml.Matrix2dc arg0, org.joml.Vector2d arg1);
+    org.joml.Vector2d mul(org.joml.Matrix2fc arg0, org.joml.Vector2d arg1);
+    org.joml.Vector2d mulTranspose(org.joml.Matrix2dc arg0, org.joml.Vector2d arg1);
+    org.joml.Vector2d mulTranspose(org.joml.Matrix2fc arg0, org.joml.Vector2d arg1);
+    org.joml.Vector2d mulPosition(org.joml.Matrix3x2dc arg0, org.joml.Vector2d arg1);
+    org.joml.Vector2d mulDirection(org.joml.Matrix3x2dc arg0, org.joml.Vector2d arg1);
+    double dot(org.joml.Vector2dc arg0);
+    double angle(org.joml.Vector2dc arg0);
+    double lengthSquared();
+    double length();
+    double distance(org.joml.Vector2dc arg0);
+    double distanceSquared(org.joml.Vector2dc arg0);
+    double distance(org.joml.Vector2fc arg0);
+    double distanceSquared(org.joml.Vector2fc arg0);
+    double distance(double arg0, double arg1);
+    double distanceSquared(double arg0, double arg1);
+    org.joml.Vector2d normalize(org.joml.Vector2d arg0);
+    org.joml.Vector2d normalize(double arg0, org.joml.Vector2d arg1);
+    org.joml.Vector2d add(double arg0, double arg1, org.joml.Vector2d arg2);
+    org.joml.Vector2d add(org.joml.Vector2dc arg0, org.joml.Vector2d arg1);
+    org.joml.Vector2d add(org.joml.Vector2fc arg0, org.joml.Vector2d arg1);
+    org.joml.Vector2d negate(org.joml.Vector2d arg0);
+    org.joml.Vector2d lerp(org.joml.Vector2dc arg0, double arg1, org.joml.Vector2d arg2);
+    org.joml.Vector2d fma(org.joml.Vector2dc arg0, org.joml.Vector2dc arg1, org.joml.Vector2d arg2);
+    org.joml.Vector2d fma(double arg0, org.joml.Vector2dc arg1, org.joml.Vector2d arg2);
+    org.joml.Vector2d min(org.joml.Vector2dc arg0, org.joml.Vector2d arg1);
+    org.joml.Vector2d max(org.joml.Vector2dc arg0, org.joml.Vector2d arg1);
+    int maxComponent();
+    int minComponent();
+    double get(int arg0) throws java.lang.IllegalArgumentException;
+    org.joml.Vector2i get(int arg0, org.joml.Vector2i arg1);
+    org.joml.Vector2f get(org.joml.Vector2f arg0);
+    org.joml.Vector2d get(org.joml.Vector2d arg0);
+    org.joml.Vector2d floor(org.joml.Vector2d arg0);
+    org.joml.Vector2d ceil(org.joml.Vector2d arg0);
+    org.joml.Vector2d round(org.joml.Vector2d arg0);
+    boolean isFinite();
+    org.joml.Vector2d absolute(org.joml.Vector2d arg0);
+    boolean equals(org.joml.Vector2dc arg0, double arg1);
+    boolean equals(double arg0, double arg1);
+}

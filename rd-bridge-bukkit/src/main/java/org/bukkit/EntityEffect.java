@@ -1,0 +1,24 @@
+package org.bukkit;
+
+/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
+@SuppressWarnings({"unchecked", "rawtypes", "unused"})
+public enum EntityEffect {
+    ARROW_PARTICLES, RABBIT_JUMP, RESET_SPAWNER_MINECART_DELAY, HIT, HURT, DEATH, EGG_BREAK, SNOWBALL_BREAK, PROJECTILE_CRACK, ENTITY_DEATH, FANG_ATTACK, HOGLIN_ATTACK, IRON_GOLEN_ATTACK, RAVAGER_ATTACK, WARDEN_ATTACK, ZOGLIN_ATTACK, ENTITY_ATTACK, WOLF_SMOKE, WOLF_HEARTS, TAMING_FAILED, TAMING_SUCCEEDED, WOLF_SHAKE, SHEEP_EAT, SHEEP_EAT_GRASS, TNT_MINECART_IGNITE, IRON_GOLEM_ROSE, VILLAGER_HEART, VILLAGER_ANGRY, VILLAGER_HAPPY, WITCH_MAGIC, ZOMBIE_TRANSFORM, FIREWORK_EXPLODE, LOVE_HEARTS, SQUID_ROTATE, ENTITY_POOF, GUARDIAN_TARGET, SHIELD_BLOCK, SHIELD_BREAK, ARMOR_STAND_HIT, THORNS_HURT, IRON_GOLEM_SHEATH, TOTEM_RESURRECT, PROTECTED_FROM_DEATH, HURT_DROWN, HURT_EXPLOSION, DOLPHIN_FED, RAVAGER_STUNNED, CAT_TAME_FAIL, CAT_TAME_SUCCESS, TRUSTING_FAILED, TRUSTING_SUCCEEDED, VILLAGER_SPLASH, PLAYER_BAD_OMEN_RAID, HURT_BERRY_BUSH, FOX_CHEW, TELEPORT_ENDER, BREAK_EQUIPMENT_MAIN_HAND, BREAK_EQUIPMENT_OFF_HAND, BREAK_EQUIPMENT_HELMET, BREAK_EQUIPMENT_CHESTPLATE, BREAK_EQUIPMENT_LEGGINGS, BREAK_EQUIPMENT_BOOTS, HONEY_BLOCK_SLIDE_PARTICLES, HONEY_BLOCK_FALL_PARTICLES, SWAP_HAND_ITEMS, WOLF_SHAKE_STOP, GOAT_LOWER_HEAD, GOAT_RAISE_HEAD, SPAWN_DEATH_SMOKE, WARDEN_TENDRIL_SHAKE, WARDEN_SONIC_ATTACK, SNIFFER_DIG, ARMADILLO_PEEK, BODY_BREAK, BREAK_EQUIPMENT_BODY, SHAKE, DROWN_PARTICLES, BREAK_EQUIPMENT_SADDLE, RAVAGER_ROARED;
+    public byte getData() {
+        return (byte) 0;
+    }
+    public java.lang.Class getApplicable() {
+        return null;
+    }
+    public java.util.Set getApplicableClasses() {
+        return java.util.Collections.emptySet();
+    }
+    public boolean isApplicableTo(org.bukkit.entity.Entity arg0) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.EntityEffect.isApplicableTo(Lorg/bukkit/entity/Entity;)Z");
+        return false;
+    }
+    public boolean isApplicableTo(java.lang.Class arg0) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.EntityEffect.isApplicableTo(Ljava/lang/Class;)Z");
+        return false;
+    }
+}

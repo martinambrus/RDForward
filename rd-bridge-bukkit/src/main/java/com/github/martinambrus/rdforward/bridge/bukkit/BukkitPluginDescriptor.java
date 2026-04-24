@@ -1,3 +1,4 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package com.github.martinambrus.rdforward.bridge.bukkit;
 
 import java.util.List;

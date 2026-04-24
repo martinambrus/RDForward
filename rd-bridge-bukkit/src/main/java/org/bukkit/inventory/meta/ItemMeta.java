@@ -1,0 +1,128 @@
+package org.bukkit.inventory.meta;
+
+/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
+@SuppressWarnings({"unchecked", "rawtypes", "unused"})
+public interface ItemMeta extends java.lang.Cloneable, org.bukkit.configuration.serialization.ConfigurationSerializable, org.bukkit.persistence.PersistentDataHolder {
+    boolean hasCustomName();
+    net.kyori.adventure.text.Component customName();
+    void customName(net.kyori.adventure.text.Component arg0);
+    default boolean hasDisplayName() {
+        return false;
+    }
+    default net.kyori.adventure.text.Component displayName() {
+        return null;
+    }
+    default void displayName(net.kyori.adventure.text.Component arg0) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.inventory.meta.ItemMeta.displayName(Lnet/kyori/adventure/text/Component;)V");
+    }
+    java.lang.String getDisplayName();
+    net.md_5.bungee.api.chat.BaseComponent[] getDisplayNameComponent();
+    void setDisplayName(java.lang.String arg0);
+    void setDisplayNameComponent(net.md_5.bungee.api.chat.BaseComponent[] arg0);
+    boolean hasItemName();
+    net.kyori.adventure.text.Component itemName();
+    void itemName(net.kyori.adventure.text.Component arg0);
+    java.lang.String getItemName();
+    void setItemName(java.lang.String arg0);
+    boolean hasLocalizedName();
+    java.lang.String getLocalizedName();
+    void setLocalizedName(java.lang.String arg0);
+    boolean hasLore();
+    java.util.List lore();
+    void lore(java.util.List arg0);
+    java.util.List getLore();
+    java.util.List getLoreComponents();
+    void setLore(java.util.List arg0);
+    void setLoreComponents(java.util.List arg0);
+    boolean hasCustomModelData();
+    int getCustomModelData();
+    org.bukkit.inventory.meta.components.CustomModelDataComponent getCustomModelDataComponent();
+    void setCustomModelData(java.lang.Integer arg0);
+    boolean hasCustomModelDataComponent();
+    void setCustomModelDataComponent(org.bukkit.inventory.meta.components.CustomModelDataComponent arg0);
+    boolean hasEnchantable();
+    int getEnchantable();
+    void setEnchantable(java.lang.Integer arg0);
+    boolean hasEnchants();
+    boolean hasEnchant(org.bukkit.enchantments.Enchantment arg0);
+    int getEnchantLevel(org.bukkit.enchantments.Enchantment arg0);
+    java.util.Map getEnchants();
+    boolean addEnchant(org.bukkit.enchantments.Enchantment arg0, int arg1, boolean arg2);
+    boolean removeEnchant(org.bukkit.enchantments.Enchantment arg0);
+    void removeEnchantments();
+    boolean hasConflictingEnchant(org.bukkit.enchantments.Enchantment arg0);
+    void addItemFlags(org.bukkit.inventory.ItemFlag[] arg0);
+    void removeItemFlags(org.bukkit.inventory.ItemFlag[] arg0);
+    java.util.Set getItemFlags();
+    boolean hasItemFlag(org.bukkit.inventory.ItemFlag arg0);
+    boolean isHideTooltip();
+    void setHideTooltip(boolean arg0);
+    boolean hasTooltipStyle();
+    org.bukkit.NamespacedKey getTooltipStyle();
+    void setTooltipStyle(org.bukkit.NamespacedKey arg0);
+    boolean hasItemModel();
+    org.bukkit.NamespacedKey getItemModel();
+    void setItemModel(org.bukkit.NamespacedKey arg0);
+    boolean isUnbreakable();
+    void setUnbreakable(boolean arg0);
+    boolean hasEnchantmentGlintOverride();
+    java.lang.Boolean getEnchantmentGlintOverride();
+    void setEnchantmentGlintOverride(java.lang.Boolean arg0);
+    boolean isGlider();
+    void setGlider(boolean arg0);
+    boolean isFireResistant();
+    void setFireResistant(boolean arg0);
+    boolean hasDamageResistant();
+    org.bukkit.Tag getDamageResistant();
+    void setDamageResistant(org.bukkit.Tag arg0);
+    io.papermc.paper.registry.set.RegistryKeySet getDamageResistantTypes();
+    void setDamageResistantTypes(io.papermc.paper.registry.set.RegistryKeySet arg0);
+    boolean hasMaxStackSize();
+    int getMaxStackSize();
+    void setMaxStackSize(java.lang.Integer arg0);
+    boolean hasRarity();
+    org.bukkit.inventory.ItemRarity getRarity();
+    void setRarity(org.bukkit.inventory.ItemRarity arg0);
+    boolean hasUseRemainder();
+    org.bukkit.inventory.ItemStack getUseRemainder();
+    void setUseRemainder(org.bukkit.inventory.ItemStack arg0);
+    boolean hasUseCooldown();
+    org.bukkit.inventory.meta.components.UseCooldownComponent getUseCooldown();
+    void setUseCooldown(org.bukkit.inventory.meta.components.UseCooldownComponent arg0);
+    boolean hasFood();
+    org.bukkit.inventory.meta.components.FoodComponent getFood();
+    void setFood(org.bukkit.inventory.meta.components.FoodComponent arg0);
+    boolean hasTool();
+    org.bukkit.inventory.meta.components.ToolComponent getTool();
+    void setTool(org.bukkit.inventory.meta.components.ToolComponent arg0);
+    boolean hasEquippable();
+    org.bukkit.inventory.meta.components.EquippableComponent getEquippable();
+    void setEquippable(org.bukkit.inventory.meta.components.EquippableComponent arg0);
+    boolean hasJukeboxPlayable();
+    org.bukkit.inventory.meta.components.JukeboxPlayableComponent getJukeboxPlayable();
+    void setJukeboxPlayable(org.bukkit.inventory.meta.components.JukeboxPlayableComponent arg0);
+    boolean hasAttributeModifiers();
+    com.google.common.collect.Multimap getAttributeModifiers();
+    com.google.common.collect.Multimap getAttributeModifiers(org.bukkit.inventory.EquipmentSlot arg0);
+    java.util.Collection getAttributeModifiers(org.bukkit.attribute.Attribute arg0);
+    boolean addAttributeModifier(org.bukkit.attribute.Attribute arg0, org.bukkit.attribute.AttributeModifier arg1);
+    void setAttributeModifiers(com.google.common.collect.Multimap arg0);
+    boolean removeAttributeModifier(org.bukkit.attribute.Attribute arg0);
+    boolean removeAttributeModifier(org.bukkit.inventory.EquipmentSlot arg0);
+    boolean removeAttributeModifier(org.bukkit.attribute.Attribute arg0, org.bukkit.attribute.AttributeModifier arg1);
+    java.lang.String getAsString();
+    java.lang.String getAsComponentString();
+    org.bukkit.inventory.meta.tags.CustomItemTagContainer getCustomTagContainer();
+    void setVersion(int arg0);
+    org.bukkit.inventory.meta.ItemMeta clone();
+    java.util.Set getCanDestroy();
+    void setCanDestroy(java.util.Set arg0);
+    java.util.Set getCanPlaceOn();
+    void setCanPlaceOn(java.util.Set arg0);
+    java.util.Set getDestroyableKeys();
+    void setDestroyableKeys(java.util.Collection arg0);
+    java.util.Set getPlaceableKeys();
+    void setPlaceableKeys(java.util.Collection arg0);
+    boolean hasPlaceableKeys();
+    boolean hasDestroyableKeys();
+}

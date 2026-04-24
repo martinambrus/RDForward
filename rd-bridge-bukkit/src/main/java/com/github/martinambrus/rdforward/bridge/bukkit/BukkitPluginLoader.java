@@ -1,7 +1,9 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package com.github.martinambrus.rdforward.bridge.bukkit;
 
 import com.github.martinambrus.rdforward.api.mod.ModDescriptor;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.plugin.PluginDescriptionFile;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.IOException;
@@ -57,6 +59,7 @@ public final class BukkitPluginLoader {
                     bukkit.main() + " does not extend org.bukkit.plugin.java.JavaPlugin");
         }
         JavaPlugin plugin = (JavaPlugin) mainCls.getDeclaredConstructor().newInstance();
+        plugin.setDescription(toDescriptionFile(bukkit));
         plugin.setCommandMap(buildCommandMap(bukkit));
         ModDescriptor descriptor = toModDescriptor(bukkit);
         BukkitPluginWrapper wrapper = new BukkitPluginWrapper(plugin, bukkit.name());
@@ -76,6 +79,17 @@ public final class BukkitPluginLoader {
             out.put(e.getKey(), cmd);
         }
         return out;
+    }
+
+    /** Build the paper-api {@link PluginDescriptionFile} the plugin observes via {@code getDescription()}. */
+    private static PluginDescriptionFile toDescriptionFile(BukkitPluginDescriptor bukkit) {
+        return new PluginDescriptionFile(
+                bukkit.name(),
+                bukkit.version(),
+                bukkit.main(),
+                "",
+                List.of(bukkit.author()),
+                bukkit.depend());
     }
 
     /** Synthesise an rd-api {@link ModDescriptor} from a {@code plugin.yml}. */

@@ -1,8 +1,11 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package org.bukkit;
 
 import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.PluginManager;
+import org.bukkit.plugin.ServicesManager;
+import org.bukkit.plugin.SimpleServicesManager;
 import org.bukkit.scheduler.BukkitScheduler;
 
 import java.util.Collection;
@@ -41,4 +44,21 @@ public interface Server {
 
     /** @return the world with the given name, or null. */
     World getWorld(String name);
+
+    /**
+     * @return {@code false} by default — RDForward does not implement
+     *         Mojang online-mode auth. Plugins that gate behaviour on
+     *         this (e.g. LuckPerms's uuid-lookup fallback) will take
+     *         the offline-mode code path.
+     */
+    default boolean getOnlineMode() { return false; }
+
+    /**
+     * @return a process-wide {@link SimpleServicesManager}. Plugins that
+     *         publish services (LuckPerms, Vault) register them here and
+     *         each other look them up. Since everyone sees the same
+     *         instance, service lookup works across plugins even though
+     *         RDForward itself never consumes from it.
+     */
+    default ServicesManager getServicesManager() { return ServerSupport.SERVICES; }
 }

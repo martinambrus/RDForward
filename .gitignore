@@ -42,6 +42,7 @@ rd-game/src/*
 # Runtime
 mods/
 logs/
+plugins/
 crash-reports/
 *.log
 

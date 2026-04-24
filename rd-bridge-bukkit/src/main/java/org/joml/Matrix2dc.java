@@ -1,0 +1,65 @@
+package org.joml;
+
+/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
+@SuppressWarnings({"unchecked", "rawtypes", "unused"})
+public interface Matrix2dc {
+    double m00();
+    double m01();
+    double m10();
+    double m11();
+    org.joml.Matrix2d mul(org.joml.Matrix2dc arg0, org.joml.Matrix2d arg1);
+    org.joml.Matrix2d mul(org.joml.Matrix2fc arg0, org.joml.Matrix2d arg1);
+    org.joml.Matrix2d mulLocal(org.joml.Matrix2dc arg0, org.joml.Matrix2d arg1);
+    double determinant();
+    org.joml.Matrix2d invert(org.joml.Matrix2d arg0);
+    org.joml.Matrix2d transpose(org.joml.Matrix2d arg0);
+    org.joml.Matrix2d get(org.joml.Matrix2d arg0);
+    org.joml.Matrix3x2d get(org.joml.Matrix3x2d arg0);
+    org.joml.Matrix3d get(org.joml.Matrix3d arg0);
+    double getRotation();
+    java.nio.DoubleBuffer get(java.nio.DoubleBuffer arg0);
+    java.nio.DoubleBuffer get(int arg0, java.nio.DoubleBuffer arg1);
+    java.nio.ByteBuffer get(java.nio.ByteBuffer arg0);
+    java.nio.ByteBuffer get(int arg0, java.nio.ByteBuffer arg1);
+    java.nio.ByteBuffer getFloats(java.nio.ByteBuffer arg0);
+    java.nio.ByteBuffer getFloats(int arg0, java.nio.ByteBuffer arg1);
+    java.nio.DoubleBuffer getTransposed(java.nio.DoubleBuffer arg0);
+    java.nio.DoubleBuffer getTransposed(int arg0, java.nio.DoubleBuffer arg1);
+    java.nio.ByteBuffer getTransposed(java.nio.ByteBuffer arg0);
+    java.nio.ByteBuffer getTransposed(int arg0, java.nio.ByteBuffer arg1);
+    java.nio.FloatBuffer getTransposed(java.nio.FloatBuffer arg0);
+    java.nio.FloatBuffer getTransposed(int arg0, java.nio.FloatBuffer arg1);
+    java.nio.ByteBuffer getTransposedFloats(java.nio.ByteBuffer arg0);
+    java.nio.ByteBuffer getTransposedFloats(int arg0, java.nio.ByteBuffer arg1);
+    org.joml.Matrix2dc getToAddress(long arg0);
+    org.joml.Matrix2dc getTransposedToAddress(long arg0);
+    double[] get(double[] arg0, int arg1);
+    double[] get(double[] arg0);
+    org.joml.Matrix2d scale(org.joml.Vector2dc arg0, org.joml.Matrix2d arg1);
+    org.joml.Matrix2d scale(double arg0, double arg1, org.joml.Matrix2d arg2);
+    org.joml.Matrix2d scale(double arg0, org.joml.Matrix2d arg1);
+    org.joml.Matrix2d scaleLocal(double arg0, double arg1, org.joml.Matrix2d arg2);
+    org.joml.Vector2d transform(org.joml.Vector2d arg0);
+    org.joml.Vector2d transform(org.joml.Vector2dc arg0, org.joml.Vector2d arg1);
+    org.joml.Vector2d transform(double arg0, double arg1, org.joml.Vector2d arg2);
+    org.joml.Vector2d transformTranspose(org.joml.Vector2d arg0);
+    org.joml.Vector2d transformTranspose(org.joml.Vector2dc arg0, org.joml.Vector2d arg1);
+    org.joml.Vector2d transformTranspose(double arg0, double arg1, org.joml.Vector2d arg2);
+    org.joml.Matrix2d rotate(double arg0, org.joml.Matrix2d arg1);
+    org.joml.Matrix2d rotateLocal(double arg0, org.joml.Matrix2d arg1);
+    org.joml.Vector2d getRow(int arg0, org.joml.Vector2d arg1) throws java.lang.IndexOutOfBoundsException;
+    org.joml.Vector2d getColumn(int arg0, org.joml.Vector2d arg1) throws java.lang.IndexOutOfBoundsException;
+    double get(int arg0, int arg1);
+    org.joml.Matrix2d normal(org.joml.Matrix2d arg0);
+    org.joml.Vector2d getScale(org.joml.Vector2d arg0);
+    org.joml.Vector2d positiveX(org.joml.Vector2d arg0);
+    org.joml.Vector2d normalizedPositiveX(org.joml.Vector2d arg0);
+    org.joml.Vector2d positiveY(org.joml.Vector2d arg0);
+    org.joml.Vector2d normalizedPositiveY(org.joml.Vector2d arg0);
+    org.joml.Matrix2d add(org.joml.Matrix2dc arg0, org.joml.Matrix2d arg1);
+    org.joml.Matrix2d sub(org.joml.Matrix2dc arg0, org.joml.Matrix2d arg1);
+    org.joml.Matrix2d mulComponentWise(org.joml.Matrix2dc arg0, org.joml.Matrix2d arg1);
+    org.joml.Matrix2d lerp(org.joml.Matrix2dc arg0, double arg1, org.joml.Matrix2d arg2);
+    boolean equals(org.joml.Matrix2dc arg0, double arg1);
+    boolean isFinite();
+}

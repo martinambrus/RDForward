@@ -1,0 +1,61 @@
+package org.bukkit.damage;
+
+/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
+@SuppressWarnings({"unchecked", "rawtypes", "unused"})
+public interface DamageType extends org.bukkit.Keyed, org.bukkit.Translatable {
+    public static final org.bukkit.damage.DamageType ARROW = null;
+    public static final org.bukkit.damage.DamageType BAD_RESPAWN_POINT = null;
+    public static final org.bukkit.damage.DamageType CACTUS = null;
+    public static final org.bukkit.damage.DamageType CAMPFIRE = null;
+    public static final org.bukkit.damage.DamageType CRAMMING = null;
+    public static final org.bukkit.damage.DamageType DRAGON_BREATH = null;
+    public static final org.bukkit.damage.DamageType DROWN = null;
+    public static final org.bukkit.damage.DamageType DRY_OUT = null;
+    public static final org.bukkit.damage.DamageType ENDER_PEARL = null;
+    public static final org.bukkit.damage.DamageType EXPLOSION = null;
+    public static final org.bukkit.damage.DamageType FALL = null;
+    public static final org.bukkit.damage.DamageType FALLING_ANVIL = null;
+    public static final org.bukkit.damage.DamageType FALLING_BLOCK = null;
+    public static final org.bukkit.damage.DamageType FALLING_STALACTITE = null;
+    public static final org.bukkit.damage.DamageType FIREBALL = null;
+    public static final org.bukkit.damage.DamageType FIREWORKS = null;
+    public static final org.bukkit.damage.DamageType FLY_INTO_WALL = null;
+    public static final org.bukkit.damage.DamageType FREEZE = null;
+    public static final org.bukkit.damage.DamageType GENERIC = null;
+    public static final org.bukkit.damage.DamageType GENERIC_KILL = null;
+    public static final org.bukkit.damage.DamageType HOT_FLOOR = null;
+    public static final org.bukkit.damage.DamageType IN_FIRE = null;
+    public static final org.bukkit.damage.DamageType IN_WALL = null;
+    public static final org.bukkit.damage.DamageType INDIRECT_MAGIC = null;
+    public static final org.bukkit.damage.DamageType LAVA = null;
+    public static final org.bukkit.damage.DamageType LIGHTNING_BOLT = null;
+    public static final org.bukkit.damage.DamageType MACE_SMASH = null;
+    public static final org.bukkit.damage.DamageType MAGIC = null;
+    public static final org.bukkit.damage.DamageType MOB_ATTACK = null;
+    public static final org.bukkit.damage.DamageType MOB_ATTACK_NO_AGGRO = null;
+    public static final org.bukkit.damage.DamageType MOB_PROJECTILE = null;
+    public static final org.bukkit.damage.DamageType ON_FIRE = null;
+    public static final org.bukkit.damage.DamageType OUT_OF_WORLD = null;
+    public static final org.bukkit.damage.DamageType OUTSIDE_BORDER = null;
+    public static final org.bukkit.damage.DamageType PLAYER_ATTACK = null;
+    public static final org.bukkit.damage.DamageType PLAYER_EXPLOSION = null;
+    public static final org.bukkit.damage.DamageType SONIC_BOOM = null;
+    public static final org.bukkit.damage.DamageType SPEAR = null;
+    public static final org.bukkit.damage.DamageType SPIT = null;
+    public static final org.bukkit.damage.DamageType STALAGMITE = null;
+    public static final org.bukkit.damage.DamageType STARVE = null;
+    public static final org.bukkit.damage.DamageType STING = null;
+    public static final org.bukkit.damage.DamageType SWEET_BERRY_BUSH = null;
+    public static final org.bukkit.damage.DamageType THORNS = null;
+    public static final org.bukkit.damage.DamageType THROWN = null;
+    public static final org.bukkit.damage.DamageType TRIDENT = null;
+    public static final org.bukkit.damage.DamageType UNATTRIBUTED_FIREBALL = null;
+    public static final org.bukkit.damage.DamageType WIND_CHARGE = null;
+    public static final org.bukkit.damage.DamageType WITHER = null;
+    public static final org.bukkit.damage.DamageType WITHER_SKULL = null;
+    java.lang.String getTranslationKey();
+    org.bukkit.damage.DamageScaling getDamageScaling();
+    org.bukkit.damage.DamageEffect getDamageEffect();
+    org.bukkit.damage.DeathMessageType getDeathMessageType();
+    float getExhaustion();
+}

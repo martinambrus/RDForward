@@ -1,0 +1,227 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'RDForward stub generator - scans upstream API JARs with ASM, emits bridge stub .java files'
+
+// Forge + NeoForge repositories are declared per-subproject so allprojects
+// does not pay the resolution cost for bridges that do not need them.
+repositories {
+    maven {
+        url = 'https://maven.minecraftforge.net/'
+        content {
+            includeGroup 'net.minecraftforge'
+            includeGroup 'cpw.mods'
+        }
+    }
+    maven {
+        url = 'https://maven.neoforged.net/releases/'
+        content {
+            includeGroup 'net.neoforged'
+            includeGroup 'net.neoforged.fancymodloader'
+        }
+    }
+}
+
+configurations {
+    paperApi
+    fabricApi
+    forgeApi
+    neoforgeApi
+}
+
+dependencies {
+    implementation 'org.ow2.asm:asm:9.9.1'
+    implementation 'org.ow2.asm:asm-tree:9.9.1'
+    implementation 'org.ow2.asm:asm-commons:9.9.1'
+    implementation 'org.ow2.asm:asm-analysis:9.9.1'
+    implementation 'org.ow2.asm:asm-util:9.9.1'
+
+    // paper-api + its transitive API deps (kyori adventure, bungeecord chat,
+    // brigadier). The stub emitter filters jar contents by package prefix so
+    // only relevant types reach the output tree.
+    paperApi 'io.papermc.paper:paper-api:26.1.2.build.20-alpha'
+
+    // Fabric loader is the public entrypoint surface Fabric mods compile
+    // against. The fabric-api bundle (command/networking/lifecycle modules)
+    // is distributed as a fat jar; for now we scan only fabric-loader —
+    // the lifecycle/networking/command adapters under net/fabricmc/fabric/api
+    // are hand-tuned semantic bridges that delegate into rd-api.
+    fabricApi 'net.fabricmc:fabric-loader:0.18.4'
+
+    // Forge's public event-bus is shipped as its own artifact; it covers
+    // net.minecraftforge.eventbus.api (Event, IEventBus, EventPriority,
+    // SubscribeEvent). The mod-lifecycle/fml surface under
+    // net.minecraftforge.fml, @Mod annotation, and per-event subclasses
+    // live in the full Forge jar alongside Minecraft internals — we keep
+    // those hand-tuned to avoid hauling in the MC runtime.
+    forgeApi 'net.minecraftforge:eventbus:6.2.5'
+
+    // NeoForge's event bus is published independently at net.neoforged:bus;
+    // it covers net.neoforged.bus.api (IEventBus, Event, EventPriority).
+    // The rest of NeoForge's public surface (@Mod, FML lifecycle, per-event
+    // subclasses under net.neoforged.neoforge.event) remains hand-tuned
+    // because it is shipped bundled with the Minecraft runtime.
+    neoforgeApi 'net.neoforged:bus:7.2.0'
+}
+
+tasks.register('resolveUpstream') {
+    description = 'Resolve upstream API JARs for -Pbridge=<name>. Prints the resolved jar paths.'
+    group = 'codegen'
+    doLast {
+        def bridge = providers.gradleProperty('bridge').getOrNull()
+        if (!bridge) {
+            throw new GradleException('resolveUpstream requires -Pbridge=<name> (bukkit|paper|fabric|forge|neoforge)')
+        }
+        def jars
+        switch (bridge) {
+            case 'bukkit':
+            case 'paper':
+                jars = configurations.paperApi.files
+                break
+            case 'fabric':
+                jars = configurations.fabricApi.files
+                break
+            case 'forge':
+                jars = configurations.forgeApi.files
+                break
+            case 'neoforge':
+                jars = configurations.neoforgeApi.files
+                break
+            default:
+                throw new GradleException("resolveUpstream: no upstream wired for bridge=${bridge} yet (later phases)")
+        }
+        jars.each { jar ->
+            println "[codegen] ${bridge} upstream jar: ${jar.absolutePath}"
+        }
+    }
+}
+
+tasks.register('stubReport', JavaExec) {
+    description = 'Drift check: compare emitted bridge stubs against pinned upstream API jar. Non-zero exit on drift.'
+    group = 'verification'
+    mainClass = 'com.github.martinambrus.rdforward.codegen.StubReporter'
+    classpath = sourceSets.main.runtimeClasspath
+    def bridgeArg = providers.gradleProperty('bridge').getOrElse('bukkit')
+    doFirst {
+        def targetModule
+        def upstreamJars
+        switch (bridgeArg) {
+            case 'bukkit':
+                targetModule = project(':rd-bridge-bukkit')
+                upstreamJars = configurations.paperApi.files
+                break
+            case 'paper':
+                targetModule = project(':rd-bridge-paper')
+                upstreamJars = configurations.paperApi.files
+                break
+            case 'fabric':
+                targetModule = project(':rd-bridge-fabric')
+                upstreamJars = configurations.fabricApi.files
+                break
+            case 'forge':
+                targetModule = project(':rd-bridge-forge')
+                upstreamJars = configurations.forgeApi.files
+                break
+            case 'neoforge':
+                targetModule = project(':rd-bridge-neoforge')
+                upstreamJars = configurations.neoforgeApi.files
+                break
+            default:
+                throw new GradleException("stubReport: bridge=${bridgeArg} upstream not wired yet (later phases)")
+        }
+        def classesDir = targetModule.layout.buildDirectory
+                .dir('classes/java/main').get().asFile.absolutePath
+        def sourceDir = file("${targetModule.projectDir}/src/main/java").absolutePath
+        def allArgs = [bridgeArg, classesDir, sourceDir]
+        upstreamJars.each { allArgs << it.absolutePath }
+        args = allArgs
+    }
+    // Stub drift check needs both the generator classes and the emitted stubs
+    // to be compiled. Depend on every wired bridge module's compile so the
+    // .class files StubReporter reads are always current regardless of -Pbridge.
+    dependsOn project(':rd-bridge-bukkit').tasks.named('compileJava')
+    dependsOn project(':rd-bridge-paper').tasks.named('compileJava')
+    dependsOn project(':rd-bridge-fabric').tasks.named('compileJava')
+    dependsOn project(':rd-bridge-forge').tasks.named('compileJava')
+    dependsOn project(':rd-bridge-neoforge').tasks.named('compileJava')
+}
+
+// CI drift gate: runs stubReport for every wired bridge and fails if any
+// bridge drifts. Individual bridges can still be checked with
+// `:codegen:stubReport -Pbridge=<name>`; this aggregator is the one CI
+// wires into its bridge-health job.
+tasks.register('stubReportAll') {
+    description = 'Runs stubReport for every bridge that emits upstream stubs (bukkit, fabric, forge, neoforge). Fails if any drifts.'
+    group = 'verification'
+    // Paper is intentionally omitted — it contains only hand-tuned adapter
+    // code and reuses rd-bridge-bukkit for the entire upstream class surface,
+    // so running stubReport against paper-api with an empty scope reports
+    // every paper-api class as missing.
+    def bridges = ['bukkit', 'fabric', 'forge', 'neoforge']
+    doLast {
+        def failures = []
+        bridges.each { b ->
+            def proc = ['./gradlew', ':codegen:stubReport', "-Pbridge=${b}", '--console=plain', '-q'].execute(null, rootDir)
+            def out = new StringBuilder()
+            proc.consumeProcessOutput(out, out)
+            proc.waitFor()
+            def ok = proc.exitValue() == 0
+            println "[stubReportAll] ${b}: ${ok ? 'OK' : 'DRIFT'}"
+            if (!ok) {
+                failures << b
+                println out.toString()
+            }
+        }
+        if (!failures.isEmpty()) {
+            throw new GradleException("stubReportAll: drift detected in ${failures}")
+        }
+        println "[stubReportAll] all bridges clean"
+    }
+}
+
+tasks.register('generateStubs', JavaExec) {
+    description = 'Generate bridge stub .java files from the upstream API JAR. Requires -Pbridge=<bukkit|paper|fabric|forge|neoforge>'
+    group = 'codegen'
+    mainClass = 'com.github.martinambrus.rdforward.codegen.StubGenerator'
+    classpath = sourceSets.main.runtimeClasspath
+    def bridgeArg = providers.gradleProperty('bridge').getOrElse('')
+    doFirst {
+        if (!bridgeArg) {
+            throw new GradleException('generateStubs requires -Pbridge=<name> (bukkit|paper|fabric|forge|neoforge)')
+        }
+        def targetModule
+        def upstreamJars
+        switch (bridgeArg) {
+            case 'bukkit':
+                targetModule = project(':rd-bridge-bukkit')
+                upstreamJars = configurations.paperApi.files
+                break
+            case 'paper':
+                targetModule = project(':rd-bridge-paper')
+                upstreamJars = configurations.paperApi.files
+                break
+            case 'fabric':
+                targetModule = project(':rd-bridge-fabric')
+                upstreamJars = configurations.fabricApi.files
+                break
+            case 'forge':
+                targetModule = project(':rd-bridge-forge')
+                upstreamJars = configurations.forgeApi.files
+                break
+            case 'neoforge':
+                targetModule = project(':rd-bridge-neoforge')
+                upstreamJars = configurations.neoforgeApi.files
+                break
+            default:
+                throw new GradleException("generateStubs: bridge=${bridgeArg} upstream not wired yet (later phases)")
+        }
+        def outputRoot = file("${targetModule.projectDir}/src/main/java")
+        if (!outputRoot.exists()) {
+            outputRoot.mkdirs()
+        }
+        def allArgs = [bridgeArg, outputRoot.absolutePath]
+        upstreamJars.each { allArgs << it.absolutePath }
+        args = allArgs
+    }
+}

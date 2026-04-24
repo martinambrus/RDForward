@@ -1,0 +1,20 @@
+package org.bukkit.event.player;
+
+/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
+@SuppressWarnings({"unchecked", "rawtypes", "unused"})
+public class PlayerLinksSendEvent extends org.bukkit.event.Event {
+    public PlayerLinksSendEvent(io.papermc.paper.connection.PlayerConfigurationConnection arg0, org.bukkit.ServerLinks arg1) {}
+    public PlayerLinksSendEvent() {}
+    public io.papermc.paper.connection.PlayerCommonConnection getConnection() {
+        return null;
+    }
+    public org.bukkit.ServerLinks getLinks() {
+        return null;
+    }
+    public org.bukkit.event.HandlerList getHandlers() {
+        return null;
+    }
+    public static org.bukkit.event.HandlerList getHandlerList() {
+        return null;
+    }
+}

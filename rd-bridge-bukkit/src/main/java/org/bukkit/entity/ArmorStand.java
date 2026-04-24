@@ -1,0 +1,65 @@
+package org.bukkit.entity;
+
+/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
+@SuppressWarnings({"unchecked", "rawtypes", "unused"})
+public interface ArmorStand extends org.bukkit.entity.LivingEntity {
+    org.bukkit.inventory.ItemStack getItemInHand();
+    void setItemInHand(org.bukkit.inventory.ItemStack arg0);
+    org.bukkit.inventory.ItemStack getBoots();
+    void setBoots(org.bukkit.inventory.ItemStack arg0);
+    org.bukkit.inventory.ItemStack getLeggings();
+    void setLeggings(org.bukkit.inventory.ItemStack arg0);
+    org.bukkit.inventory.ItemStack getChestplate();
+    void setChestplate(org.bukkit.inventory.ItemStack arg0);
+    org.bukkit.inventory.ItemStack getHelmet();
+    void setHelmet(org.bukkit.inventory.ItemStack arg0);
+    org.bukkit.util.EulerAngle getBodyPose();
+    void setBodyPose(org.bukkit.util.EulerAngle arg0);
+    org.bukkit.util.EulerAngle getLeftArmPose();
+    void setLeftArmPose(org.bukkit.util.EulerAngle arg0);
+    org.bukkit.util.EulerAngle getRightArmPose();
+    void setRightArmPose(org.bukkit.util.EulerAngle arg0);
+    org.bukkit.util.EulerAngle getLeftLegPose();
+    void setLeftLegPose(org.bukkit.util.EulerAngle arg0);
+    org.bukkit.util.EulerAngle getRightLegPose();
+    void setRightLegPose(org.bukkit.util.EulerAngle arg0);
+    org.bukkit.util.EulerAngle getHeadPose();
+    void setHeadPose(org.bukkit.util.EulerAngle arg0);
+    boolean hasBasePlate();
+    void setBasePlate(boolean arg0);
+    boolean isVisible();
+    void setVisible(boolean arg0);
+    boolean hasArms();
+    void setArms(boolean arg0);
+    boolean isSmall();
+    void setSmall(boolean arg0);
+    boolean isMarker();
+    void setMarker(boolean arg0);
+    void addEquipmentLock(org.bukkit.inventory.EquipmentSlot arg0, org.bukkit.entity.ArmorStand$LockType arg1);
+    void removeEquipmentLock(org.bukkit.inventory.EquipmentSlot arg0, org.bukkit.entity.ArmorStand$LockType arg1);
+    boolean hasEquipmentLock(org.bukkit.inventory.EquipmentSlot arg0, org.bukkit.entity.ArmorStand$LockType arg1);
+    boolean canMove();
+    void setCanMove(boolean arg0);
+    org.bukkit.inventory.EntityEquipment getEquipment();
+    boolean canTick();
+    void setCanTick(boolean arg0);
+    org.bukkit.inventory.ItemStack getItem(org.bukkit.inventory.EquipmentSlot arg0);
+    void setItem(org.bukkit.inventory.EquipmentSlot arg0, org.bukkit.inventory.ItemStack arg1);
+    java.util.Set getDisabledSlots();
+    void setDisabledSlots(org.bukkit.inventory.EquipmentSlot[] arg0);
+    void addDisabledSlots(org.bukkit.inventory.EquipmentSlot[] arg0);
+    void removeDisabledSlots(org.bukkit.inventory.EquipmentSlot[] arg0);
+    boolean isSlotDisabled(org.bukkit.inventory.EquipmentSlot arg0);
+    io.papermc.paper.math.Rotations getBodyRotations();
+    void setBodyRotations(io.papermc.paper.math.Rotations arg0);
+    io.papermc.paper.math.Rotations getLeftArmRotations();
+    void setLeftArmRotations(io.papermc.paper.math.Rotations arg0);
+    io.papermc.paper.math.Rotations getRightArmRotations();
+    void setRightArmRotations(io.papermc.paper.math.Rotations arg0);
+    io.papermc.paper.math.Rotations getLeftLegRotations();
+    void setLeftLegRotations(io.papermc.paper.math.Rotations arg0);
+    io.papermc.paper.math.Rotations getRightLegRotations();
+    void setRightLegRotations(io.papermc.paper.math.Rotations arg0);
+    io.papermc.paper.math.Rotations getHeadRotations();
+    void setHeadRotations(io.papermc.paper.math.Rotations arg0);
+}

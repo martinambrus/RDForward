@@ -58,6 +58,17 @@ allprojects {
             url = 'https://oss.sonatype.org/content/repositories/releases/'
             content { includeGroup 'com.badlogicgames.gdx' }
         }
+        // PaperMC (codegen upstream: paper-api for Bukkit + Paper bridge stubs
+        // plus transitives — kyori adventure, bungeecord-chat, brigadier)
+        maven {
+            url = 'https://repo.papermc.io/repository/maven-public/'
+            content {
+                includeGroupByRegex 'io\\.papermc(\\..*)?'
+                includeGroup 'net.kyori'
+                includeGroup 'com.mojang'
+                includeGroup 'net.md-5'
+            }
+        }
         maven {
             url = 'https://oss.sonatype.org/content/repositories/snapshots/'
             content { includeGroup 'com.badlogicgames.gdx' }

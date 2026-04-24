@@ -1,0 +1,7 @@
+package org.bukkit;
+
+/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
+@SuppressWarnings({"unchecked", "rawtypes", "unused"})
+public enum TreeType {
+    TREE, BIG_TREE, REDWOOD, TALL_REDWOOD, BIRCH, JUNGLE, SMALL_JUNGLE, COCOA_TREE, JUNGLE_BUSH, RED_MUSHROOM, BROWN_MUSHROOM, SWAMP, ACACIA, DARK_OAK, MEGA_REDWOOD, MEGA_PINE, TALL_BIRCH, CHORUS_PLANT, CRIMSON_FUNGUS, WARPED_FUNGUS, AZALEA, MANGROVE, TALL_MANGROVE, CHERRY, PALE_OAK, PALE_OAK_CREAKING;
+}

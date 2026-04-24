@@ -1,3 +1,4 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package net.fabricmc.fabric.api.client.rendering.v1;
 
 import com.github.martinambrus.rdforward.api.event.Event;

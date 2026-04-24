@@ -1,3 +1,4 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package net.fabricmc.fabric.api.command.v2;
 
 import com.github.martinambrus.rdforward.api.command.CommandRegistry;

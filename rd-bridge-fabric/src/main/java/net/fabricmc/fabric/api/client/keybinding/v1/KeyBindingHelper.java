@@ -1,3 +1,4 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package net.fabricmc.fabric.api.client.keybinding.v1;
 
 import com.github.martinambrus.rdforward.client.api.KeyBinding;

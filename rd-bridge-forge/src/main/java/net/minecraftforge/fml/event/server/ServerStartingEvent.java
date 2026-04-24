@@ -1,3 +1,4 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package net.minecraftforge.fml.event.server;
 
 import net.minecraftforge.eventbus.api.Event;

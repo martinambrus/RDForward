@@ -6,8 +6,6 @@ import com.github.martinambrus.rdforward.api.event.server.ChatCallback;
 import com.github.martinambrus.rdforward.api.event.server.ServerEvents;
 import com.github.martinambrus.rdforward.bridge.bukkit.BukkitEventAdapter;
 import io.papermc.paper.event.player.AsyncChatEvent;
-import net.kyori.adventure.text.Component;
-import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 
@@ -61,8 +59,7 @@ public final class PaperEventAdapter {
 
     private static void bindAsyncChat(Listener listener, Method method, EventPriority prio) {
         ChatCallback cb = (name, message) -> {
-            Component component = AdventureTranslator.toComponent(message);
-            AsyncChatEvent event = new AsyncChatEvent(new Player(name), component);
+            AsyncChatEvent event = new AsyncChatEvent();
             try {
                 method.invoke(listener, event);
             } catch (InvocationTargetException ite) {

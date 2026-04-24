@@ -1,3 +1,4 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package net.fabricmc.fabric.api.event;
 
 import java.util.List;

@@ -1,6 +1,10 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package org.bukkit.plugin;
 
+import org.bukkit.event.Event;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.permissions.Permission;
 
 /**
  * Bukkit-shaped plugin manager. Only {@link #registerEvents(Listener, Plugin)}
@@ -15,6 +19,24 @@ public interface PluginManager {
     /** Register every {@code @EventHandler} method on {@code listener}. */
     void registerEvents(Listener listener, Plugin plugin);
 
+    /**
+     * Single-handler event registration. Used by libraries that build their
+     * own reflection-free dispatch pipeline (e.g. adventure-platform-bukkit).
+     * The default implementation is a no-op: RDForward's Bukkit bridge does
+     * not yet wire per-class event executors into {@code ServerEvents}, so
+     * only {@link #registerEvents(Listener, Plugin)} is actually hooked up.
+     */
+    default void registerEvent(Class<? extends Event> event, Listener listener,
+                               EventPriority priority, EventExecutor executor,
+                               Plugin plugin) {
+    }
+
+    /** Six-arg overload — upstream signature (accepts {@code ignoreCancelled}). */
+    default void registerEvent(Class<? extends Event> event, Listener listener,
+                               EventPriority priority, EventExecutor executor,
+                               Plugin plugin, boolean ignoreCancelled) {
+    }
+
     /** Noop — RDForward does not support plugin disable from the plugin manager. */
     void disablePlugin(Plugin plugin);
 
@@ -23,4 +45,32 @@ public interface PluginManager {
 
     /** @return an array of currently-loaded plugins (empty by default). */
     Plugin[] getPlugins();
+
+    /**
+     * @return whether a plugin with the given name is loaded + enabled.
+     *         RDForward's bridge doesn't expose cross-plugin lookup yet,
+     *         so this returns {@code false}. Plugins that gate optional
+     *         integrations on this (e.g. Vault, LuckPerms's hook check)
+     *         therefore skip the integration.
+     */
+    default boolean isPluginEnabled(String name) { return false; }
+
+    /** @return whether {@code plugin} is enabled — defaults to {@link Plugin#isEnabled()}. */
+    default boolean isPluginEnabled(Plugin plugin) { return plugin != null && plugin.isEnabled(); }
+
+    /**
+     * @return the {@link Permission} previously added under this name,
+     *         or {@code null} if none. RDForward's bridge doesn't track
+     *         registered permissions, so this always returns {@code null}.
+     */
+    default Permission getPermission(String name) { return null; }
+
+    /** No-op — RDForward does not track registered permissions. */
+    default void addPermission(Permission perm) {}
+
+    /** No-op — RDForward does not track registered permissions. */
+    default void removePermission(Permission perm) {}
+
+    /** No-op — RDForward does not track registered permissions. */
+    default void removePermission(String name) {}
 }

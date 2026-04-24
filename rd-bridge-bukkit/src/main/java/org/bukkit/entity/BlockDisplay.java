@@ -1,0 +1,8 @@
+package org.bukkit.entity;
+
+/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
+@SuppressWarnings({"unchecked", "rawtypes", "unused"})
+public interface BlockDisplay extends org.bukkit.entity.Display {
+    org.bukkit.block.data.BlockData getBlock();
+    void setBlock(org.bukkit.block.data.BlockData arg0);
+}

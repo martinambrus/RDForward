@@ -1,0 +1,11 @@
+package io.papermc.paper.registry.data;
+
+/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
+@SuppressWarnings({"unchecked", "rawtypes", "unused"})
+public interface PaintingVariantRegistryEntry {
+    int width();
+    int height();
+    net.kyori.adventure.text.Component title();
+    net.kyori.adventure.text.Component author();
+    net.kyori.adventure.key.Key assetId();
+}

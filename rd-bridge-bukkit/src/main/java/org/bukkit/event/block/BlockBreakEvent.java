@@ -1,3 +1,4 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package org.bukkit.event.block;
 
 import org.bukkit.entity.Player;
