@@ -31,4 +31,50 @@ public interface BukkitScheduler {
 
     /** Cancel every task owned by {@code plugin}. Returns the number cancelled. */
     int cancelTasks(Plugin plugin);
+
+    /**
+     * Legacy Bukkit-3 API. LuckPerms's {@code BukkitSchedulerAdapter}
+     * binds to this signature directly via {@code MethodHandle}; without
+     * a default it errors with {@link NoSuchMethodError} on every
+     * context-update buffer flush. Routes through {@link #runTask} and
+     * returns a synthetic positive task id (real Bukkit returns &gt;= 0
+     * on success, -1 on failure — only the sign is checked by callers).
+     */
+    default int scheduleSyncDelayedTask(Plugin plugin, Runnable task) {
+        runTask(plugin, task);
+        return BukkitSchedulerSupport.NEXT_LEGACY_TASK_ID.getAndIncrement();
+    }
+
+    default int scheduleSyncDelayedTask(Plugin plugin, Runnable task, long delayTicks) {
+        runTaskLater(plugin, task, delayTicks);
+        return BukkitSchedulerSupport.NEXT_LEGACY_TASK_ID.getAndIncrement();
+    }
+
+    default int scheduleSyncRepeatingTask(Plugin plugin, Runnable task,
+                                          long delayTicks, long periodTicks) {
+        runTaskTimer(plugin, task, delayTicks, periodTicks);
+        return BukkitSchedulerSupport.NEXT_LEGACY_TASK_ID.getAndIncrement();
+    }
+
+    /** Legacy variant — RDForward has no async pool, so this routes to
+     *  the synchronous task path like {@link #runTaskAsynchronously}. */
+    default int scheduleAsyncDelayedTask(Plugin plugin, Runnable task) {
+        runTaskAsynchronously(plugin, task);
+        return BukkitSchedulerSupport.NEXT_LEGACY_TASK_ID.getAndIncrement();
+    }
+
+    default int scheduleAsyncDelayedTask(Plugin plugin, Runnable task, long delayTicks) {
+        runTaskLaterAsynchronously(plugin, task, delayTicks);
+        return BukkitSchedulerSupport.NEXT_LEGACY_TASK_ID.getAndIncrement();
+    }
+
+    default int scheduleAsyncRepeatingTask(Plugin plugin, Runnable task,
+                                           long delayTicks, long periodTicks) {
+        runTaskTimerAsynchronously(plugin, task, delayTicks, periodTicks);
+        return BukkitSchedulerSupport.NEXT_LEGACY_TASK_ID.getAndIncrement();
+    }
+
+    /** Legacy cancel-by-id — RDForward's tasks are short-lived enough
+     *  that we don't actually track ids; the call is a no-op. */
+    default void cancelTask(int taskId) {}
 }

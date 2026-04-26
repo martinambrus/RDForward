@@ -37,6 +37,15 @@ Performance is a top priority. Protocol adapters, registries, and version-specif
 - **No unnecessary processing**: If only Alpha clients are connected, zero MCPE or Bedrock code should execute. If only 1.8 clients are connected, no 1.21-specific packet registry overlays should be loaded. Broadcast methods that write to sessions of mixed versions must dispatch on the RECIPIENT's codec, not the sender's.
 - **Existing pattern to follow**: `BedrockProtocolConstants` uses synchronized lazy getters as the reference pattern. `ProtocolDetectionHandler` dynamically reconfigures the Netty pipeline per-connection as the reference pattern for per-client protocol selection.
 
+## Bridge Stub Coverage
+
+When a Bukkit/Paper plugin invokes a method on a bridge stub that has no real implementation, the stub MUST call `StubCallLog.logOnce(pluginId, signature)`. On the first hit per `(plugin, signature)` pair, the shared `StubCallLog`:
+
+- Emits a WARNING-level JUL line for server operators.
+- Broadcasts the same line to every online player via the host's broadcast sink (installed by the active bridge), regardless of any debug toggle. This intentionally surfaces missing API coverage in-game so plugin authors and operators discover gaps as the plugin runs.
+
+Subsequent hits for the same `(plugin, signature)` are silent. When adding or hand-tuning a bridge facade, keep this contract: do not drop the `StubCallLog.logOnce` call from a method that remains a no-op, and do not silence the broadcast sink without explicit instruction.
+
 ## Running the Server
 
 To build and start the server for manual testing:

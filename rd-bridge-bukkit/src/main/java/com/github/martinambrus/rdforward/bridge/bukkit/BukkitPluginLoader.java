@@ -60,7 +60,12 @@ public final class BukkitPluginLoader {
         }
         JavaPlugin plugin = (JavaPlugin) mainCls.getDeclaredConstructor().newInstance();
         plugin.setDescription(toDescriptionFile(bukkit));
-        plugin.setCommandMap(buildCommandMap(bukkit));
+        Map<String, PluginCommand> commands = buildCommandMap(bukkit);
+        for (PluginCommand pc : commands.values()) pc.setPlugin(plugin);
+        plugin.setCommandMap(commands);
+        plugin.setFile(jarPath.toFile());
+        plugin.setClassLoader(classLoader);
+        plugin.setDataFolder(new java.io.File("plugins/" + bukkit.name()));
         ModDescriptor descriptor = toModDescriptor(bukkit);
         BukkitPluginWrapper wrapper = new BukkitPluginWrapper(plugin, bukkit.name());
         return new LoadedPlugin(descriptor, bukkit, jarPath, classLoader, plugin, wrapper);
@@ -92,10 +97,15 @@ public final class BukkitPluginLoader {
                 bukkit.depend());
     }
 
-    /** Synthesise an rd-api {@link ModDescriptor} from a {@code plugin.yml}. */
+    /** Synthesise an rd-api {@link ModDescriptor} from a {@code plugin.yml}.
+     *
+     * <p>Bukkit {@code depend:} entries reference other Bukkit plugins (Vault,
+     * WorldEdit, ...) that are not RDForward mods. They are surfaced as
+     * <em>soft</em> dependencies so {@code DependencyResolver} treats them as
+     * load-order hints rather than fatal missing requirements. */
     private static ModDescriptor toModDescriptor(BukkitPluginDescriptor bukkit) {
-        Map<String, String> deps = new HashMap<>();
-        for (String d : bukkit.depend()) deps.put(d, "*");
+        Map<String, String> softDeps = new HashMap<>();
+        for (String d : bukkit.depend()) softDeps.put(d, "*");
         Map<String, String> entrypoints = Map.of(ModDescriptor.ENTRYPOINT_SERVER, bukkit.main());
         return new ModDescriptor(
                 bukkit.name(),
@@ -105,8 +115,8 @@ public final class BukkitPluginLoader {
                 List.of(bukkit.author()),
                 "*",
                 entrypoints,
-                deps,
                 Map.of(),
+                softDeps,
                 List.of(),
                 false,
                 null,

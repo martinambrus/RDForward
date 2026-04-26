@@ -3,9 +3,11 @@ package org.bukkit;
 
 import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.help.HelpMap;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.ServicesManager;
 import org.bukkit.plugin.SimpleServicesManager;
+import org.bukkit.plugin.messaging.Messenger;
 import org.bukkit.scheduler.BukkitScheduler;
 
 import java.util.Collection;
@@ -36,6 +38,21 @@ public interface Server {
     /** @return the player with this name, or null if not online. */
     Player getPlayer(String name);
 
+    /**
+     * @return the online player with the given offline-mode UUID, or
+     *         {@code null} if none. LuckPerms's {@code
+     *         LPBukkitBootstrap.isPlayerOnline} calls this every time
+     *         a context invalidation fires; without it plugins error
+     *         with {@link NoSuchMethodError} on every player join.
+     */
+    default Player getPlayer(java.util.UUID id) {
+        if (id == null) return null;
+        for (Player p : getOnlinePlayers()) {
+            if (p != null && id.equals(p.getUniqueId())) return p;
+        }
+        return null;
+    }
+
     /** @return every online player, never null. */
     Collection<Player> getOnlinePlayers();
 
@@ -61,4 +78,23 @@ public interface Server {
      *         RDForward itself never consumes from it.
      */
     default ServicesManager getServicesManager() { return ServerSupport.SERVICES; }
+
+    /**
+     * @return a non-null {@link HelpMap} stub. WorldEdit and similar
+     *         plugins call this from {@code onEnable} to register their
+     *         own help topics; the stub silently accepts every
+     *         registration but never surfaces anything because RDForward
+     *         routes help through its own command registry.
+     */
+    default HelpMap getHelpMap() { return ServerSupport.HELP_MAP; }
+
+    /**
+     * @return a non-null {@link Messenger} stub. WorldEdit's
+     *         {@code onEnable} registers an outgoing
+     *         {@code WECUI:datapack} plugin channel via this accessor;
+     *         the stub accepts the registration but never delivers
+     *         payloads because RDForward does not have a Bukkit-shaped
+     *         plugin messaging pipeline.
+     */
+    default Messenger getMessenger() { return ServerSupport.MESSENGER; }
 }

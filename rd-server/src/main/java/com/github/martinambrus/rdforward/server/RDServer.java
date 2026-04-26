@@ -77,6 +77,18 @@ public class RDServer {
         if (System.getProperty("io.netty.allocator.maxOrder") == null) {
             System.setProperty("io.netty.allocator.maxOrder", "9");
         }
+        // Force Netty to skip sun.misc.Unsafe.allocateMemory in favour of
+        // ByteBuffer.allocateDirect. JDK 22+ JEP 498 prints a one-shot
+        // "WARNING: A terminally deprecated method in sun.misc.Unsafe has
+        // been called" stanza on the first Unsafe call; we cannot suppress
+        // it from a Java-level stderr filter because the JVM emits it via
+        // an internal channel that bypasses setErr. Disabling Netty's
+        // Unsafe path eliminates the call site itself, so the warning
+        // never fires. The performance trade-off (a small per-buffer
+        // allocation overhead) is irrelevant at MC traffic levels.
+        if (System.getProperty("io.netty.noUnsafe") == null) {
+            System.setProperty("io.netty.noUnsafe", "true");
+        }
     }
 
     /** Default world dimensions matching RubyDung's original size.
@@ -814,11 +826,17 @@ public class RDServer {
     private void bootModSystem() {
         try {
             Class<?> cls = Class.forName("com.github.martinambrus.rdforward.modloader.ModSystem");
-            Method boot = cls.getMethod("boot", Object.class, Path.class);
-            File modsRoot = new File(getDataDir(), "mods");
-            Path modsPath = modsRoot.toPath();
-            modSystemHandle = boot.invoke(null, this, modsPath);
-            System.out.println("Mod loader booted — mods directory: " + modsPath);
+            Path modsPath = new File(getDataDir(), "mods").toPath();
+            Path pluginsPath = new File(getDataDir(), "plugins").toPath();
+            try {
+                Method boot3 = cls.getMethod("boot", Object.class, Path.class, Path.class);
+                modSystemHandle = boot3.invoke(null, this, modsPath, pluginsPath);
+                System.out.println("Mod loader booted — mods: " + modsPath + ", plugins: " + pluginsPath);
+            } catch (NoSuchMethodException older) {
+                Method boot2 = cls.getMethod("boot", Object.class, Path.class);
+                modSystemHandle = boot2.invoke(null, this, modsPath);
+                System.out.println("Mod loader booted — mods directory: " + modsPath);
+            }
         } catch (ClassNotFoundException e) {
             // no mod loader on classpath — running in minimal mode, skip silently
         } catch (Throwable t) {
@@ -1984,6 +2002,13 @@ public class RDServer {
         // Initialize logging — tee stdout/stderr to logs/latest.log
         ServerLogger.init();
 
+        // Install the noise filter AFTER ServerLogger.init so it sits in
+        // front of the tee stream — the JVM warning lines (sun.misc.Unsafe
+        // deprecation from Netty, restricted-method notices from SQLite),
+        // and LuckPerms's bundled-H2 shutdown NCDFE never reach the log
+        // file or the console.
+        installNoiseFilter();
+
         // Load server.properties (creates with defaults if missing)
         ServerProperties.load();
 
@@ -2032,6 +2057,161 @@ public class RDServer {
             server.runConsole();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * Wrap System.err with a line-buffered noise filter and install a
+     * default {@link Thread.UncaughtExceptionHandler} that swallows the
+     * H2 {@code NoClassDefFoundError} fired by LuckPerms's bundled-H2
+     * shutdown hook (the "Thread-0" stack trace at JVM exit).
+     *
+     * <p>The filter targets two distinct sources of cosmetic noise:
+     * <ul>
+     *   <li>JDK 22+ JEP 472 / JEP 498 warnings — {@code "WARNING: A
+     *       terminally deprecated method in sun.misc.Unsafe..."},
+     *       {@code "WARNING: A restricted method in
+     *       java.lang.System..."} — Netty 4.x intrinsically calls
+     *       {@code Unsafe.allocateMemory}, SQLite-JDBC intrinsically
+     *       calls {@code System.load}; neither can be silenced from
+     *       inside the third-party libraries.
+     *   <li>LuckPerms's bundled H2 driver registers its own JVM
+     *       shutdown hook that fails to find {@code org.h2.api.ErrorCode}
+     *       at shutdown time (the bundled jar shades H2 in a way that
+     *       leaves the api package dropped). The exception is harmless
+     *       — H2 has nothing to clean up because LuckPerms already
+     *       closed it during {@code onDisable} — but the unfiltered
+     *       stack trace lands in the log between "Saving world..." and
+     *       "World saved...", which is alarming.
+     * </ul>
+     */
+    private static void installNoiseFilter() {
+        java.io.PrintStream wrapped = System.err;
+        System.setErr(new java.io.PrintStream(new NoiseFilteringOutputStream(wrapped),
+                true, java.nio.charset.StandardCharsets.UTF_8));
+
+        Thread.UncaughtExceptionHandler prev = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
+            if (isH2BundledShutdownNoise(e)) return;
+            if (prev != null) {
+                prev.uncaughtException(t, e);
+            } else {
+                System.err.print("Exception in thread \"" + t.getName() + "\" ");
+                e.printStackTrace(System.err);
+            }
+        });
+    }
+
+    private static boolean isH2BundledShutdownNoise(Throwable e) {
+        for (Throwable cur = e; cur != null; cur = cur.getCause()) {
+            if (cur instanceof NoClassDefFoundError || cur instanceof ClassNotFoundException) {
+                String msg = cur.getMessage();
+                if (msg != null && (msg.contains("h2/api/ErrorCode")
+                        || msg.contains("h2.api.ErrorCode"))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Line-buffered {@link java.io.OutputStream} that drops well-known
+     * cosmetic warning lines on the way to the wrapped stream. Multi-line
+     * stack traces matching the H2 bundled-shutdown pattern are detected
+     * via the leading "Exception in thread" line and the following
+     * indented continuation lines are dropped until a non-continuation
+     * line appears.
+     */
+    private static final class NoiseFilteringOutputStream extends java.io.OutputStream {
+        private static final String[] DROP_PREFIXES = {
+                "WARNING: A terminally deprecated method in sun.misc.Unsafe",
+                "WARNING: sun.misc.Unsafe::",
+                "WARNING: Please consider reporting this to the maintainers",
+                "WARNING: A restricted method in java.lang.System",
+                "WARNING: java.lang.System::",
+                "WARNING: Use --enable-native-access",
+                "WARNING: Restricted methods will be blocked",
+        };
+
+        private final java.io.OutputStream delegate;
+        private final java.io.ByteArrayOutputStream lineBuf = new java.io.ByteArrayOutputStream();
+        private int suppressStackLines;
+        private boolean lastDropped;
+
+        NoiseFilteringOutputStream(java.io.OutputStream delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public synchronized void write(int b) throws java.io.IOException {
+            lineBuf.write(b);
+            if (b == '\n') flushLine();
+        }
+
+        @Override
+        public synchronized void write(byte[] buf, int off, int len) throws java.io.IOException {
+            for (int i = 0; i < len; i++) {
+                byte b = buf[off + i];
+                lineBuf.write(b);
+                if (b == '\n') flushLine();
+            }
+        }
+
+        @Override
+        public synchronized void flush() throws java.io.IOException {
+            delegate.flush();
+        }
+
+        @Override
+        public void close() throws java.io.IOException {
+            delegate.close();
+        }
+
+        private void flushLine() throws java.io.IOException {
+            byte[] bytes = lineBuf.toByteArray();
+            lineBuf.reset();
+            String line = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+            String trimmed = line;
+            if (trimmed.endsWith("\n")) trimmed = trimmed.substring(0, trimmed.length() - 1);
+            if (trimmed.endsWith("\r")) trimmed = trimmed.substring(0, trimmed.length() - 1);
+
+            // Continuing a previously suppressed multi-line stack trace.
+            if (suppressStackLines > 0) {
+                if (trimmed.startsWith("\t") || trimmed.startsWith("    ")
+                        || trimmed.startsWith("Caused by:")) {
+                    suppressStackLines--;
+                    lastDropped = true;
+                    return;
+                }
+                suppressStackLines = 0;
+            }
+
+            // Detect H2 bundled-shutdown NCDFE start line (in case it
+            // bypasses the UncaughtExceptionHandler — e.g. when the
+            // stack trace is printed directly via printStackTrace).
+            if (trimmed.startsWith("Exception in thread")
+                    && (trimmed.contains("h2/api/ErrorCode")
+                        || trimmed.contains("h2.api.ErrorCode"))) {
+                suppressStackLines = 30;
+                lastDropped = true;
+                return;
+            }
+
+            // Single-line JVM warnings.
+            for (String prefix : DROP_PREFIXES) {
+                if (trimmed.startsWith(prefix)) {
+                    lastDropped = true;
+                    return;
+                }
+            }
+
+            // Drop the blank line that the JVM prints after each warning
+            // group so the output reads cleanly.
+            if (lastDropped && trimmed.isEmpty()) return;
+
+            lastDropped = false;
+            delegate.write(bytes);
         }
     }
 }

@@ -123,6 +123,8 @@ public final class DebugLog {
         }
         // Sync packet trace with master toggle
         com.github.martinambrus.rdforward.protocol.codec.RawPacketEncoder.setTracePackets(on && packets);
+        // Surface modloader INFO traces while debug is on; muted otherwise.
+        ServerLogger.setModLoaderVerbose(on);
     }
     public static boolean isEnabled()         { return enabled; }
 
@@ -189,6 +191,7 @@ public final class DebugLog {
             enabled = false;
             autoOffAt = 0;
             com.github.martinambrus.rdforward.protocol.codec.RawPacketEncoder.setTracePackets(false);
+            ServerLogger.setModLoaderVerbose(false);
             System.out.println("[Server] Debug auto-disabled after " + AUTO_OFF_MINUTES + " minutes");
             return false;
         }
@@ -210,5 +213,6 @@ public final class DebugLog {
         playerFilter = null;
         autoOffAt = 0;
         com.github.martinambrus.rdforward.protocol.codec.RawPacketEncoder.setTracePackets(false);
+        ServerLogger.setModLoaderVerbose(false);
     }
 }

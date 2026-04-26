@@ -37,7 +37,12 @@ dependencies {
     implementation project(':rd-api')
     implementation project(':rd-mod-loader')
     implementation project(':rd-server')
-    implementation 'org.yaml:snakeyaml:2.3'
+    implementation 'org.yaml:snakeyaml:1.33'
+    // ByteBuddy mints a runtime Player subclass that extends
+    // CraftHumanEntity (so LuckPerms's reflective Field.get/set on
+    // 'perm' actually targets a real superclass field) while still
+    // implementing the Bukkit Player interface contract.
+    implementation 'net.bytebuddy:byte-buddy:1.17.5'
 
     // compileOnly: libraries referenced in paper-api signatures that the
     // runtime server ships itself. Bundling them here would duplicate state

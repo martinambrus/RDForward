@@ -12,6 +12,7 @@ import com.github.martinambrus.rdforward.api.event.server.PlayerMoveCallback;
 import com.github.martinambrus.rdforward.api.event.server.ServerEvents;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
@@ -23,8 +24,13 @@ import org.bukkit.event.player.PlayerQuitEvent;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Logger;
 
 /**
@@ -56,6 +62,22 @@ public final class BukkitEventAdapter {
     /** Plugin names already warned about {@code ignoreCancelled=false}. */
     private static final Set<String> warnedPlugins = ConcurrentHashMap.newKeySet();
 
+    /** Per-event-class binding entry — captures everything needed to
+     *  dispatch a plugin-fired event back to its {@code @EventHandler}
+     *  method via reflection. */
+    private record Bound(Listener listener, Method method,
+                         org.bukkit.event.EventPriority priority,
+                         boolean ignoreCancelled) {}
+
+    /** Listeners by exact event class declared on the {@code @EventHandler}
+     *  parameter. Populated for every annotated method, regardless of
+     *  whether the event type also has a matching ServerEvents callback —
+     *  so plugin-fired custom events (LoginSecurity's
+     *  {@code AuthActionEvent}, EssentialsX's per-command events, etc.)
+     *  can be dispatched via {@link #dispatchPluginEvent}. */
+    private static final ConcurrentHashMap<Class<?>, CopyOnWriteArrayList<Bound>> DIRECT =
+            new ConcurrentHashMap<>();
+
     private BukkitEventAdapter() {}
 
     /** Walk a listener's declared methods and wire every {@code @EventHandler} to ServerEvents. */
@@ -79,6 +101,13 @@ public final class BukkitEventAdapter {
             Class<?> evtType = params[0];
             EventPriority prio = mapPriority(eh.priority());
 
+            // Always remember the (event-class -> listener+method) binding
+            // so plugin-fired events reach their handlers via
+            // dispatchPluginEvent — independent of the ServerEvents-driven
+            // path that translates real server actions into Bukkit events.
+            DIRECT.computeIfAbsent(evtType, k -> new CopyOnWriteArrayList<>())
+                    .add(new Bound(listener, m, eh.priority(), eh.ignoreCancelled()));
+
             if (isCancellable(evtType) && !eh.ignoreCancelled() && prio != EventPriority.MONITOR) {
                 maybeWarnIgnoreCancelled(pluginName, listener);
             }
@@ -101,6 +130,45 @@ public final class BukkitEventAdapter {
 
     /** Reset the warned-plugins set. Test-only. */
     public static void resetWarnedPlugins() {
+        warnedPlugins.clear();
+    }
+
+    /**
+     * Dispatch a plugin-fired Bukkit event to every {@link Listener}
+     * whose {@code @EventHandler} parameter type is assignable from
+     * {@code event}'s runtime class. Listeners run in Bukkit priority
+     * order ({@code LOWEST} → {@code MONITOR}); listeners marked
+     * {@code ignoreCancelled = true} are skipped after another
+     * listener cancels the event.
+     *
+     * <p>Real Bukkit dispatches via the event's static
+     * {@code HandlerList}; RDForward registers handlers directly here,
+     * so we do the type lookup ourselves. Used by plugins that fire
+     * their own events through {@code PluginManager.callEvent} —
+     * notably LoginSecurity's {@code AuthActionEvent} on registration
+     * and login.
+     */
+    public static void dispatchPluginEvent(Event event) {
+        if (event == null) return;
+        Class<?> evtClass = event.getClass();
+        List<Bound> matched = new ArrayList<>();
+        for (Map.Entry<Class<?>, CopyOnWriteArrayList<Bound>> e : DIRECT.entrySet()) {
+            if (e.getKey().isAssignableFrom(evtClass)) {
+                matched.addAll(e.getValue());
+            }
+        }
+        matched.sort(Comparator.comparingInt(b -> b.priority.ordinal()));
+        for (Bound b : matched) {
+            if (b.ignoreCancelled && event.isCancelled()) continue;
+            invokeListener(b.listener, b.method, event);
+        }
+    }
+
+    /** Test-only — clear every registered listener and dedup state so
+     *  successive tests boot cleanly. */
+    public static void clearAll() {
+        DIRECT.clear();
+        SEEN_LISTENER_ERRORS.clear();
         warnedPlugins.clear();
     }
 
@@ -134,7 +202,7 @@ public final class BukkitEventAdapter {
 
     private static void bindBlockBreak(Listener l, Method m, EventPriority prio) {
         BlockBreakCallback cb = (name, x, y, z, blockType) -> {
-            BlockBreakEvent ev = new BlockBreakEvent(new Player(name), x, y, z, blockType);
+            BlockBreakEvent ev = new BlockBreakEvent(BukkitPlayer.create(name), x, y, z, blockType);
             invokeListener(l, m, ev);
             return ev.isCancelled() ? EventResult.CANCEL : EventResult.PASS;
         };
@@ -143,7 +211,7 @@ public final class BukkitEventAdapter {
 
     private static void bindBlockPlace(Listener l, Method m, EventPriority prio) {
         BlockPlaceCallback cb = (name, x, y, z, newBlockType) -> {
-            BlockPlaceEvent ev = new BlockPlaceEvent(new Player(name), x, y, z, newBlockType);
+            BlockPlaceEvent ev = new BlockPlaceEvent(BukkitPlayer.create(name), x, y, z, newBlockType);
             invokeListener(l, m, ev);
             return ev.isCancelled() ? EventResult.CANCEL : EventResult.PASS;
         };
@@ -152,7 +220,7 @@ public final class BukkitEventAdapter {
 
     private static void bindChat(Listener l, Method m, EventPriority prio) {
         ChatCallback cb = (name, message) -> {
-            AsyncPlayerChatEvent ev = new AsyncPlayerChatEvent(new Player(name), message);
+            AsyncPlayerChatEvent ev = new AsyncPlayerChatEvent(BukkitPlayer.create(name), message);
             invokeListener(l, m, ev);
             return ev.isCancelled() ? EventResult.CANCEL : EventResult.PASS;
         };
@@ -161,7 +229,7 @@ public final class BukkitEventAdapter {
 
     private static void bindPlayerJoin(Listener l, Method m) {
         PlayerJoinCallback cb = (name, version) -> {
-            PlayerJoinEvent ev = new PlayerJoinEvent(new Player(name));
+            PlayerJoinEvent ev = new PlayerJoinEvent(BukkitPlayer.create(name));
             invokeListener(l, m, ev);
         };
         ServerEvents.PLAYER_JOIN.register(cb);
@@ -169,7 +237,7 @@ public final class BukkitEventAdapter {
 
     private static void bindPlayerQuit(Listener l, Method m) {
         PlayerLeaveCallback cb = name -> {
-            PlayerQuitEvent ev = new PlayerQuitEvent(new Player(name));
+            PlayerQuitEvent ev = new PlayerQuitEvent(BukkitPlayer.create(name));
             invokeListener(l, m, ev);
         };
         ServerEvents.PLAYER_LEAVE.register(cb);
@@ -183,22 +251,51 @@ public final class BukkitEventAdapter {
             float fyaw = (yaw & 0xFF) * 360f / 256f;
             float fpitch = pitch * 360f / 256f;
             Location loc = new Location(null, dx, dy, dz, fyaw, fpitch);
-            PlayerMoveEvent ev = new PlayerMoveEvent(new Player(name), loc, loc);
+            PlayerMoveEvent ev = new PlayerMoveEvent(BukkitPlayer.create(name), loc, loc);
             invokeListener(l, m, ev);
         };
         ServerEvents.PLAYER_MOVE.register(cb);
     }
 
+    /** Dedup map for listener-throw warnings. Keys are
+     *  {@code listenerClass#method:exceptionClass:message} so the same
+     *  class+message combination only logs the first time it surfaces.
+     *  Real Bukkit prints the full stack on every event-listener failure;
+     *  RDForward's auto-generated stubs surface predictable per-player
+     *  exceptions (e.g. LuckPerms's reflective {@code Field.get} on the
+     *  Player Proxy) that would otherwise flood the log on every join. */
+    private static final java.util.concurrent.ConcurrentHashMap<String, Boolean> SEEN_LISTENER_ERRORS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     private static void invokeListener(Listener l, Method m, Object event) {
         try {
             m.invoke(l, event);
         } catch (InvocationTargetException ite) {
-            throw new RuntimeException(
-                    "Bukkit listener " + l.getClass().getName() + "." + m.getName() + " threw",
-                    ite.getTargetException());
+            // Real Bukkit logs listener failures and continues — one bad
+            // plugin must not abort the calling event chain or the
+            // connection that triggered it. Surface the full stack so
+            // missing stub APIs are visible, but dedup per
+            // (listener-method, cause-class, cause-message) so a
+            // repeating per-player failure floods the log only once.
+            Throwable cause = ite.getTargetException();
+            String key = l.getClass().getName() + "#" + m.getName() + ":"
+                    + cause.getClass().getName() + ":"
+                    + (cause.getMessage() == null ? "" : cause.getMessage());
+            if (SEEN_LISTENER_ERRORS.putIfAbsent(key, Boolean.TRUE) == null) {
+                System.err.println("[Bukkit] Listener " + l.getClass().getName() + "."
+                        + m.getName() + " threw " + cause.getClass().getName()
+                        + (cause.getMessage() == null ? "" : ": " + cause.getMessage())
+                        + " (further occurrences silenced)");
+                cause.printStackTrace(System.err);
+            }
         } catch (IllegalAccessException iae) {
-            throw new RuntimeException(
-                    "Cannot invoke " + l.getClass().getName() + "." + m.getName(), iae);
+            String key = l.getClass().getName() + "#" + m.getName() + ":illegal-access";
+            if (SEEN_LISTENER_ERRORS.putIfAbsent(key, Boolean.TRUE) == null) {
+                System.err.println("[Bukkit] Cannot invoke " + l.getClass().getName() + "."
+                        + m.getName() + ": " + iae.getMessage()
+                        + " (further occurrences silenced)");
+                iae.printStackTrace(System.err);
+            }
         }
     }
 }

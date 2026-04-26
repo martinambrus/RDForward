@@ -87,7 +87,12 @@ public final class PaperPluginLoader {
             }
             plugin = (JavaPlugin) mainCls.getDeclaredConstructor().newInstance();
         }
-        plugin.setCommandMap(buildCommandMap(paper));
+        Map<String, PluginCommand> commands = buildCommandMap(paper);
+        for (PluginCommand pc : commands.values()) pc.setPlugin(plugin);
+        plugin.setCommandMap(commands);
+        plugin.setFile(jarPath.toFile());
+        plugin.setClassLoader(classLoader);
+        plugin.setDataFolder(new java.io.File("plugins/" + paper.name()));
 
         ModDescriptor descriptor = toModDescriptor(paper);
         PaperPluginWrapper wrapper = new PaperPluginWrapper(plugin, paper.name(), bootstrapper, lifecycleManager, paper);
@@ -110,9 +115,12 @@ public final class PaperPluginLoader {
     }
 
     private static ModDescriptor toModDescriptor(PaperPluginDescriptor paper) {
-        Map<String, String> deps = new HashMap<>();
-        for (String d : paper.serverDeps()) deps.put(d, "*");
-        for (String d : paper.bootstrapDeps()) deps.putIfAbsent(d, "*");
+        // Paper server/bootstrap deps are external Paper plugins, not RDForward mods.
+        // Surface them as soft deps so DependencyResolver does not abort load when
+        // the host doesn't ship them as RDForward mods.
+        Map<String, String> softDeps = new HashMap<>();
+        for (String d : paper.serverDeps()) softDeps.put(d, "*");
+        for (String d : paper.bootstrapDeps()) softDeps.putIfAbsent(d, "*");
         Map<String, String> entrypoints = Map.of(ModDescriptor.ENTRYPOINT_SERVER, paper.main());
         List<String> authors = paper.authors().isEmpty() ? List.of(paper.name()) : paper.authors();
         return new ModDescriptor(
@@ -123,8 +131,8 @@ public final class PaperPluginLoader {
                 authors,
                 paper.apiVersion() == null || paper.apiVersion().isBlank() ? "*" : paper.apiVersion(),
                 entrypoints,
-                deps,
                 Map.of(),
+                softDeps,
                 List.of(),
                 false,
                 null,

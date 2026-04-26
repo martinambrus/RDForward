@@ -20,4 +20,14 @@ public interface PermissionManager {
 
     /** Revoke a permission node from a player. */
     void revoke(String playerName, String permission);
+
+    /**
+     * Registry of permission declarations made by mods and bridge plugins.
+     * Default returns an empty registry so legacy {@link PermissionManager}
+     * impls (test fixtures, minimal embeds) don't have to supply one to
+     * satisfy the interface contract.
+     */
+    default PermissionRegistry getRegistry() {
+        return EmptyPermissionRegistry.INSTANCE;
+    }
 }

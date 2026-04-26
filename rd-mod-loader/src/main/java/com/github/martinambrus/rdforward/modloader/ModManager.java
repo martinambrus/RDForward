@@ -177,7 +177,8 @@ public final class ModManager implements com.github.martinambrus.rdforward.api.m
             LOG.info("[ModLoader] Enabled " + c.id() + " v" + c.descriptor().version());
         } catch (Throwable t) {
             c.fail(t);
-            LOG.severe("[ModLoader] " + c.id() + ".onEnable() threw: " + t);
+            LOG.log(java.util.logging.Level.SEVERE,
+                    "[ModLoader] " + c.id() + ".onEnable() threw", t);
         }
     }
 

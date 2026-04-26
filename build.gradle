@@ -155,6 +155,31 @@ ext {
         'com.google.code.gson:gson:2.11.0',
         // toml4j (rd-bridge-forge, rd-bridge-neoforge) — mods.toml parsing
         'com.moandjiezana.toml:toml4j:0.7.2',
+        // Paper-equivalent runtime libs (rd-server fat jar). Bundled so plugin
+        // jars expecting log4j-core, Guava, SnakeYAML, Apache Commons,
+        // BungeeCord chat, sqlite-jdbc, etc. resolve them on the runtime
+        // classpath. Versions track Paper 1.21.11 build 69.
+        'org.apache.logging.log4j:log4j-api:2.25.2',
+        'org.apache.logging.log4j:log4j-core:2.25.2',
+        'org.apache.logging.log4j:log4j-iostreams:2.25.2',
+        'org.apache.logging.log4j:log4j-slf4j2-impl:2.25.2',
+        'org.slf4j:slf4j-api:2.0.17',
+        'com.google.guava:guava:33.5.0-jre',
+        'com.google.guava:failureaccess:1.0.3',
+        // snakeyaml 1.33 retains the no-arg Representer() constructor that
+        // older plugins (e.g. WorldEdit's config writer) reference. The 2.x
+        // line removed it and breaks NoSuchMethodError at first save.
+        'org.yaml:snakeyaml:1.33',
+        'net.md-5:bungeecord-chat:1.21-R0.2-deprecated+build.21@https://repo.papermc.io/repository/maven-public/',
+        'commons-io:commons-io:2.20.0',
+        'org.apache.commons:commons-lang3:3.19.0',
+        'commons-lang:commons-lang:2.6',
+        'commons-codec:commons-codec:1.16.0',
+        'it.unimi.dsi:fastutil:8.5.18',
+        'org.joml:joml:1.10.8',
+        'org.xerial:sqlite-jdbc:3.49.1.0',
+        'com.mysql:mysql-connector-j:9.2.0',
+        'com.mojang:brigadier:1.3.10@https://repo.papermc.io/repository/maven-public/',
     ]
 }
 

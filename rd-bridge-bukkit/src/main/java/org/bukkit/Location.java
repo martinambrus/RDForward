@@ -50,6 +50,13 @@ public class Location implements Cloneable {
     public int getBlockY() { return (int) Math.floor(y); }
     public int getBlockZ() { return (int) Math.floor(z); }
 
+    /** Snapshot of the (x,y,z) coordinates as a fresh {@link org.bukkit.util.Vector}.
+     *  SimpleLogin's {@code LoginListener.onMove} compares vector deltas to
+     *  detect movement after auth — it must not return {@code null}. */
+    public org.bukkit.util.Vector toVector() {
+        return new org.bukkit.util.Vector(x, y, z);
+    }
+
     @Override
     public Location clone() {
         return new Location(world, x, y, z, yaw, pitch);

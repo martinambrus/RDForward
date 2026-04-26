@@ -103,6 +103,15 @@ public final class ForgeModLoader {
         List<String> authors = primary.authors() == null || primary.authors().isBlank()
                 ? List.of()
                 : List.of(primary.authors());
+        // Filter Forge runtime triple (forge/minecraft) out of deps; the
+        // remainder describes peer mods that may or may not be RDForward
+        // mods, so surface them as soft so a missing peer is non-fatal.
+        Map<String, String> softDeps = new LinkedHashMap<>();
+        for (Map.Entry<String, String> e : forge.dependencies().entrySet()) {
+            String key = e.getKey();
+            if (key.equalsIgnoreCase("forge") || key.equalsIgnoreCase("minecraft")) continue;
+            softDeps.put(key, e.getValue());
+        }
         return new ModDescriptor(
                 primary.modId(),
                 primary.displayName(),
@@ -111,8 +120,8 @@ public final class ForgeModLoader {
                 authors,
                 "*",
                 entrypoints,
-                new LinkedHashMap<>(forge.dependencies()),
                 Map.of(),
+                softDeps,
                 List.of(),
                 false,
                 null,

@@ -1,42 +1,137 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package org.bukkit.plugin;
 
-/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * Bukkit-shaped {@code SimpleServicesManager} with a real
+ * {@code Map<Class, List<RegisteredServiceProvider>>} backing store.
+ *
+ * <p>LuckPerms publishes its API via {@code register(Class, instance,
+ * plugin, ServicePriority.Normal)} during {@code onEnable}; WorldEdit's
+ * WEPIF resolver looks it up via {@code getRegistration(Class)}.
+ * Without a real registry the lookup returned {@code null} and WEPIF
+ * fell back to the Bukkit Permissions API path — the resolver still
+ * worked but we logged a noisy {@code [StubCall]} warning. With the
+ * registry wired, plugin-to-plugin service handoff works and the
+ * warning disappears.
+ *
+ * <p>Registrations within a service are kept sorted by priority
+ * (highest last) per paper-api semantics; {@link #getRegistration}
+ * returns the highest. Reads are unsynchronised — Bukkit plugins do
+ * registration only on the main thread during {@code onEnable}, and
+ * looks-ups happen later from the same thread or are tolerant of
+ * approximate ordering.
+ */
 @SuppressWarnings({"unchecked", "rawtypes", "unused"})
 public class SimpleServicesManager implements org.bukkit.plugin.ServicesManager {
+
+    private final Map<Class<?>, List<RegisteredServiceProvider>> services = new LinkedHashMap<>();
+
     public SimpleServicesManager() {}
-    public void register(java.lang.Class arg0, java.lang.Object arg1, org.bukkit.plugin.Plugin arg2, org.bukkit.plugin.ServicePriority arg3) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.plugin.SimpleServicesManager.register(Ljava/lang/Class;Ljava/lang/Object;Lorg/bukkit/plugin/Plugin;Lorg/bukkit/plugin/ServicePriority;)V");
+
+    @Override
+    public void register(java.lang.Class service, java.lang.Object provider,
+                         org.bukkit.plugin.Plugin plugin,
+                         org.bukkit.plugin.ServicePriority priority) {
+        if (service == null || provider == null) return;
+        RegisteredServiceProvider entry = new RegisteredServiceProvider(service, provider, priority, plugin);
+        synchronized (services) {
+            List<RegisteredServiceProvider> list = services.computeIfAbsent(service, k -> new ArrayList<>());
+            list.add(entry);
+            Collections.sort(list);
+        }
     }
-    public void unregisterAll(org.bukkit.plugin.Plugin arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.plugin.SimpleServicesManager.unregisterAll(Lorg/bukkit/plugin/Plugin;)V");
+
+    @Override
+    public void unregisterAll(org.bukkit.plugin.Plugin plugin) {
+        if (plugin == null) return;
+        synchronized (services) {
+            for (List<RegisteredServiceProvider> list : services.values()) {
+                list.removeIf(rsp -> rsp.getPlugin() == plugin);
+            }
+            services.values().removeIf(List::isEmpty);
+        }
     }
-    public void unregister(java.lang.Class arg0, java.lang.Object arg1) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.plugin.SimpleServicesManager.unregister(Ljava/lang/Class;Ljava/lang/Object;)V");
+
+    @Override
+    public void unregister(java.lang.Class service, java.lang.Object provider) {
+        if (service == null) return;
+        synchronized (services) {
+            List<RegisteredServiceProvider> list = services.get(service);
+            if (list == null) return;
+            list.removeIf(rsp -> provider == null || rsp.getProvider() == provider);
+            if (list.isEmpty()) services.remove(service);
+        }
     }
-    public void unregister(java.lang.Object arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.plugin.SimpleServicesManager.unregister(Ljava/lang/Object;)V");
+
+    @Override
+    public void unregister(java.lang.Object provider) {
+        if (provider == null) return;
+        synchronized (services) {
+            for (List<RegisteredServiceProvider> list : services.values()) {
+                list.removeIf(rsp -> rsp.getProvider() == provider);
+            }
+            services.values().removeIf(List::isEmpty);
+        }
     }
-    public java.lang.Object load(java.lang.Class arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.plugin.SimpleServicesManager.load(Ljava/lang/Class;)Ljava/lang/Object;");
-        return null;
+
+    @Override
+    public java.lang.Object load(java.lang.Class service) {
+        RegisteredServiceProvider rsp = getRegistration(service);
+        return rsp == null ? null : rsp.getProvider();
     }
-    public org.bukkit.plugin.RegisteredServiceProvider getRegistration(java.lang.Class arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.plugin.SimpleServicesManager.getRegistration(Ljava/lang/Class;)Lorg/bukkit/plugin/RegisteredServiceProvider;");
-        return null;
+
+    @Override
+    public org.bukkit.plugin.RegisteredServiceProvider getRegistration(java.lang.Class service) {
+        if (service == null) return null;
+        synchronized (services) {
+            List<RegisteredServiceProvider> list = services.get(service);
+            return (list == null || list.isEmpty()) ? null : list.get(list.size() - 1);
+        }
     }
-    public java.util.List getRegistrations(org.bukkit.plugin.Plugin arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.plugin.SimpleServicesManager.getRegistrations(Lorg/bukkit/plugin/Plugin;)Ljava/util/List;");
-        return java.util.Collections.emptyList();
+
+    @Override
+    public java.util.List getRegistrations(org.bukkit.plugin.Plugin plugin) {
+        List<RegisteredServiceProvider> out = new ArrayList<>();
+        if (plugin == null) return out;
+        synchronized (services) {
+            for (List<RegisteredServiceProvider> list : services.values()) {
+                for (RegisteredServiceProvider rsp : list) {
+                    if (rsp.getPlugin() == plugin) out.add(rsp);
+                }
+            }
+        }
+        return out;
     }
-    public java.util.List getRegistrations(java.lang.Class arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.plugin.SimpleServicesManager.getRegistrations(Ljava/lang/Class;)Ljava/util/List;");
-        return java.util.Collections.emptyList();
+
+    @Override
+    public java.util.List getRegistrations(java.lang.Class service) {
+        if (service == null) return Collections.emptyList();
+        synchronized (services) {
+            List<RegisteredServiceProvider> list = services.get(service);
+            return list == null ? Collections.emptyList() : new ArrayList<>(list);
+        }
     }
+
+    @Override
     public java.util.Set getKnownServices() {
-        return java.util.Collections.emptySet();
+        synchronized (services) {
+            return new java.util.LinkedHashSet<>(services.keySet());
+        }
     }
-    public boolean isProvidedFor(java.lang.Class arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.plugin.SimpleServicesManager.isProvidedFor(Ljava/lang/Class;)Z");
-        return false;
+
+    @Override
+    public boolean isProvidedFor(java.lang.Class service) {
+        if (service == null) return false;
+        synchronized (services) {
+            List<RegisteredServiceProvider> list = services.get(service);
+            return list != null && !list.isEmpty();
+        }
     }
 }

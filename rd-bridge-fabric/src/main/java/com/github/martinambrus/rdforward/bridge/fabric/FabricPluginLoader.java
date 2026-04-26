@@ -151,6 +151,17 @@ public final class FabricPluginLoader {
         Map<String, String> entrypoints = entrypoint == null
                 ? Map.of()
                 : Map.of(epKey, entrypoint);
+        // fabric.mod.json declares deps that mostly describe the runtime
+        // (fabricloader/minecraft/java) plus optional inter-mod deps. The
+        // runtime triple is not an RDForward mod and would cause
+        // DependencyResolver to abort; filter it out and surface the rest
+        // as soft deps so missing peer mods only affect load order.
+        java.util.Map<String, String> softDeps = new java.util.LinkedHashMap<>();
+        for (java.util.Map.Entry<String, String> e : fabric.dependencies().entrySet()) {
+            String key = e.getKey();
+            if (key.equals("fabricloader") || key.equals("minecraft") || key.equals("java")) continue;
+            softDeps.put(key, e.getValue());
+        }
         return new ModDescriptor(
                 fabric.id(),
                 fabric.name(),
@@ -159,8 +170,8 @@ public final class FabricPluginLoader {
                 fabric.authors(),
                 "*",
                 entrypoints,
-                fabric.dependencies(),
                 Map.of(),
+                softDeps,
                 List.of(),
                 false,
                 null,

@@ -37,6 +37,26 @@ public interface PluginManager {
                                Plugin plugin, boolean ignoreCancelled) {
     }
 
+    /**
+     * Dispatch {@code event} to every registered listener whose
+     * {@code @EventHandler} parameter type is assignable from the
+     * event's runtime class. Plugins call this to fire their own
+     * synthetic events — e.g. LoginSecurity's
+     * {@code PlayerSession.performAction} dispatches an
+     * {@code AuthActionEvent} after a successful login attempt;
+     * without this method declaration the bytecode call site (an
+     * {@code INVOKEINTERFACE PluginManager.callEvent}) fails at link
+     * time with {@link NoSuchMethodError}.
+     *
+     * <p>Default implementation forwards to
+     * {@link com.github.martinambrus.rdforward.bridge.bukkit.BukkitEventAdapter#dispatchPluginEvent}
+     * which walks the listener registry built up by
+     * {@link #registerEvents}.
+     */
+    default void callEvent(Event event) {
+        com.github.martinambrus.rdforward.bridge.bukkit.BukkitEventAdapter.dispatchPluginEvent(event);
+    }
+
     /** Noop — RDForward does not support plugin disable from the plugin manager. */
     void disablePlugin(Plugin plugin);
 

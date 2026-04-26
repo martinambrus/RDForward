@@ -114,14 +114,14 @@ class ModLoaderIntegrationTest {
         mm.setContainers(containers);
         mm.enableAll();
 
-        ModClassLoader loaderBefore = c.classLoader();
+        java.net.URLClassLoader loaderBefore = c.classLoader();
         Object instanceBefore = c.serverMod();
         assertNotNull(loaderBefore, "classloader should exist after enable");
         assertNotNull(instanceBefore, "server instance should exist after enable");
 
         mm.reload(TestFixtureMod.MOD_ID);
 
-        ModClassLoader loaderAfter = c.classLoader();
+        java.net.URLClassLoader loaderAfter = c.classLoader();
         Object instanceAfter = c.serverMod();
         assertNotNull(loaderAfter, "classloader should exist after reload");
         assertNotNull(instanceAfter, "server instance should exist after reload");
@@ -284,7 +284,7 @@ class ModLoaderIntegrationTest {
         java.util.List<java.lang.ref.WeakReference<ClassLoader>> history = new java.util.ArrayList<>();
 
         for (int i = 0; i < iterations; i++) {
-            ModClassLoader prev = c.classLoader();
+            java.net.URLClassLoader prev = c.classLoader();
             assertNotNull(prev, "classloader must exist before reload iteration " + i);
             history.add(new java.lang.ref.WeakReference<>(prev, queue));
             mm.reload(TestFixtureMod.MOD_ID);

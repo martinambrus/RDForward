@@ -38,6 +38,9 @@ public final class StubRdServer implements Server {
     public final StubCommandRegistry commands = new StubCommandRegistry();
     public final Map<String, StubRdPlayer> players = new HashMap<>();
     public final List<String> broadcasts = new ArrayList<>();
+    public final com.github.martinambrus.rdforward.modloader.impl.RDPermissionManager permissionManager =
+            new com.github.martinambrus.rdforward.modloader.impl.RDPermissionManager();
+    public ModManager modManager;  // null by default; tests that need bridge isPluginEnabled to query mods set this
 
     @Override public World getWorld() { return world; }
     @Override public Scheduler getScheduler() { return scheduler; }
@@ -50,8 +53,8 @@ public final class StubRdServer implements Server {
 
     @Override public void broadcastMessage(String message) { broadcasts.add(message); }
 
-    @Override public PermissionManager getPermissionManager() { throw new UnsupportedOperationException(); }
-    @Override public ModManager getModManager() { throw new UnsupportedOperationException(); }
+    @Override public PermissionManager getPermissionManager() { return permissionManager; }
+    @Override public ModManager getModManager() { return modManager; }
     @Override public ProtocolVersion[] getSupportedVersions() { return new ProtocolVersion[0]; }
     @Override public PluginChannel openPluginChannel(RegistryKey id) { throw new UnsupportedOperationException(); }
 

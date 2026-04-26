@@ -142,6 +142,16 @@ public final class NeoForgeModLoader {
         List<String> authors = primary.authors() == null || primary.authors().isBlank()
                 ? List.of()
                 : List.of(primary.authors());
+        // Filter NeoForge / Forge / minecraft runtime triple out; surface peer
+        // mod deps as soft so a missing RDForward peer is non-fatal.
+        Map<String, String> softDeps = new LinkedHashMap<>();
+        for (Map.Entry<String, String> e : nf.dependencies().entrySet()) {
+            String key = e.getKey();
+            if (key.equalsIgnoreCase("neoforge")
+                    || key.equalsIgnoreCase("forge")
+                    || key.equalsIgnoreCase("minecraft")) continue;
+            softDeps.put(key, e.getValue());
+        }
         return new ModDescriptor(
                 primary.modId(),
                 primary.displayName(),
@@ -150,8 +160,8 @@ public final class NeoForgeModLoader {
                 authors,
                 "*",
                 entrypoints,
-                new LinkedHashMap<>(nf.dependencies()),
                 Map.of(),
+                softDeps,
                 List.of(),
                 false,
                 null,

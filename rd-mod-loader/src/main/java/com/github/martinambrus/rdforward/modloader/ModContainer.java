@@ -5,6 +5,7 @@ import com.github.martinambrus.rdforward.api.mod.ModDescriptor;
 import com.github.martinambrus.rdforward.api.mod.Reloadable;
 import com.github.martinambrus.rdforward.api.mod.ServerMod;
 
+import java.net.URLClassLoader;
 import java.nio.file.Path;
 import java.util.Objects;
 
@@ -13,17 +14,25 @@ import java.util.Objects;
  * classloader, entrypoint instances, and current {@link ModState}. One
  * {@code ModContainer} exists per mod id for the life of the server
  * (state cycles through as the mod is enabled / reloaded / disabled).
+ *
+ * <p>{@link #classLoader()} is typed as {@link URLClassLoader} so that
+ * containers backed by foreign plugin loaders (Bukkit/Paper/Fabric/Forge/
+ * NeoForge/PocketMine) can store the raw {@code URLClassLoader} they create,
+ * while native rdmod containers continue to hold a {@link ModClassLoader}
+ * (which extends {@code URLClassLoader}). The {@link #bridgeKind()} field
+ * tells callers which path created the container.
  */
 public final class ModContainer {
 
     private final ModDescriptor descriptor;
     private final Path jarPath;
 
-    private ModClassLoader classLoader;
+    private URLClassLoader classLoader;
     private Object serverInstance;
     private Object clientInstance;
     private volatile ModState state = ModState.DISCOVERED;
     private Throwable lastError;
+    private BridgeKind bridgeKind = BridgeKind.NATIVE;
 
     public ModContainer(ModDescriptor descriptor, Path jarPath) {
         this.descriptor = Objects.requireNonNull(descriptor, "descriptor");
@@ -32,13 +41,15 @@ public final class ModContainer {
 
     public ModDescriptor descriptor() { return descriptor; }
     public Path jarPath() { return jarPath; }
-    public ModClassLoader classLoader() { return classLoader; }
+    public URLClassLoader classLoader() { return classLoader; }
     public ModState state() { return state; }
     public Throwable lastError() { return lastError; }
+    public BridgeKind bridgeKind() { return bridgeKind; }
 
     public String id() { return descriptor.id(); }
 
-    public void setClassLoader(ModClassLoader loader) { this.classLoader = loader; }
+    public void setClassLoader(URLClassLoader loader) { this.classLoader = loader; }
+    public void setBridgeKind(BridgeKind kind) { this.bridgeKind = Objects.requireNonNull(kind, "bridgeKind"); }
 
     public void setServerInstance(Object instance) { this.serverInstance = instance; }
     public void setClientInstance(Object instance) { this.clientInstance = instance; }

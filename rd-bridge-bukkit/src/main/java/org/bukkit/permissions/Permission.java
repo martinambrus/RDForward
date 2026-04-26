@@ -1,56 +1,125 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package org.bukkit.permissions;
 
-/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
+/**
+ * Bukkit-shaped {@code Permission}. Carries the four upstream fields so
+ * RDForward's permission registry, plugins (LuckPerms reflectively
+ * reads the {@code children} field via
+ * {@link Class#getDeclaredField(String)} from
+ * {@code LuckPermsPermissionMap.<clinit>}), and consumer plugins that
+ * iterate {@code getDefaultPermissions} all see real values instead of
+ * the auto-gen {@code null}/{@code emptyMap} stubs.
+ *
+ * <p>Field NAMES match real Paper exactly because LuckPerms identifies
+ * the field by its String name; renaming would re-break the same
+ * NoSuchFieldException reported in the original boot trace.
+ */
 @SuppressWarnings({"unchecked", "rawtypes", "unused"})
 public class Permission {
-    public static final org.bukkit.permissions.PermissionDefault DEFAULT_PERMISSION = null;
-    public Permission(java.lang.String arg0) {}
-    public Permission(java.lang.String arg0, java.lang.String arg1) {}
-    public Permission(java.lang.String arg0, org.bukkit.permissions.PermissionDefault arg1) {}
-    public Permission(java.lang.String arg0, java.lang.String arg1, org.bukkit.permissions.PermissionDefault arg2) {}
-    public Permission(java.lang.String arg0, java.util.Map arg1) {}
-    public Permission(java.lang.String arg0, java.lang.String arg1, java.util.Map arg2) {}
-    public Permission(java.lang.String arg0, org.bukkit.permissions.PermissionDefault arg1, java.util.Map arg2) {}
-    public Permission(java.lang.String arg0, java.lang.String arg1, org.bukkit.permissions.PermissionDefault arg2, java.util.Map arg3) {}
+
+    public static final org.bukkit.permissions.PermissionDefault DEFAULT_PERMISSION =
+            org.bukkit.permissions.PermissionDefault.OP;
+
+    private String name;
+    private final java.util.Map<String, Boolean> children = new java.util.LinkedHashMap<>();
+    private org.bukkit.permissions.PermissionDefault defaultValue = DEFAULT_PERMISSION;
+    private String description = "";
+
     public Permission() {}
+
+    public Permission(String name) {
+        this(name, null, null, null);
+    }
+
+    public Permission(String name, String description) {
+        this(name, description, null, null);
+    }
+
+    public Permission(String name, org.bukkit.permissions.PermissionDefault defaultValue) {
+        this(name, null, defaultValue, null);
+    }
+
+    public Permission(String name, String description, org.bukkit.permissions.PermissionDefault defaultValue) {
+        this(name, description, defaultValue, null);
+    }
+
+    public Permission(String name, java.util.Map<String, Boolean> children) {
+        this(name, null, null, children);
+    }
+
+    public Permission(String name, String description, java.util.Map<String, Boolean> children) {
+        this(name, description, null, children);
+    }
+
+    public Permission(String name, org.bukkit.permissions.PermissionDefault defaultValue,
+                      java.util.Map<String, Boolean> children) {
+        this(name, null, defaultValue, children);
+    }
+
+    public Permission(String name, String description,
+                      org.bukkit.permissions.PermissionDefault defaultValue,
+                      java.util.Map<String, Boolean> children) {
+        this.name = name;
+        this.description = description == null ? "" : description;
+        this.defaultValue = defaultValue == null ? DEFAULT_PERMISSION : defaultValue;
+        if (children != null) this.children.putAll(children);
+    }
+
     public java.lang.String getName() {
-        return null;
+        return name;
     }
+
     public java.util.Map getChildren() {
-        return java.util.Collections.emptyMap();
+        return children;
     }
+
     public org.bukkit.permissions.PermissionDefault getDefault() {
-        return null;
+        return defaultValue;
     }
-    public void setDefault(org.bukkit.permissions.PermissionDefault arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.permissions.Permission.setDefault(Lorg/bukkit/permissions/PermissionDefault;)V");
+
+    public void setDefault(org.bukkit.permissions.PermissionDefault value) {
+        this.defaultValue = value == null ? DEFAULT_PERMISSION : value;
     }
+
     public java.lang.String getDescription() {
-        return null;
+        return description;
     }
-    public void setDescription(java.lang.String arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.permissions.Permission.setDescription(Ljava/lang/String;)V");
+
+    public void setDescription(java.lang.String value) {
+        this.description = value == null ? "" : value;
     }
+
     public java.util.Set getPermissibles() {
         return java.util.Collections.emptySet();
     }
-    public void recalculatePermissibles() {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.permissions.Permission.recalculatePermissibles()V");
-    }
-    public org.bukkit.permissions.Permission addParent(java.lang.String arg0, boolean arg1) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.permissions.Permission.addParent(Ljava/lang/String;Z)Lorg/bukkit/permissions/Permission;");
+
+    public void recalculatePermissibles() {}
+
+    public org.bukkit.permissions.Permission addParent(java.lang.String name, boolean value) {
         return this;
     }
-    public void addParent(org.bukkit.permissions.Permission arg0, boolean arg1) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.permissions.Permission.addParent(Lorg/bukkit/permissions/Permission;Z)V");
-    }
-    public static java.util.List loadPermissions(java.util.Map arg0, java.lang.String arg1, org.bukkit.permissions.PermissionDefault arg2) {
+
+    public void addParent(org.bukkit.permissions.Permission parent, boolean value) {}
+
+    public static java.util.List loadPermissions(java.util.Map data, java.lang.String error,
+                                                 org.bukkit.permissions.PermissionDefault def) {
         return java.util.Collections.emptyList();
     }
-    public static org.bukkit.permissions.Permission loadPermission(java.lang.String arg0, java.util.Map arg1) {
+
+    public static org.bukkit.permissions.Permission loadPermission(java.lang.String name,
+                                                                   java.util.Map data) {
         return null;
     }
-    public static org.bukkit.permissions.Permission loadPermission(java.lang.String arg0, java.util.Map arg1, org.bukkit.permissions.PermissionDefault arg2, java.util.List arg3) {
+
+    public static org.bukkit.permissions.Permission loadPermission(java.lang.String name,
+                                                                   java.util.Map data,
+                                                                   org.bukkit.permissions.PermissionDefault def,
+                                                                   java.util.List output) {
         return null;
+    }
+
+    @Override
+    public String toString() {
+        return "Permission{name=" + name + ", default=" + defaultValue + "}";
     }
 }

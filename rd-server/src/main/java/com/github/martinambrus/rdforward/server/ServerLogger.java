@@ -1,11 +1,18 @@
 package com.github.martinambrus.rdforward.server;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetEncoder;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.zip.GZIPOutputStream;
@@ -39,6 +46,9 @@ public final class ServerLogger {
      *  Avoids creating Date objects and formatting on every log line. */
     private static volatile long nextRotationCheckMs;
 
+    /** Console charset for transcoding (null when console is already UTF-8). */
+    private static volatile Charset consoleCharset;
+
     /**
      * Initialize logging. Tees stdout and stderr to logs/latest.log with
      * timestamps. Rotates the previous latest.log to a dated filename
@@ -46,6 +56,8 @@ public final class ServerLogger {
      */
     public static void init() {
         try {
+            consoleCharset = detectConsoleCharset();
+
             File dir = new File(LOG_DIR);
             if (!dir.exists()) dir.mkdirs();
 
@@ -67,15 +79,84 @@ public final class ServerLogger {
             nextRotationCheckMs = computeNextMidnightMs();
             logFileStream = new FileOutputStream(new File(dir, CURRENT_LOG), false);
 
-            PrintStream teeOut = new PrintStream(new TeeOutputStream(System.out, logFileStream, false), true);
-            PrintStream teeErr = new PrintStream(new TeeOutputStream(System.err, logFileStream, true), true);
+            PrintStream teeOut = new PrintStream(new TeeOutputStream(System.out, logFileStream, false), true, StandardCharsets.UTF_8);
+            PrintStream teeErr = new PrintStream(new TeeOutputStream(System.err, logFileStream, true), true, StandardCharsets.UTF_8);
 
             System.setOut(teeOut);
             System.setErr(teeErr);
 
+            configureJulLogging();
+
         } catch (IOException e) {
             System.err.println("[WARN] Failed to initialize log file: " + e.getMessage());
         }
+    }
+
+    /**
+     * Replace JUL's default 2-line {@code SimpleFormatter} (which emits a
+     * separate header line with the date and source class/method, then a
+     * second line with the level and message) with a compact one-liner.
+     * Modloader INFO output is gated behind {@code DebugLog.setEnabled} —
+     * by default only WARNING and above surface for the modloader
+     * package; the {@code /debug on} console command flips the level to
+     * ALL so operators can see EventManager/CommandConflictResolver
+     * lifecycle traces when they need to.
+     */
+    private static void configureJulLogging() {
+        java.util.logging.Formatter compact = new java.util.logging.Formatter() {
+            @Override
+            public String format(java.util.logging.LogRecord r) {
+                StringBuilder sb = new StringBuilder(128);
+                sb.append('[').append(r.getLevel()).append("] ").append(formatMessage(r));
+                sb.append(System.lineSeparator());
+                Throwable t = r.getThrown();
+                if (t != null) {
+                    java.io.StringWriter sw = new java.io.StringWriter();
+                    t.printStackTrace(new java.io.PrintWriter(sw));
+                    sb.append(sw);
+                }
+                return sb.toString();
+            }
+        };
+        java.util.logging.Logger root = java.util.logging.Logger.getLogger("");
+        for (java.util.logging.Handler h : root.getHandlers()) {
+            h.setLevel(java.util.logging.Level.ALL);
+            h.setFormatter(compact);
+        }
+        setModLoaderVerbose(false);
+    }
+
+    /**
+     * Toggle modloader package JUL verbosity. {@code false} (default)
+     * shows only WARNING and above; {@code true} surfaces INFO and below
+     * for diagnostic use via the {@code /debug} console command.
+     */
+    public static void setModLoaderVerbose(boolean verbose) {
+        java.util.logging.Logger.getLogger("com.github.martinambrus.rdforward.modloader")
+                .setLevel(verbose ? java.util.logging.Level.ALL : java.util.logging.Level.WARNING);
+    }
+
+    /**
+     * Determine the charset the underlying console expects, or {@code null}
+     * when no transcoding is needed (console is already UTF-8 or output is
+     * piped). On Windows cmd this typically returns the active code page
+     * (cp437/cp850/cp1252); when the user has run {@code chcp 65001} it
+     * returns UTF-8 and we skip transcoding.
+     */
+    private static Charset detectConsoleCharset() {
+        Charset cs = null;
+        if (System.console() != null) {
+            try { cs = System.console().charset(); } catch (Throwable ignored) {}
+        }
+        if (cs == null) {
+            String enc = System.getProperty("stdout.encoding");
+            if (enc == null) enc = System.getProperty("native.encoding");
+            if (enc != null) {
+                try { cs = Charset.forName(enc); } catch (Throwable ignored) {}
+            }
+        }
+        if (cs == null || StandardCharsets.UTF_8.equals(cs)) return null;
+        return cs;
     }
 
     /**
@@ -217,14 +298,27 @@ public final class ServerLogger {
         private final SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         private boolean atLineStart = true;
 
+        /** Per-line buffer of UTF-8 bytes for console transcoding. */
+        private final ByteArrayOutputStream lineBuf = new ByteArrayOutputStream(256);
+        private final CharsetEncoder consoleEncoder;
+
         TeeOutputStream(OutputStream console, FileOutputStream file, boolean isErr) {
             this.console = console;
             this.isErr = isErr;
+            Charset cs = consoleCharset;
+            if (cs == null) {
+                this.consoleEncoder = null;
+            } else {
+                this.consoleEncoder = cs.newEncoder()
+                        .onMalformedInput(CodingErrorAction.REPLACE)
+                        .onUnmappableCharacter(CodingErrorAction.REPLACE)
+                        .replaceWith(new byte[]{'?'});
+            }
         }
 
         @Override
         public void write(int b) throws IOException {
-            console.write(b);
+            writeConsoleByte((byte) b);
             synchronized (LOG_LOCK) {
                 if (atLineStart) {
                     rotateIfNeeded();
@@ -240,7 +334,9 @@ public final class ServerLogger {
 
         @Override
         public void write(byte[] buf, int off, int len) throws IOException {
-            console.write(buf, off, len);
+            for (int i = off; i < off + len; i++) {
+                writeConsoleByte(buf[i]);
+            }
             synchronized (LOG_LOCK) {
                 for (int i = off; i < off + len; i++) {
                     if (atLineStart) {
@@ -256,8 +352,67 @@ public final class ServerLogger {
             }
         }
 
+        /** Console-side write. Line-buffers when transcoding so multi-byte
+         *  UTF-8 sequences are not split across encoder calls. */
+        private void writeConsoleByte(byte b) throws IOException {
+            if (consoleEncoder == null) {
+                console.write(b & 0xFF);
+                return;
+            }
+            lineBuf.write(b & 0xFF);
+            if (b == '\n') {
+                flushLineBufToConsole();
+            }
+        }
+
+        private void flushLineBufToConsole() throws IOException {
+            if (lineBuf.size() == 0) return;
+            String line = lineBuf.toString(StandardCharsets.UTF_8);
+            lineBuf.reset();
+            line = sanitizeForLegacyConsole(line);
+            try {
+                consoleEncoder.reset();
+                ByteBuffer bb = consoleEncoder.encode(CharBuffer.wrap(line));
+                console.write(bb.array(), bb.arrayOffset() + bb.position(), bb.remaining());
+            } catch (java.nio.charset.CharacterCodingException e) {
+                // REPLACE action above means this should never throw, but be defensive.
+                console.write(line.getBytes(StandardCharsets.US_ASCII));
+            }
+        }
+
+        /** Map common Unicode punctuation/arrows to ASCII equivalents so a
+         *  cp437/cp1252 console renders them naturally instead of as '?'. */
+        private static String sanitizeForLegacyConsole(String s) {
+            if (s.indexOf('‐') < 0 && s.indexOf('–') < 0
+                    && s.indexOf('—') < 0 && s.indexOf('‘') < 0
+                    && s.indexOf('’') < 0 && s.indexOf('“') < 0
+                    && s.indexOf('”') < 0 && s.indexOf('…') < 0
+                    && s.indexOf('←') < 0 && s.indexOf('→') < 0
+                    && s.indexOf('≈') < 0 && s.indexOf('×') < 0) {
+                return s;
+            }
+            StringBuilder sb = new StringBuilder(s.length());
+            for (int i = 0; i < s.length(); i++) {
+                char c = s.charAt(i);
+                switch (c) {
+                    case '‐': case '–': sb.append('-'); break;       // hyphen, en dash
+                    case '—': sb.append("--"); break;                     // em dash
+                    case '‘': case '’': sb.append('\''); break;      // smart single quotes
+                    case '“': case '”': sb.append('"'); break;       // smart double quotes
+                    case '…': sb.append("..."); break;                    // ellipsis
+                    case '←': sb.append("<-"); break;                     // left arrow
+                    case '→': sb.append("->"); break;                     // right arrow
+                    case '≈': sb.append("~="); break;                     // approx equal
+                    case '×': sb.append('x'); break;                      // multiplication sign
+                    default: sb.append(c);
+                }
+            }
+            return sb.toString();
+        }
+
         @Override
         public void flush() throws IOException {
+            flushLineBufToConsole();
             console.flush();
             synchronized (LOG_LOCK) {
                 logFileStream.flush();
@@ -266,7 +421,7 @@ public final class ServerLogger {
 
         private void writeTimestamp() throws IOException {
             String prefix = "[" + sdf.format(new Date()) + (isErr ? " ERROR] " : "] ");
-            logFileStream.write(prefix.getBytes());
+            logFileStream.write(prefix.getBytes(StandardCharsets.UTF_8));
         }
     }
 }

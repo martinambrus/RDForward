@@ -8,6 +8,27 @@ dependencies {
     implementation 'com.google.code.gson:gson:2.11.0'
     // Alternative descriptor formats per plan §1: YAML via SnakeYAML,
     // TOML via tomlj (Apache-2.0, pure Java).
-    implementation 'org.yaml:snakeyaml:2.2'
+    implementation 'org.yaml:snakeyaml:1.33'
     implementation 'org.tomlj:tomlj:1.1.1'
+
+    // ASM — used by ModClassLoader to remap legacy
+    // net.minecraft.util.com.google.{common,gson}.* references
+    // (Mojang's transient 1.7.2-1.7.5 package shading) to the canonical
+    // com.google.{common,gson}.* shipped on the runtime classpath, so old
+    // plugin jars resolve Guava/Gson without on-disk duplication.
+    implementation 'org.ow2.asm:asm:9.9.1'
+    implementation 'org.ow2.asm:asm-commons:9.9.1'
+    implementation 'org.ow2.asm:asm-tree:9.9.1'
+
+    // Bridge modules are reflectively dispatched by BridgeRegistry — no
+    // production-time link. The Bukkit bridge is added on the test
+    // classpath so ModLoaderBridgeWiringTest can package a fixture
+    // JavaPlugin into a synthetic jar and drive the full
+    // detect → dispatch → ModContainer wiring against a real bridge.
+    testImplementation project(':rd-bridge-bukkit')
+    // Guava on the test classpath so ModClassLoaderRemapTest can verify
+    // the legacy → canonical Google package remap by loading a synthetic
+    // class through ModClassLoader and asserting it resolves to a real
+    // com.google.common.collect.ImmutableList instance.
+    testImplementation 'com.google.guava:guava:33.5.0-jre'
 }

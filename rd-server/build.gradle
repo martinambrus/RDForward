@@ -8,25 +8,78 @@ dependencies {
     implementation 'io.netty:netty-codec-http:4.1.131.Final'
     // CloudburstMC Protocol: Bedrock Edition codec, RakNet transport, compression
     implementation 'org.cloudburstmc.protocol:bedrock-connection:3.0.0.Beta12-SNAPSHOT'
-    // SLF4J simple logger to see CloudburstMC library debug/error output
-    implementation 'org.slf4j:slf4j-simple:1.7.36'
+
+    // Paper-equivalent runtime libs. Bundled into the rd-server fatJar so
+    // Bukkit/Paper plugins find log4j-core, Guava, SnakeYAML, Apache
+    // Commons, BungeeCord chat, sqlite-jdbc etc. on the runtime classpath
+    // without each bridge module having to re-ship them. Versions track
+    // Paper 1.21.11 build 69.
+    runtimeOnly 'org.apache.logging.log4j:log4j-api:2.25.2'
+    runtimeOnly 'org.apache.logging.log4j:log4j-core:2.25.2'
+    runtimeOnly 'org.apache.logging.log4j:log4j-iostreams:2.25.2'
+    // Routes SLF4J calls into log4j-core (replaces slf4j-simple). Real
+    // Paper uses the same binding so plugin SLF4J output flows through
+    // log4j like in production environments.
+    runtimeOnly 'org.apache.logging.log4j:log4j-slf4j2-impl:2.25.2'
+    runtimeOnly 'org.slf4j:slf4j-api:2.0.17'
+    runtimeOnly 'com.google.guava:guava:33.5.0-jre'
+    runtimeOnly 'com.google.guava:failureaccess:1.0.3'
+    runtimeOnly 'com.google.code.gson:gson:2.11.0'
+    // 1.33 retains no-arg Representer() ctor that older plugins (e.g.
+    // WorldEdit) reference; 2.x removed it and breaks NoSuchMethodError.
+    runtimeOnly 'org.yaml:snakeyaml:1.33'
+    runtimeOnly 'net.md-5:bungeecord-chat:1.21-R0.2-deprecated+build.21'
+    runtimeOnly 'commons-io:commons-io:2.20.0'
+    runtimeOnly 'org.apache.commons:commons-lang3:3.19.0'
+    runtimeOnly 'commons-lang:commons-lang:2.6'
+    runtimeOnly 'commons-codec:commons-codec:1.16.0'
+    runtimeOnly 'it.unimi.dsi:fastutil:8.5.18'
+    runtimeOnly 'org.joml:joml:1.10.8'
+    runtimeOnly 'org.xerial:sqlite-jdbc:3.49.1.0'
+    runtimeOnly 'com.mysql:mysql-connector-j:9.2.0'
+    runtimeOnly 'com.mojang:brigadier:1.3.10'
 }
 
 jar {
     manifest {
-        attributes('Main-Class': 'com.github.martinambrus.rdforward.server.RDServer')
+        attributes(
+                'Main-Class': 'com.github.martinambrus.rdforward.server.RDServer',
+                // JEP 472: declares the executable jar's intent to use restricted
+                // native methods (System.load via SQLite-JDBC, etc.). Suppresses
+                // the "WARNING: A restricted method in java.lang.System has been
+                // called" line on JDK 22+; also future-proofs against the
+                // "deny by default" rollout in later releases.
+                'Enable-Native-Access': 'ALL-UNNAMED'
+        )
     }
 }
 
 task fatJar(type: Jar) {
     description = 'Builds a self-contained server JAR with all dependencies bundled'
     group = 'build'
+    def bridgeProjects = [
+            ':rd-bridge-bukkit',
+            ':rd-bridge-paper',
+            ':rd-bridge-fabric',
+            ':rd-bridge-forge',
+            ':rd-bridge-neoforge',
+            ':rd-bridge-pocketmine'
+    ]
     dependsOn classes, ':rd-api:jar', ':rd-protocol:jar', ':rd-world:jar', ':rd-mod-loader:jar'
+    bridgeProjects.each { bp -> dependsOn "${bp}:jar" }
 
     archiveClassifier = 'all'
 
     manifest {
-        attributes('Main-Class': 'com.github.martinambrus.rdforward.server.RDServer')
+        attributes(
+                'Main-Class': 'com.github.martinambrus.rdforward.server.RDServer',
+                // JEP 472: declares the executable jar's intent to use restricted
+                // native methods (System.load via SQLite-JDBC, etc.). Suppresses
+                // the "WARNING: A restricted method in java.lang.System has been
+                // called" line on JDK 22+; also future-proofs against the
+                // "deny by default" rollout in later releases.
+                'Enable-Native-Access': 'ALL-UNNAMED'
+        )
     }
 
     from sourceSets.main.output
@@ -58,6 +111,30 @@ task fatJar(type: Jar) {
         exclude 'META-INF/*.SF'
         exclude 'META-INF/*.DSA'
         exclude 'META-INF/*.RSA'
+    }
+
+    // Bundle every bridge module + its runtime classpath. ModLoader
+    // discovers them reflectively via BridgeRegistry, so they only need
+    // to be on the classpath; rd-mod-loader has no compile-time link.
+    bridgeProjects.each { bp ->
+        from({
+            zipTree(project(bp).tasks.named('jar').get().archiveFile.get().asFile)
+        }) {
+            exclude 'META-INF/MANIFEST.MF'
+            exclude 'META-INF/*.SF'
+            exclude 'META-INF/*.DSA'
+            exclude 'META-INF/*.RSA'
+        }
+        from({
+            project(bp).configurations.runtimeClasspath
+                .filter { it.isFile() && it.name.endsWith('.jar') }
+                .collect { zipTree(it) }
+        }) {
+            exclude 'META-INF/MANIFEST.MF'
+            exclude 'META-INF/*.SF'
+            exclude 'META-INF/*.DSA'
+            exclude 'META-INF/*.RSA'
+        }
     }
 
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE

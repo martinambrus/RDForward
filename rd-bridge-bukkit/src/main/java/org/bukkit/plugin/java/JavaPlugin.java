@@ -4,6 +4,8 @@ package org.bukkit.plugin.java;
 import org.bukkit.Bukkit;
 import org.bukkit.Server;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.PluginBase;
 import org.bukkit.plugin.PluginDescriptionFile;
@@ -46,6 +48,9 @@ public abstract class JavaPlugin extends PluginBase {
     private final Map<String, PluginCommand> commandMap = new LinkedHashMap<>();
     private PluginDescriptionFile description;
     private File dataFolder;
+    private File file;
+    private ClassLoader classLoader;
+    private FileConfiguration config;
 
     public void onLoad() {}
     public void onEnable() {}
@@ -107,6 +112,38 @@ public abstract class JavaPlugin extends PluginBase {
         this.dataFolder = dataFolder;
     }
 
+    /** @return the jar file this plugin was loaded from. Real paper-api
+     *  exposes this via a protected {@code getFile()} backed by a field set
+     *  inside {@code JavaPlugin#init}; subclasses such as
+     *  {@code WorldEditPlugin} call it to locate their own jar for resource
+     *  extraction. {@code null} until {@link #setFile(File)} is called by the
+     *  bridge loader. */
+    public File getFile() {
+        return file;
+    }
+
+    /** Bridge hook — populated by {@code BukkitPluginLoader.load()} /
+     *  {@code PaperPluginLoader.load()} immediately after reflective
+     *  instantiation, so {@link #getFile()} returns the source jar by the
+     *  time {@code onEnable} runs. */
+    public void setFile(File file) {
+        this.file = file;
+    }
+
+    /** @return the {@link ClassLoader} that loaded this plugin's jar. Real
+     *  paper-api uses {@code PluginClassLoader}; under RDForward it is the
+     *  {@link java.net.URLClassLoader} created by the bridge loader. */
+    public ClassLoader getClassLoader() {
+        return classLoader == null ? getClass().getClassLoader() : classLoader;
+    }
+
+    /** Bridge hook — invoked by the bridge loader after instantiation so
+     *  {@link #getClassLoader()} returns the per-plugin loader rather than
+     *  falling back to {@link Class#getClassLoader()}. */
+    public void setClassLoader(ClassLoader classLoader) {
+        this.classLoader = classLoader;
+    }
+
     /**
      * @return an input stream reading {@code filename} from the plugin
      *         JAR, or {@code null} if no such resource is present. Real
@@ -114,16 +151,38 @@ public abstract class JavaPlugin extends PluginBase {
      *         RDForward defers to {@code getClass().getClassLoader()}.
      */
     public InputStream getResource(String filename) {
-        return getClass().getClassLoader().getResourceAsStream(filename);
+        return getClassLoader().getResourceAsStream(filename);
     }
 
-    /** Stub — matches upstream signature. Real save/reload is a no-op under RDForward. */
+    /**
+     * @return the plugin's {@code config.yml}-backed configuration. Real
+     *         paper-api lazily loads from {@code <dataFolder>/config.yml}
+     *         and falls back to the bundled {@code config.yml} resource.
+     *         RDForward returns an empty {@link YamlConfiguration} that is
+     *         safe to read/write but never persisted — every accessor on
+     *         {@link org.bukkit.configuration.MemorySection} returns the
+     *         caller-supplied default. The instance is non-null and stable
+     *         across calls so plugins (e.g. SimpleLogin) that store the
+     *         result in a field continue to function.
+     */
+    public FileConfiguration getConfig() {
+        if (config == null) {
+            config = new YamlConfiguration();
+        }
+        return config;
+    }
+
+    /** Stub — matches upstream signature. Real save is a no-op under RDForward. */
     public void saveDefaultConfig() {}
 
-    /** Stub — matches upstream signature. Real save/reload is a no-op under RDForward. */
-    public void reloadConfig() {}
+    /** Re-creates the in-memory {@link YamlConfiguration} so subsequent
+     *  {@link #getConfig()} calls observe a fresh instance. RDForward never
+     *  parses the underlying file, so the resulting configuration is empty. */
+    public void reloadConfig() {
+        config = new YamlConfiguration();
+    }
 
-    /** Stub — matches upstream signature. Real save/reload is a no-op under RDForward. */
+    /** Stub — matches upstream signature. Real save is a no-op under RDForward. */
     public void saveConfig() {}
 
     /** @return {@code true} — RDForward plugins are considered enabled once loaded. */

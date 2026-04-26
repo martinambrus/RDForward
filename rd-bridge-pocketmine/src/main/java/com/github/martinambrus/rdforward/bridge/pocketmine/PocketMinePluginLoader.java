@@ -70,8 +70,11 @@ public final class PocketMinePluginLoader {
     }
 
     private static ModDescriptor toModDescriptor(PluginDescription nf) {
-        Map<String, String> deps = new HashMap<>();
-        for (String d : nf.depend()) deps.put(d, "*");
+        // PocketMine plugin.yml depend: entries reference other PocketMine
+        // plugins, not RDForward mods. Surface as soft deps so missing peers
+        // do not abort load.
+        Map<String, String> softDeps = new HashMap<>();
+        for (String d : nf.depend()) softDeps.put(d, "*");
         Map<String, String> entrypoints = Map.of(ModDescriptor.ENTRYPOINT_SERVER, nf.main());
         List<String> authors = nf.authors().isEmpty() ? List.of() : nf.authors();
         return new ModDescriptor(
@@ -82,8 +85,8 @@ public final class PocketMinePluginLoader {
                 authors,
                 "*",
                 entrypoints,
-                deps,
                 Map.of(),
+                softDeps,
                 List.of(),
                 false,
                 null,

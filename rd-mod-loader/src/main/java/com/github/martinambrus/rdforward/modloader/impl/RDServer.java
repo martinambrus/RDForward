@@ -93,8 +93,16 @@ public final class RDServer implements Server {
 
     @Override
     public void broadcastMessage(String message) {
+        // Legacy clients (Beta 1.7.3, Alpha, early Release) cap chat at
+        // PlayerManager.MAX_CHAT_CHARS UTF-16 chars and disconnect on
+        // overflow. StubCallLog broadcasts can run ~190+ chars; without
+        // splitting, the very first stub-call hit kills v22 clients.
+        java.util.List<String> chunks =
+                com.github.martinambrus.rdforward.server.PlayerManager.splitChatMessage(message);
         for (ConnectedPlayer cp : playerManager().getAllPlayers()) {
-            ChatDispatch.send(cp, message);
+            for (String chunk : chunks) {
+                ChatDispatch.send(cp, chunk);
+            }
         }
     }
 

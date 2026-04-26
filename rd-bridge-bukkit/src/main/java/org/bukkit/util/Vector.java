@@ -1,12 +1,15 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package org.bukkit.util;
 
-/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
 @SuppressWarnings({"unchecked", "rawtypes", "unused"})
 public class Vector implements java.lang.Cloneable, org.bukkit.configuration.serialization.ConfigurationSerializable {
+    protected double x;
+    protected double y;
+    protected double z;
     public Vector() {}
-    public Vector(int arg0, int arg1, int arg2) {}
-    public Vector(double arg0, double arg1, double arg2) {}
-    public Vector(float arg0, float arg1, float arg2) {}
+    public Vector(int x, int y, int z) { this.x = x; this.y = y; this.z = z; }
+    public Vector(double x, double y, double z) { this.x = x; this.y = y; this.z = z; }
+    public Vector(float x, float y, float z) { this.x = x; this.y = y; this.z = z; }
     public org.bukkit.util.Vector add(org.bukkit.util.Vector arg0) {
         com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.util.Vector.add(Lorg/bukkit/util/Vector;)Lorg/bukkit/util/Vector;");
         return this;
@@ -118,22 +121,22 @@ public class Vector implements java.lang.Cloneable, org.bukkit.configuration.ser
         return this;
     }
     public double getX() {
-        return 0.0;
+        return x;
     }
     public int getBlockX() {
-        return 0;
+        return (int) Math.floor(x);
     }
     public double getY() {
-        return 0.0;
+        return y;
     }
     public int getBlockY() {
-        return 0;
+        return (int) Math.floor(y);
     }
     public double getZ() {
-        return 0.0;
+        return z;
     }
     public int getBlockZ() {
-        return 0;
+        return (int) Math.floor(z);
     }
     public org.bukkit.util.Vector setX(int arg0) {
         com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.util.Vector.setX(I)Lorg/bukkit/util/Vector;");
@@ -171,18 +174,27 @@ public class Vector implements java.lang.Cloneable, org.bukkit.configuration.ser
         com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.util.Vector.setZ(F)Lorg/bukkit/util/Vector;");
         return this;
     }
-    public boolean equals(java.lang.Object arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.util.Vector.equals(Ljava/lang/Object;)Z");
-        return false;
+    public boolean equals(java.lang.Object other) {
+        if (!(other instanceof org.bukkit.util.Vector)) return false;
+        org.bukkit.util.Vector v = (org.bukkit.util.Vector) other;
+        return Math.abs(x - v.x) < 1.0E-6
+                && Math.abs(y - v.y) < 1.0E-6
+                && Math.abs(z - v.z) < 1.0E-6;
     }
     public int hashCode() {
-        return 0;
+        long lx = Double.doubleToLongBits(x);
+        long ly = Double.doubleToLongBits(y);
+        long lz = Double.doubleToLongBits(z);
+        int h = (int) (lx ^ (lx >>> 32));
+        h = 31 * h + (int) (ly ^ (ly >>> 32));
+        h = 31 * h + (int) (lz ^ (lz >>> 32));
+        return h;
     }
     public org.bukkit.util.Vector clone() {
-        return null;
+        return new org.bukkit.util.Vector(x, y, z);
     }
     public java.lang.String toString() {
-        return null;
+        return x + "," + y + "," + z;
     }
     public org.bukkit.Location toLocation(org.bukkit.World arg0) {
         com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.util.Vector.toLocation(Lorg/bukkit/World;)Lorg/bukkit/Location;");

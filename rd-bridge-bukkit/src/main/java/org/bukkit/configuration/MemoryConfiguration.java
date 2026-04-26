@@ -1,29 +1,59 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package org.bukkit.configuration;
 
-/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
+import java.util.Map;
+
+/**
+ * Stub of Bukkit's {@code MemoryConfiguration}. Inherits the real
+ * backing map from {@link MemorySection} and routes the upstream
+ * {@code addDefault*} / {@code setDefaults} accessors into it so plugins
+ * that prime defaults via {@code addDefault(path, value)} and read with
+ * {@code getString(path)} round-trip cleanly.
+ */
 @SuppressWarnings({"unchecked", "rawtypes", "unused"})
-public class MemoryConfiguration extends org.bukkit.configuration.MemorySection implements org.bukkit.configuration.Configuration {
+public class MemoryConfiguration extends org.bukkit.configuration.MemorySection
+        implements org.bukkit.configuration.Configuration {
+
     public MemoryConfiguration() {}
-    public MemoryConfiguration(org.bukkit.configuration.Configuration arg0) {}
-    public void addDefault(java.lang.String arg0, java.lang.Object arg1) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.configuration.MemoryConfiguration.addDefault(Ljava/lang/String;Ljava/lang/Object;)V");
+
+    public MemoryConfiguration(org.bukkit.configuration.Configuration source) {
+        if (source != null) {
+            for (String key : (java.util.Collection<String>) source.getKeys(true)) {
+                Object v = source.get(key);
+                if (v != null) defaults.put(key, v);
+            }
+        }
     }
-    public void addDefaults(java.util.Map arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.configuration.MemoryConfiguration.addDefaults(Ljava/util/Map;)V");
+
+    @Override
+    public void addDefault(String path, Object value) {
+        if (value == null) defaults.remove(path);
+        else defaults.put(path, value);
     }
-    public void addDefaults(org.bukkit.configuration.Configuration arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.configuration.MemoryConfiguration.addDefaults(Lorg/bukkit/configuration/Configuration;)V");
+
+    public void addDefaults(Map<String, Object> map) {
+        if (map == null) return;
+        for (Map.Entry<String, Object> e : map.entrySet()) {
+            addDefault(e.getKey(), e.getValue());
+        }
     }
-    public void setDefaults(org.bukkit.configuration.Configuration arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.configuration.MemoryConfiguration.setDefaults(Lorg/bukkit/configuration/Configuration;)V");
+
+    public void addDefaults(org.bukkit.configuration.Configuration source) {
+        if (source == null) return;
+        for (String key : (java.util.Collection<String>) source.getKeys(true)) {
+            addDefault(key, source.get(key));
+        }
     }
-    public org.bukkit.configuration.Configuration getDefaults() {
-        return null;
+
+    public void setDefaults(org.bukkit.configuration.Configuration source) {
+        defaults.clear();
+        addDefaults(source);
     }
-    public org.bukkit.configuration.ConfigurationSection getParent() {
-        return null;
-    }
-    public org.bukkit.configuration.MemoryConfigurationOptions options() {
-        return null;
-    }
+
+    public org.bukkit.configuration.Configuration getDefaults() { return null; }
+
+    @Override
+    public org.bukkit.configuration.ConfigurationSection getParent() { return null; }
+
+    public org.bukkit.configuration.MemoryConfigurationOptions options() { return null; }
 }

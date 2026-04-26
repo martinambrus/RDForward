@@ -82,9 +82,48 @@ class BukkitBridgeIntegrationTest {
             assertEquals("TestBukkit", loaded.descriptor().id());
             assertEquals("2.3.4", loaded.descriptor().version());
             assertEquals(TestBukkitPlugin.class.getName(), loaded.descriptor().serverEntrypoint());
-            assertEquals("*", loaded.descriptor().dependencies().get("coreMod"));
+            // Bukkit `depend:` entries reference peer plugins (Vault,
+            // WorldEdit, ...) that are not RDForward mods, so
+            // BukkitPluginLoader surfaces them as soft dependencies — the
+            // DependencyResolver treats them as load-order hints rather
+            // than fatal missing requirements. Hard dependencies stay
+            // empty.
+            assertTrue(loaded.descriptor().dependencies().isEmpty(),
+                    "Bukkit `depend:` should not produce hard deps");
+            assertEquals("*", loaded.descriptor().softDependencies().get("coreMod"));
             assertNotNull(loaded.plugin());
             assertTrue(loaded.plugin() instanceof TestBukkitPlugin);
+        } finally {
+            loaded.classLoader().close();
+        }
+    }
+
+    @Test
+    void loadWiresJavaPluginInitFields(@TempDir Path dir) throws Exception {
+        Path jar = writePluginJar(dir.resolve("plugin.jar"),
+                "InitFieldsPlugin", "1.0.0",
+                TestBukkitPlugin.class.getName(),
+                List.of());
+
+        BukkitPluginLoader.LoadedPlugin loaded =
+                BukkitPluginLoader.load(jar, getClass().getClassLoader());
+
+        try {
+            // Real Paper's PluginClassLoader sets these via JavaPlugin#init
+            // before onEnable. The bridge loader must do the same so plugins
+            // like WorldEdit (getFile()), LuckPerms (getClassLoader()), and
+            // any plugin walking getDataFolder() during onLoad/onEnable see
+            // populated values rather than nulls.
+            assertEquals(jar.toFile().getAbsoluteFile(),
+                    loaded.plugin().getFile().getAbsoluteFile(),
+                    "JavaPlugin.getFile() must point at the source jar");
+            assertSame(loaded.classLoader(), loaded.plugin().getClassLoader(),
+                    "JavaPlugin.getClassLoader() must be the per-plugin URLClassLoader");
+            assertNotNull(loaded.plugin().getDataFolder(),
+                    "JavaPlugin.getDataFolder() must be initialised");
+            assertTrue(loaded.plugin().getDataFolder().getPath().endsWith("InitFieldsPlugin"),
+                    "data folder path should derive from plugin name; got "
+                            + loaded.plugin().getDataFolder().getPath());
         } finally {
             loaded.classLoader().close();
         }
@@ -392,7 +431,7 @@ class BukkitBridgeIntegrationTest {
         try {
             Player bukkitPlayer = Bukkit.getServer().getPlayer("dave");
             assertNotNull(bukkitPlayer);
-            assertSame(rdPlayer, bukkitPlayer.backing());
+            assertSame(rdPlayer, com.github.martinambrus.rdforward.bridge.bukkit.BukkitPlayer.backing(bukkitPlayer));
 
             bukkitPlayer.sendMessage("ping");
             assertEquals(List.of("ping"), rdPlayer.messages);

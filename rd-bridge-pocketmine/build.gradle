@@ -16,7 +16,7 @@ dependencies {
     implementation project(':rd-api')
     implementation project(':rd-mod-loader')
     implementation project(':rd-server')
-    implementation 'org.yaml:snakeyaml:2.3'
+    implementation 'org.yaml:snakeyaml:1.33'
 }
 
 task distApi(type: Copy) {

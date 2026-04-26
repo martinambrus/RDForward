@@ -33,16 +33,36 @@ public final class StubCallLog {
 
     private static final ConcurrentHashMap<String, Set<String>> SEEN = new ConcurrentHashMap<>();
 
+    /** Broadcast sink installed by the host (Bukkit bridge) so plugin
+     *  authors and operators see the same warning in-game without
+     *  having to tail server logs. Active for first-time hits only —
+     *  same dedup as the JUL line. */
+    private static volatile java.util.function.Consumer<String> broadcastSink;
+
     private StubCallLog() {}
+
+    /** Install (or replace) the broadcast sink. {@code null} disables
+     *  in-game broadcasting and reverts to log-only behaviour. The
+     *  sink runs on the calling thread; implementations must dispatch
+     *  to a server thread internally if their broadcast API requires
+     *  it. */
+    public static void setBroadcastSink(java.util.function.Consumer<String> sink) {
+        broadcastSink = sink;
+    }
 
     public static void logOnce(String pluginId, String signature) {
         if (signature == null || signature.isEmpty()) return;
         String effectiveId = (pluginId == null || pluginId.isBlank()) ? UNKNOWN_PLUGIN : pluginId;
         Set<String> seen = SEEN.computeIfAbsent(effectiveId, k -> ConcurrentHashMap.newKeySet());
         if (seen.add(signature)) {
-            LOG.warning("[StubCall] Plugin '" + effectiveId + "' called "
+            String msg = "[StubCall] Plugin '" + effectiveId + "' called "
                     + signature
-                    + " - unsupported in RDForward, ignored. Further calls from this plugin to this method will be silent.");
+                    + " - unsupported in RDForward, ignored. Further calls from this plugin to this method will be silent.";
+            LOG.warning(msg);
+            java.util.function.Consumer<String> sink = broadcastSink;
+            if (sink != null) {
+                try { sink.accept(msg); } catch (Throwable ignored) {}
+            }
         }
     }
 

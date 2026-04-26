@@ -16,6 +16,6 @@ public final class BukkitPlayerAdapter {
 
     public static Player wrap(com.github.martinambrus.rdforward.api.player.Player backing, World world) {
         if (backing == null) return null;
-        return new Player(backing.getName(), backing, world);
+        return BukkitPlayer.create(backing.getName(), backing, world);
     }
 }

@@ -1,14 +1,30 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package org.bukkit.plugin;
 
-/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
+/** Bukkit-shaped {@code SimplePluginManager}. Carries the upstream
+ *  field surface so plugins (notably WorldEdit's
+ *  {@code com.sk89q.bukkit.util.CommandRegistration#getCommandMap}) that
+ *  reflectively read the {@code commandMap} or permission-tracking maps
+ *  see the expected names without {@link NoSuchFieldException}. */
 @SuppressWarnings({"unchecked", "rawtypes", "unused"})
 public class SimplePluginManager implements org.bukkit.plugin.PluginManager {
-    public final java.util.Map permissions = java.util.Collections.emptyMap();
-    public final java.util.Map defaultPerms = java.util.Collections.emptyMap();
-    public final java.util.Map permSubs = java.util.Collections.emptyMap();
-    public final java.util.Map defSubs = java.util.Collections.emptyMap();
+    // Mutable so plugins (e.g. LuckPerms) that reflectively swap these maps
+    // for their own tracking implementations can do so without hitting
+    // IllegalAccessException on a final field.
+    public java.util.Map permissions = new java.util.HashMap();
+    public java.util.Map defaultPerms = new java.util.HashMap();
+    public java.util.Map permSubs = new java.util.HashMap();
+    public java.util.Map defSubs = new java.util.HashMap();
     public org.bukkit.plugin.PluginManager paperPluginManager = null;
-    public SimplePluginManager(org.bukkit.Server arg0, org.bukkit.command.SimpleCommandMap arg1) {}
+    /** WorldEdit's {@code CommandRegistration#getCommandMap()} reflectively
+     *  reads this exact field name; without it WE falls back to its own
+     *  internal command storage and emits a SEVERE log line. The instance
+     *  is shared across the whole server — Bukkit (real Paper) keeps a
+     *  single {@code SimpleCommandMap} per server. */
+    public org.bukkit.command.SimpleCommandMap commandMap = new org.bukkit.command.SimpleCommandMap();
+    public SimplePluginManager(org.bukkit.Server arg0, org.bukkit.command.SimpleCommandMap arg1) {
+        if (arg1 != null) this.commandMap = arg1;
+    }
     public SimplePluginManager() {}
     public void registerInterface(java.lang.Class arg0) throws java.lang.IllegalArgumentException {
         com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.plugin.SimplePluginManager.registerInterface(Ljava/lang/Class;)V");
@@ -57,7 +73,13 @@ public class SimplePluginManager implements org.bukkit.plugin.PluginManager {
         com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.plugin.SimplePluginManager.clearPlugins()V");
     }
     public void callEvent(org.bukkit.event.Event arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.plugin.SimplePluginManager.callEvent(Lorg/bukkit/event/Event;)V");
+        // Real dispatch — forwards to BukkitEventAdapter so plugin-fired
+        // events (e.g. LoginSecurity's AuthActionEvent) reach their
+        // @EventHandler methods. The interface default does the same
+        // thing, but we override here because virtual dispatch on a
+        // subclass instance picks the SimplePluginManager body before
+        // the interface default.
+        com.github.martinambrus.rdforward.bridge.bukkit.BukkitEventAdapter.dispatchPluginEvent(arg0);
     }
     public void registerEvents(org.bukkit.event.Listener arg0, org.bukkit.plugin.Plugin arg1) {
         com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.plugin.SimplePluginManager.registerEvents(Lorg/bukkit/event/Listener;Lorg/bukkit/plugin/Plugin;)V");
