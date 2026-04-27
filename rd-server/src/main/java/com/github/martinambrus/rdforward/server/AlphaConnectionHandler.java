@@ -243,14 +243,17 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
                     && !clientVersion.isAtLeast(ProtocolVersion.BETA_1_8)) {
                 resetInventory(ctx);
             }
-        } else if (packet instanceof CreativeSlotPacket
-                || packet instanceof CreativeSlotPacketV22
-                || packet instanceof CreativeSlotPacketV39
-                || packet instanceof PlayerAbilitiesPacket
+        } else if (packet instanceof CreativeSlotPacket cs) {
+            handleCreativeSlot(cs.getSlotId(), cs.getItemId(), cs.getCount() & 0xFF, cs.getDamage());
+        } else if (packet instanceof CreativeSlotPacketV22 cs22) {
+            handleCreativeSlot(cs22.getSlotId(), cs22.getItemId(), cs22.getCount() & 0xFF, cs22.getDamage());
+        } else if (packet instanceof CreativeSlotPacketV39 cs39) {
+            handleCreativeSlot(cs39.getSlotId(), cs39.getItemId(), cs39.getCount() & 0xFF, cs39.getDamage());
+        } else if (packet instanceof PlayerAbilitiesPacket
                 || packet instanceof PlayerAbilitiesPacketV39
                 || packet instanceof PlayerAbilitiesPacketV73
                 || packet instanceof EnchantItemPacket) {
-            // Creative mode actions — silently accept
+            // Creative-mode flag toggles + enchanting — silently accept
         } else if (packet instanceof UseEntityPacket
                 || packet instanceof ConfirmTransactionPacket
                 || packet instanceof UpdateSignPacket
@@ -1273,6 +1276,27 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         } else {
             trackedCobblestone--;
             scheduleReplenishment(ctx);
+        }
+    }
+
+    /**
+     * Track a creative-mode slot mutation in the server-side
+     * {@link InventoryAdapter}. The packet (0x6B) carries the wire slot
+     * index and item directly; without this hook, creative drags would
+     * never be visible to plugins like InventoryPresets that read back
+     * the inventory through {@code Player.getInventory().getContents()}.
+     *
+     * <p>Negative slot indices are the "drop from cursor" sentinel and
+     * are intentionally ignored — there is no per-slot mutation to
+     * record.
+     */
+    private void handleCreativeSlot(int slotId, int itemId, int count, int damage) {
+        if (player == null || slotId < 0) return;
+        InventoryAdapter adapter = playerManager.getInventoryAdapter();
+        if (itemId < 0) {
+            adapter.setSlot(player.getUsername(), slotId, 0, 0, 0);
+        } else {
+            adapter.setSlot(player.getUsername(), slotId, itemId, count, damage);
         }
     }
 

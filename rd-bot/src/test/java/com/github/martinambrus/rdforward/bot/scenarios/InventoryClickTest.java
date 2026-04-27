@@ -1,9 +1,12 @@
 package com.github.martinambrus.rdforward.bot.scenarios;
 
+import com.github.martinambrus.rdforward.api.inventory.InventoryItem;
 import com.github.martinambrus.rdforward.bot.BotClient;
 import com.github.martinambrus.rdforward.bot.BotSession;
 import com.github.martinambrus.rdforward.bot.TestServer;
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
+import com.github.martinambrus.rdforward.server.ConnectedPlayer;
+import com.github.martinambrus.rdforward.server.InventoryAdapter;
 import org.junit.jupiter.api.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -146,6 +149,97 @@ class InventoryClickTest {
             Boolean accepted = session.waitForConfirmTransaction(action1, 3000);
             assertNotNull(accepted, "Should receive ConfirmTransaction for empty-slot click");
             assertTrue(accepted, "Empty-slot click should be accepted");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    /**
+     * Integration coverage for the public {@code Player.getInventory()}
+     * API: server-side mutations through the same code path that
+     * InventoryPresets uses must reach the connected client. Tests
+     * exercise both the single-slot SetSlot dispatch and the bulk
+     * WindowItems dispatch across two protocol families (Beta 1.7.3
+     * via WindowItems, Netty 1.8 via WindowItemsPacketV47) so the
+     * dispatch fan-out is covered end-to-end against real bot decoders.
+     */
+    @Test
+    void serverSetSlotPushesToBetaClient() throws Exception {
+        final String name = "InvSrvSetBeta";
+        BotClient bot = testServer.createBot(ProtocolVersion.BETA_1_7_3, name);
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            assertTrue(session.waitForSlotItem(36, COBBLESTONE, 5000),
+                    "Should receive default cobblestone in slot 36");
+
+            ConnectedPlayer cp = testServer.getServer().getPlayerManager().getPlayerByName(name);
+            InventoryAdapter adapter = testServer.getServer().getPlayerManager().getInventoryAdapter();
+            assertNotNull(cp, "ConnectedPlayer must be tracked");
+
+            // Push oak planks (Notch ID 5) into hotbar slot 37.
+            adapter.putItem(name, 37, new InventoryItem(5, 3, 0));
+            adapter.sendSlotUpdate(cp, 37);
+
+            assertTrue(session.waitForSlotItem(37, 5, 3000),
+                    "Server-driven SetSlot should reach the Beta client");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void serverSetSlotPushesToNetty18Client() throws Exception {
+        final String name = "InvSrvSetNetty";
+        BotClient bot = testServer.createBot(ProtocolVersion.RELEASE_1_8, name);
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            assertTrue(session.waitForSlotItem(36, COBBLESTONE, 5000),
+                    "Should receive default cobblestone in slot 36");
+
+            ConnectedPlayer cp = testServer.getServer().getPlayerManager().getPlayerByName(name);
+            InventoryAdapter adapter = testServer.getServer().getPlayerManager().getInventoryAdapter();
+            assertNotNull(cp, "ConnectedPlayer must be tracked");
+
+            adapter.putItem(name, 37, new InventoryItem(5, 3, 0));
+            adapter.sendSlotUpdate(cp, 37);
+
+            assertTrue(session.waitForSlotItem(37, 5, 3000),
+                    "Server-driven SetSlot should reach the Netty 1.8 client");
+        } finally {
+            bot.disconnect();
+        }
+    }
+
+    @Test
+    void serverFullInventoryPushesToBetaClient() throws Exception {
+        // The bulk path (WindowItems) is what InventoryPresets recall
+        // ends up dispatching through setContents. Cover it explicitly
+        // so a future packet-format change can't silently regress recall.
+        final String name = "InvSrvFullBeta";
+        BotClient bot = testServer.createBot(ProtocolVersion.BETA_1_7_3, name);
+        try {
+            BotSession session = bot.getSession();
+            assertTrue(session.isLoginComplete(), "Login should complete");
+            assertTrue(session.waitForSlotItem(36, COBBLESTONE, 5000),
+                    "Should receive default cobblestone in slot 36");
+
+            ConnectedPlayer cp = testServer.getServer().getPlayerManager().getPlayerByName(name);
+            InventoryAdapter adapter = testServer.getServer().getPlayerManager().getInventoryAdapter();
+            assertNotNull(cp, "ConnectedPlayer must be tracked");
+
+            adapter.putItem(name, 36, new InventoryItem(5, 1, 0)); // planks
+            adapter.putItem(name, 37, new InventoryItem(3, 2, 0)); // dirt
+            adapter.putItem(name, 38, new InventoryItem(4, 4, 0)); // cobble
+            adapter.sendFullInventory(cp);
+
+            assertTrue(session.waitForSlotItem(36, 5, 3000),
+                    "Slot 36 should hold planks after full inventory push");
+            assertTrue(session.waitForSlotItem(37, 3, 3000),
+                    "Slot 37 should hold dirt after full inventory push");
+            assertTrue(session.waitForSlotItem(38, 4, 3000),
+                    "Slot 38 should hold cobble after full inventory push");
         } finally {
             bot.disconnect();
         }

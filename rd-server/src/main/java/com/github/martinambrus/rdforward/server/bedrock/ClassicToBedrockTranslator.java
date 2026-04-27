@@ -1,6 +1,8 @@
 package com.github.martinambrus.rdforward.server.bedrock;
 
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
+import com.github.martinambrus.rdforward.protocol.packet.alpha.SetSlotPacket;
+import com.github.martinambrus.rdforward.protocol.packet.alpha.WindowItemsPacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.DespawnPlayerPacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.MessagePacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.OrientationUpdatePacket;
@@ -14,10 +16,14 @@ import org.cloudburstmc.math.vector.Vector3i;
 import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataMap;
 import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes;
 import org.cloudburstmc.protocol.bedrock.data.entity.EntityFlag;
+import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerId;
+import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData;
 import org.cloudburstmc.protocol.bedrock.data.skin.ImageData;
 import org.cloudburstmc.protocol.bedrock.data.skin.SerializedSkin;
 import org.cloudburstmc.protocol.bedrock.packet.AddPlayerPacket;
 import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket;
+import org.cloudburstmc.protocol.bedrock.packet.InventoryContentPacket;
+import org.cloudburstmc.protocol.bedrock.packet.InventorySlotPacket;
 import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket;
 import org.cloudburstmc.protocol.bedrock.packet.PlayerListPacket;
 import org.cloudburstmc.protocol.bedrock.packet.RemoveEntityPacket;
@@ -50,6 +56,11 @@ public class ClassicToBedrockTranslator {
     private static final double EYE_HEIGHT = 1.62;
 
     private final BedrockBlockMapper blockMapper;
+    /** Lazy: allocated on the first inventory-bearing translation call so
+     *  Bedrock-only initialisation costs (loading block-mappings + the
+     *  item registry) don't run for sessions that never see inventory
+     *  packets. */
+    private volatile BedrockItemMapper itemMapper;
 
     /**
      * Resolve a player's UUID for Bedrock packet use.
@@ -88,6 +99,17 @@ public class ClassicToBedrockTranslator {
         this.blockMapper = blockMapper;
     }
 
+    private BedrockItemMapper items() {
+        BedrockItemMapper local = itemMapper;
+        if (local != null) return local;
+        synchronized (this) {
+            if (itemMapper == null) {
+                itemMapper = new BedrockItemMapper(BedrockProtocolConstants.getItemDefinitionList());
+            }
+            return itemMapper;
+        }
+    }
+
     /**
      * Register an entity's absolute position for delta-to-absolute reconstruction.
      * Must be called when spawning existing players directly (bypassing translateAll)
@@ -112,6 +134,9 @@ public class ClassicToBedrockTranslator {
     public List<BedrockPacket> translateAll(Packet packet) {
         if (packet instanceof SpawnPlayerPacket) {
             return translateSpawnPlayerAll((SpawnPlayerPacket) packet);
+        }
+        if (packet instanceof WindowItemsPacket wi) {
+            return translateWindowItemsAll(wi);
         }
         // All other packets produce 0 or 1 result
         BedrockPacket single = translate(packet);
@@ -151,10 +176,114 @@ public class ClassicToBedrockTranslator {
             return translateDisconnect(
                     (com.github.martinambrus.rdforward.protocol.packet.classic.DisconnectPacket) packet);
         }
+        if (packet instanceof SetSlotPacket setSlot) {
+            return translateSetSlot(setSlot);
+        }
         // Drop: PingPacket (RakNet handles keep-alive),
         // LevelInitialize, LevelDataChunk, LevelFinalize,
         // UpdateUserType, ServerIdentification
         return null;
+    }
+
+    /**
+     * Translate a Beta-format WindowItems (window 0, 45 slots) into the
+     * pair of Bedrock inventory packets the client expects: one
+     * {@link InventoryContentPacket} for the 36-slot main+hotbar
+     * container and one for the 4-slot armor container. Wire-slot mapping:
+     * <ul>
+     *   <li>wire 36-44 -> Bedrock INVENTORY 0-8 (hotbar)</li>
+     *   <li>wire 9-35 -> Bedrock INVENTORY 9-35 (storage)</li>
+     *   <li>wire 5-8 -> Bedrock ARMOR 0-3 (helmet, chest, legs, feet)</li>
+     *   <li>wire 0-4 (craft slots) are dropped — Bedrock has its own
+     *       crafting container model.</li>
+     * </ul>
+     * Window IDs other than 0 (chests etc.) are not yet routed and
+     * return an empty list so we don't fabricate Bedrock packets for
+     * containers we have no model for.
+     */
+    private List<BedrockPacket> translateWindowItemsAll(WindowItemsPacket pkt) {
+        if (pkt.getWindowId() != 0) return Collections.emptyList();
+        short[] ids = pkt.getItemIds();
+        byte[] counts = pkt.getCounts();
+        short[] damages = pkt.getDamages();
+        if (ids == null) return Collections.emptyList();
+
+        BedrockItemMapper im = items();
+
+        // Main 36-slot inventory: slots 0-8 (hotbar), 9-35 (main storage).
+        java.util.List<ItemData> main = new ArrayList<>(36);
+        for (int i = 0; i < 9; i++) {
+            main.add(buildItemData(im, ids, counts, damages, 36 + i));
+        }
+        for (int i = 9; i < 36; i++) {
+            main.add(buildItemData(im, ids, counts, damages, i));
+        }
+        InventoryContentPacket mainPkt = new InventoryContentPacket();
+        mainPkt.setContainerId(ContainerId.INVENTORY);
+        mainPkt.setContents(main);
+
+        // Armor: helmet, chestplate, leggings, boots = wire 5-8.
+        java.util.List<ItemData> armor = new ArrayList<>(4);
+        for (int i = 5; i <= 8; i++) {
+            armor.add(buildItemData(im, ids, counts, damages, i));
+        }
+        InventoryContentPacket armorPkt = new InventoryContentPacket();
+        armorPkt.setContainerId(ContainerId.ARMOR);
+        armorPkt.setContents(armor);
+
+        java.util.List<BedrockPacket> out = new ArrayList<>(2);
+        out.add(mainPkt);
+        out.add(armorPkt);
+        return out;
+    }
+
+    /**
+     * Translate a Beta-format SetSlot (window 0) into a Bedrock
+     * {@link InventorySlotPacket}. Wire slots map to either the
+     * INVENTORY container (hotbar+main) or the ARMOR container; others
+     * are dropped.
+     */
+    private BedrockPacket translateSetSlot(SetSlotPacket pkt) {
+        if (pkt.getWindowId() != 0) return null;
+        int wire = pkt.getSlot();
+        int containerId;
+        int slotInContainer;
+        if (wire >= 36 && wire <= 44) {
+            containerId = ContainerId.INVENTORY;
+            slotInContainer = wire - 36;
+        } else if (wire >= 9 && wire <= 35) {
+            containerId = ContainerId.INVENTORY;
+            slotInContainer = wire;
+        } else if (wire >= 5 && wire <= 8) {
+            containerId = ContainerId.ARMOR;
+            slotInContainer = wire - 5;
+        } else {
+            // Craft output / craft grid — no direct Bedrock equivalent.
+            return null;
+        }
+
+        InventorySlotPacket isp = new InventorySlotPacket();
+        isp.setContainerId(containerId);
+        isp.setSlot(slotInContainer);
+        isp.setItem(buildItemData(items(), pkt.getItemId(), pkt.getCount() & 0xFF, pkt.getDamage()));
+        return isp;
+    }
+
+    private static ItemData buildItemData(BedrockItemMapper im,
+                                          short[] ids, byte[] counts, short[] damages,
+                                          int wire) {
+        if (ids[wire] < 0) return ItemData.AIR;
+        return buildItemData(im, ids[wire], counts[wire] & 0xFF, damages[wire]);
+    }
+
+    private static ItemData buildItemData(BedrockItemMapper im,
+                                          int notchId, int count, int damage) {
+        if (notchId <= 0 || count <= 0) return ItemData.AIR;
+        return ItemData.builder()
+                .definition(im.toDefinition(notchId))
+                .count(count)
+                .damage(damage)
+                .build();
     }
 
     private UpdateBlockPacket translateSetBlock(SetBlockServerPacket pkt) {

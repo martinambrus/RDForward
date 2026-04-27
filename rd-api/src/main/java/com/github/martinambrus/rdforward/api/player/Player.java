@@ -1,5 +1,6 @@
 package com.github.martinambrus.rdforward.api.player;
 
+import com.github.martinambrus.rdforward.api.inventory.PlayerInventoryView;
 import com.github.martinambrus.rdforward.api.version.ProtocolVersion;
 import com.github.martinambrus.rdforward.api.version.VersionCapability;
 import com.github.martinambrus.rdforward.api.world.Location;
@@ -38,6 +39,14 @@ public interface Player {
     default boolean supportsCapability(VersionCapability capability) {
         return capability != null && capability.isSupported(getProtocolVersion());
     }
+
+    /**
+     * @return mutable view onto this player's server-side inventory, or
+     *         {@code null} if the implementation does not back inventory
+     *         state (test stubs, sessions before login completes).
+     *         Mutations dispatch the resulting state to the client.
+     */
+    default PlayerInventoryView getInventory() { return null; }
 
     // --- Version-conditional methods. Default: no-op. ---
     default void sendActionBar(String message) {}

@@ -10,14 +10,23 @@ public class ItemStack implements java.lang.Cloneable, org.bukkit.configuration.
     private org.bukkit.Material material;
     private int amount;
     private short durability;
+    /** Pre-Flattening Notch numeric ID. Stored alongside {@link #material}
+     *  so {@code getTypeId()} round-trips even when the id is outside
+     *  RDForward's surfaced {@link org.bukkit.Material} enum (which only
+     *  exposes ~21 blocks; items like sandstone/pumpkin/ladders are not
+     *  modelled but plugins still need {@code getTypeId()} to return the
+     *  original wire id for save/restore). InventoryPresets serialises
+     *  {@code id:count:damage} to disk — without this fallback the saved
+     *  id is 0 and the recall is lossy. */
+    private int legacyId;
 
     protected ItemStack() {}
-    public ItemStack(org.bukkit.Material arg0) { this.material = arg0; this.amount = 1; }
-    public ItemStack(org.bukkit.Material arg0, int arg1) { this.material = arg0; this.amount = arg1; }
-    public ItemStack(org.bukkit.Material arg0, int arg1, short arg2) { this.material = arg0; this.amount = arg1; this.durability = arg2; }
-    public ItemStack(org.bukkit.Material arg0, int arg1, short arg2, java.lang.Byte arg3) { this.material = arg0; this.amount = arg1; this.durability = arg2; }
+    public ItemStack(org.bukkit.Material arg0) { setType(arg0); this.amount = 1; }
+    public ItemStack(org.bukkit.Material arg0, int arg1) { setType(arg0); this.amount = arg1; }
+    public ItemStack(org.bukkit.Material arg0, int arg1, short arg2) { setType(arg0); this.amount = arg1; this.durability = arg2; }
+    public ItemStack(org.bukkit.Material arg0, int arg1, short arg2, java.lang.Byte arg3) { setType(arg0); this.amount = arg1; this.durability = arg2; }
     public ItemStack(org.bukkit.inventory.ItemStack arg0) throws java.lang.IllegalArgumentException {
-        if (arg0 != null) { this.material = arg0.material; this.amount = arg0.amount; this.durability = arg0.durability; }
+        if (arg0 != null) { this.material = arg0.material; this.legacyId = arg0.legacyId; this.amount = arg0.amount; this.durability = arg0.durability; }
     }
 
     /** Pre-Flattening legacy ctor. WorldEdit 5.6.1's
@@ -25,15 +34,18 @@ public class ItemStack implements java.lang.Cloneable, org.bukkit.configuration.
      *  to mint the wooden axe wand — without this signature {@code //wand}
      *  raises {@link NoSuchMethodError}. {@code typeId} is resolved
      *  through {@link org.bukkit.Material#getMaterial(int)}; ids outside
-     *  RDForward's surfaced Material set leave {@code material} null. */
+     *  RDForward's surfaced Material set leave {@code material} null but
+     *  preserve the numeric id via {@link #legacyId}. */
     public ItemStack(int typeId, int amount) {
         this.material = org.bukkit.Material.getMaterial(typeId);
+        this.legacyId = typeId;
         this.amount = amount;
     }
 
     /** Same legacy ctor with damage value. */
     public ItemStack(int typeId, int amount, short damage) {
         this.material = org.bukkit.Material.getMaterial(typeId);
+        this.legacyId = typeId;
         this.amount = amount;
         this.durability = damage;
     }
@@ -41,10 +53,14 @@ public class ItemStack implements java.lang.Cloneable, org.bukkit.configuration.
     /** Pre-Flattening numeric type id. WorldEdit's wand-detection path
      *  (in {@code WorldEditListener.onPlayerInteract}) checks
      *  {@code item.getTypeId()} against the configured wand id. */
-    public int getTypeId() { return material == null ? 0 : material.getId(); }
+    public int getTypeId() {
+        if (material != null) return material.getId();
+        return legacyId;
+    }
 
     public void setTypeId(int typeId) {
         this.material = org.bukkit.Material.getMaterial(typeId);
+        this.legacyId = typeId;
     }
     public static org.bukkit.inventory.ItemStack of(org.bukkit.Material arg0) {
         return null;
@@ -64,6 +80,7 @@ public class ItemStack implements java.lang.Cloneable, org.bukkit.configuration.
     }
     public void setType(org.bukkit.Material arg0) {
         this.material = arg0;
+        this.legacyId = arg0 == null ? 0 : arg0.getId();
     }
     public org.bukkit.inventory.ItemStack withType(org.bukkit.Material arg0) {
         com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.inventory.ItemStack.withType(Lorg/bukkit/Material;)Lorg/bukkit/inventory/ItemStack;");

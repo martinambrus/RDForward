@@ -1,7 +1,22 @@
 package com.github.martinambrus.rdforward.server;
 
+import com.github.martinambrus.rdforward.api.inventory.InventoryItem;
+import com.github.martinambrus.rdforward.protocol.BlockStateMapper;
 import com.github.martinambrus.rdforward.protocol.Capability;
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
+import com.github.martinambrus.rdforward.protocol.packet.alpha.PlayerInventoryPacket;
+import com.github.martinambrus.rdforward.protocol.packet.alpha.SetSlotPacket;
+import com.github.martinambrus.rdforward.protocol.packet.alpha.SetSlotPacketV22;
+import com.github.martinambrus.rdforward.protocol.packet.alpha.SetSlotPacketV39;
+import com.github.martinambrus.rdforward.protocol.packet.alpha.WindowItemsPacket;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettySetSlotPacket;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettySetSlotPacketV393;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettySetSlotPacketV404;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettySetSlotPacketV47;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettySetSlotPacketV756;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettySetSlotPacketV766;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettyWindowItemsPacket;
+import com.github.martinambrus.rdforward.protocol.packet.netty.NettyWindowItemsPacketV47;
 
 import java.util.Arrays;
 import java.util.Map;
@@ -244,9 +259,264 @@ public class InventoryAdapter {
     }
 
     /**
-     * Send full inventory contents to a player.
+     * Read a slot in the public {@link InventoryItem} form. Returns
+     * {@link InventoryItem#EMPTY} for empty/unknown slots — never null.
+     */
+    public InventoryItem getItem(String username, int slot) {
+        ItemStack s = getSlot(username, slot);
+        if (s == null || s.isEmpty()) return InventoryItem.EMPTY;
+        return new InventoryItem(s.itemId, s.count, s.damage);
+    }
+
+    /**
+     * Write a slot from the public {@link InventoryItem} form. Null and
+     * empty items both clear the slot.
+     */
+    public void putItem(String username, int slot, InventoryItem item) {
+        if (item == null || item.isEmpty()) {
+            setSlot(username, slot, 0, 0, 0);
+        } else {
+            setSlot(username, slot, item.itemId(), item.count(), item.damage());
+        }
+    }
+
+    /**
+     * Push a single slot to the player's client. Picks the
+     * version-correct SetSlot variant. No-op when {@code slot} is out of
+     * range or the protocol does not support inventory packets.
+     */
+    public void sendSlotUpdate(ConnectedPlayer player, int slot) {
+        if (!supportsInventory(player)) return;
+        if (slot < 0 || slot >= INVENTORY_SIZE) return;
+        ItemStack s = getSlot(player.getUsername(), slot);
+        int legacyId = (s == null || s.isEmpty()) ? -1 : s.itemId;
+        int count = (s == null || s.isEmpty()) ? 0 : s.count;
+        int damage = (s == null || s.isEmpty()) ? 0 : s.damage;
+        ProtocolVersion v = player.getProtocolVersion();
+        ProtocolVersion.Family family = v.getFamily();
+
+        if (family == ProtocolVersion.Family.RELEASE && v.isAtLeast(ProtocolVersion.RELEASE_1_7_2)) {
+            sendNettySingleSlot(player, slot, legacyId, count, damage, v);
+            return;
+        }
+        if (family == ProtocolVersion.Family.RELEASE && v.isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
+            player.sendPacket(new SetSlotPacketV39(0, slot, legacyId, count, damage));
+            return;
+        }
+        if (family == ProtocolVersion.Family.RELEASE && v.isAtLeast(ProtocolVersion.RELEASE_1_0)) {
+            player.sendPacket(new SetSlotPacketV22(0, slot, legacyId, count, damage));
+            return;
+        }
+        if (family == ProtocolVersion.Family.LCE) {
+            // LCE TU19 follows Java 1.6.4 wire format (pre-Netty Release V39).
+            player.sendPacket(new SetSlotPacketV39(0, slot, legacyId, count, damage));
+            return;
+        }
+        if (family == ProtocolVersion.Family.BETA && v.isAtLeast(ProtocolVersion.BETA_1_9_PRE5)) {
+            player.sendPacket(new SetSlotPacketV22(0, slot, legacyId, count, damage));
+            return;
+        }
+        if (family == ProtocolVersion.Family.BETA) {
+            player.sendPacket(new SetSlotPacket(0, slot, legacyId, count, damage));
+            return;
+        }
+        if (family == ProtocolVersion.Family.ALPHA) {
+            // Pre-Beta-1.0 clients have no SetSlot equivalent. Push the
+            // whole containing section via 0x05 S2C — minimal extra work
+            // (one packet) for an Alpha-class server population.
+            sendAlphaSectionFor(player, slot);
+            return;
+        }
+        if (family == ProtocolVersion.Family.BEDROCK) {
+            if (player.getMcpeSession() != null) {
+                // Legacy MCPE (v9-v91 / 0.6.1-0.16.0). The MCPE codec
+                // chain has separate per-version wire formats for
+                // CONTAINER_SET_SLOT/CONTENT and is not yet wired here.
+                // Server-side state is still updated; the client will
+                // pick up the change at the next client-side reload.
+                com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                        null, "rdforward.server.InventoryAdapter.sendSlotUpdate(MCPE)V");
+                return;
+            }
+            // Modern Bedrock (CloudBurst). Routed through
+            // BedrockSessionWrapper.translateAndSend ->
+            // ClassicToBedrockTranslator's SetSlot translation, which
+            // produces an InventorySlotPacket with the right
+            // ContainerId based on the wire slot.
+            player.sendPacket(new SetSlotPacket(0, slot, legacyId, count, damage));
+        }
+    }
+
+    /**
+     * Send full inventory contents to a player. Picks the version-correct
+     * full-window packet (Alpha 0x05 sections, Beta/Release WindowItems,
+     * Netty 1.7.2/1.8 NettyWindowItems). For Netty 1.13+ — where no
+     * full-window packet variant exists in the codec table — falls back
+     * to N x version-correct SetSlot.
      */
     public void sendFullInventory(ConnectedPlayer player) {
         if (!supportsInventory(player)) return;
+        ItemStack[] inv = inventories.get(player.getUsername());
+        if (inv == null) return;
+
+        ProtocolVersion v = player.getProtocolVersion();
+        ProtocolVersion.Family family = v.getFamily();
+
+        if (family == ProtocolVersion.Family.ALPHA) {
+            sendAlphaSection(player, inv, -1, 9, 36);   // main: wire 9-44
+            sendAlphaSection(player, inv, -3, 5, 4);    // armor: wire 5-8
+            sendAlphaSection(player, inv, -2, 1, 4);    // craft: wire 1-4
+            return;
+        }
+
+        if (family == ProtocolVersion.Family.BEDROCK && player.getMcpeSession() != null) {
+            // Legacy MCPE — see sendSlotUpdate for the rationale.
+            com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                    null, "rdforward.server.InventoryAdapter.sendFullInventory(MCPE)V");
+            return;
+        }
+
+        if (family == ProtocolVersion.Family.RELEASE && v.isAtLeast(ProtocolVersion.RELEASE_1_13)) {
+            // No NettyWindowItems variant exists for v393+; fan out per slot.
+            for (int slot = 0; slot < INVENTORY_SIZE; slot++) {
+                sendSlotUpdate(player, slot);
+            }
+            return;
+        }
+
+        // Build raw arrays (no per-version item-id translation needed —
+        // pre-1.13 protocols use Notch IDs directly, matching the
+        // adapter's storage form).
+        short[] ids = new short[INVENTORY_SIZE];
+        byte[] counts = new byte[INVENTORY_SIZE];
+        short[] damages = new short[INVENTORY_SIZE];
+        for (int i = 0; i < INVENTORY_SIZE; i++) {
+            ItemStack s = inv[i];
+            if (s == null || s.isEmpty()) {
+                ids[i] = -1;
+            } else {
+                ids[i] = (short) s.itemId;
+                counts[i] = (byte) s.count;
+                damages[i] = (short) s.damage;
+            }
+        }
+
+        if (family == ProtocolVersion.Family.RELEASE && v.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+            player.sendPacket(new NettyWindowItemsPacketV47(0, ids, counts, damages));
+            return;
+        }
+        if (family == ProtocolVersion.Family.RELEASE && v.isAtLeast(ProtocolVersion.RELEASE_1_7_2)) {
+            player.sendPacket(new NettyWindowItemsPacket(0, ids, counts, damages));
+            return;
+        }
+        if (family == ProtocolVersion.Family.RELEASE
+                || family == ProtocolVersion.Family.LCE
+                || (family == ProtocolVersion.Family.BETA && v.isAtLeast(ProtocolVersion.BETA_1_9_PRE5))) {
+            // V22+ format — adds optional NBT trailer for damageable items
+            // so swords/tools round-trip cleanly. Non-damageable items
+            // (blocks) decode the same as the plain Beta format, so this
+            // is safe across the whole pre-Netty Release range and LCE.
+            player.sendPacket(new com.github.martinambrus.rdforward.protocol.packet.alpha.WindowItemsPacketV22(
+                    0, ids, counts, damages));
+            return;
+        }
+        // Beta pre-1.9-pre5 + Bedrock.
+        // Bedrock route: BedrockSessionWrapper.translateAndSend converts
+        // WindowItemsPacket into a pair of InventoryContentPackets
+        // (INVENTORY + ARMOR containers).
+        player.sendPacket(new WindowItemsPacket(0, ids, counts, damages));
+    }
+
+    /**
+     * Pick the Netty SetSlot variant for {@code version} and dispatch.
+     * Mirrors the per-version chain in NettyConnectionHandler join. For
+     * 1.13+ the legacy Notch ID is translated through BlockStateMapper.
+     */
+    private void sendNettySingleSlot(ConnectedPlayer player, int slot,
+                                     int legacyItemId, int count, int damage,
+                                     ProtocolVersion version) {
+        if (legacyItemId < 0) {
+            // Empty slot.
+            if (version.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
+                player.sendPacket(new NettySetSlotPacketV766(0, 0, slot, -1, 0));
+            } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_17_1)) {
+                player.sendPacket(new NettySetSlotPacketV756(0, 0, slot, -1, 0));
+            } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_13_2)) {
+                player.sendPacket(new NettySetSlotPacketV404(0, slot, -1, 0));
+            } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_13)) {
+                player.sendPacket(new NettySetSlotPacketV393(0, slot, -1, 0));
+            } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+                player.sendPacket(new NettySetSlotPacketV47(0, slot, -1, 0, 0));
+            } else {
+                player.sendPacket(new NettySetSlotPacket(0, slot, -1, 0, 0));
+            }
+            return;
+        }
+        // Translate Notch ID for registry-ID protocols (1.13+).
+        if (version.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
+            int id = BlockStateMapper.toV765ItemId(legacyItemId);
+            player.sendPacket(new NettySetSlotPacketV766(0, 0, slot, id, count));
+        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
+            int id = BlockStateMapper.toV765ItemId(legacyItemId);
+            player.sendPacket(new NettySetSlotPacketV756(0, 0, slot, id, count));
+        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_19)) {
+            int id = BlockStateMapper.toV759ItemId(legacyItemId);
+            player.sendPacket(new NettySetSlotPacketV756(0, 0, slot, id, count));
+        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_17_1)) {
+            int id = BlockStateMapper.toV755ItemId(legacyItemId);
+            player.sendPacket(new NettySetSlotPacketV756(0, 0, slot, id, count));
+        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_17)) {
+            int id = BlockStateMapper.toV755ItemId(legacyItemId);
+            player.sendPacket(new NettySetSlotPacketV404(0, slot, id, count));
+        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_16)) {
+            int id = BlockStateMapper.toV735ItemId(legacyItemId);
+            player.sendPacket(new NettySetSlotPacketV404(0, slot, id, count));
+        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_13_2)) {
+            int id = BlockStateMapper.toV393ItemId(legacyItemId);
+            player.sendPacket(new NettySetSlotPacketV404(0, slot, id, count));
+        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_13)) {
+            int id = BlockStateMapper.toV393ItemId(legacyItemId);
+            player.sendPacket(new NettySetSlotPacketV393(0, slot, id, count));
+        } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
+            player.sendPacket(new NettySetSlotPacketV47(0, slot, legacyItemId, count, damage));
+        } else {
+            player.sendPacket(new NettySetSlotPacket(0, slot, legacyItemId, count, damage));
+        }
+    }
+
+    /**
+     * Send a single Alpha section (type=-1 main / -2 craft / -3 armor).
+     * The section reads {@code length} consecutive wire slots starting
+     * at {@code wireStart}.
+     */
+    private void sendAlphaSection(ConnectedPlayer player, ItemStack[] inv,
+                                  int type, int wireStart, int length) {
+        short[] ids = new short[length];
+        byte[] counts = new byte[length];
+        short[] damages = new short[length];
+        for (int i = 0; i < length; i++) {
+            ItemStack s = inv[wireStart + i];
+            if (s == null || s.isEmpty()) {
+                ids[i] = -1;
+            } else {
+                ids[i] = (short) s.itemId;
+                counts[i] = (byte) s.count;
+                damages[i] = (short) s.damage;
+            }
+        }
+        player.sendPacket(new PlayerInventoryPacket(type, ids, counts, damages));
+    }
+
+    /** Resolve the Alpha section that contains {@code wireSlot} and resend it. */
+    private void sendAlphaSectionFor(ConnectedPlayer player, int wireSlot) {
+        ItemStack[] inv = inventories.get(player.getUsername());
+        if (inv == null) return;
+        if (wireSlot >= 9 && wireSlot <= 44) {
+            sendAlphaSection(player, inv, -1, 9, 36);
+        } else if (wireSlot >= 5 && wireSlot <= 8) {
+            sendAlphaSection(player, inv, -3, 5, 4);
+        } else if (wireSlot >= 1 && wireSlot <= 4) {
+            sendAlphaSection(player, inv, -2, 1, 4);
+        }
     }
 }

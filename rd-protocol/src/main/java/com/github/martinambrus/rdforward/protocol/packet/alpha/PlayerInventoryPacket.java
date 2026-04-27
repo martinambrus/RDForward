@@ -7,13 +7,18 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Alpha protocol 0x05 (Client -> Server): Player Inventory.
+ * Alpha protocol 0x05 (bidirectional): Player Inventory.
  *
- * The client sends its inventory contents to the server after changes.
- * Type indicates which inventory section: -1 = main, -2 = crafting, -3 = armor.
+ * C2S: client sends its inventory to the server after changes; server
+ * parses {@link #getItemCount(int)} totals (used to track cobblestone).
+ *
+ * S2C: server sends a full inventory section to the client. The
+ * pre-Beta-1.0 client has no SetSlot/WindowItems analogue, so a section
+ * push (type=-1 main / -2 craft / -3 armor) is the only way to bulk-set
+ * an Alpha player's inventory.
  *
  * Wire format (variable length):
- *   [int]   type (inventory section)
+ *   [int]   type (inventory section: -1 main, -2 craft, -3 armor)
  *   [short] count (number of slots)
  *   for each slot:
  *     [short] item ID (-1 = empty)
@@ -27,7 +32,26 @@ public class PlayerInventoryPacket implements Packet {
     /** Total count of each item ID across all slots in this inventory section. */
     private final Map<Integer, Integer> itemCounts = new HashMap<>();
 
+    /** S2C wire payload — item ID per slot (-1 = empty). */
+    private short[] itemIds;
+    /** S2C stack sizes per slot. */
+    private byte[] counts;
+    /** S2C damage values per slot. */
+    private short[] damages;
+
     public PlayerInventoryPacket() {}
+
+    /**
+     * S2C constructor. {@code type} selects the inventory section
+     * (-1 main, -2 craft, -3 armor) and the three arrays must share
+     * the same length.
+     */
+    public PlayerInventoryPacket(int type, short[] itemIds, byte[] counts, short[] damages) {
+        this.type = type;
+        this.itemIds = itemIds;
+        this.counts = counts;
+        this.damages = damages;
+    }
 
     @Override
     public int getPacketId() {
@@ -36,7 +60,17 @@ public class PlayerInventoryPacket implements Packet {
 
     @Override
     public void write(ByteBuf buf) {
-        // S2C not needed — only used for C2S reads
+        buf.writeInt(type);
+        int slotCount = itemIds == null ? 0 : itemIds.length;
+        buf.writeShort(slotCount);
+        for (int i = 0; i < slotCount; i++) {
+            short id = itemIds[i];
+            buf.writeShort(id);
+            if (id >= 0) {
+                buf.writeByte(counts[i]);
+                buf.writeShort(damages[i]);
+            }
+        }
     }
 
     @Override

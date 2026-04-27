@@ -133,6 +133,13 @@ public final class BukkitPlayer {
      *  no longer crashes — operators should use {@code //hpos1} /
      *  {@code //hpos2} or the chat-command {@code //pos1} / {@code //pos2}
      *  which work end-to-end. */
+    /** Slot count returned for {@code ItemStack[]}-typed accessors.
+     *  Real Bukkit's player inventory exposes 36 main slots (9 hotbar
+     *  + 27 storage) via {@code getContents}; an empty array would
+     *  break round-trip plugins (InventoryPresets save/recall: 0
+     *  slots -> empty saved string -> {@code parseInt("")} on recall)
+     *  even though we don't model real inventory state. */
+    private static final int STUB_INVENTORY_SLOTS = 36;
     private static final org.bukkit.inventory.PlayerInventory STUB_INVENTORY =
             (org.bukkit.inventory.PlayerInventory) Proxy.newProxyInstance(
                     BukkitPlayer.class.getClassLoader(),
@@ -142,7 +149,9 @@ public final class BukkitPlayer {
                         if (rt == java.util.HashMap.class) return new HashMap<>();
                         if (rt == java.util.List.class) return Collections.emptyList();
                         if (rt == java.util.ListIterator.class) return Collections.<Object>emptyList().listIterator();
-                        if (rt == org.bukkit.inventory.ItemStack[].class) return new org.bukkit.inventory.ItemStack[0];
+                        if (rt == org.bukkit.inventory.ItemStack[].class) {
+                            return new org.bukkit.inventory.ItemStack[STUB_INVENTORY_SLOTS];
+                        }
                         return defaultValue(rt);
                     });
 
@@ -267,6 +276,10 @@ public final class BukkitPlayer {
         // (keyed by name via the BukkitPlayer cache) keeps the writes
         // visible across handlers without persisting across restarts.
         volatile StubPersistentDataContainer pdc;
+        // Lazy real Bukkit PlayerInventory. The wrapper reads {@code backing}
+        // through a supplier so reconnects (which mutate Handler.backing)
+        // remain visible to plugins holding onto the inventory reference.
+        volatile BukkitPlayerInventory inventoryView;
 
         Handler(String name,
                 com.github.martinambrus.rdforward.api.player.Player backing,
@@ -389,7 +402,7 @@ public final class BukkitPlayer {
                 case "getLevel":
                     return 0;
                 case "getInventory":
-                    return STUB_INVENTORY;
+                    return resolveInventory();
                 case "getGameMode":
                 case "getEnderChest":
                 case "getOpenInventory":
@@ -445,6 +458,24 @@ public final class BukkitPlayer {
             // Anything else returns a type-safe default so the abstract
             // method contract is satisfied without throwing.
             return defaultValue(m.getReturnType());
+        }
+
+        /** Pre-join lookups (or fixtures without an rd-api backing) keep
+         *  the no-op proxy so plugins that call into the inventory before
+         *  the session is wired don't crash. Once {@code backing} is
+         *  populated, mint a real {@link BukkitPlayerInventory} that
+         *  delegates through to the rd-api inventory view. */
+        private org.bukkit.inventory.PlayerInventory resolveInventory() {
+            if (backing == null) return STUB_INVENTORY;
+            BukkitPlayerInventory v = inventoryView;
+            if (v != null) return v;
+            synchronized (this) {
+                if (inventoryView == null) {
+                    final Handler self = this;
+                    inventoryView = new BukkitPlayerInventory(() -> self.backing);
+                }
+                return inventoryView;
+            }
         }
 
         private boolean checkPermission(Object self, Object[] args) {

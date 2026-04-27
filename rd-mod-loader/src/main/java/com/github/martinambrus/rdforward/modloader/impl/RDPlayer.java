@@ -1,5 +1,6 @@
 package com.github.martinambrus.rdforward.modloader.impl;
 
+import com.github.martinambrus.rdforward.api.inventory.PlayerInventoryView;
 import com.github.martinambrus.rdforward.api.player.Player;
 import com.github.martinambrus.rdforward.api.version.ProtocolVersion;
 import com.github.martinambrus.rdforward.api.world.Location;
@@ -17,6 +18,8 @@ public final class RDPlayer implements Player {
 
     private final ConnectedPlayer player;
     private final RDServer server;
+    /** Lazy view; cached so plugins that hold onto Player.getInventory() see consistent state. */
+    private volatile RDPlayerInventoryView inventoryView;
 
     public RDPlayer(ConnectedPlayer player, RDServer server) {
         this.player = Objects.requireNonNull(player, "player");
@@ -65,6 +68,18 @@ public final class RDPlayer implements Player {
     @Override
     public void kick(String reason) {
         player.disconnect();
+    }
+
+    @Override
+    public PlayerInventoryView getInventory() {
+        RDPlayerInventoryView v = inventoryView;
+        if (v != null) return v;
+        synchronized (this) {
+            if (inventoryView == null) {
+                inventoryView = new RDPlayerInventoryView(player, server.playerManager().getInventoryAdapter());
+            }
+            return inventoryView;
+        }
     }
 
     @Override
