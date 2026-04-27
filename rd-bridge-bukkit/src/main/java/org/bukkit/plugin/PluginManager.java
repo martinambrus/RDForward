@@ -37,6 +37,24 @@ public interface PluginManager {
                                Plugin plugin, boolean ignoreCancelled) {
     }
 
+    /** Pre-Bukkit-1.x event registration form. LogBlockQuestioner 0.02
+     *  uses this in {@code onEnable} — without the method the plugin
+     *  {@link NoSuchMethodError}s. RDForward does not currently route
+     *  the legacy enum into {@code ServerEvents} (event types map to
+     *  modern Event classes via a not-yet-built mapping table), so
+     *  this is a logged no-op for now. Plugins that go through it
+     *  load cleanly but their listeners do not fire. */
+    default void registerEvent(org.bukkit.event.Event$Type type, Listener listener,
+                               org.bukkit.event.Event$Priority priority, Plugin plugin) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.plugin.PluginManager.registerEvent("
+                        + "Lorg/bukkit/event/Event$Type;"
+                        + "Lorg/bukkit/event/Listener;"
+                        + "Lorg/bukkit/event/Event$Priority;"
+                        + "Lorg/bukkit/plugin/Plugin;)V");
+    }
+
     /**
      * Dispatch {@code event} to every registered listener whose
      * {@code @EventHandler} parameter type is assignable from the

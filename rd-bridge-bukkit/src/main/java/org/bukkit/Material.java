@@ -77,5 +77,42 @@ public enum Material {
         catch (IllegalArgumentException e) { return null; }
     }
 
+    /** Lenient name lookup: strips whitespace, replaces spaces and
+     *  hyphens with underscores, drops a {@code "minecraft:"} prefix,
+     *  uppercases. LogBlock 1.41's {@code Config} reads block names
+     *  from YAML and feeds them through {@code Material.matchMaterial};
+     *  without this method the plugin {@link NoSuchMethodError}s in
+     *  {@code onLoad} and aborts the whole boot. Returns {@code null}
+     *  on no match (same shape as {@link #getMaterial(String)}).
+     *
+     *  <p>Pre-1.13 Bukkit accepted numeric strings ({@code "0"} → AIR);
+     *  LogBlock's stock {@code materials.yml} ships with such entries.
+     *  Fall through to {@link #getMaterial(int)} when the trimmed input
+     *  parses as an integer so the plugin doesn't log SEVERE on every
+     *  load. */
+    public static Material matchMaterial(String name) {
+        if (name == null) return null;
+        String key = name.trim();
+        if (key.isEmpty()) return null;
+        try {
+            return getMaterial(Integer.parseInt(key));
+        } catch (NumberFormatException ignored) {
+            // not a numeric id — fall through to name lookup
+        }
+        if (key.regionMatches(true, 0, "minecraft:", 0, 10)) {
+            key = key.substring(10);
+        }
+        key = key.replace(' ', '_').replace('-', '_').toUpperCase(java.util.Locale.ROOT);
+        return getMaterial(key);
+    }
+
+    /** Bukkit 1.13+ overload; the second arg toggles the legacy
+     *  pre-Flattening lookup. RDForward only models post-Flattening
+     *  Materials, so the flag is ignored — both modes go through
+     *  {@link #matchMaterial(String)}. */
+    public static Material matchMaterial(String name, boolean legacyName) {
+        return matchMaterial(name);
+    }
+
     private static final Material[] VALUES = values();
 }

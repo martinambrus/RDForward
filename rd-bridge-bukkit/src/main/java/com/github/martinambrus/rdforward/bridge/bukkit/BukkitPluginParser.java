@@ -60,9 +60,19 @@ public final class BukkitPluginParser {
         return v == null ? fallback : String.valueOf(v);
     }
 
+    /** Pull a required field, coercing non-String types via
+     *  {@code String.valueOf}. SnakeYAML parses an unquoted
+     *  {@code version: 0.02} as {@code Double}, which a strict
+     *  {@code instanceof String} check would reject — even though
+     *  every real Bukkit loader accepts it. LogBlockQuestioner's
+     *  {@code plugin.yml} ships exactly this shape. */
     private static String requireString(Map<String, Object> root, String key) {
         Object v = root.get(key);
-        if (!(v instanceof String s) || s.isBlank()) {
+        if (v == null) {
+            throw new IllegalArgumentException("plugin.yml missing required field: " + key);
+        }
+        String s = String.valueOf(v).trim();
+        if (s.isEmpty()) {
             throw new IllegalArgumentException("plugin.yml missing required field: " + key);
         }
         return s;

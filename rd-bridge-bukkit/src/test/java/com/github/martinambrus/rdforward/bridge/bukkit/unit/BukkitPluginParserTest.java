@@ -136,6 +136,31 @@ class BukkitPluginParserTest {
     }
 
     @Test
+    void coercesNonStringScalarVersion() {
+        // LogBlockQuestioner 0.02 ships an unquoted `version: 0.02`,
+        // which SnakeYAML parses as Double. The parser must coerce
+        // via String.valueOf rather than reject with `instanceof String`.
+        String yml = """
+                name: LogBlockQuestioner
+                version: 0.02
+                main: de.diddiz.LogBlockQuestioner.LogBlockQuestioner
+                """;
+        BukkitPluginDescriptor d = parse(yml);
+        assertEquals("0.02", d.version());
+    }
+
+    @Test
+    void coercesIntegerVersion() {
+        String yml = """
+                name: Demo
+                version: 1
+                main: com.example.Demo
+                """;
+        BukkitPluginDescriptor d = parse(yml);
+        assertEquals("1", d.version());
+    }
+
+    @Test
     void commandEntryWithoutBodyHasDefaults() {
         String yml = """
                 name: Demo

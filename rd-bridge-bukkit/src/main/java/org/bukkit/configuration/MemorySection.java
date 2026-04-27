@@ -31,19 +31,24 @@ import java.util.Set;
  * separate defaults map that {@code get*} falls back to when the primary
  * map has no entry — same precedence as paper-api.
  *
- * <p>Sections proper ({@code getConfigurationSection}) are not yet
- * implemented; plugins that walk hierarchical sections still observe
- * {@code null} from that accessor and need to fall back to flat-path
- * reads (which now actually work).
+ * <p>Hierarchical sections are real: {@link #getConfigurationSection}
+ * returns a view over the root's flat-keyed {@code values} map with a
+ * path prefix, and {@link #getKeys}/{@link #getValues} on that view
+ * filter the root keys to what is in scope (immediate children when
+ * {@code deep=false}, full descendants when {@code deep=true}).
+ * Subsections share the root's backing maps, so writes round-trip in
+ * either direction.
  */
 @SuppressWarnings({"unchecked", "rawtypes", "unused"})
 public class MemorySection implements ConfigurationSection {
 
-    /** Primary store; populated by {@link #set} and YAML loaders. */
-    protected final Map<String, Object> values = new LinkedHashMap<>();
+    /** Primary store; populated by {@link #set} and YAML loaders.
+     *  Subsections share the root's map so reads/writes round-trip. */
+    protected Map<String, Object> values = new LinkedHashMap<>();
 
-    /** Defaults populated by {@link #addDefault}; queried as a fallback. */
-    protected final Map<String, Object> defaults = new LinkedHashMap<>();
+    /** Defaults populated by {@link #addDefault}; queried as a fallback.
+     *  Shared across the whole section tree, same as {@link #values}. */
+    protected Map<String, Object> defaults = new LinkedHashMap<>();
 
     private final ConfigurationSection parent;
     private final String prefix;
@@ -53,28 +58,70 @@ public class MemorySection implements ConfigurationSection {
     protected MemorySection(ConfigurationSection parent, String path) {
         this.parent = parent;
         this.prefix = path == null ? "" : path;
+        if (parent instanceof MemorySection) {
+            MemorySection rootSection = (MemorySection) parent;
+            this.values = rootSection.values;
+            this.defaults = rootSection.defaults;
+        }
+    }
+
+    /** Translate a section-relative path into a root-absolute key. The
+     *  root's {@link #prefix} is empty so the input is returned as-is;
+     *  subsections prepend their dot-joined prefix. */
+    private String resolve(String path) {
+        if (path == null || prefix.isEmpty()) return path;
+        return path.isEmpty() ? prefix : prefix + "." + path;
     }
 
     public Set getKeys(boolean deep) {
         Set<String> out = new LinkedHashSet<>();
-        out.addAll(values.keySet());
-        out.addAll(defaults.keySet());
+        addKeys(values.keySet(), deep, out);
+        addKeys(defaults.keySet(), deep, out);
         return out;
     }
 
+    private void addKeys(Set<String> source, boolean deep, Set<String> out) {
+        if (prefix.isEmpty()) {
+            for (String key : source) {
+                if (deep) out.add(key);
+                else {
+                    int dot = key.indexOf('.');
+                    out.add(dot < 0 ? key : key.substring(0, dot));
+                }
+            }
+            return;
+        }
+        String pfx = prefix + ".";
+        for (String key : source) {
+            if (!key.startsWith(pfx)) continue;
+            String rest = key.substring(pfx.length());
+            if (rest.isEmpty()) continue;
+            if (deep) out.add(rest);
+            else {
+                int dot = rest.indexOf('.');
+                out.add(dot < 0 ? rest : rest.substring(0, dot));
+            }
+        }
+    }
+
     public Map getValues(boolean deep) {
-        Map<String, Object> out = new LinkedHashMap<>(defaults);
-        out.putAll(values);
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Object key : getKeys(deep)) {
+            Object v = get((String) key);
+            if (v != null) out.put((String) key, v);
+        }
         return out;
     }
 
     public boolean contains(String path) {
-        return values.containsKey(path) || defaults.containsKey(path);
+        String key = resolve(path);
+        return values.containsKey(key) || defaults.containsKey(key);
     }
     public boolean contains(String path, boolean ignoreDefault) {
-        return ignoreDefault ? values.containsKey(path) : contains(path);
+        String key = resolve(path);
+        return ignoreDefault ? values.containsKey(key) : (values.containsKey(key) || defaults.containsKey(key));
     }
-    public boolean isSet(String path) { return values.containsKey(path); }
+    public boolean isSet(String path) { return values.containsKey(resolve(path)); }
 
     public String getCurrentPath() { return prefix; }
     public String getName() {
@@ -84,17 +131,19 @@ public class MemorySection implements ConfigurationSection {
     public Configuration getRoot() { return null; }
     public ConfigurationSection getParent() { return parent; }
 
-    public void addDefault(String path, Object value) { defaults.put(path, value); }
+    public void addDefault(String path, Object value) { defaults.put(resolve(path), value); }
     public ConfigurationSection getDefaultSection() { return null; }
 
     public void set(String path, Object value) {
-        if (value == null) values.remove(path);
-        else values.put(path, value);
+        String key = resolve(path);
+        if (value == null) values.remove(key);
+        else values.put(key, value);
     }
 
     public Object get(String path) {
-        Object v = values.get(path);
-        return v != null ? v : defaults.get(path);
+        String key = resolve(path);
+        Object v = values.get(key);
+        return v != null ? v : defaults.get(key);
     }
     public Object get(String path, Object def) {
         Object v = get(path);
@@ -263,8 +312,33 @@ public class MemorySection implements ConfigurationSection {
     public Location getLocation(String path, Location def) { return def; }
     public boolean isLocation(String path) { return false; }
 
-    public ConfigurationSection getConfigurationSection(String path) { return null; }
-    public boolean isConfigurationSection(String path) { return false; }
+    /** Returns a view of all flat keys nested under {@code path}. The
+     *  view shares this section's backing {@link #values}/{@link
+     *  #defaults} maps so reads and writes round-trip in either
+     *  direction. Returns {@code null} when no key matches {@code path}
+     *  or {@code path.*}, mirroring upstream behaviour — LogBlock 1.41
+     *  iterates {@code getConfigurationSection("tools").getKeys(false)}
+     *  to enumerate per-tool subtrees and NPE'd on the previous null
+     *  stub. */
+    public ConfigurationSection getConfigurationSection(String path) {
+        if (path == null || path.isEmpty()) return null;
+        String full = resolve(path);
+        String dotPfx = full + ".";
+        for (String key : values.keySet()) {
+            if (key.equals(full) || key.startsWith(dotPfx)) {
+                return new MemorySection(this, full);
+            }
+        }
+        for (String key : defaults.keySet()) {
+            if (key.equals(full) || key.startsWith(dotPfx)) {
+                return new MemorySection(this, full);
+            }
+        }
+        return null;
+    }
+    public boolean isConfigurationSection(String path) {
+        return getConfigurationSection(path) != null;
+    }
 
     protected boolean isPrimitiveWrapper(Object value) {
         return value instanceof Integer || value instanceof Boolean
@@ -272,7 +346,7 @@ public class MemorySection implements ConfigurationSection {
                 || value instanceof Float || value instanceof Short
                 || value instanceof Byte || value instanceof Character;
     }
-    protected Object getDefault(String path) { return defaults.get(path); }
+    protected Object getDefault(String path) { return defaults.get(resolve(path)); }
 
     protected void mapChildrenKeys(Set output, ConfigurationSection section, boolean deep) {}
     protected void mapChildrenValues(Map output, ConfigurationSection section, boolean deep) {}
