@@ -261,9 +261,9 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
                 + ", ID " + player.getPlayerId()
                 + ", " + playerManager.getPlayerCount() + " online)");
 
-        playerManager.broadcastChat((byte) 0, username + " joined the game");
+        playerManager.announceJoinBroadcast(username, clientVersion);
 
-        // Fire player join event
+        // Fire player join event (post-announce hooks: BlockOwnerRegistry, pong updater, etc.)
         ServerEvents.PLAYER_JOIN.invoker().onPlayerJoin(player.getUsername(), clientVersion);
     }
 
@@ -429,7 +429,7 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
             ServerEvents.PLAYER_LEAVE.invoker().onPlayerLeave(player.getUsername());
             world.rememberPlayerPosition(player);
             chunkManager.removePlayer(player);
-            playerManager.broadcastChat((byte) 0, player.getUsername() + " left the game");
+            playerManager.announceLeaveBroadcast(player.getUsername());
             playerManager.broadcastPlayerDespawn(player);
         }
         super.channelInactive(ctx);

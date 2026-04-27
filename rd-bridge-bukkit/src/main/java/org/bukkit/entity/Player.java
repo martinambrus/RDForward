@@ -261,12 +261,17 @@ public interface Player extends org.bukkit.entity.HumanEntity, org.bukkit.conver
     void setFlyingFallDamage(net.kyori.adventure.util.TriState arg0);
     net.kyori.adventure.util.TriState hasFlyingFallDamage();
     void hidePlayer(org.bukkit.entity.Player arg0);
+    /** Modern API: VanishNoPacket 3.22 + LuckPerms call this form rather
+     *  than the legacy single-arg one. The plugin reference is unused
+     *  by RDForward (no per-plugin attribution for visibility), so
+     *  delegate to the legacy form which the bridge intercepts and
+     *  routes through {@link com.github.martinambrus.rdforward.bridge.bukkit.PlayerVisibilityRegistry}. */
     default void hidePlayer(org.bukkit.plugin.Plugin arg0, org.bukkit.entity.Player arg1) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.entity.Player.hidePlayer(Lorg/bukkit/plugin/Plugin;Lorg/bukkit/entity/Player;)V");
+        hidePlayer(arg1);
     }
     void showPlayer(org.bukkit.entity.Player arg0);
     default void showPlayer(org.bukkit.plugin.Plugin arg0, org.bukkit.entity.Player arg1) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.entity.Player.showPlayer(Lorg/bukkit/plugin/Plugin;Lorg/bukkit/entity/Player;)V");
+        showPlayer(arg1);
     }
     boolean canSee(org.bukkit.entity.Player arg0);
     void hideEntity(org.bukkit.plugin.Plugin arg0, org.bukkit.entity.Entity arg1);

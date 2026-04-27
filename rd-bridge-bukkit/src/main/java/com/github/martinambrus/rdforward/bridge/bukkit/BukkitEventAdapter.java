@@ -6,8 +6,6 @@ import com.github.martinambrus.rdforward.api.event.EventResult;
 import com.github.martinambrus.rdforward.api.event.server.BlockBreakCallback;
 import com.github.martinambrus.rdforward.api.event.server.BlockPlaceCallback;
 import com.github.martinambrus.rdforward.api.event.server.ChatCallback;
-import com.github.martinambrus.rdforward.api.event.server.PlayerJoinCallback;
-import com.github.martinambrus.rdforward.api.event.server.PlayerLeaveCallback;
 import com.github.martinambrus.rdforward.api.event.server.PlayerMoveCallback;
 import com.github.martinambrus.rdforward.api.event.server.ServerEvents;
 import org.bukkit.Location;
@@ -133,6 +131,8 @@ public final class BukkitEventAdapter {
                 ensurePlayerQuitInstalled();
             } else if (evtType == PlayerMoveEvent.class) {
                 bindPlayerMove(listener, m);
+            } else if (evtType == org.bukkit.event.server.ServerListPingEvent.class) {
+                ensureServerListPingInstalled();
             }
         }
     }
@@ -190,6 +190,7 @@ public final class BukkitEventAdapter {
         warnedPlugins.clear();
         PLAYER_JOIN_INSTALLED.set(false);
         PLAYER_QUIT_INSTALLED.set(false);
+        SERVER_LIST_PING_INSTALLED.set(false);
     }
 
     private static boolean isCancellable(Class<?> evtType) {
@@ -258,10 +259,18 @@ public final class BukkitEventAdapter {
             new java.util.concurrent.atomic.AtomicBoolean();
     private static final java.util.concurrent.atomic.AtomicBoolean PLAYER_QUIT_INSTALLED =
             new java.util.concurrent.atomic.AtomicBoolean();
+    private static final java.util.concurrent.atomic.AtomicBoolean SERVER_LIST_PING_INSTALLED =
+            new java.util.concurrent.atomic.AtomicBoolean();
 
     private static void ensurePlayerJoinInstalled() {
         if (!PLAYER_JOIN_INSTALLED.compareAndSet(false, true)) return;
-        ServerEvents.PLAYER_JOIN.register((name, version) -> {
+        // Bridge dispatch fires on PLAYER_JOIN_ANNOUNCE (BEFORE the host
+        // broadcasts) so plugins like VanishNoPacket that call
+        // event.setJoinMessage("") inside the join handler can suppress
+        // the broadcast. The handler returns the (possibly-rewritten)
+        // joinMessage, which the rd-server PlayerManager uses as the
+        // final announce string (or skips entirely on null/empty).
+        ServerEvents.PLAYER_JOIN_ANNOUNCE.register((name, version, defaultMessage) -> {
             org.bukkit.entity.Player player = BukkitPlayer.create(name);
             java.util.UUID uuid = player == null ? null : player.getUniqueId();
             java.net.InetAddress addr = resolveAddressFor(player);
@@ -270,33 +279,56 @@ public final class BukkitEventAdapter {
             dispatchPluginEvent(preLogin);
             if (preLogin.getLoginResult() != null
                     && preLogin.getLoginResult() != org.bukkit.event.player.AsyncPlayerPreLoginEvent$Result.ALLOWED) {
-                return;
+                return defaultMessage;
             }
 
             PlayerLoginEvent login = new PlayerLoginEvent(player, "", addr);
             dispatchPluginEvent(login);
             if (login.getResult() != null
                     && login.getResult() != org.bukkit.event.player.PlayerLoginEvent$Result.ALLOWED) {
-                return;
+                return defaultMessage;
             }
 
-            PlayerJoinEvent join = new PlayerJoinEvent(player);
+            PlayerJoinEvent join = new PlayerJoinEvent(player, defaultMessage);
             dispatchPluginEvent(join);
+            return join.getJoinMessage();
         });
     }
 
     private static void ensurePlayerQuitInstalled() {
         if (!PLAYER_QUIT_INSTALLED.compareAndSet(false, true)) return;
-        ServerEvents.PLAYER_LEAVE.register(name -> {
+        ServerEvents.PLAYER_LEAVE_ANNOUNCE.register((name, defaultMessage) -> {
             org.bukkit.entity.Player player = BukkitPlayer.create(name);
-            PlayerQuitEvent quit = new PlayerQuitEvent(player);
+            PlayerQuitEvent quit = new PlayerQuitEvent(player, defaultMessage);
             dispatchPluginEvent(quit);
+            String finalMessage = quit.getQuitMessage();
             // Drop the cached proxy AFTER plugins finish their quit
             // handling — LP needs the still-injected Permissible to
             // observe the disconnect — so the next login mints a fresh
             // perm slot rather than reusing one bound to a closed rd-api
             // session.
             BukkitPlayer.evict(name);
+            return finalMessage;
+        });
+    }
+
+    /** Lazy install for {@code SERVER_LIST_PING}. The handler wraps the
+     *  rd-api {@link com.github.martinambrus.rdforward.api.event.server.ServerListPingHook.PingContext}
+     *  in a Bukkit {@link org.bukkit.event.server.ServerListPingEvent}
+     *  that shares the same mutable {@code playerNames} list — so when
+     *  VanishNoPacket walks {@code event.iterator()} and removes vanished
+     *  players, those removals propagate back into {@code ctx.playerNames}
+     *  before the host serialises the pong. {@code setMotd}/{@code setMaxPlayers}
+     *  are written back into the context after dispatch. */
+    private static void ensureServerListPingInstalled() {
+        if (!SERVER_LIST_PING_INSTALLED.compareAndSet(false, true)) return;
+        com.github.martinambrus.rdforward.api.event.server.ServerEvents.SERVER_LIST_PING.register(ctx -> {
+            org.bukkit.event.server.ServerListPingEvent event =
+                    new org.bukkit.event.server.ServerListPingEvent(
+                            ctx.address, ctx.playerNames, ctx.maxPlayers, ctx.motd);
+            dispatchPluginEvent(event);
+            ctx.maxPlayers = event.getMaxPlayers();
+            ctx.motd = event.getMotd();
         });
     }
 
@@ -346,6 +378,8 @@ public final class BukkitEventAdapter {
             ensurePlayerJoinInstalled();
         } else if (evtType == PlayerQuitEvent.class) {
             ensurePlayerQuitInstalled();
+        } else if (evtType == org.bukkit.event.server.ServerListPingEvent.class) {
+            ensureServerListPingInstalled();
         }
     }
 

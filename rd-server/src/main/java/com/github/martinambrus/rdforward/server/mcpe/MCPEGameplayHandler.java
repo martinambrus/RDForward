@@ -541,7 +541,7 @@ public class MCPEGameplayHandler {
                 + " (" + playerManager.getPlayerCount() + " online)");
         ServerEvents.PLAYER_LEAVE.invoker().onPlayerLeave(player.getUsername());
         world.rememberPlayerPosition(player);
-        playerManager.broadcastChat((byte) 0, player.getUsername() + " left the game");
+        playerManager.announceLeaveBroadcast(player.getUsername());
         playerManager.broadcastPlayerDespawn(player);
         pongUpdater.run();
     }

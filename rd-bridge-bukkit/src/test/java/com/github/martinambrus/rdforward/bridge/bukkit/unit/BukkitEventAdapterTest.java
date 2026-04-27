@@ -82,8 +82,13 @@ class BukkitEventAdapterTest {
         assertEquals(1, ServerEvents.BLOCK_BREAK.getListenerInfo().size());
         assertEquals(1, ServerEvents.BLOCK_PLACE.getListenerInfo().size());
         assertEquals(1, ServerEvents.CHAT.getListenerInfo().size());
-        assertEquals(1, ServerEvents.PLAYER_JOIN.listenerCount());
-        assertEquals(1, ServerEvents.PLAYER_LEAVE.listenerCount());
+        // PJE / PQE dispatch was relocated to PLAYER_JOIN_ANNOUNCE /
+        // PLAYER_LEAVE_ANNOUNCE so the bridge can read setJoinMessage /
+        // setQuitMessage back and feed them into the host's broadcast
+        // suppression. Plain PLAYER_JOIN / PLAYER_LEAVE listeners are
+        // no longer installed by the bridge.
+        assertEquals(1, ServerEvents.PLAYER_JOIN_ANNOUNCE.listenerCount());
+        assertEquals(1, ServerEvents.PLAYER_LEAVE_ANNOUNCE.listenerCount());
         assertEquals(1, ServerEvents.PLAYER_MOVE.listenerCount());
 
         assertEquals(EventPriority.LOW, ServerEvents.BLOCK_BREAK.getListenerInfo().get(0).priority());
@@ -99,8 +104,8 @@ class BukkitEventAdapterTest {
         ServerEvents.BLOCK_BREAK.invoker().onBlockBreak("alice", 1, 2, 3, 1);
         ServerEvents.BLOCK_PLACE.invoker().onBlockPlace("bob", 4, 5, 6, 2);
         ServerEvents.CHAT.invoker().onChat("carol", "hi");
-        ServerEvents.PLAYER_JOIN.invoker().onPlayerJoin("dave", null);
-        ServerEvents.PLAYER_LEAVE.invoker().onPlayerLeave("eve");
+        ServerEvents.PLAYER_JOIN_ANNOUNCE.invoker().onAnnounce("dave", null, "dave joined the game");
+        ServerEvents.PLAYER_LEAVE_ANNOUNCE.invoker().onAnnounce("eve", "eve left the game");
         ServerEvents.PLAYER_MOVE.invoker().onPlayerMove("frank", (short) 0, (short) 0, (short) 0, (byte) 0, (byte) 0);
 
         assertEquals(1, listener.breakHits);

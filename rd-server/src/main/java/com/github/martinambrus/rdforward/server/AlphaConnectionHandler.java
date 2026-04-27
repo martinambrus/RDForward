@@ -826,7 +826,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             }
         }
 
-        playerManager.broadcastChat((byte) 0, player.getUsername() + " joined the game");
+        playerManager.announceJoinBroadcast(player.getUsername(), clientVersion);
         ServerEvents.PLAYER_JOIN.invoker().onPlayerJoin(player.getUsername(), clientVersion);
     }
 
@@ -1432,7 +1432,7 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             world.rememberPlayerPosition(player);
             chunkManager.removePlayer(player);
             playerManager.broadcastPlayerListRemove(player);
-            playerManager.broadcastChat((byte) 0, player.getUsername() + " left the game");
+            playerManager.announceLeaveBroadcast(player.getUsername());
             playerManager.broadcastPlayerDespawn(player);
         }
         super.channelInactive(ctx);

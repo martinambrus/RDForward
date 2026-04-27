@@ -266,6 +266,10 @@ public class LCEConnectionHandler extends SimpleChannelInboundHandler<Packet> {
                 ? ctx.channel().remoteAddress().toString() : "unknown";
         System.out.println(pendingUsername + " (LCE) joined the game"
                 + " (" + playerManager.getPlayerCount() + " online, ip " + ip + ")");
+        // LCE doesn't broadcast joins in-game today; still fire ANNOUNCE
+        // so the Bukkit bridge dispatches PJE for LCE players (Vanish,
+        // LoginSecurity, etc. need their per-player state initialised).
+        playerManager.announceJoinSilent(player.getUsername(), ProtocolVersion.LCE_TU19);
         ServerEvents.PLAYER_JOIN.invoker().onPlayerJoin(player.getUsername(), ProtocolVersion.LCE_TU19);
     }
 
@@ -513,6 +517,7 @@ public class LCEConnectionHandler extends SimpleChannelInboundHandler<Packet> {
             playerManager.removePlayer(ctx.channel());
             System.out.println(player.getUsername() + " (LCE) disconnected"
                     + " (" + playerManager.getPlayerCount() + " online)");
+            playerManager.announceLeaveSilent(player.getUsername());
             ServerEvents.PLAYER_LEAVE.invoker().onPlayerLeave(player.getUsername());
             world.rememberPlayerPosition(player);
             chunkManager.removePlayer(player);

@@ -252,26 +252,33 @@ public class LegacyRakNetServer extends SimpleChannelInboundHandler<DatagramPack
             buf.readLong(); // consume clientGUID
         }
 
-        int playerCount = playerManager.getPlayerCount();
-        int maxPlayers = com.github.martinambrus.rdforward.server.PlayerManager.getMaxPlayers();
+        // Fire SERVER_LIST_PING so plugins can mutate count/max/motd before
+        // the pong is serialised. MCPE pongs only carry count, max, and the
+        // server name (motd) — plugins like Vanish use this to drop hidden
+        // players from the displayed count.
+        com.github.martinambrus.rdforward.api.event.server.ServerListPingHook.PingContext pingCtx =
+                playerManager.firePingHook(sender.getAddress());
+        int playerCount = pingCtx.playerNames.size();
+        int maxPlayers = pingCtx.maxPlayers;
+        String motd = pingCtx.motd != null ? pingCtx.motd : serverName;
 
         if (hasClientGuid) {
             // 0.9.0+ client — advertise latest supported version.
             // Older clients show "Outdated Client" but can still connect.
-            String mcpePong = "MCPE;" + serverName + ";"
+            String mcpePong = "MCPE;" + motd + ";"
                     + MCPEConstants.MCPE_PROTOCOL_VERSION_MAX + ";"
                     + MCPEConstants.MCPE_VERSION_STRING + ";"
                     + playerCount + ";" + maxPlayers;
             sendPong(ctx, sender, pingTime, mcpePong);
         } else {
             // Could be 0.7.x or 0.11.0+ — send MCPE + MCCPP formats.
-            String mcpePong = "MCPE;" + serverName + ";"
+            String mcpePong = "MCPE;" + motd + ";"
                     + MCPEConstants.MCPE_PROTOCOL_VERSION_MAX + ";"
                     + MCPEConstants.MCPE_VERSION_STRING + ";"
                     + playerCount + ";" + maxPlayers;
             sendPong(ctx, sender, pingTime, mcpePong);
 
-            String mccppPong = MCPEConstants.PONG_PREFIX + serverName;
+            String mccppPong = MCPEConstants.PONG_PREFIX + motd;
             sendPong(ctx, sender, pingTime, mccppPong);
         }
     }

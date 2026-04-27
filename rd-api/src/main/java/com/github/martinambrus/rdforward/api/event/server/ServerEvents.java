@@ -78,11 +78,54 @@ public final class ServerEvents {
             }
     );
 
+    /** Fired BEFORE the join broadcast so listeners can rewrite or
+     *  suppress the announce message. Listeners are chained — each one
+     *  sees the message returned by the previous listener. Final
+     *  returned value is what the server broadcasts; returning
+     *  {@code null} or an empty string suppresses the broadcast. The
+     *  Bukkit bridge dispatches {@code PlayerJoinEvent} here and
+     *  returns the (possibly rewritten) {@code joinMessage}. */
+    public static final Event<PlayerJoinAnnounceCallback> PLAYER_JOIN_ANNOUNCE = Event.create(
+            (name, version, defaultMessage) -> defaultMessage,
+            listeners -> (name, version, defaultMessage) -> {
+                String msg = defaultMessage;
+                for (PlayerJoinAnnounceCallback l : listeners) {
+                    msg = l.onAnnounce(name, version, msg);
+                }
+                return msg;
+            }
+    );
+
     /** Fired when a player disconnects. */
     public static final Event<PlayerLeaveCallback> PLAYER_LEAVE = Event.create(
             name -> {},
             listeners -> name -> {
                 for (PlayerLeaveCallback l : listeners) l.onPlayerLeave(name);
+            }
+    );
+
+    /** Mirror of {@link #PLAYER_JOIN_ANNOUNCE} for the leave broadcast. */
+    public static final Event<PlayerLeaveAnnounceCallback> PLAYER_LEAVE_ANNOUNCE = Event.create(
+            (name, defaultMessage) -> defaultMessage,
+            listeners -> (name, defaultMessage) -> {
+                String msg = defaultMessage;
+                for (PlayerLeaveAnnounceCallback l : listeners) {
+                    msg = l.onAnnounce(name, msg);
+                }
+                return msg;
+            }
+    );
+
+    /** Fired before the host serialises a server-list ping (banner /
+     *  status) response. Listeners share a single mutable
+     *  {@link ServerListPingHook.PingContext}; removing names from the
+     *  context drops them from the displayed count, mirroring Bukkit's
+     *  iterator-removal idiom that VanishNoPacket and similar plugins
+     *  rely on. */
+    public static final Event<ServerListPingHook> SERVER_LIST_PING = Event.create(
+            ctx -> {},
+            listeners -> ctx -> {
+                for (ServerListPingHook l : listeners) l.onPing(ctx);
             }
     );
 
@@ -135,7 +178,10 @@ public final class ServerEvents {
         BLOCK_BREAK.clearListeners();
         BLOCK_PLACE.clearListeners();
         PLAYER_JOIN.clearListeners();
+        PLAYER_JOIN_ANNOUNCE.clearListeners();
         PLAYER_LEAVE.clearListeners();
+        PLAYER_LEAVE_ANNOUNCE.clearListeners();
+        SERVER_LIST_PING.clearListeners();
         PLAYER_MOVE.clearListeners();
         CHAT.clearListeners();
         SERVER_STARTED.clearListeners();

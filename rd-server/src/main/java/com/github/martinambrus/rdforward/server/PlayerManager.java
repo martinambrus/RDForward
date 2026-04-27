@@ -205,19 +205,48 @@ public class PlayerManager {
     }
 
     /**
+     * Per-pair visibility filter installed by the Bukkit bridge (or any
+     * other consumer) so {@code Player.hidePlayer/showPlayer} can drop
+     * targeted broadcasts without touching every per-sender call site.
+     * Default returns {@code true} (always visible) so vanilla servers
+     * with no bridge installed behave as before.
+     */
+    private volatile com.github.martinambrus.rdforward.api.server.PlayerVisibilityFilter visibilityFilter =
+            (sender, recipient) -> true;
+
+    public void setVisibilityFilter(
+            com.github.martinambrus.rdforward.api.server.PlayerVisibilityFilter filter) {
+        this.visibilityFilter = (filter != null) ? filter : (sender, recipient) -> true;
+    }
+
+    /**
      * Send a packet to all players except the specified one.
      * Uses write+flush batching for priority reordering.
      * Entity position packets are throttled for high-RTT players to
      * prevent saturating their connection with updates they can't keep up with.
+     *
+     * <p>When {@code exclude} is non-null its username is treated as the
+     * sender for the {@link com.github.martinambrus.rdforward.api.server.PlayerVisibilityFilter}
+     * check — recipients that have hidden the sender are skipped.
+     * Plain everyone-but-X broadcasts (no specific sender) should pass
+     * {@code null} to bypass the filter; per-sender broadcasts should
+     * pass the actor as {@code exclude} so the filter can drop the
+     * actor's spawn/despawn/move from recipients that hid them.
      */
     public void broadcastPacketExcept(Packet packet, ConnectedPlayer exclude) {
         boolean isEntityPositionPacket = (packet instanceof PlayerTeleportPacket)
                 || (packet instanceof PositionOrientationUpdatePacket)
                 || (packet instanceof PositionUpdatePacket)
                 || (packet instanceof OrientationUpdatePacket);
+        com.github.martinambrus.rdforward.api.server.PlayerVisibilityFilter filter = visibilityFilter;
+        String senderName = (exclude != null) ? exclude.getUsername() : null;
 
         for (ConnectedPlayer player : playersById.values()) {
             if (player == exclude) continue;
+            if (senderName != null
+                    && !filter.isVisible(senderName, player.getUsername())) {
+                continue;
+            }
             if (isEntityPositionPacket) {
                 int tier = player.getRttTier();
                 if (tier == 1 && player.incrementAndGetThrottleCounter() % 2 != 0) continue;
@@ -314,6 +343,68 @@ public class PlayerManager {
         for (String chunk : splitChatMessage(message)) {
             player.sendPacket(new MessagePacket((byte) 0, chunk));
         }
+    }
+
+    /**
+     * Fire {@link com.github.martinambrus.rdforward.api.event.server.ServerEvents#PLAYER_JOIN_ANNOUNCE}
+     * with the canonical default {@code "<name> joined the game"}, then
+     * broadcast the resulting message — unless a listener cleared it
+     * (returns {@code null} or empty), in which case the broadcast is
+     * suppressed. The Bukkit bridge installs the canonical listener that
+     * dispatches {@code PlayerJoinEvent} and reports its
+     * {@code joinMessage} back through the chain, so plugins like
+     * VanishNoPacket can call {@code event.setJoinMessage("")} during
+     * silent-join and have the broadcast actually disappear.
+     *
+     * <p>Connection handlers that broadcast joins (Alpha/Netty/Bedrock
+     * /MCPELogin/ServerConnection) call this; LCE which doesn't broadcast
+     * uses {@link #announceJoinSilent}.
+     */
+    public void announceJoinBroadcast(String username,
+                                      com.github.martinambrus.rdforward.protocol.ProtocolVersion version) {
+        String defaultMsg = username + " joined the game";
+        String finalMsg = com.github.martinambrus.rdforward.api.event.server.ServerEvents
+                .PLAYER_JOIN_ANNOUNCE.invoker()
+                .onAnnounce(username, version, defaultMsg);
+        if (finalMsg != null && !finalMsg.isEmpty()) {
+            broadcastChat((byte) 0, finalMsg);
+        }
+    }
+
+    /**
+     * Fire {@code PLAYER_JOIN_ANNOUNCE} without broadcasting. Used by
+     * connection handlers (LCE) that don't currently announce joins
+     * in-game but still need the Bukkit bridge to dispatch
+     * {@code PlayerJoinEvent} so per-player plugin state initialises.
+     * The returned message is intentionally discarded.
+     */
+    public void announceJoinSilent(String username,
+                                   com.github.martinambrus.rdforward.protocol.ProtocolVersion version) {
+        com.github.martinambrus.rdforward.api.event.server.ServerEvents
+                .PLAYER_JOIN_ANNOUNCE.invoker()
+                .onAnnounce(username, version, username + " joined the game");
+    }
+
+    /**
+     * Mirror of {@link #announceJoinBroadcast} for the leave broadcast.
+     * Vanish and similar plugins call {@code event.setQuitMessage("")}
+     * to suppress the leave announcement.
+     */
+    public void announceLeaveBroadcast(String username) {
+        String defaultMsg = username + " left the game";
+        String finalMsg = com.github.martinambrus.rdforward.api.event.server.ServerEvents
+                .PLAYER_LEAVE_ANNOUNCE.invoker()
+                .onAnnounce(username, defaultMsg);
+        if (finalMsg != null && !finalMsg.isEmpty()) {
+            broadcastChat((byte) 0, finalMsg);
+        }
+    }
+
+    /** {@link #announceLeaveBroadcast} variant that doesn't broadcast. */
+    public void announceLeaveSilent(String username) {
+        com.github.martinambrus.rdforward.api.event.server.ServerEvents
+                .PLAYER_LEAVE_ANNOUNCE.invoker()
+                .onAnnounce(username, username + " left the game");
     }
 
     /**
@@ -464,15 +555,18 @@ public class PlayerManager {
 
     /**
      * Broadcast a Tab list "add" entry for the given player to all v17+ players.
+     * Recipients that have hidden {@code newPlayer} via the visibility
+     * filter are skipped — the player should not appear in their tab list.
      */
     public void broadcastPlayerListAdd(ConnectedPlayer newPlayer) {
         com.github.martinambrus.rdforward.protocol.packet.alpha.PlayerListItemPacket packet =
                 new com.github.martinambrus.rdforward.protocol.packet.alpha.PlayerListItemPacket(
                         newPlayer.getUsername(), true, 0);
+        com.github.martinambrus.rdforward.api.server.PlayerVisibilityFilter filter = visibilityFilter;
         for (ConnectedPlayer p : playersById.values()) {
-            if (p.getProtocolVersion().isAtLeast(ProtocolVersion.BETA_1_8)) {
-                p.sendPacket(packet);
-            }
+            if (!p.getProtocolVersion().isAtLeast(ProtocolVersion.BETA_1_8)) continue;
+            if (!filter.isVisible(newPlayer.getUsername(), p.getUsername())) continue;
+            p.sendPacket(packet);
         }
     }
 
@@ -483,11 +577,117 @@ public class PlayerManager {
         com.github.martinambrus.rdforward.protocol.packet.alpha.PlayerListItemPacket packet =
                 new com.github.martinambrus.rdforward.protocol.packet.alpha.PlayerListItemPacket(
                         leavingPlayer.getUsername(), false, 0);
+        com.github.martinambrus.rdforward.api.server.PlayerVisibilityFilter filter = visibilityFilter;
         for (ConnectedPlayer p : playersById.values()) {
-            if (p.getProtocolVersion().isAtLeast(ProtocolVersion.BETA_1_8)) {
-                p.sendPacket(packet);
-            }
+            if (!p.getProtocolVersion().isAtLeast(ProtocolVersion.BETA_1_8)) continue;
+            // Filter intentionally skipped here — if a recipient never
+            // saw {@code leavingPlayer}'s add packet they have no list
+            // entry to remove, so a stray remove is harmless. Sending
+            // unconditionally keeps the leave path simple and avoids
+            // races where the filter changed state between add and
+            // remove.
+            p.sendPacket(packet);
         }
+    }
+
+    /**
+     * Send a player-spawn packet for {@code targetName} to the single
+     * client identified by {@code recipientName}. Used by the Bukkit
+     * bridge to make a hidden player IMMEDIATELY reappear when a plugin
+     * calls {@code Player.showPlayer(target)} mid-session — the
+     * visibility filter only affects future broadcasts, so without this
+     * helper the recipient keeps seeing the stale "absent" state until
+     * the next chunk reload.
+     */
+    public void sendPlayerSpawnTo(String recipientName, String targetName) {
+        if (recipientName == null || targetName == null) return;
+        ConnectedPlayer recipient = getPlayerByName(recipientName);
+        ConnectedPlayer target = getPlayerByName(targetName);
+        if (recipient == null || target == null || recipient == target) return;
+        SpawnPlayerPacket spawn = new SpawnPlayerPacket(
+                target.getPlayerId(), target.getUsername(),
+                target.getX(), target.getY(), target.getZ(),
+                target.getYaw(), target.getPitch());
+        recipient.sendPacket(spawn);
+    }
+
+    /**
+     * Mirror of {@link #sendPlayerSpawnTo} for {@code Player.hidePlayer}.
+     * Sends a despawn packet for {@code targetName} to {@code recipientName}
+     * so the target disappears immediately.
+     */
+    public void sendPlayerDespawnTo(String recipientName, String targetName) {
+        if (recipientName == null || targetName == null) return;
+        ConnectedPlayer recipient = getPlayerByName(recipientName);
+        ConnectedPlayer target = getPlayerByName(targetName);
+        if (recipient == null || target == null || recipient == target) return;
+        recipient.sendPacket(new DespawnPlayerPacket(target.getPlayerId()));
+    }
+
+    /**
+     * Build a ping context seeded with the current online player names
+     * and host configuration, fire {@link com.github.martinambrus.rdforward.api.event.server.ServerEvents#SERVER_LIST_PING},
+     * and return the (possibly mutated) context. Each ping/banner site
+     * calls this and uses {@code ctx.playerNames.size()},
+     * {@code ctx.maxPlayers}, and {@code ctx.motd} for the response.
+     *
+     * <p>The Bukkit bridge wraps the context in a Bukkit-shaped
+     * {@code ServerListPingEvent} so VanishNoPacket-style plugins can
+     * iterate {@code event.iterator()} and remove vanished players —
+     * the iterator is backed by {@code playerNames}, so listener
+     * removals are visible to the host on return.
+     */
+    public com.github.martinambrus.rdforward.api.event.server.ServerListPingHook.PingContext firePingHook(
+            java.net.InetAddress address) {
+        List<String> names = new ArrayList<>();
+        for (ConnectedPlayer cp : playersById.values()) {
+            names.add(cp.getUsername());
+        }
+        com.github.martinambrus.rdforward.api.event.server.ServerListPingHook.PingContext ctx =
+                new com.github.martinambrus.rdforward.api.event.server.ServerListPingHook.PingContext(
+                        address,
+                        names,
+                        com.github.martinambrus.rdforward.server.api.ServerProperties.getMaxPlayers(),
+                        com.github.martinambrus.rdforward.server.api.ServerProperties.getMotd());
+        com.github.martinambrus.rdforward.api.event.server.ServerEvents.SERVER_LIST_PING.invoker().onPing(ctx);
+        return ctx;
+    }
+
+    /**
+     * Send a tab-list ADD entry for {@code targetName} to a single
+     * recipient. Used by the Bukkit bridge to restore a tab list entry
+     * that was suppressed (or removed via
+     * {@link #sendPlayerListRemoveTo}) so {@code Player.showPlayer}
+     * makes the player visible in the tab again. No-op for recipients
+     * on protocol versions older than v17 (no tab list).
+     */
+    public void sendPlayerListAddTo(String recipientName, String targetName) {
+        if (recipientName == null || targetName == null) return;
+        ConnectedPlayer recipient = getPlayerByName(recipientName);
+        ConnectedPlayer target = getPlayerByName(targetName);
+        if (recipient == null || target == null || recipient == target) return;
+        if (!recipient.getProtocolVersion().isAtLeast(ProtocolVersion.BETA_1_8)) return;
+        recipient.sendPacket(new com.github.martinambrus.rdforward.protocol.packet.alpha.PlayerListItemPacket(
+                target.getUsername(), true, 0));
+    }
+
+    /**
+     * Mirror for {@code Player.hidePlayer}. The connection-handler join
+     * sequence broadcasts {@link #broadcastPlayerListAdd} BEFORE
+     * {@code PLAYER_JOIN_ANNOUNCE} fires, so when Vanish's PJE listener
+     * calls {@code hidePlayer} the recipient already has the entry —
+     * the per-broadcast filter on {@link #broadcastPlayerListAdd} can't
+     * undo it. This helper sends an explicit REMOVE so the bridge can
+     * clean up post-hoc.
+     */
+    public void sendPlayerListRemoveTo(String recipientName, String targetName) {
+        if (recipientName == null || targetName == null) return;
+        ConnectedPlayer recipient = getPlayerByName(recipientName);
+        ConnectedPlayer target = getPlayerByName(targetName);
+        if (recipient == null || target == null || recipient == target) return;
+        if (!recipient.getProtocolVersion().isAtLeast(ProtocolVersion.BETA_1_8)) return;
+        recipient.sendPacket(new com.github.martinambrus.rdforward.protocol.packet.alpha.PlayerListItemPacket(
+                target.getUsername(), false, 0));
     }
 
     /**
@@ -518,7 +718,12 @@ public class PlayerManager {
         System.out.println("Kicking duplicate login for " + existing.getUsername());
         broadcastPlayerListRemove(existing);
         world.rememberPlayerPosition(existing);
-        broadcastChat((byte) 0, existing.getUsername() + " left the game");
+        // Kick-by-duplicate path: announce the leave (so Vanish-style
+        // suppression still works) but DON'T fire PLAYER_LEAVE here —
+        // the channel-close path fires it when the kicked client's
+        // connection actually drops, mirroring the post-disconnect
+        // ordering of normal leaves.
+        announceLeaveBroadcast(existing.getUsername());
         broadcastPlayerDespawn(existing);
 
         // Send disconnect reason then close. For TCP clients (Classic/Alpha),

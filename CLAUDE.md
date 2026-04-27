@@ -39,12 +39,9 @@ Performance is a top priority. Protocol adapters, registries, and version-specif
 
 ## Bridge Stub Coverage
 
-When a Bukkit/Paper plugin invokes a method on a bridge stub that has no real implementation, the stub MUST call `StubCallLog.logOnce(pluginId, signature)`. On the first hit per `(plugin, signature)` pair, the shared `StubCallLog`:
+When a Bukkit/Paper plugin invokes a method on a bridge stub that has no real implementation, the stub MUST call `StubCallLog.logOnce(pluginId, signature)`. On the first hit per `(plugin, signature)` pair, the shared `StubCallLog` emits a WARNING-level JUL line for server operators (server console only). Subsequent hits for the same `(plugin, signature)` are silent.
 
-- Emits a WARNING-level JUL line for server operators.
-- Broadcasts the same line to every online player via the host's broadcast sink (installed by the active bridge), regardless of any debug toggle. This intentionally surfaces missing API coverage in-game so plugin authors and operators discover gaps as the plugin runs.
-
-Subsequent hits for the same `(plugin, signature)` are silent. When adding or hand-tuning a bridge facade, keep this contract: do not drop the `StubCallLog.logOnce` call from a method that remains a no-op, and do not silence the broadcast sink without explicit instruction.
+The in-game broadcast sink is intentionally NOT installed by the Bukkit bridge — stub-call warnings stay in the server console so they don't spam every player's chat. When adding or hand-tuning a bridge facade, keep the `StubCallLog.logOnce` call in any method that remains a no-op; do not re-install the broadcast sink without explicit instruction.
 
 ## Running the Server
 

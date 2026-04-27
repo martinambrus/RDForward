@@ -48,20 +48,21 @@ public final class BukkitBridge {
         BukkitServerAdapter adapter = new BukkitServerAdapter(rdServer);
         installed = adapter;
         Bukkit.setServer(adapter);
-        // Surface stub-call warnings in-game so operators see what
-        // plugin features still need real implementations without
-        // tailing the server log.
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.setBroadcastSink(msg -> {
-            Server rd = currentRdServer();
-            if (rd != null) {
-                try { rd.broadcastMessage(msg); } catch (Throwable ignored) {}
-            }
-        });
+        // StubCallLog broadcast sink intentionally NOT installed: stub
+        // warnings stay in the server console (JUL WARNING) so operators
+        // can audit missing API coverage without spamming every player's
+        // chat each time a plugin hits an unimplemented method.
         // Mirror dynamic Bukkit command registrations (plugins that bypass
         // plugin.yml and reflect SimplePluginManager.commandMap directly —
         // notably WorldEdit's CommandRegistration) into the rd-api registry
         // so the typed labels actually dispatch.
         org.bukkit.command.SimpleCommandMap.setBridgeSink(BukkitBridge::mirrorDynamicCommand);
+        // Wire Player.hidePlayer/showPlayer through to rd-server's
+        // per-pair visibility filter so VanishNoPacket-style plugins
+        // running without ProtocolLib actually drop the vanished player
+        // from each recipient's view (spawn/despawn/position/tab list).
+        rdServer.setVisibilityFilter((sender, recipient) ->
+                !PlayerVisibilityRegistry.isHidden(recipient, sender));
         installNmsWarnOnceFilter();
     }
 

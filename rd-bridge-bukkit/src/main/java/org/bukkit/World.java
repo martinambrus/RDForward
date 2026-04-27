@@ -65,4 +65,138 @@ public interface World {
     default World$Environment getEnvironment() {
         return World$Environment.NORMAL;
     }
+
+    /** VanishNoPacket plays a smoke particle effect at the toggling
+     *  player's location on every {@code /vanish} (visual cue for the
+     *  fake "poof"). RDForward has no particle/effect pipeline, so the
+     *  call is a no-op — but it MUST exist or Vanish disconnects the
+     *  client with NoSuchMethodError. The {@link
+     *  com.github.martinambrus.rdforward.api.stub.StubCallLog} surface
+     *  flags the gap once per plugin so operators see what's missing. */
+    default void playEffect(org.bukkit.Location location, org.bukkit.Effect effect, int data) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.playEffect(Lorg/bukkit/Location;Lorg/bukkit/Effect;I)V");
+    }
+
+    default void playEffect(org.bukkit.Location location, org.bukkit.Effect effect, int data, int radius) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.playEffect(Lorg/bukkit/Location;Lorg/bukkit/Effect;II)V");
+    }
+
+    /** Generic-typed effect data variant — Effect.RECORD_PLAY etc.
+     *  use {@code Material} for {@code data}. Same no-op shape. */
+    default <T> void playEffect(org.bukkit.Location location, org.bukkit.Effect effect, T data) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.playEffect(Lorg/bukkit/Location;Lorg/bukkit/Effect;Ljava/lang/Object;)V");
+    }
+
+    default <T> void playEffect(org.bukkit.Location location, org.bukkit.Effect effect, T data, int radius) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.playEffect(Lorg/bukkit/Location;Lorg/bukkit/Effect;Ljava/lang/Object;I)V");
+    }
+
+    /** VanishNoPacket fires a fake (no-block-damage, no-fire) explosion
+     *  at the toggling player's location for the audio/particle cue.
+     *  RDForward has no explosion pipeline — return {@code false}
+     *  (not handled) and log once so operators see the gap. Without
+     *  this overload Vanish disconnects the client with NoSuchMethodError
+     *  on the (double, double, double, float, boolean, boolean) form. */
+    default boolean createExplosion(double x, double y, double z, float power,
+                                    boolean setFire, boolean breakBlocks) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.createExplosion(DDDFZZ)Z");
+        return false;
+    }
+
+    default boolean createExplosion(double x, double y, double z, float power,
+                                    boolean setFire) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.createExplosion(DDDFZ)Z");
+        return false;
+    }
+
+    default boolean createExplosion(double x, double y, double z, float power) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.createExplosion(DDDF)Z");
+        return false;
+    }
+
+    default boolean createExplosion(org.bukkit.Location location, float power) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.createExplosion(Lorg/bukkit/Location;F)Z");
+        return false;
+    }
+
+    default boolean createExplosion(org.bukkit.Location location, float power, boolean setFire) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.createExplosion(Lorg/bukkit/Location;FZ)Z");
+        return false;
+    }
+
+    /** VanishNoPacket strikes a fake (no-damage, visual-only) lightning
+     *  bolt at the toggling player's location for the audio/visual cue.
+     *  RDForward has no lightning entity — return null + log once.
+     *  Plugins that null-check the result (most do) handle the absent
+     *  strike gracefully; without this overload the legacy single-arg
+     *  form crashes the client with NoSuchMethodError. */
+    default org.bukkit.entity.LightningStrike strikeLightningEffect(org.bukkit.Location loc) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.strikeLightningEffect(Lorg/bukkit/Location;)Lorg/bukkit/entity/LightningStrike;");
+        return null;
+    }
+
+    default org.bukkit.entity.LightningStrike strikeLightning(org.bukkit.Location loc) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.strikeLightning(Lorg/bukkit/Location;)Lorg/bukkit/entity/LightningStrike;");
+        return null;
+    }
+
+    /** VanishNoPacket spawns 10 fake bats per /vanish toggle and chains
+     *  {@code .getUniqueId()} on each return value to stash the UUIDs
+     *  for later visual cleanup. RDForward has no entity system, but the
+     *  caller still needs a non-null {@link org.bukkit.entity.Entity}
+     *  with a valid UUID — return a {@link
+     *  com.github.martinambrus.rdforward.bridge.bukkit.StubEntity} proxy.
+     *  The Vanish cleanup task iterates {@link #getEntities()} 60 ticks
+     *  later and only matches proxies by UUID; with our empty entity
+     *  list it silently no-ops, so the proxy never needs to back a real
+     *  entity. */
+    default <T extends org.bukkit.entity.Entity> T spawn(org.bukkit.Location loc, java.lang.Class<T> clazz) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.spawn(Lorg/bukkit/Location;Ljava/lang/Class;)Lorg/bukkit/entity/Entity;");
+        return com.github.martinambrus.rdforward.bridge.bukkit.StubEntity.create(clazz, null, loc);
+    }
+
+    default org.bukkit.entity.Entity spawnEntity(org.bukkit.Location loc, org.bukkit.entity.EntityType type) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.spawnEntity(Lorg/bukkit/Location;Lorg/bukkit/entity/EntityType;)Lorg/bukkit/entity/Entity;");
+        return com.github.martinambrus.rdforward.bridge.bukkit.StubEntity.create(type, loc);
+    }
+
+    default org.bukkit.entity.Entity spawnEntity(org.bukkit.Location loc, org.bukkit.entity.EntityType type, boolean randomizeData) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.spawnEntity(Lorg/bukkit/Location;Lorg/bukkit/entity/EntityType;Z)Lorg/bukkit/entity/Entity;");
+        return com.github.martinambrus.rdforward.bridge.bukkit.StubEntity.create(type, loc);
+    }
+
+    /** RDForward has no entity system; return an empty list. Vanish's
+     *  delayed bat-cleanup iterates this; an empty list lets the
+     *  cleanup loop run as a no-op instead of NPE-ing on null. */
+    default java.util.List<org.bukkit.entity.Entity> getEntities() {
+        return java.util.Collections.emptyList();
+    }
 }

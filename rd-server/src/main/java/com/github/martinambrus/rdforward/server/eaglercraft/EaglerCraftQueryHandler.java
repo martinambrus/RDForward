@@ -1,10 +1,7 @@
 package com.github.martinambrus.rdforward.server.eaglercraft;
 
-import com.github.martinambrus.rdforward.server.ConnectedPlayer;
 import com.github.martinambrus.rdforward.server.PlayerManager;
-import com.github.martinambrus.rdforward.server.api.ServerProperties;
 
-import java.util.Collection;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
@@ -82,19 +79,27 @@ public class EaglerCraftQueryHandler extends ChannelInboundHandlerAdapter {
     }
 
     private void sendMotdResponse(ChannelHandlerContext ctx) {
-        String motd = escapeJson(ServerProperties.getMotd());
-        int online = playerManager.getPlayerCount();
-        int max = PlayerManager.getMaxPlayers();
+        // Fire SERVER_LIST_PING so plugins (Vanish, motd-rewriters) mutate
+        // count / max / motd / playerNames before the response is built.
+        // The player-name JSON array is sourced from the post-mutation
+        // pingCtx.playerNames so vanished players disappear from the
+        // EaglerCraft hover popup as well as the displayed count.
+        java.net.SocketAddress sa = ctx.channel().remoteAddress();
+        java.net.InetAddress addr = (sa instanceof java.net.InetSocketAddress isa) ? isa.getAddress() : null;
+        com.github.martinambrus.rdforward.api.event.server.ServerListPingHook.PingContext pingCtx =
+                playerManager.firePingHook(addr);
+        String motd = escapeJson(pingCtx.motd != null ? pingCtx.motd : "");
+        int online = pingCtx.playerNames.size();
+        int max = pingCtx.maxPlayers;
 
-        // Build player list JSON array
+        // Build player list JSON array from the post-mutation name list
         StringBuilder players = new StringBuilder("[");
-        Collection<ConnectedPlayer> allPlayers = playerManager.getAllPlayers();
         int idx = 0;
-        int total = allPlayers.size();
-        for (ConnectedPlayer p : allPlayers) {
+        int total = pingCtx.playerNames.size();
+        for (String pname : pingCtx.playerNames) {
             if (idx >= 10) break;
             if (idx > 0) players.append(",");
-            players.append("\"").append(escapeJson(p.getUsername())).append("\"");
+            players.append("\"").append(escapeJson(pname)).append("\"");
             idx++;
         }
         if (total > 10) {

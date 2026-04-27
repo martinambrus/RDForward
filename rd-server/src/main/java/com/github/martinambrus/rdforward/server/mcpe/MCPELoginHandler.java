@@ -736,7 +736,7 @@ public class MCPELoginHandler {
 
         playerManager.broadcastPlayerListAdd(player);
         playerManager.broadcastPlayerSpawn(player);
-        playerManager.broadcastChat((byte) 0, player.getUsername() + " joined the game");
+        playerManager.announceJoinBroadcast(player.getUsername(), ProtocolVersion.BEDROCK);
 
         com.github.martinambrus.rdforward.api.event.server.ServerEvents.PLAYER_JOIN
                 .invoker().onPlayerJoin(player.getUsername(), ProtocolVersion.BEDROCK);
@@ -942,7 +942,7 @@ public class MCPELoginHandler {
 
         playerManager.broadcastPlayerListAdd(player);
         playerManager.broadcastPlayerSpawn(player);
-        playerManager.broadcastChat((byte) 0, player.getUsername() + " joined the game");
+        playerManager.announceJoinBroadcast(player.getUsername(), ProtocolVersion.BEDROCK);
 
         com.github.martinambrus.rdforward.api.event.server.ServerEvents.PLAYER_JOIN
                 .invoker().onPlayerJoin(player.getUsername(), ProtocolVersion.BEDROCK);

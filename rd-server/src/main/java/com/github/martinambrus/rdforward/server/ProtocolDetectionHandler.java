@@ -180,8 +180,14 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
                         ? pingVersionString(clientProtocol) : "1.4.7";
                 // For 1.4.2-1.5.2 (no MC|PingHost), show hint about Direct Connect
                 // since some versions in this range will see "incompatible".
+                // Fire SERVER_LIST_PING so the Bukkit bridge can let
+                // plugins (Vanish, motd-rewriters) mutate count / max
+                // / motd before serialisation.
+                java.net.InetAddress addrNew = pingAddress(ctx);
+                com.github.martinambrus.rdforward.api.event.server.ServerListPingHook.PingContext pingCtxNew =
+                        playerManager.firePingHook(addrNew);
                 String motd = clientProtocol > 0
-                        ? ServerProperties.getMotd()
+                        ? pingCtxNew.motd
                         : "Incompatible? Use Direct Connect";
                 // Strip null chars so MOTD can't break the \u0000-delimited response
                 motd = motd.replace("\u0000", "");
@@ -189,15 +195,18 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
                         + reportProtocol + "\u0000"
                         + reportVersion + "\u0000"
                         + motd + "\u0000"
-                        + playerManager.getPlayerCount() + "\u0000"
-                        + PlayerManager.getMaxPlayers();
+                        + pingCtxNew.playerNames.size() + "\u0000"
+                        + pingCtxNew.maxPlayers;
             } else {
                 // Old ping (Beta 1.8 - 1.3.2): no version field.
+                java.net.InetAddress addrOld = pingAddress(ctx);
+                com.github.martinambrus.rdforward.api.event.server.ServerListPingHook.PingContext pingCtxOld =
+                        playerManager.firePingHook(addrOld);
                 // Strip section signs so MOTD can't break the \u00A7-delimited response
-                String motd = ServerProperties.getMotd().replace("\u00A7", "");
+                String motd = pingCtxOld.motd == null ? "" : pingCtxOld.motd.replace("\u00A7", "");
                 response = motd + "\u00A7"
-                        + playerManager.getPlayerCount() + "\u00A7"
-                        + PlayerManager.getMaxPlayers();
+                        + pingCtxOld.playerNames.size() + "\u00A7"
+                        + pingCtxOld.maxPlayers;
             }
 
             ByteBuf out = ctx.alloc().buffer();
@@ -356,6 +365,14 @@ public class ProtocolDetectionHandler extends ChannelInboundHandlerAdapter {
      * Map a protocol version number to a game version string for server list display.
      * Returns the latest game version for a given protocol number.
      */
+    /** Best-effort caller-IP extraction for {@code SERVER_LIST_PING}.
+     *  May be {@code null} if the channel exposes a non-IP socket
+     *  address (testing fixtures, embedded transports). */
+    private static java.net.InetAddress pingAddress(io.netty.channel.ChannelHandlerContext ctx) {
+        java.net.SocketAddress sa = ctx.channel().remoteAddress();
+        return (sa instanceof java.net.InetSocketAddress isa) ? isa.getAddress() : null;
+    }
+
     private static String pingVersionString(int protocolVersion) {
         switch (protocolVersion) {
             case 78: return "1.6.4";

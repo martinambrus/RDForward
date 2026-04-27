@@ -193,9 +193,16 @@ public final class BukkitPlayer {
     /** Drop the cached proxy for {@code name}. Called from the quit
      *  hook so a player who logs in again gets a fresh perm slot rather
      *  than inheriting the previous session's LP-injected Permissible
-     *  (which holds a stale rd-api Player reference). */
+     *  (which holds a stale rd-api Player reference). Also clears the
+     *  visibility registry for this name (both as recipient and as
+     *  hidden sender) so a reconnect starts with a clean visibility
+     *  state — matches Bukkit's per-session semantics. */
     public static void evict(String name) {
-        if (name != null) CACHE.remove(name.toLowerCase(java.util.Locale.ROOT));
+        if (name != null) {
+            CACHE.remove(name.toLowerCase(java.util.Locale.ROOT));
+            PlayerVisibilityRegistry.clearRecipient(name);
+            PlayerVisibilityRegistry.clearSender(name);
+        }
     }
 
     private static Player mint(String name,
@@ -254,6 +261,12 @@ public final class BukkitPlayer {
         volatile World world;
         volatile UUID cachedUuid;
         final ConcurrentHashMap<String, Object> metadata = new ConcurrentHashMap<>();
+        // Lazy in-memory PDC. Vanish (and similar "remember per-player
+        // state across the join handler chain") plugins write here on
+        // join and read on later events; a single container per proxy
+        // (keyed by name via the BukkitPlayer cache) keeps the writes
+        // visible across handlers without persisting across restarts.
+        volatile StubPersistentDataContainer pdc;
 
         Handler(String name,
                 com.github.martinambrus.rdforward.api.player.Player backing,
@@ -381,6 +394,52 @@ public final class BukkitPlayer {
                 case "getEnderChest":
                 case "getOpenInventory":
                     return null;
+                case "getPersistentDataContainer": {
+                    StubPersistentDataContainer existing = pdc;
+                    if (existing != null) return existing;
+                    synchronized (this) {
+                        if (pdc == null) pdc = new StubPersistentDataContainer();
+                        return pdc;
+                    }
+                }
+            }
+
+            // Player visibility — VanishNoPacket (and any plugin that
+            // wraps player visibility without ProtocolLib) calls these
+            // to hide a vanished player from each viewer. The bridge
+            // updates the per-recipient registry that the installed
+            // PlayerVisibilityFilter consults on every per-sender
+            // broadcast, and ALSO sends an immediate despawn/spawn
+            // packet so the target disappears mid-session rather than
+            // waiting for the next chunk reload.
+            switch (n) {
+                case "hidePlayer":
+                    return doHidePlayer(args);
+                case "showPlayer":
+                    return doShowPlayer(args);
+                case "canSee":
+                    return doCanSee(args);
+                case "isListed":
+                    return doCanSee(args);  // listed iff visible
+                case "unlistPlayer":
+                    doHidePlayer(args);
+                    return Boolean.TRUE;
+                case "listPlayer":
+                    doShowPlayer(args);
+                    return Boolean.TRUE;
+                case "hideEntity":
+                    // (Plugin, Entity) form — only Player entities are
+                    // tracked in the visibility registry; non-Player
+                    // entity hiding is not supported (no entity model).
+                    if (argc >= 2 && args[1] instanceof Player p) {
+                        doHidePlayer(new Object[] { p });
+                    }
+                    return null;
+                case "showEntity":
+                    if (argc >= 2 && args[1] instanceof Player p) {
+                        doShowPlayer(new Object[] { p });
+                    }
+                    return null;
             }
 
             // Anything else returns a type-safe default so the abstract
@@ -486,19 +545,87 @@ public final class BukkitPlayer {
                     loc.getYaw(), loc.getPitch()));
             return true;
         }
+
+        /** Resolve the target player's name from {@code hidePlayer} /
+         *  {@code showPlayer} args. Both take a single Player; the
+         *  (Plugin, Player) overloads are default methods on the Player
+         *  interface that we intercept separately. */
+        private static String targetName(Object[] args) {
+            if (args == null || args.length == 0) return null;
+            Object first = args[0];
+            if (first instanceof Player p) return p.getName();
+            return null;
+        }
+
+        private Object doHidePlayer(Object[] args) {
+            String target = targetName(args);
+            if (name == null || target == null) return null;
+            PlayerVisibilityRegistry.hide(name, target);
+            com.github.martinambrus.rdforward.api.server.Server rd = BukkitBridge.currentRdServer();
+            if (rd != null) {
+                // Order matters: tab-list REMOVE first (so the entry is
+                // gone before clients render it again on the next tick),
+                // then despawn so the entity disappears in-world.
+                rd.sendPlayerListRemoveTo(name, target);
+                rd.sendPlayerDespawnTo(name, target);
+            }
+            return null;
+        }
+
+        private Object doShowPlayer(Object[] args) {
+            String target = targetName(args);
+            if (name == null || target == null) return null;
+            boolean wasHidden = PlayerVisibilityRegistry.show(name, target);
+            // Only resend if the target was actually hidden — sending
+            // unconditionally would duplicate the entity / entry for
+            // clients that already had it.
+            if (wasHidden) {
+                com.github.martinambrus.rdforward.api.server.Server rd = BukkitBridge.currentRdServer();
+                if (rd != null) {
+                    // Tab-list ADD first, then spawn, mirroring the join
+                    // sequence: clients on 1.8+ resolve player names from
+                    // tab list by UUID and silently drop a SpawnPlayer
+                    // that arrives before the matching list entry.
+                    rd.sendPlayerListAddTo(name, target);
+                    rd.sendPlayerSpawnTo(name, target);
+                }
+            }
+            return null;
+        }
+
+        private Object doCanSee(Object[] args) {
+            String target = targetName(args);
+            if (name == null || target == null) return Boolean.TRUE;
+            return !PlayerVisibilityRegistry.isHidden(name, target);
+        }
     }
 
     private static Object defaultValue(Class<?> returnType) {
         if (returnType == void.class) return null;
-        if (!returnType.isPrimitive()) return null;
-        if (returnType == boolean.class) return Boolean.FALSE;
-        if (returnType == byte.class) return (byte) 0;
-        if (returnType == short.class) return (short) 0;
-        if (returnType == int.class) return 0;
-        if (returnType == long.class) return 0L;
-        if (returnType == float.class) return 0f;
-        if (returnType == double.class) return 0.0d;
-        if (returnType == char.class) return '\0';
+        if (returnType.isPrimitive()) {
+            if (returnType == boolean.class) return Boolean.FALSE;
+            if (returnType == byte.class) return (byte) 0;
+            if (returnType == short.class) return (short) 0;
+            if (returnType == int.class) return 0;
+            if (returnType == long.class) return 0L;
+            if (returnType == float.class) return 0f;
+            if (returnType == double.class) return 0.0d;
+            if (returnType == char.class) return '\0';
+            return null;
+        }
+        // Real Bukkit's collection-returning methods never return null —
+        // plugins iterate the result without a guard. VanishNoPacket's
+        // toggleVanishQuiet calls Player.getNearbyEntities(...).iterator()
+        // unconditionally; without a non-null List default the join
+        // listener NPEs and the player skips Vanish's per-player state
+        // setup. Same shape applies to getPassengers, getTrackedBy,
+        // getScoreboardTags, etc. — return empty collections so plugin
+        // iteration runs cleanly even when our stub has no real backing.
+        if (returnType == java.util.List.class
+                || returnType == java.util.Collection.class
+                || returnType == java.lang.Iterable.class) return Collections.emptyList();
+        if (returnType == java.util.Set.class) return Collections.emptySet();
+        if (returnType == java.util.Map.class) return Collections.emptyMap();
         return null;
     }
 }

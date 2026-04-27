@@ -302,7 +302,7 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
                 + ", " + playerManager.getPlayerCount() + " online"
                 + (ip != null ? ", ip " + ip : "") + ")");
 
-        playerManager.broadcastChat((byte) 0, player.getUsername() + " joined the game");
+        playerManager.announceJoinBroadcast(player.getUsername(), ProtocolVersion.BEDROCK);
         ServerEvents.PLAYER_JOIN.invoker().onPlayerJoin(player.getUsername(), ProtocolVersion.BEDROCK);
         pongUpdater.run();
     }
@@ -1049,7 +1049,7 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
         ServerEvents.PLAYER_LEAVE.invoker().onPlayerLeave(player.getUsername());
         world.rememberPlayerPosition(player);
         chunkManager.removePlayer(player);
-        playerManager.broadcastChat((byte) 0, player.getUsername() + " left the game");
+        playerManager.announceLeaveBroadcast(player.getUsername());
         playerManager.broadcastPlayerDespawn(player);
         pongUpdater.run();
     }

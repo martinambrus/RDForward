@@ -107,6 +107,32 @@ public final class RDServer implements Server {
     }
 
     @Override
+    public void setVisibilityFilter(
+            com.github.martinambrus.rdforward.api.server.PlayerVisibilityFilter filter) {
+        playerManager().setVisibilityFilter(filter);
+    }
+
+    @Override
+    public void sendPlayerSpawnTo(String recipientName, String targetName) {
+        playerManager().sendPlayerSpawnTo(recipientName, targetName);
+    }
+
+    @Override
+    public void sendPlayerDespawnTo(String recipientName, String targetName) {
+        playerManager().sendPlayerDespawnTo(recipientName, targetName);
+    }
+
+    @Override
+    public void sendPlayerListAddTo(String recipientName, String targetName) {
+        playerManager().sendPlayerListAddTo(recipientName, targetName);
+    }
+
+    @Override
+    public void sendPlayerListRemoveTo(String recipientName, String targetName) {
+        playerManager().sendPlayerListRemoveTo(recipientName, targetName);
+    }
+
+    @Override
     public PluginChannel openPluginChannel(RegistryKey id) {
         String owner = EventOwnership.currentOwner();
         if (owner == null) owner = "__server__";

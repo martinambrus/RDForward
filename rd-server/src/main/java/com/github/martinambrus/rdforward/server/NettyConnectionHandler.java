@@ -338,11 +338,15 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             versionName = "1.7.5";
         }
         int protocol = clientVersion.getVersionNumber();
+        java.net.SocketAddress sa = ctx.channel().remoteAddress();
+        java.net.InetAddress addr = (sa instanceof java.net.InetSocketAddress isa) ? isa.getAddress() : null;
+        com.github.martinambrus.rdforward.api.event.server.ServerListPingHook.PingContext pingCtx =
+                playerManager.firePingHook(addr);
         String json = "{"
                 + "\"version\":{\"name\":\"" + versionName + "\",\"protocol\":" + protocol + "},"
-                + "\"players\":{\"max\":" + PlayerManager.getMaxPlayers()
-                + ",\"online\":" + playerManager.getPlayerCount() + "},"
-                + "\"description\":{\"text\":\"" + escapeJsonString(ServerProperties.getMotd()) + "\"}"
+                + "\"players\":{\"max\":" + pingCtx.maxPlayers
+                + ",\"online\":" + pingCtx.playerNames.size() + "},"
+                + "\"description\":{\"text\":\"" + escapeJsonString(pingCtx.motd) + "\"}"
                 + "}";
         ctx.writeAndFlush(new StatusResponsePacket(json));
     }
@@ -1197,7 +1201,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             }
         }
 
-        playerManager.broadcastChat((byte) 0, player.getUsername() + " joined the game");
+        playerManager.announceJoinBroadcast(player.getUsername(), clientVersion);
         ServerEvents.PLAYER_JOIN.invoker().onPlayerJoin(player.getUsername(), clientVersion);
 
         String ip = PlayerManager.extractIp(ctx.channel().remoteAddress());
@@ -1935,7 +1939,7 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             world.rememberPlayerPosition(player);
             chunkManager.removePlayer(player);
             playerManager.broadcastPlayerListRemove(player);
-            playerManager.broadcastChat((byte) 0, player.getUsername() + " left the game");
+            playerManager.announceLeaveBroadcast(player.getUsername());
             playerManager.broadcastPlayerDespawn(player);
         }
         super.channelInactive(ctx);

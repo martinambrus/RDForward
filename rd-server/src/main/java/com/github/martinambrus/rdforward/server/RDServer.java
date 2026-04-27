@@ -684,15 +684,23 @@ public class RDServer {
 
         final long bedrockGuid = System.currentTimeMillis();
 
-        // Pong updater — updates CloudburstMC's advertisement when player count changes
+        // Pong updater — updates CloudburstMC's advertisement when player count changes.
+        // CloudburstMC auto-replies to UDP pings from a static advertisement buffer
+        // (RAK_HANDLE_PING=false), so per-ping mutation isn't reachable here. Firing
+        // SERVER_LIST_PING with a null address each time the advertisement is rebuilt
+        // still lets plugins (Vanish, motd-rewriters) mutate count/max/motd; the
+        // updater runs on every PLAYER_JOIN / PLAYER_LEAVE so mutations land before
+        // the next ping is served.
         Runnable bedrockPongUpdater = () -> {
             if (bedrockChannel == null) return;
+            com.github.martinambrus.rdforward.api.event.server.ServerListPingHook.PingContext pingCtx =
+                    playerManager.firePingHook(null);
             BedrockPong p = new BedrockPong()
                     .edition("MCPE")
-                    .motd(ServerProperties.getMotd())
+                    .motd(pingCtx.motd)
                     .subMotd("RDForward")
-                    .playerCount(playerManager.getPlayerCount())
-                    .maximumPlayerCount(PlayerManager.getMaxPlayers())
+                    .playerCount(pingCtx.playerNames.size())
+                    .maximumPlayerCount(pingCtx.maxPlayers)
                     .gameType(ServerProperties.getGameModeName())
                     .protocolVersion(BedrockProtocolConstants.CODEC.getProtocolVersion())
                     .version(BedrockProtocolConstants.CODEC.getMinecraftVersion())
@@ -730,12 +738,17 @@ public class RDServer {
         }
 
         // --- Start CloudburstMC internally on loopback (no external port) ---
+        // Fire SERVER_LIST_PING for the initial advertisement so plugins that
+        // installed listeners during startup see the empty-server snapshot
+        // before the first real ping arrives.
+        com.github.martinambrus.rdforward.api.event.server.ServerListPingHook.PingContext initialCtx =
+                playerManager.firePingHook(null);
         BedrockPong initialPong = new BedrockPong()
                 .edition("MCPE")
-                .motd(ServerProperties.getMotd())
+                .motd(initialCtx.motd)
                 .subMotd("RDForward")
-                .playerCount(0)
-                .maximumPlayerCount(PlayerManager.getMaxPlayers())
+                .playerCount(initialCtx.playerNames.size())
+                .maximumPlayerCount(initialCtx.maxPlayers)
                 .gameType(ServerProperties.getGameModeName())
                 .protocolVersion(BedrockProtocolConstants.CODEC.getProtocolVersion())
                 .version(BedrockProtocolConstants.CODEC.getMinecraftVersion())

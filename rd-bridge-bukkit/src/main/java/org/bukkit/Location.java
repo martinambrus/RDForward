@@ -57,6 +57,74 @@ public class Location implements Cloneable {
         return new org.bukkit.util.Vector(x, y, z);
     }
 
+    /** Real Bukkit's {@code Location.add(double,double,double)} mutates
+     *  this instance and returns it. VanishNoPacket's
+     *  {@code VanishManager.toggleVanishQuiet} calls
+     *  {@code player.getLocation().add(0,1,0)} to compute the unvanish
+     *  trigger above the player's head; without this overload the
+     *  toggle disconnects the client with NoSuchMethodError. */
+    public Location add(double dx, double dy, double dz) {
+        this.x += dx;
+        this.y += dy;
+        this.z += dz;
+        return this;
+    }
+
+    public Location add(Location other) {
+        if (other != null) {
+            this.x += other.x;
+            this.y += other.y;
+            this.z += other.z;
+        }
+        return this;
+    }
+
+    public Location add(org.bukkit.util.Vector v) {
+        if (v != null) {
+            this.x += v.getX();
+            this.y += v.getY();
+            this.z += v.getZ();
+        }
+        return this;
+    }
+
+    public Location subtract(double dx, double dy, double dz) {
+        this.x -= dx;
+        this.y -= dy;
+        this.z -= dz;
+        return this;
+    }
+
+    public Location subtract(Location other) {
+        if (other != null) {
+            this.x -= other.x;
+            this.y -= other.y;
+            this.z -= other.z;
+        }
+        return this;
+    }
+
+    public Location subtract(org.bukkit.util.Vector v) {
+        if (v != null) {
+            this.x -= v.getX();
+            this.y -= v.getY();
+            this.z -= v.getZ();
+        }
+        return this;
+    }
+
+    public double distance(Location other) {
+        return Math.sqrt(distanceSquared(other));
+    }
+
+    public double distanceSquared(Location other) {
+        if (other == null) return 0.0d;
+        double dx = this.x - other.x;
+        double dy = this.y - other.y;
+        double dz = this.z - other.z;
+        return dx * dx + dy * dy + dz * dz;
+    }
+
     @Override
     public Location clone() {
         return new Location(world, x, y, z, yaw, pitch);
