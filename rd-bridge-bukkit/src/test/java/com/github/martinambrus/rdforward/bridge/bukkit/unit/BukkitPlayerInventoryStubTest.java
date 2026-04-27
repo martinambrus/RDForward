@@ -46,13 +46,20 @@ class BukkitPlayerInventoryStubTest {
     }
 
     @Test
-    void contentsArrayQueriesReturnEmptyArrays() {
+    void contentsArrayQueriesReturnRealisticallySized() {
+        // Pre-API: the proxy returned length-0 arrays (no inventory
+        // model). With the BukkitPlayerInventory bridge in place, sizes
+        // match real Bukkit (41 total / 36 storage / 4 armor / 1 extra)
+        // even when the backing rd-api Player has no inventory view —
+        // entries are simply null. WE 5.6.1's giveItem-fallthrough path
+        // walks {@code getContents()} so the array must be non-zero
+        // length to avoid IndexOutOfBoundsException.
         Player p = newPlayer();
         PlayerInventory inv = p.getInventory();
-        assertEquals(0, inv.getContents().length);
-        assertEquals(0, inv.getStorageContents().length);
-        assertEquals(0, inv.getArmorContents().length);
-        assertEquals(0, inv.getExtraContents().length);
+        assertEquals(41, inv.getContents().length);
+        assertEquals(36, inv.getStorageContents().length);
+        assertEquals(4, inv.getArmorContents().length);
+        assertEquals(1, inv.getExtraContents().length);
     }
 
     @Test

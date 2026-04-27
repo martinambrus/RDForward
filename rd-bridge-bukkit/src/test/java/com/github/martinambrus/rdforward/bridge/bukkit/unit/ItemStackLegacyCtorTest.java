@@ -29,14 +29,16 @@ class ItemStackLegacyCtorTest {
     @Test
     void intIntCtorWithUnknownIdLeavesMaterialNull() {
         // 271 = pre-Flattening wood axe id (the WE wand). Our Material
-        // enum surfaces only blocks, so 271 doesn't resolve. Material
-        // stays null and the ctor still succeeds — //wand can't
-        // populate the hotbar (no inventory model) but at least the
-        // call doesn't throw.
+        // enum surfaces only blocks, so 271 doesn't resolve and
+        // {@code getType()} stays null. The numeric id survives via
+        // the {@code legacyId} fallback so {@code getTypeId()} reports
+        // the original wire id — InventoryPresets save/restore depends
+        // on this round-trip for items outside the Material set.
         ItemStack wand = new ItemStack(271, 1);
         assertNull(wand.getType());
         assertEquals(1, wand.getAmount());
-        assertEquals(0, wand.getTypeId(), "null Material yields type id 0");
+        assertEquals(271, wand.getTypeId(),
+                "legacyId fallback preserves the wire id when Material is null");
     }
 
     @Test
