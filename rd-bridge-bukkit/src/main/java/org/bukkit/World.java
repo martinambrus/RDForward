@@ -99,6 +99,25 @@ public interface World {
                 "org.bukkit.World.playEffect(Lorg/bukkit/Location;Lorg/bukkit/Effect;Ljava/lang/Object;I)V");
     }
 
+    /** VanishNoPacket 3.15's "fake explosion" /vanish effect calls
+     *  {@code world.playSound(loc, Sound.EXPLODE, 4.0f, 0.7f)} for the
+     *  audio cue. RDForward has no audio pipeline — no-op + log once.
+     *  Without this overload Vanish disconnects the client with
+     *  NoSuchMethodError. */
+    default void playSound(org.bukkit.Location location, org.bukkit.Sound sound,
+                           float volume, float pitch) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.playSound(Lorg/bukkit/Location;Lorg/bukkit/Sound;FF)V");
+    }
+
+    default void playSound(org.bukkit.Location location, String sound,
+                           float volume, float pitch) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.playSound(Lorg/bukkit/Location;Ljava/lang/String;FF)V");
+    }
+
     /** VanishNoPacket fires a fake (no-block-damage, no-fire) explosion
      *  at the toggling player's location for the audio/particle cue.
      *  RDForward has no explosion pipeline — return {@code false}
