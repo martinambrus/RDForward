@@ -3,12 +3,14 @@ package com.github.martinambrus.rdforward.buildsrc.legacyapi;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -40,6 +42,24 @@ public final class LegacyBridgeInjector {
      */
     public static void inject(Path classFile, String ownerInternalName,
                               List<BridgeSpec> bridges) throws IOException {
+        inject(classFile, ownerInternalName, bridges, Collections.emptyList());
+    }
+
+    /**
+     * Patch {@code classFile} to add both legacy method bridges
+     * and legacy static fields.
+     *
+     * @param classFile         path to the .class on disk; rewritten in place
+     * @param ownerInternalName the interface's internal name
+     *                          ({@code "org/bukkit/Sound"})
+     * @param bridges           legacy method bridges; existing methods
+     *                          with the same name+descriptor are left alone
+     * @param fields            legacy static fields; existing fields with
+     *                          the same name are left alone
+     */
+    public static void inject(Path classFile, String ownerInternalName,
+                              List<BridgeSpec> bridges,
+                              List<LegacyFieldSpec> fields) throws IOException {
         byte[] bytes = Files.readAllBytes(classFile);
         ClassReader reader = new ClassReader(bytes);
         // COMPUTE_FRAMES asks ASM to recompute StackMapTable + maxStack
@@ -51,7 +71,7 @@ public final class LegacyBridgeInjector {
         ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_FRAMES);
 
         BridgeAddingVisitor visitor =
-                new BridgeAddingVisitor(writer, ownerInternalName, bridges);
+                new BridgeAddingVisitor(writer, ownerInternalName, bridges, fields);
         reader.accept(visitor, 0);
 
         Files.write(classFile, writer.toByteArray());
@@ -60,33 +80,65 @@ public final class LegacyBridgeInjector {
     private static final class BridgeAddingVisitor extends ClassVisitor {
         private final String ownerInternalName;
         private final List<BridgeSpec> bridges;
+        private final List<LegacyFieldSpec> fields;
         /** Tracks methods already present (by name+descriptor) so the
          *  injector is idempotent and can't shadow an existing real
          *  declaration. */
-        private final java.util.Set<String> present = new java.util.HashSet<>();
+        private final java.util.Set<String> presentMethods = new java.util.HashSet<>();
+        /** Tracks fields already present (by name) so the injector
+         *  refuses to mask a real declaration. */
+        private final java.util.Set<String> presentFields = new java.util.HashSet<>();
 
         BridgeAddingVisitor(ClassVisitor downstream, String ownerInternalName,
-                            List<BridgeSpec> bridges) {
+                            List<BridgeSpec> bridges,
+                            List<LegacyFieldSpec> fields) {
             super(Opcodes.ASM9, downstream);
             this.ownerInternalName = ownerInternalName;
             this.bridges = bridges;
+            this.fields = fields;
         }
 
         @Override
         public MethodVisitor visitMethod(int access, String name, String descriptor,
                                          String signature, String[] exceptions) {
-            present.add(name + descriptor);
+            presentMethods.add(name + descriptor);
             return super.visitMethod(access, name, descriptor, signature, exceptions);
+        }
+
+        @Override
+        public FieldVisitor visitField(int access, String name, String descriptor,
+                                       String signature, Object value) {
+            presentFields.add(name);
+            return super.visitField(access, name, descriptor, signature, value);
         }
 
         @Override
         public void visitEnd() {
             for (BridgeSpec spec : bridges) {
                 String legacyKey = spec.methodName() + spec.legacyDescriptor();
-                if (present.contains(legacyKey)) continue;
+                if (presentMethods.contains(legacyKey)) continue;
                 emitBridge(spec);
             }
+            for (LegacyFieldSpec field : fields) {
+                if (presentFields.contains(field.fieldName())) continue;
+                emitLegacyField(field);
+            }
             super.visitEnd();
+        }
+
+        /**
+         * Emit a {@code public static final} field on the interface
+         * with no initializer. JVM defaults reference fields to
+         * {@code null}, which is what plugins receive when they read
+         * the legacy symbol — same as if it had been declared
+         * {@code public static final Sound EXPLODE = null;} in source.
+         */
+        private void emitLegacyField(LegacyFieldSpec spec) {
+            FieldVisitor fv = super.visitField(
+                    Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL,
+                    spec.fieldName(), spec.descriptor(),
+                    /*signature*/ null, /*value*/ null);
+            if (fv != null) fv.visitEnd();
         }
 
         private void emitBridge(BridgeSpec spec) {

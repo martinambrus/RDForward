@@ -1,5 +1,6 @@
 import com.github.martinambrus.rdforward.buildsrc.legacyapi.BridgeSpec
 import com.github.martinambrus.rdforward.buildsrc.legacyapi.LegacyBridgeInjector
+import com.github.martinambrus.rdforward.buildsrc.legacyapi.LegacyFieldSpec
 
 plugins {
     id 'java-library'
@@ -42,6 +43,7 @@ tasks.register('injectLegacyApiBridges', Copy) {
     // tree. Everything else stays in compileJava's destination so
     // we don't duplicate the whole class tree.
     include 'org/bukkit/Server.class'
+    include 'org/bukkit/Sound.class'
     doLast {
         def serverClass = legacyPatchedDir.get().file('org/bukkit/Server.class').asFile
         if (!serverClass.exists()) {
@@ -61,6 +63,25 @@ tasks.register('injectLegacyApiBridges', Copy) {
                         '()[Lorg/bukkit/entity/Player;',
                         'org/bukkit/entity/Player')]
         )
+
+        // Sound legacy aliases — pre-Bukkit-1.9 used short flat names
+        // (Sound.EXPLODE) that were renamed to namespaced forms
+        // (Sound.ENTITY_GENERIC_EXPLODE) in 1.9. Old plugins compiled
+        // against the short names crash with NoSuchFieldError on the
+        // modern stub; injecting the legacy symbols as null-default
+        // static fields lets the lookup resolve. Plugins typically
+        // forward the resulting null to playSound/playEffect, which
+        // already StubCallLog and no-op.
+        def soundClass = legacyPatchedDir.get().file('org/bukkit/Sound.class').asFile
+        if (!soundClass.exists()) {
+            throw new GradleException("Patched copy missing: ${soundClass}")
+        }
+        LegacyBridgeInjector.inject(
+                soundClass.toPath(),
+                'org/bukkit/Sound',
+                [],
+                [LegacyFieldSpec.of('EXPLODE', 'Lorg/bukkit/Sound;')]
+        )
     }
 }
 
@@ -74,13 +95,15 @@ tasks.register('injectLegacyApiBridges', Copy) {
 jar {
     dependsOn injectLegacyApiBridges
     eachFile { fcd ->
-        if (fcd.path == 'org/bukkit/Server.class'
+        if ((fcd.path == 'org/bukkit/Server.class'
+                || fcd.path == 'org/bukkit/Sound.class')
                 && !fcd.file.absolutePath.contains('classes-legacy-patched')) {
             fcd.exclude()
         }
     }
     from(legacyPatchedDir) {
         include 'org/bukkit/Server.class'
+        include 'org/bukkit/Sound.class'
     }
 }
 
