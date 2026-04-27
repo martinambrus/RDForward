@@ -60,6 +60,16 @@ sleep infinity | java -jar rd-server/build/libs/rd-server-0.2.0-SNAPSHOT-all.jar
 - Ports: TCP 25565 (Java), UDP 19132 (MCPE/Bedrock)
 - If you get `BindException: Address already in use`, kill the old process first and wait 2-3 seconds.
 
+## Test Coverage for New Features
+
+Whenever new functionality is added (a new feature, new API, new bridge surface, new code path), test coverage is mandatory before the work is closed out. Specifically:
+
+- After the user confirms the feature works in their manual test, but BEFORE committing or moving to the next feature/task, audit whether tests exist for what was added.
+- Both unit tests AND integration tests are required. Unit tests cover the smallest unit (one class, one method, one branch) in isolation; integration tests cover the wiring between units and the broader subsystem (e.g. a bridge listener that the host actually fires, or a Gradle-emitted artifact loading at runtime).
+- Do not add tests speculatively before the user confirms — the design may still change. Add them once the behavior is locked in.
+- If a feature genuinely cannot be tested at one of the two levels (e.g. there is no meaningful integration boundary, or the unit is purely declarative), state that explicitly to the user when reporting completion rather than skipping silently.
+- Run the relevant test tasks to confirm the new tests pass before committing.
+
 ## E2E Test Rules
 
 - NEVER run two Gradle test suites in parallel. They share the Gradle daemon and will conflict/kill each other. Always run test tasks sequentially — wait for one to complete before starting the next.
