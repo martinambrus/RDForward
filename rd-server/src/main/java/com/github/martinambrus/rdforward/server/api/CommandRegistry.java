@@ -77,7 +77,7 @@ public final class CommandRegistry {
         // fact for security review). Console-issued commands are not
         // re-logged here — the caller already echoed them.
         if (!isConsole) {
-            System.out.println("[Cmd] " + sender + ": /" + input);
+            System.out.println("[CMD] " + sender + ": /" + input);
         }
 
         String[] parts = WHITESPACE.split(input, 2);

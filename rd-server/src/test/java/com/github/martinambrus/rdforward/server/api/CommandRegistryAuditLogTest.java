@@ -52,7 +52,7 @@ class CommandRegistryAuditLogTest {
     void dispatchFromPlayerLogsCommandToConsole() {
         CommandRegistry.dispatch("auditme arg1 arg2", "alpha", false, replySender);
         String stdout = captured.toString();
-        assertTrue(stdout.contains("[Cmd] alpha: /auditme arg1 arg2"),
+        assertTrue(stdout.contains("[CMD] alpha: /auditme arg1 arg2"),
                 "expected audit line; got: " + stdout);
     }
 
@@ -60,7 +60,7 @@ class CommandRegistryAuditLogTest {
     void dispatchFromConsoleDoesNotLogAuditLine() {
         CommandRegistry.dispatch("auditme silent", "@console", true, replySender);
         String stdout = captured.toString();
-        assertFalse(stdout.contains("[Cmd]"),
+        assertFalse(stdout.contains("[CMD]"),
                 "console commands must not produce an audit line; got: " + stdout);
     }
 
@@ -71,7 +71,7 @@ class CommandRegistryAuditLogTest {
         // operators see attempted misuse.
         CommandRegistry.dispatch("does-not-exist", "alpha", false, replySender);
         String stdout = captured.toString();
-        assertTrue(stdout.contains("[Cmd] alpha: /does-not-exist"),
+        assertTrue(stdout.contains("[CMD] alpha: /does-not-exist"),
                 "unknown commands must still be audited; got: " + stdout);
     }
 }

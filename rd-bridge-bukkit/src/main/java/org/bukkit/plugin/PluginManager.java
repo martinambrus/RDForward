@@ -111,4 +111,24 @@ public interface PluginManager {
 
     /** No-op — RDForward does not track registered permissions. */
     default void removePermission(String name) {}
+
+    /** Recompute which {@link org.bukkit.permissions.Permissible}s
+     *  should be granted {@code perm} by default after its
+     *  {@link Permission#getDefault()} changed. Real paper-api walks
+     *  every connected player + console and re-applies defaults;
+     *  RDForward delegates default-permission resolution to its own
+     *  permission manager so this is a logged no-op. OpenWarp v1.1's
+     *  {@code com.pneumaticraft.commandhandler.Command.addToParentPerms}
+     *  calls this after {@code addPermission} so children inherit the
+     *  new node — without the method declaration the bytecode call
+     *  site (an {@code INVOKEINTERFACE PluginManager
+     *  .recalculatePermissionDefaults}) fails at link time with
+     *  {@link NoSuchMethodError} and the entire {@code onEnable}
+     *  aborts. */
+    default void recalculatePermissionDefaults(Permission perm) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.plugin.PluginManager.recalculatePermissionDefaults("
+                        + "Lorg/bukkit/permissions/Permission;)V");
+    }
 }
