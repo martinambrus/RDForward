@@ -58,6 +58,12 @@ public final class NeoForgeModLoader {
             throw new IOException("neoforge.mods.toml declared no [[mods]] entry: " + jarPath);
         }
 
+        NeoForgeModDescriptor.Entry primaryEntry = nf.primary();
+        String displayName = (primaryEntry.displayName() == null || primaryEntry.displayName().isBlank())
+                ? primaryEntry.modId() : primaryEntry.displayName();
+        com.github.martinambrus.rdforward.api.stub.StubCallLog
+                .registerPluginLoader(classLoader, displayName);
+
         Map<String, Class<?>> byAnnotation = scanAnnotatedClasses(jarPath, classLoader);
 
         Map<String, ModHandle> handles = new LinkedHashMap<>();

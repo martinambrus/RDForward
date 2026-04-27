@@ -129,6 +129,17 @@ public final class StubCallLog {
         return null;
     }
 
+    /** Public attribution lookup for non-stub callers (e.g. the server's
+     *  stdout/stderr line prefixer). Walks the current thread's stack and
+     *  returns the registered plugin name for the first frame whose
+     *  declaring class' classloader chain ends at a registered plugin
+     *  loader. {@code null} when no plugin is on the stack — caller may
+     *  treat that as "server-internal output". Cheap when no plugins are
+     *  registered (early-exit on empty map). */
+    public static String callerPluginName() {
+        return resolveCallerPlugin();
+    }
+
     public static boolean hasLogged(String pluginId, String signature) {
         String effectiveId = (pluginId == null || pluginId.isBlank()) ? UNKNOWN_PLUGIN : pluginId;
         Set<String> seen = SEEN.get(effectiveId);

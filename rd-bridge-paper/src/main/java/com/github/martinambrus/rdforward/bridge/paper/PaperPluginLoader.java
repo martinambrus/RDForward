@@ -68,6 +68,7 @@ public final class PaperPluginLoader {
         if (paper.bootstrapper() != null && !paper.bootstrapper().isBlank()) {
             Class<?> bsCls = Class.forName(paper.bootstrapper(), true, classLoader);
             if (!PluginBootstrap.class.isAssignableFrom(bsCls)) {
+                com.github.martinambrus.rdforward.api.stub.StubCallLog.unregisterPluginLoader(classLoader);
                 classLoader.close();
                 throw new ReflectiveOperationException(
                         paper.bootstrapper() + " does not implement io.papermc.paper.plugin.bootstrap.PluginBootstrap");
@@ -83,6 +84,7 @@ public final class PaperPluginLoader {
         if (plugin == null) {
             Class<?> mainCls = Class.forName(paper.main(), true, classLoader);
             if (!JavaPlugin.class.isAssignableFrom(mainCls)) {
+                com.github.martinambrus.rdforward.api.stub.StubCallLog.unregisterPluginLoader(classLoader);
                 classLoader.close();
                 throw new ReflectiveOperationException(
                         paper.main() + " does not extend org.bukkit.plugin.java.JavaPlugin");

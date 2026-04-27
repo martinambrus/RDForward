@@ -49,6 +49,12 @@ public final class ForgeModLoader {
             throw new IOException("mods.toml declared no [[mods]] entry: " + jarPath);
         }
 
+        ForgeModDescriptor.Entry primaryEntry = forge.primary();
+        String displayName = (primaryEntry.displayName() == null || primaryEntry.displayName().isBlank())
+                ? primaryEntry.modId() : primaryEntry.displayName();
+        com.github.martinambrus.rdforward.api.stub.StubCallLog
+                .registerPluginLoader(classLoader, displayName);
+
         Map<String, Class<?>> byId = scanModClasses(jarPath, classLoader);
 
         Map<String, ModHandle> handles = new LinkedHashMap<>();

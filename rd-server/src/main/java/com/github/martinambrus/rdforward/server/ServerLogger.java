@@ -302,6 +302,13 @@ public final class ServerLogger {
         private final ByteArrayOutputStream lineBuf = new ByteArrayOutputStream(256);
         private final CharsetEncoder consoleEncoder;
 
+        /** Plugin-attribution prefix bytes for the line currently being written.
+         *  Resolved once at line start via {@link com.github.martinambrus.rdforward.api.stub.StubCallLog#callerPluginName()};
+         *  emitted to file (after timestamp) and console before the first
+         *  content byte, then cleared. {@code null} when no plugin frame is on
+         *  the stack — server-internal output stays unprefixed. */
+        private byte[] pendingPrefixBytes;
+
         TeeOutputStream(OutputStream console, FileOutputStream file, boolean isErr) {
             this.console = console;
             this.isErr = isErr;
@@ -318,37 +325,47 @@ public final class ServerLogger {
 
         @Override
         public void write(int b) throws IOException {
-            writeConsoleByte((byte) b);
             synchronized (LOG_LOCK) {
-                if (atLineStart) {
-                    rotateIfNeeded();
-                    writeTimestamp();
-                    atLineStart = false;
-                }
-                logFileStream.write(b);
-                if (b == '\n') {
-                    atLineStart = true;
-                }
+                writeOneByteLocked((byte) b);
             }
         }
 
         @Override
         public void write(byte[] buf, int off, int len) throws IOException {
-            for (int i = off; i < off + len; i++) {
-                writeConsoleByte(buf[i]);
-            }
             synchronized (LOG_LOCK) {
                 for (int i = off; i < off + len; i++) {
-                    if (atLineStart) {
-                        rotateIfNeeded();
-                        writeTimestamp();
-                        atLineStart = false;
-                    }
-                    logFileStream.write(buf[i]);
-                    if (buf[i] == '\n') {
-                        atLineStart = true;
-                    }
+                    writeOneByteLocked(buf[i]);
                 }
+            }
+        }
+
+        /** Single-byte write under {@link #LOG_LOCK}. At each line start emits
+         *  timestamp (file only) and resolves the calling plugin via stack
+         *  walk; on the first content byte that follows, emits the plugin
+         *  prefix to both file and console so every line a plugin produces
+         *  carries its name. */
+        private void writeOneByteLocked(byte b) throws IOException {
+            if (atLineStart) {
+                rotateIfNeeded();
+                writeTimestamp();
+                String pluginName = com.github.martinambrus.rdforward.api.stub.StubCallLog.callerPluginName();
+                pendingPrefixBytes = (pluginName == null)
+                        ? null
+                        : ("[" + pluginName + "] ").getBytes(StandardCharsets.UTF_8);
+                atLineStart = false;
+            }
+            if (pendingPrefixBytes != null && b != '\n') {
+                logFileStream.write(pendingPrefixBytes);
+                for (byte pb : pendingPrefixBytes) {
+                    writeConsoleByte(pb);
+                }
+                pendingPrefixBytes = null;
+            }
+            writeConsoleByte(b);
+            logFileStream.write(b);
+            if (b == '\n') {
+                atLineStart = true;
+                pendingPrefixBytes = null;
             }
         }
 

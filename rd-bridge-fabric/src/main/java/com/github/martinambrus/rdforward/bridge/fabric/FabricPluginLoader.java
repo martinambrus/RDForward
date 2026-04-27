@@ -74,13 +74,18 @@ public final class FabricPluginLoader {
         }
         URL[] urls = { jarPath.toUri().toURL() };
         URLClassLoader classLoader = new URLClassLoader(urls, parent);
+        String displayName = (fabric.name() == null || fabric.name().isBlank()) ? fabric.id() : fabric.name();
+        com.github.martinambrus.rdforward.api.stub.StubCallLog
+                .registerPluginLoader(classLoader, displayName);
 
         String environment = fabric.environment();
         if (env == EnvType.SERVER && "client".equalsIgnoreCase(environment)) {
+            com.github.martinambrus.rdforward.api.stub.StubCallLog.unregisterPluginLoader(classLoader);
             classLoader.close();
             throw new IOException("Fabric mod " + fabric.id() + " is client-only; skip on dedicated server");
         }
         if (env == EnvType.CLIENT && "server".equalsIgnoreCase(environment)) {
+            com.github.martinambrus.rdforward.api.stub.StubCallLog.unregisterPluginLoader(classLoader);
             classLoader.close();
             throw new IOException("Fabric mod " + fabric.id() + " is server-only; skip on client");
         }
@@ -89,6 +94,7 @@ public final class FabricPluginLoader {
         for (String fqcn : fabric.mainEntrypoints()) {
             Object inst = instantiate(classLoader, fqcn);
             if (!(inst instanceof ModInitializer mi)) {
+                com.github.martinambrus.rdforward.api.stub.StubCallLog.unregisterPluginLoader(classLoader);
                 classLoader.close();
                 throw new ReflectiveOperationException(
                         fabric.id() + ": main entrypoint " + fqcn + " does not implement ModInitializer");
@@ -102,6 +108,7 @@ public final class FabricPluginLoader {
             for (String fqcn : fabric.serverEntrypoints()) {
                 Object inst = instantiate(classLoader, fqcn);
                 if (!(inst instanceof DedicatedServerModInitializer si)) {
+                    com.github.martinambrus.rdforward.api.stub.StubCallLog.unregisterPluginLoader(classLoader);
                     classLoader.close();
                     throw new ReflectiveOperationException(
                             fabric.id() + ": server entrypoint " + fqcn
@@ -115,6 +122,7 @@ public final class FabricPluginLoader {
             for (String fqcn : fabric.clientEntrypoints()) {
                 Object inst = instantiate(classLoader, fqcn);
                 if (!(inst instanceof ClientModInitializer ci)) {
+                    com.github.martinambrus.rdforward.api.stub.StubCallLog.unregisterPluginLoader(classLoader);
                     classLoader.close();
                     throw new ReflectiveOperationException(
                             fabric.id() + ": client entrypoint " + fqcn

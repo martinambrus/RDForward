@@ -56,6 +56,7 @@ public final class BukkitPluginLoader {
                 .registerPluginLoader(classLoader, bukkit.name());
         Class<?> mainCls = Class.forName(bukkit.main(), true, classLoader);
         if (!JavaPlugin.class.isAssignableFrom(mainCls)) {
+            com.github.martinambrus.rdforward.api.stub.StubCallLog.unregisterPluginLoader(classLoader);
             classLoader.close();
             throw new ReflectiveOperationException(
                     bukkit.main() + " does not extend org.bukkit.plugin.java.JavaPlugin");

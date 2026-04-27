@@ -31,6 +31,11 @@ public final class ModManager implements com.github.martinambrus.rdforward.api.m
 
     private static final Logger LOG = Logger.getLogger(ModManager.class.getName());
 
+    /** User-facing plugin lifecycle announcements ("Enabling X v...", "Enabled X v..."). Lives
+     *  outside the modloader package so it isn't suppressed by the default
+     *  WARNING-level gate {@code ServerLogger.setModLoaderVerbose} applies to internal traces. */
+    private static final Logger ANNOUNCE = Logger.getLogger("RDForward/Plugin");
+
     private final Server server;
     private final LinkedHashMap<String, ModContainer> containers = new LinkedHashMap<>();
     private final ModThreadTracker threadTracker = new ModThreadTracker();
@@ -132,7 +137,11 @@ public final class ModManager implements com.github.martinambrus.rdforward.api.m
         // would do this too but we need it *before* the GC hint fires so
         // the weak-reference check is meaningful.
         try {
-            if (c.classLoader() != null) c.classLoader().close();
+            if (c.classLoader() != null) {
+                com.github.martinambrus.rdforward.api.stub.StubCallLog
+                        .unregisterPluginLoader(c.classLoader());
+                c.classLoader().close();
+            }
         } catch (java.io.IOException ignored) {}
         c.setClassLoader(null);
         c.setServerInstance(null);
@@ -169,12 +178,13 @@ public final class ModManager implements com.github.martinambrus.rdforward.api.m
     private void enable(ModContainer c) {
         c.setState(ModState.LOADING);
         try {
+            ANNOUNCE.info("[ModLoader] Enabling " + c.id() + " v" + c.descriptor().version());
             ServerMod sm = c.serverMod();
             if (sm != null) {
                 EventOwnership.withOwner(c.id(), () -> sm.onEnable(server));
             }
             c.setState(ModState.ENABLED);
-            LOG.info("[ModLoader] Enabled " + c.id() + " v" + c.descriptor().version());
+            ANNOUNCE.info("[ModLoader] Enabled " + c.id() + " v" + c.descriptor().version());
         } catch (Throwable t) {
             c.fail(t);
             LOG.log(java.util.logging.Level.SEVERE,

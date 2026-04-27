@@ -132,6 +132,7 @@ public final class ModLoader {
     static void rebind(ModContainer c) throws IOException, ReflectiveOperationException {
         java.net.URLClassLoader old = c.classLoader();
         if (old != null) {
+            com.github.martinambrus.rdforward.api.stub.StubCallLog.unregisterPluginLoader(old);
             try { old.close(); } catch (IOException ignored) {}
         }
         c.setClassLoader(null);
@@ -197,6 +198,10 @@ public final class ModLoader {
         URL[] urls = { c.jarPath().toUri().toURL() };
         ModClassLoader loader = new ModClassLoader(c.id(), urls, apiParent, depLoaders);
         c.setClassLoader(loader);
+        String displayName = (c.descriptor().name() == null || c.descriptor().name().isBlank())
+                ? c.id() : c.descriptor().name();
+        com.github.martinambrus.rdforward.api.stub.StubCallLog
+                .registerPluginLoader(loader, displayName);
     }
 
     private static void instantiate(ModContainer c) throws ReflectiveOperationException {
