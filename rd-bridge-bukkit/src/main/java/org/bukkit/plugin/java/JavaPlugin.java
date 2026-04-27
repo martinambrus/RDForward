@@ -71,6 +71,22 @@ public abstract class JavaPlugin extends PluginBase implements CommandExecutor {
         this.enabled = enabled;
     }
 
+    /** Naggable flag — real paper-api gates {@link AuthorNagException}
+     *  delivery so a misbehaving plugin only spams the console once.
+     *  RDForward has no nag pipeline; stored verbatim so plugins that
+     *  call {@code setNaggable(false)} during {@code onEnable} (BenCmd
+     *  v1.3.5 silences its own nags this way) link cleanly and round-trip
+     *  via {@link #isNaggable()}. */
+    private volatile boolean naggable = true;
+
+    public void setNaggable(boolean naggable) {
+        this.naggable = naggable;
+    }
+
+    public boolean isNaggable() {
+        return naggable;
+    }
+
     /** Default {@link CommandExecutor#onCommand} — real Bukkit 1.x's
      *  {@code JavaPlugin} implements {@code CommandExecutor} so plugin
      *  bytecode that casts the plugin instance to {@code CommandExecutor}
