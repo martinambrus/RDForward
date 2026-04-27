@@ -35,6 +35,7 @@ public class PluginCommand extends Command implements PluginIdentifiableCommand 
     public PluginCommand(String name, Plugin owner) {
         super(name);
         this.owner = owner;
+        if (owner instanceof CommandExecutor ce) this.executor = ce;
     }
 
     public CommandExecutor getExecutor() { return executor; }
@@ -48,6 +49,22 @@ public class PluginCommand extends Command implements PluginIdentifiableCommand 
 
     /** Bridge hook — called after plugin instantiation so
      *  {@link #getPlugin()} returns the loaded {@link Plugin} rather than
-     *  {@code null}. */
-    public void setPlugin(Plugin plugin) { this.owner = plugin; }
+     *  {@code null}.
+     *
+     *  <p>Real paper-api initialises {@code executor} to the owning plugin
+     *  in the {@code PluginCommand} ctor (because {@code JavaPlugin}
+     *  implements {@link CommandExecutor}). Plugins that do not call
+     *  {@code setExecutor} during {@code onEnable} -- mcbans 4.3.5
+     *  overrides {@code JavaPlugin.onCommand} directly -- still get their
+     *  commands routed because the executor falls back to the plugin
+     *  itself. The bridge mirrors that here so {@link
+     *  com.github.martinambrus.rdforward.bridge.bukkit.BukkitPluginWrapper#registerCommands}
+     *  no longer drops these commands on the floor. An explicit
+     *  {@link #setExecutor} call later still wins. */
+    public void setPlugin(Plugin plugin) {
+        this.owner = plugin;
+        if (this.executor == null && plugin instanceof CommandExecutor ce) {
+            this.executor = ce;
+        }
+    }
 }

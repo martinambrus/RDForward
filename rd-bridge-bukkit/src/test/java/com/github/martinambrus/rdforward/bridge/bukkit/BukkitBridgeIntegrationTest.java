@@ -181,7 +181,16 @@ class BukkitBridgeIntegrationTest {
             assertNotNull(cmd);
             assertEquals("hello", cmd.getName());
             assertEquals("Says hello", cmd.getDescription());
-            assertNull(cmd.getExecutor(), "executor set in onEnable, not during load");
+            // Real paper-api PluginCommand seeds executor with the
+            // owning plugin (because JavaPlugin implements
+            // CommandExecutor). The bridge loader mirrors that via
+            // PluginCommand.setPlugin so plugins that override
+            // JavaPlugin.onCommand directly (mcbans 4.3.5) still get
+            // their commands routed when no setExecutor call is made.
+            // An onEnable-time setExecutor still wins, but the default
+            // is the plugin itself rather than null.
+            assertSame(loaded.plugin(), cmd.getExecutor(),
+                    "loader must default executor to the plugin so JavaPlugin.onCommand routes");
         } finally {
             loaded.classLoader().close();
         }

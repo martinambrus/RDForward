@@ -89,6 +89,12 @@ public final class RDCommandRegistry implements CommandRegistry {
     }
 
     @Override
+    public String ownerOf(String name) {
+        if (name == null) return null;
+        return CommandConflictResolver.resolve(name);
+    }
+
+    @Override
     public List<String> listForOpLevel(int opLevel) {
         return com.github.martinambrus.rdforward.server.api.CommandRegistry.getCommandNamesForOpLevel(opLevel);
     }

@@ -326,7 +326,8 @@ public final class AdminCommands {
             return;
         }
         CommandConflictResolver.setOverride(name, modId);
-        ctx.reply("Pinned /" + name + " to " + modId);
+        ctx.reply("Pinned /" + name + " to " + modId
+                + ". To un-pin, run: /commands reset " + name);
     }
 
     private static void cmdCommandsReset(CommandContext ctx, String[] args) {

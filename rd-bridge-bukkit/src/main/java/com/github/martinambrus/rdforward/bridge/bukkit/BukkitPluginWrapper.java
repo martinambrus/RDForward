@@ -113,23 +113,6 @@ public final class BukkitPluginWrapper implements ServerMod {
             if (cmd.getAliases() != null) labels.addAll(cmd.getAliases());
             for (String label : labels) {
                 if (label == null || label.isEmpty()) continue;
-                // Warn on duplicate command claims so operators notice when
-                // two plugins fight over the same name (e.g. LoginSecurity +
-                // SimpleLogin both claim /login + /register). The rd-mod-loader
-                // CommandConflictResolver keeps the first claimant; the
-                // second plugin's handler is reachable only via its
-                // namespaced alias '<modId>:<label>'. If two auth plugins both
-                // claim /login, only one plugin's session will ever update,
-                // and the other will keep treating the player as
-                // unregistered — surfacing this in the log so operators know
-                // to disable one or set an explicit override.
-                if (registry.exists(label.toLowerCase())) {
-                    LOG.warning("[BukkitBridge] Command '/" + label + "' already claimed by another plugin;"
-                            + " plugin '" + pluginName + "' will only be reachable via '/"
-                            + (pluginName == null ? "" : pluginName.toLowerCase()) + ":" + label + "'."
-                            + " If you need this plugin's handler to win, remove the other plugin or"
-                            + " set a command override.");
-                }
                 final String dispatchLabel = label;
                 registry.register(pluginName, label, description, ctx -> {
                     CommandSender sender = resolveSender(ctx.getSenderName(), ctx.isConsole());
@@ -143,6 +126,24 @@ public final class BukkitPluginWrapper implements ServerMod {
                         ctx.reply("An internal error occurred while executing this command.");
                     }
                 });
+                // Warn on shadowed command claims AFTER registration so the
+                // resolver has had a chance to apply any persisted override.
+                // If the override pins the bare alias to THIS plugin (op
+                // already ran '/commands assign' in a prior boot), the
+                // post-claim ownerOf() returns this plugin's name and no
+                // warning fires. The warning still surfaces in the
+                // first-come / server-built-in-wins case so operators see
+                // when they need to adjust priority.
+                String currentOwner = registry.ownerOf(label.toLowerCase());
+                if (currentOwner != null && pluginName != null
+                        && !pluginName.equalsIgnoreCase(currentOwner)) {
+                    LOG.warning("[BukkitBridge] Command '/" + label + "' already claimed by '"
+                            + currentOwner + "';"
+                            + " plugin '" + pluginName + "' will only be reachable via '/"
+                            + pluginName.toLowerCase() + ":" + label + "'."
+                            + " To make '" + pluginName + "' win, run '/commands assign " + label + " "
+                            + pluginName + "' (op required) or remove the other plugin.");
+                }
             }
         }
     }

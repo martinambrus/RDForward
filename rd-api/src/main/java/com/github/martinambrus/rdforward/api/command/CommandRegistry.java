@@ -26,6 +26,16 @@ public interface CommandRegistry {
     /** True if a bare command name resolves to a handler. */
     boolean exists(String name);
 
+    /** @return the mod id currently owning the bare-alias handler for
+     *  {@code name}, or {@code null} if no command is registered under
+     *  that name. Built-in server commands appear under the
+     *  {@code "__server__"} pseudo mod id. Foreign bridges (e.g. the
+     *  Bukkit bridge) use this to surface useful conflict warnings
+     *  ("/kick already claimed by 'Essentials'") instead of generic
+     *  "claimed by another plugin" text. Default returns {@code null}
+     *  for back-compat with mock registries that don't track ownership. */
+    default String ownerOf(String name) { return null; }
+
     /** List of command names visible to the given op level. */
     List<String> listForOpLevel(int opLevel);
 }

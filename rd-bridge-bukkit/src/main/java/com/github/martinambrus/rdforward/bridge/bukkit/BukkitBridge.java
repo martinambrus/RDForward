@@ -355,14 +355,34 @@ public final class BukkitBridge {
             return snapshot.toArray(new Plugin[0]);
         }
 
+        /** True if the plugin is currently registered in the bridge plugin
+         *  map AND its {@link Plugin#isEnabled()} flag is set. The bridge
+         *  registry mirrors the live plugin set (BukkitPluginLoader adds
+         *  on construct, BukkitPluginWrapper removes on disable / failure),
+         *  so this answers correctly DURING the plugin's own
+         *  {@code onEnable} -- mcbans 4.3.5 self-checks via
+         *  {@code if (!pm.isPluginEnabled(this)) return;} before
+         *  initialising its command handler, and the previous
+         *  {@link com.github.martinambrus.rdforward.api.mod.ModManager#isLoaded}
+         *  query returned {@code false} (container is still in LOADING
+         *  state during onEnable) so the plugin bailed and left
+         *  {@code commandHandler == null}. Falls back to the mod manager
+         *  for non-Bukkit mods that aren't tracked by the bridge. */
         @Override
         public boolean isPluginEnabled(String name) {
-            return modManager != null && name != null && modManager.isLoaded(name);
+            if (name == null) return false;
+            JavaPlugin tracked = BukkitBridge.lookupPlugin(name);
+            if (tracked != null) return tracked.isEnabled();
+            return modManager != null && modManager.isLoaded(name);
         }
 
         @Override
         public boolean isPluginEnabled(Plugin plugin) {
-            return plugin != null && isPluginEnabled(plugin.getName());
+            if (plugin == null) return false;
+            // Direct flag check — the supplied reference is authoritative.
+            // Avoids a registry round-trip and works even before the
+            // plugin's name has been registered.
+            return plugin.isEnabled();
         }
 
         @Override
