@@ -54,10 +54,22 @@ public abstract class JavaPlugin extends PluginBase implements CommandExecutor {
     private File file;
     private ClassLoader classLoader;
     private FileConfiguration config;
+    private volatile boolean enabled = true;
 
     public void onLoad() {}
     public void onEnable() {}
     public void onDisable() {}
+
+    /** Real paper-api {@code JavaPlugin.setEnabled} flips the live
+     *  enabled flag and fires the Plugin{Enable,Disable}Event. RDForward
+     *  has no plugin lifecycle event surface, so we just toggle the flag.
+     *  VanishNoPacket 3.14+ calls {@code setEnabled(false)} on itself
+     *  when its CraftBukkit-version detection fails — without this method
+     *  the JVM throws {@link NoSuchMethodError} from {@code onEnable},
+     *  aborting the whole boot. */
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
 
     /** Default {@link CommandExecutor#onCommand} — real Bukkit 1.x's
      *  {@code JavaPlugin} implements {@code CommandExecutor} so plugin
@@ -201,9 +213,12 @@ public abstract class JavaPlugin extends PluginBase implements CommandExecutor {
     /** Stub — matches upstream signature. Real save is a no-op under RDForward. */
     public void saveConfig() {}
 
-    /** @return {@code true} — RDForward plugins are considered enabled once loaded. */
+    /** @return the plugin's live enabled flag. Defaults to {@code true}
+     *  on construction; flipped by {@link #setEnabled(boolean)} when a
+     *  plugin self-disables (e.g. Vanish on unsupported CraftBukkit
+     *  version). */
     @Override
-    public boolean isEnabled() { return true; }
+    public boolean isEnabled() { return enabled; }
 
     /** Record a listener so the bridge can wire it up after {@code onEnable()}. */
     public void registerListener(Listener listener) {
