@@ -4,33 +4,27 @@ package org.bukkit.scheduler;
 import org.bukkit.plugin.Plugin;
 
 /**
- * Bukkit-shaped task handle. Wraps an rd-api
- * {@link com.github.martinambrus.rdforward.api.scheduler.ScheduledTask}.
- * The fields a plugin reads ({@code taskId}, {@code owner}, {@code cancelled})
- * round-trip; actual cancel flows through to the rd-api scheduler.
+ * Bukkit-shaped task handle. Real Bukkit declares this as an
+ * {@code interface}; older plugins (VanishNoPacket 3.15's
+ * {@code Metrics.start} via {@code invokeinterface}) crash with
+ * {@link IncompatibleClassChangeError} when the bridge surface is a
+ * concrete class. The implementation lives in {@link
+ * com.github.martinambrus.rdforward.bridge.bukkit.RDBukkitTask}.
  */
-public class BukkitTask {
+public interface BukkitTask {
 
-    private final int taskId;
-    private final Plugin owner;
-    private final com.github.martinambrus.rdforward.api.scheduler.ScheduledTask backing;
-    private volatile boolean cancelled;
+    int getTaskId();
 
-    public BukkitTask(int taskId, Plugin owner,
-                      com.github.martinambrus.rdforward.api.scheduler.ScheduledTask backing) {
-        this.taskId = taskId;
-        this.owner = owner;
-        this.backing = backing;
-    }
+    Plugin getOwner();
 
-    public int getTaskId() { return taskId; }
-    public Plugin getOwner() { return owner; }
-    public boolean isCancelled() { return cancelled; }
+    boolean isCancelled();
+
+    /** @return {@code true} if the task is queued to run on the
+     *  Bukkit server thread (synchronous). RDForward runs every
+     *  scheduler callback on the tick thread, so this is always
+     *  {@code true}. */
+    default boolean isSync() { return true; }
 
     /** Cancel the underlying scheduled task. Idempotent. */
-    public void cancel() {
-        if (cancelled) return;
-        cancelled = true;
-        if (backing != null) backing.cancel();
-    }
+    void cancel();
 }

@@ -1,3 +1,6 @@
+import com.github.martinambrus.rdforward.buildsrc.legacyapi.BridgeSpec
+import com.github.martinambrus.rdforward.buildsrc.legacyapi.LegacyBridgeInjector
+
 plugins {
     id 'java-library'
 }
@@ -16,20 +19,93 @@ compileJava {
     options.compilerArgs.addAll(['-Xmaxerrs', '5000'])
 }
 
+/**
+ * Output directory for ASM-patched copies of compiled classes that need
+ * legacy-API bridge methods. Kept SEPARATE from compileJava's output so
+ * Java source compilation (main + test) always sees the un-patched
+ * interface — Java source can't declare two methods with same
+ * name+params and different return types, so any source-level
+ * implementor of {@code Server} must compile against the un-patched
+ * shape. The jar and test-runtime classpaths prepend this directory
+ * so the JVM loads the patched class at runtime, where old plugins
+ * (VanishNoPacket 3.15) need both descriptors to resolve. See the
+ * buildSrc {@code LegacyBridgeInjector} class for ASM details.
+ */
+def legacyPatchedDir = layout.buildDirectory.dir('classes-legacy-patched')
+
+tasks.register('injectLegacyApiBridges', Copy) {
+    description = 'Produce legacy-bridge-patched copies of select interface .class files alongside the un-patched main output.'
+    dependsOn compileJava
+    from compileJava.destinationDirectory
+    into legacyPatchedDir
+    // Only the classes that actually need patching live in this output
+    // tree. Everything else stays in compileJava's destination so
+    // we don't duplicate the whole class tree.
+    include 'org/bukkit/Server.class'
+    doLast {
+        def serverClass = legacyPatchedDir.get().file('org/bukkit/Server.class').asFile
+        if (!serverClass.exists()) {
+            throw new GradleException("Patched copy missing: ${serverClass}")
+        }
+        // Server.getOnlinePlayers — pre-Bukkit-1.7 returned Player[];
+        // modern returns Collection<? extends Player>. Both descriptors
+        // must coexist for legacy plugins (VanishNoPacket 3.15) and
+        // modern plugins (LP, VNP 3.22) to call without
+        // NoSuchMethodError.
+        LegacyBridgeInjector.inject(
+                serverClass.toPath(),
+                'org/bukkit/Server',
+                [BridgeSpec.collectionToArray(
+                        'getOnlinePlayers',
+                        '()Ljava/util/Collection;',
+                        '()[Lorg/bukkit/entity/Player;',
+                        'org/bukkit/entity/Player')]
+        )
+    }
+}
+
+// Drop the un-patched Server.class that flows in from sourceSets.main.output
+// and replace it with the patched copy from legacyPatchedDir, so the jar
+// shipped to plugin classloaders carries both descriptor variants.
+//
+// `eachFile` is used (rather than top-level `exclude`) so the exclusion
+// only applies to the un-patched copy: matching by absolute path against
+// the patched output directory lets the patched copy through.
+jar {
+    dependsOn injectLegacyApiBridges
+    eachFile { fcd ->
+        if (fcd.path == 'org/bukkit/Server.class'
+                && !fcd.file.absolutePath.contains('classes-legacy-patched')) {
+            fcd.exclude()
+        }
+    }
+    from(legacyPatchedDir) {
+        include 'org/bukkit/Server.class'
+    }
+}
+
 // Default :test excludes @Tag("thirdparty") so CI stays fast and does
 // not depend on the staged third-party fixture jars. The dedicated
 // :testThirdParty task runs only those tagged tests — invoke it
 // explicitly when validating generated stubs against a real plugin.
+//
+// Both Test tasks prepend the patched-classes dir so the JVM loads the
+// legacy-bridge-patched Server interface at runtime, while
+// compileTestJava keeps using the un-patched build/classes/java/main
+// on the compile classpath.
 test {
+    dependsOn injectLegacyApiBridges
+    classpath = files(legacyPatchedDir) + classpath
     useJUnitPlatform { excludeTags 'thirdparty' }
 }
 
 tasks.register('testThirdParty', Test) {
     description = 'Runs smoke tests tagged @Tag("thirdparty") against staged third-party plugin jars.'
     group = 'verification'
+    dependsOn injectLegacyApiBridges
     useJUnitPlatform { includeTags 'thirdparty' }
     testClassesDirs = sourceSets.test.output.classesDirs
-    classpath = sourceSets.test.runtimeClasspath
+    classpath = files(legacyPatchedDir) + sourceSets.test.runtimeClasspath
     testLogging { showStandardStreams = true }
 }
 

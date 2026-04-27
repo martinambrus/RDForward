@@ -35,14 +35,14 @@ public final class BukkitSchedulerAdapter implements BukkitScheduler {
     @Override
     public BukkitTask runTask(Plugin plugin, Runnable task) {
         ScheduledTask st = backing.runLater(ownerId(plugin), 0, task);
-        return new BukkitTask(taskIds.getAndIncrement(), plugin, st);
+        return new RDBukkitTask(taskIds.getAndIncrement(), plugin, st);
     }
 
     @Override
     public BukkitTask runTaskLater(Plugin plugin, Runnable task, long delayTicks) {
         int delay = delayTicks < 0 ? 0 : (int) Math.min(Integer.MAX_VALUE, delayTicks);
         ScheduledTask st = backing.runLater(ownerId(plugin), delay, task);
-        return new BukkitTask(taskIds.getAndIncrement(), plugin, st);
+        return new RDBukkitTask(taskIds.getAndIncrement(), plugin, st);
     }
 
     @Override
@@ -50,7 +50,7 @@ public final class BukkitSchedulerAdapter implements BukkitScheduler {
         int delay = delayTicks < 0 ? 0 : (int) Math.min(Integer.MAX_VALUE, delayTicks);
         int period = periodTicks < 1 ? 1 : (int) Math.min(Integer.MAX_VALUE, periodTicks);
         ScheduledTask st = backing.runRepeating(ownerId(plugin), delay, period, task);
-        return new BukkitTask(taskIds.getAndIncrement(), plugin, st);
+        return new RDBukkitTask(taskIds.getAndIncrement(), plugin, st);
     }
 
     @Override
