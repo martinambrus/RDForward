@@ -19,8 +19,10 @@ import org.bukkit.entity.Player;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -87,6 +89,63 @@ public final class BukkitPlayer {
 
     private BukkitPlayer() {}
 
+    /** Per-name cache of generated Player instances. LuckPerms (and other
+     *  Permission plugins) reflectively rewrite {@code CraftHumanEntity.perm}
+     *  on the instance Adventure registered via {@link
+     *  org.bukkit.event.player.PlayerJoinEvent}. If every {@code
+     *  Bukkit.getPlayer(name)} / {@code BukkitPlayerAdapter.wrap} call
+     *  minted a fresh instance, the freshly-minted one would carry the
+     *  default {@link org.bukkit.permissions.PermissibleBase} rather than
+     *  LP's injected {@code LuckPermsPermissible} — and {@code
+     *  player.hasPermission("worldedit.region.set")} would silently fall
+     *  back to the op-flag fallback, denying every command for non-op
+     *  players in LP groups. Caching by lower-cased name (case-insensitive
+     *  to match Bukkit's lookup semantics) means PJE, /we sender lookup,
+     *  /lp output target, and {@code Bukkit.getOnlinePlayers()} all share
+     *  the same instance, so LP's injection is visible everywhere. */
+    private static final ConcurrentHashMap<String, Player> CACHE = new ConcurrentHashMap<>();
+
+    /** Mirrors {@code rd-server PlayerManager.PLAYER_EYE_HEIGHT}. The
+     *  rd-api {@code Location} stores Y at eye-level (feet + 1.62) but
+     *  Bukkit's {@code Player.getLocation()} returns feet; subtract
+     *  this when handing the location out through the bridge. */
+    private static final double PLAYER_EYE_HEIGHT = (double) 1.62f;
+
+    /** Classic yaw (0 = North) -> Bukkit yaw (0 = South). WorldEdit's
+     *  {@code //hpos1 / //hpos2} ray-trace uses the Bukkit look vector
+     *  computed from this yaw — without the +180 conversion the trace
+     *  walks behind the player instead of along their line of sight. */
+    private static float classicYawToBukkit(float classicYaw) {
+        float v = (classicYaw + 180.0f) % 360.0f;
+        return v < 0.0f ? v + 360.0f : v;
+    }
+
+    /** No-op {@link org.bukkit.inventory.PlayerInventory} stub. Real
+     *  Bukkit's {@code Player.getInventory()} never returns null, so
+     *  every plugin assumes a non-null inventory — WE 5.6.1's
+     *  {@code BukkitPlayer.giveItem} is the canonical example, NPEing
+     *  immediately on {@code //wand} otherwise. RDForward has no
+     *  item-inventory model (block placements are tracked separately
+     *  via {@code PlayerInventoryPacket}/cobblestone counters), so
+     *  every method on this proxy returns a safe default: empty
+     *  collections / arrays for queries, no-op for mutators. The
+     *  WE wand will not actually appear in the hotbar, but the command
+     *  no longer crashes — operators should use {@code //hpos1} /
+     *  {@code //hpos2} or the chat-command {@code //pos1} / {@code //pos2}
+     *  which work end-to-end. */
+    private static final org.bukkit.inventory.PlayerInventory STUB_INVENTORY =
+            (org.bukkit.inventory.PlayerInventory) Proxy.newProxyInstance(
+                    BukkitPlayer.class.getClassLoader(),
+                    new Class<?>[] { org.bukkit.inventory.PlayerInventory.class },
+                    (proxy, method, args) -> {
+                        Class<?> rt = method.getReturnType();
+                        if (rt == java.util.HashMap.class) return new HashMap<>();
+                        if (rt == java.util.List.class) return Collections.emptyList();
+                        if (rt == java.util.ListIterator.class) return Collections.<Object>emptyList().listIterator();
+                        if (rt == org.bukkit.inventory.ItemStack[].class) return new org.bukkit.inventory.ItemStack[0];
+                        return defaultValue(rt);
+                    });
+
     public static Player create(String name) {
         // Resolve the live rd-api backing (and the bridge's default world)
         // so events fired by the host — PlayerJoinEvent, PlayerQuitEvent,
@@ -109,6 +168,39 @@ public final class BukkitPlayer {
     public static Player create(String name,
                                 com.github.martinambrus.rdforward.api.player.Player backing,
                                 World world) {
+        if (name == null) return mint(null, backing, world);
+        String key = name.toLowerCase(java.util.Locale.ROOT);
+        Player cached = CACHE.get(key);
+        if (cached != null) {
+            // Refresh the mutable backing/world so reconnects (rd-api Player
+            // identity changes per session) are still observed by the cached
+            // proxy. The {@code perm} field that LP rewrote stays put.
+            try {
+                Field f = GENERATED_CLASS.getDeclaredField("handler");
+                Handler h = (Handler) f.get(cached);
+                if (h != null) {
+                    if (backing != null) h.backing = backing;
+                    if (world != null) h.world = world;
+                }
+            } catch (ReflectiveOperationException ignored) {}
+            return cached;
+        }
+        Player fresh = mint(name, backing, world);
+        Player race = CACHE.putIfAbsent(key, fresh);
+        return race != null ? race : fresh;
+    }
+
+    /** Drop the cached proxy for {@code name}. Called from the quit
+     *  hook so a player who logs in again gets a fresh perm slot rather
+     *  than inheriting the previous session's LP-injected Permissible
+     *  (which holds a stale rd-api Player reference). */
+    public static void evict(String name) {
+        if (name != null) CACHE.remove(name.toLowerCase(java.util.Locale.ROOT));
+    }
+
+    private static Player mint(String name,
+                               com.github.martinambrus.rdforward.api.player.Player backing,
+                               World world) {
         Handler h = new Handler(name, backing, world);
         try {
             return (Player) GENERATED_CLASS
@@ -152,7 +244,13 @@ public final class BukkitPlayer {
     public static final class Handler {
 
         final String name;
-        final com.github.martinambrus.rdforward.api.player.Player backing;
+        // Non-final so {@link BukkitPlayer#create} can refresh the backing
+        // and world fields when a cached proxy is reused across sessions
+        // (e.g. a player rejoining gets a new rd-api Player; the proxy
+        // identity has to stay stable so LP's reflectively-injected
+        // Permissible survives the reconnect, but the rd-api pointer
+        // itself must update).
+        volatile com.github.martinambrus.rdforward.api.player.Player backing;
         volatile World world;
         volatile UUID cachedUuid;
         final ConcurrentHashMap<String, Object> metadata = new ConcurrentHashMap<>();
@@ -200,18 +298,36 @@ public final class BukkitPlayer {
                 case "hasPermission":
                     return checkPermission(self, args);
                 case "isPermissionSet":
-                    return false;
+                    return checkPermissionSet(self, args);
+                case "getEffectivePermissions":
+                    return getEffectivePermissionsFromInjected(self);
+                case "recalculatePermissions":
+                    forwardToInjectedPermissible(self, "recalculatePermissions");
+                    return null;
             }
 
             // World / Location / movement
             switch (n) {
                 case "getWorld":
                     return world;
-                case "getLocation":
+                case "getLocation": {
                     if (backing == null) return new Location(world, 0, 0, 0);
                     com.github.martinambrus.rdforward.api.world.Location loc = backing.getLocation();
                     if (loc == null) return new Location(world, 0, 0, 0);
-                    return new Location(world, loc.x(), loc.y(), loc.z(), loc.yaw(), loc.pitch());
+                    // Y: eye-level -> feet (Bukkit convention).
+                    // Yaw: Classic (0=North) -> Bukkit (0=South) = +180.
+                    return new Location(world, loc.x(), loc.y() - PLAYER_EYE_HEIGHT, loc.z(),
+                            classicYawToBukkit(loc.yaw()), loc.pitch());
+                }
+                case "getEyeLocation": {
+                    if (backing == null) return new Location(world, 0, 0, 0);
+                    com.github.martinambrus.rdforward.api.world.Location eye = backing.getLocation();
+                    if (eye == null) return new Location(world, 0, 0, 0);
+                    return new Location(world, eye.x(), eye.y(), eye.z(),
+                            classicYawToBukkit(eye.yaw()), eye.pitch());
+                }
+                case "getEyeHeight":
+                    return PLAYER_EYE_HEIGHT;
                 case "teleport":
                     return doTeleport(args);
             }
@@ -259,8 +375,9 @@ public final class BukkitPlayer {
                     return 0.0f;
                 case "getLevel":
                     return 0;
-                case "getGameMode":
                 case "getInventory":
+                    return STUB_INVENTORY;
+                case "getGameMode":
                 case "getEnderChest":
                 case "getOpenInventory":
                     return null;
@@ -273,10 +390,7 @@ public final class BukkitPlayer {
 
         private boolean checkPermission(Object self, Object[] args) {
             if (args == null || args.length == 0) return false;
-            String permName = null;
-            Object a = args[0];
-            if (a instanceof String s) permName = s;
-            else if (a instanceof org.bukkit.permissions.Permission p) permName = p.getName();
+            String permName = extractPermName(args[0]);
             if (permName == null || permName.isEmpty()) return true;
             // If LuckPerms (or any other plugin) installed a Permissible
             // into CraftHumanEntity.perm via reflection, route the check
@@ -284,16 +398,8 @@ public final class BukkitPlayer {
             // contexts, time-limited grants — actually runs. Without
             // this, hasPermission would silently bypass LuckPerms and
             // return only flat default-permission values.
-            try {
-                java.lang.reflect.Field permField =
-                        org.bukkit.craftbukkit.entity.CraftHumanEntity.class.getDeclaredField("perm");
-                permField.setAccessible(true);
-                Object perm = permField.get(self);
-                if (perm instanceof org.bukkit.permissions.Permissible permissible
-                        && perm.getClass() != org.bukkit.permissions.PermissibleBase.class) {
-                    return permissible.hasPermission(permName);
-                }
-            } catch (ReflectiveOperationException ignored) {}
+            org.bukkit.permissions.Permissible injected = readInjectedPermissible(self);
+            if (injected != null) return injected.hasPermission(permName);
             // Fallback to RDForward's permission manager when no plugin
             // has installed a custom Permissible (or only the default
             // PermissibleBase, which always returns false in our stub).
@@ -302,6 +408,72 @@ public final class BukkitPlayer {
                 return rd.getPermissionManager().hasPermission(name, permName);
             }
             return backing != null && backing.isOp();
+        }
+
+        /** Route {@code Permissible.isPermissionSet} to the LP-injected
+         *  Permissible. WorldEdit's WEPIF DinnerPermsResolver checks
+         *  {@code isPermissionSet} BEFORE {@code hasPermission} — if
+         *  isPermissionSet returns false, the resolver short-circuits to
+         *  the registered-permission default lookup and returns 0 (deny)
+         *  even when LP would grant via wildcard. So a hard-coded
+         *  {@code false} here is what's been blocking //set despite LP
+         *  having {@code worldedit.*} on the player's group. Route it
+         *  through LP so the per-node check sees the same group/wildcard
+         *  resolution as hasPermission. */
+        private boolean checkPermissionSet(Object self, Object[] args) {
+            if (args == null || args.length == 0) return false;
+            String permName = extractPermName(args[0]);
+            if (permName == null || permName.isEmpty()) return false;
+            org.bukkit.permissions.Permissible injected = readInjectedPermissible(self);
+            if (injected != null) return injected.isPermissionSet(permName);
+            // No injected permissible — defer to op flag so console-style
+            // operators still satisfy resolvers that rely on
+            // isPermissionSet for op-default bypasses.
+            return backing != null && backing.isOp();
+        }
+
+        /** Forward {@code getEffectivePermissions} to the LP-injected
+         *  Permissible. WEPIF's DinnerPermsResolver iterates this set to
+         *  enumerate {@code group.X} entries when answering
+         *  {@code getGroups(player)}. */
+        private java.util.Set<org.bukkit.permissions.PermissionAttachmentInfo>
+                getEffectivePermissionsFromInjected(Object self) {
+            org.bukkit.permissions.Permissible injected = readInjectedPermissible(self);
+            if (injected != null) return injected.getEffectivePermissions();
+            return java.util.Collections.emptySet();
+        }
+
+        private void forwardToInjectedPermissible(Object self, String methodName) {
+            org.bukkit.permissions.Permissible injected = readInjectedPermissible(self);
+            if (injected == null) return;
+            try {
+                injected.getClass().getMethod(methodName).invoke(injected);
+            } catch (ReflectiveOperationException ignored) {}
+        }
+
+        /** @return LP-injected (or otherwise non-default)
+         *  {@link org.bukkit.permissions.Permissible} stored in the
+         *  inherited {@code CraftHumanEntity.perm} field, or {@code null}
+         *  if the field is unset / still the {@link PermissibleBase}
+         *  default that returns false for everything. */
+        private org.bukkit.permissions.Permissible readInjectedPermissible(Object self) {
+            try {
+                java.lang.reflect.Field permField =
+                        org.bukkit.craftbukkit.entity.CraftHumanEntity.class.getDeclaredField("perm");
+                permField.setAccessible(true);
+                Object perm = permField.get(self);
+                if (perm instanceof org.bukkit.permissions.Permissible permissible
+                        && perm.getClass() != org.bukkit.permissions.PermissibleBase.class) {
+                    return permissible;
+                }
+            } catch (ReflectiveOperationException ignored) {}
+            return null;
+        }
+
+        private static String extractPermName(Object a) {
+            if (a instanceof String s) return s;
+            if (a instanceof org.bukkit.permissions.Permission p) return p.getName();
+            return null;
         }
 
         private Object doTeleport(Object[] args) {

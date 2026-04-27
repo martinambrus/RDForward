@@ -62,6 +62,38 @@ public final class BukkitBridge {
         // notably WorldEdit's CommandRegistration) into the rd-api registry
         // so the typed labels actually dispatch.
         org.bukkit.command.SimpleCommandMap.setBridgeSink(BukkitBridge::mirrorDynamicCommand);
+        installNmsWarnOnceFilter();
+    }
+
+    /** WE 5.6.1's {@code BukkitWorld} resolves two NMS Methods at clinit
+     *  ({@code nmsGetMethod}, {@code nmsSetSafeMethod}) by reflectively
+     *  walking the CraftBukkit server class hierarchy. RDForward has no
+     *  NMS layer, so both fields stay null and every {@code //set} write
+     *  cycle prints a NPE-stack WARNING that WE catches and logs before
+     *  falling back to the public Block API. Stack-spam noise — they
+     *  cannot be fixed without a real NMS surface. This filter keeps the
+     *  first occurrence per message (so operators see WE took the
+     *  fallback path once) and drops subsequent identical records. */
+    private static final java.util.Set<String> WE_NMS_LOGGED =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static volatile boolean WE_NMS_FILTER_INSTALLED = false;
+
+    private static void installNmsWarnOnceFilter() {
+        if (WE_NMS_FILTER_INSTALLED) return;
+        WE_NMS_FILTER_INSTALLED = true;
+        java.util.logging.Logger root = java.util.logging.Logger.getLogger("");
+        for (java.util.logging.Handler h : root.getHandlers()) {
+            java.util.logging.Filter existing = h.getFilter();
+            h.setFilter(record -> {
+                String m = record.getMessage();
+                if (m != null
+                        && (m.contains("Failed to do NMS access for direct NBT data copy")
+                            || m.contains("Failed to do NMS safe block set"))) {
+                    return WE_NMS_LOGGED.add(m);
+                }
+                return existing == null || existing.isLoggable(record);
+            });
+        }
     }
 
     /** Remove the installed facade. Safe to call when nothing is installed. */
@@ -233,18 +265,20 @@ public final class BukkitBridge {
             BukkitEventAdapter.register(listener, plugin == null ? null : plugin.getName());
         }
 
-        // Direct single-event registration. RDForward dispatches Bukkit events
-        // via @EventHandler scanning in BukkitEventAdapter, so individual
-        // explicit registrations are accepted silently — overriding here
-        // keeps SimplePluginManager's StubCallLog from spamming on every
-        // plugin that uses this overload (LuckPerms registers 1 listener
-        // this way at boot).
+        // Direct single-event registration. Forwards to BukkitEventAdapter
+        // so executor-based listeners (notably adventure-platform-bukkit's
+        // PlayerJoin/PlayerQuit viewer-tracking handlers, used by every
+        // LuckPerms message dispatch) actually fire when the corresponding
+        // ServerEvents callback runs. Without this wiring Adventure's
+        // viewer map stays empty and audiences.player(uuid) returns the
+        // empty audience for every online player.
         @Override
         public void registerEvent(Class arg0, org.bukkit.event.Listener arg1,
                                   org.bukkit.event.EventPriority arg2,
                                   org.bukkit.plugin.EventExecutor arg3,
                                   Plugin arg4) {
-            // silent
+            BukkitEventAdapter.registerExecutor(arg0, arg1, arg2, arg3,
+                    arg4 == null ? null : arg4.getName(), false);
         }
 
         @Override
@@ -252,7 +286,8 @@ public final class BukkitBridge {
                                   org.bukkit.event.EventPriority arg2,
                                   org.bukkit.plugin.EventExecutor arg3,
                                   Plugin arg4, boolean arg5) {
-            // silent
+            BukkitEventAdapter.registerExecutor(arg0, arg1, arg2, arg3,
+                    arg4 == null ? null : arg4.getName(), arg5);
         }
 
         @Override public void disablePlugin(Plugin plugin) { /* lifecycle owned by rd-mod-loader */ }

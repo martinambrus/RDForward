@@ -37,7 +37,16 @@ public final class RDWorld implements World {
     @Override
     public boolean setBlock(int x, int y, int z, BlockType type) {
         if (!isInBounds(x, y, z)) return false;
-        return world.setBlock(x, y, z, (byte) type.getId());
+        // Queue the change so the tick loop's broadcast pipeline picks
+        // it up (ServerTickLoop.tick -> processPendingBlockChanges ->
+        // playerManager.broadcastWrite + chunkManager.setBlock). The
+        // BlockPolicy chokepoint runs inside processPendingBlockChanges
+        // so plugin/mod writes go through the same coercion as
+        // player-click writes that hit setBlock(byte) directly.
+        // Returning true reflects "queued"; the actual write may still
+        // be a no-op if the coerced byte equals the existing block.
+        world.queueBlockChange(x, y, z, (byte) type.getId());
+        return true;
     }
 
     @Override

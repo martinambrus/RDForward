@@ -1,0 +1,20 @@
+# Block-coercion deltas for Beta 1.7.3.
+#
+# Each entry maps a block introduced in Beta 1.7.3 to its
+# immediate-prior-version visual equivalent (one hop). Older worlds
+# (Alpha, Classic) reach this file by chain-walking from any newer
+# version's deltas; Beta 1.7.3 worlds use this to identify which blocks
+# are part of THEIR vocabulary (anything keyed here was introduced AT
+# 1.7.3, so an Alpha world coerces these entries via the chain).
+#
+# Block names are namespaced (minecraft:foo) and refer to the
+# pre-Flattening canonical names. Each entry is a single hop —
+# transitively reaching the target world's vocabulary is the policy's
+# job, not this file's.
+#
+# Bootstrap entries: pistons (the canonical 1.7-introduced block).
+# Authoring exhaustive replacement files for every version is explicit
+# follow-up scope.
+minecraft:piston: minecraft:cobblestone
+minecraft:sticky_piston: minecraft:cobblestone
+minecraft:piston_head: minecraft:cobblestone

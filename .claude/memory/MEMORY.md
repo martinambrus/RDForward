@@ -18,6 +18,9 @@
 ## Performance Principles
 - [feedback_lazy_loading.md](feedback_lazy_loading.md): Lazy-load all protocol infrastructure and decouple version-specific code into per-session codecs
 
+## Block Coercion
+- [block-policy.md](block-policy.md): BlockPolicy chokepoint at ServerWorld.setBlock(byte); RubyDung position rule; lazy YAML deltas at /replacements/<key>.yml; COBBLE fallback
+
 ## Server API Work (PLAN-SERVER-API.md)
 - [server-api-decisions.md](server-api-decisions.md): Q1 merged Event/PrioritizedEvent, Q2 Fabric-repackaged client mods, Q3 clean rewrite no backward compat
 
@@ -25,6 +28,7 @@
 - [feedback_restart_server.md](feedback_restart_server.md): Never start/restart the server unless user permits it
 - [feedback_server_start.md](feedback_server_start.md): Use plain Bash & to start the server, never run_in_background
 - [feedback_wait_for_confirmation.md](feedback_wait_for_confirmation.md): Wait for user to confirm they tested before drawing conclusions from logs
+- [feedback_build_fatjar.md](feedback_build_fatjar.md): Always run ./gradlew buildAll before asking user to retest — per-module compileJava does not refresh the runnable fat jar
 
 ## E2E Test Rules
 - NEVER run two Gradle test suites in parallel. They share the Gradle daemon and will conflict/kill each other. Always run sequentially.

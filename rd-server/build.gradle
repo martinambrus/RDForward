@@ -27,7 +27,10 @@ dependencies {
     runtimeOnly 'com.google.code.gson:gson:2.11.0'
     // 1.33 retains no-arg Representer() ctor that older plugins (e.g.
     // WorldEdit) reference; 2.x removed it and breaks NoSuchMethodError.
-    runtimeOnly 'org.yaml:snakeyaml:1.33'
+    // Promoted to implementation so BlockReplacementRegistry (rd-server
+    // production code) can compile against Yaml; runtime classpath
+    // already had it.
+    implementation 'org.yaml:snakeyaml:1.33'
     runtimeOnly 'net.md-5:bungeecord-chat:1.21-R0.2-deprecated+build.21'
     runtimeOnly 'commons-io:commons-io:2.20.0'
     runtimeOnly 'org.apache.commons:commons-lang3:3.19.0'

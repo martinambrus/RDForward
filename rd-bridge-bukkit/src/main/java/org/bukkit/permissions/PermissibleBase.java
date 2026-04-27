@@ -23,6 +23,21 @@ public class PermissibleBase implements org.bukkit.permissions.Permissible {
     private java.util.List<org.bukkit.permissions.PermissionAttachment> attachments =
             new java.util.LinkedList<>();
 
+    /** LuckPerms's
+     *  {@code me.lucko.luckperms.bukkit.inject.permissible.DummyPermissibleBase.<clinit>}
+     *  reflects both {@code attachments} AND {@code permissions} on
+     *  {@link PermissibleBase} and crashes its static initializer on
+     *  {@link NoSuchFieldException}. The first hit on
+     *  {@code DummyPermissibleBase.INSTANCE} (LP calls it from
+     *  {@code PermissibleInjector.uninject}) re-runs the failed clinit,
+     *  which kills RDForward's tick thread with
+     *  {@link ExceptionInInitializerError}. Mirroring the upstream field
+     *  name + type ({@code Map<String, PermissionAttachmentInfo>}) lets
+     *  the clinit complete; the map itself is never read by RDForward —
+     *  permission resolution stays in the rd-api PermissionManager. */
+    private java.util.Map<String, org.bukkit.permissions.PermissionAttachmentInfo> permissions =
+            new java.util.HashMap<>();
+
     private final org.bukkit.permissions.ServerOperator opable;
 
     public PermissibleBase(org.bukkit.permissions.ServerOperator opable) {

@@ -18,7 +18,9 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
+import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerLoginEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
@@ -63,9 +65,14 @@ public final class BukkitEventAdapter {
     private static final Set<String> warnedPlugins = ConcurrentHashMap.newKeySet();
 
     /** Per-event-class binding entry — captures everything needed to
-     *  dispatch a plugin-fired event back to its {@code @EventHandler}
-     *  method via reflection. */
+     *  dispatch a plugin-fired event back to either an
+     *  {@code @EventHandler}-annotated {@link Method} or an
+     *  {@link org.bukkit.plugin.EventExecutor} registered via the
+     *  {@code PluginManager.registerEvent} executor form
+     *  (adventure-platform-bukkit takes that path, no annotations). Exactly
+     *  one of {@code method} / {@code executor} is non-null. */
     private record Bound(Listener listener, Method method,
+                         org.bukkit.plugin.EventExecutor executor,
                          org.bukkit.event.EventPriority priority,
                          boolean ignoreCancelled) {}
 
@@ -106,7 +113,7 @@ public final class BukkitEventAdapter {
             // dispatchPluginEvent — independent of the ServerEvents-driven
             // path that translates real server actions into Bukkit events.
             DIRECT.computeIfAbsent(evtType, k -> new CopyOnWriteArrayList<>())
-                    .add(new Bound(listener, m, eh.priority(), eh.ignoreCancelled()));
+                    .add(new Bound(listener, m, null, eh.priority(), eh.ignoreCancelled()));
 
             if (isCancellable(evtType) && !eh.ignoreCancelled() && prio != EventPriority.MONITOR) {
                 maybeWarnIgnoreCancelled(pluginName, listener);
@@ -118,10 +125,12 @@ public final class BukkitEventAdapter {
                 bindBlockPlace(listener, m, prio);
             } else if (evtType == AsyncPlayerChatEvent.class) {
                 bindChat(listener, m, prio);
-            } else if (evtType == PlayerJoinEvent.class) {
-                bindPlayerJoin(listener, m);
+            } else if (evtType == PlayerJoinEvent.class
+                    || evtType == AsyncPlayerPreLoginEvent.class
+                    || evtType == PlayerLoginEvent.class) {
+                ensurePlayerJoinInstalled();
             } else if (evtType == PlayerQuitEvent.class) {
-                bindPlayerQuit(listener, m);
+                ensurePlayerQuitInstalled();
             } else if (evtType == PlayerMoveEvent.class) {
                 bindPlayerMove(listener, m);
             }
@@ -160,7 +169,11 @@ public final class BukkitEventAdapter {
         matched.sort(Comparator.comparingInt(b -> b.priority.ordinal()));
         for (Bound b : matched) {
             if (b.ignoreCancelled && event.isCancelled()) continue;
-            invokeListener(b.listener, b.method, event);
+            if (b.method != null) {
+                invokeListener(b.listener, b.method, event);
+            } else if (b.executor != null) {
+                invokeExecutor(b.executor, b.listener, event);
+            }
         }
     }
 
@@ -227,20 +240,125 @@ public final class BukkitEventAdapter {
         ServerEvents.CHAT.register(prio, cb);
     }
 
-    private static void bindPlayerJoin(Listener l, Method m) {
-        PlayerJoinCallback cb = (name, version) -> {
-            PlayerJoinEvent ev = new PlayerJoinEvent(BukkitPlayer.create(name));
-            invokeListener(l, m, ev);
-        };
-        ServerEvents.PLAYER_JOIN.register(cb);
+    /** Lazy single-installer guards. The composite PLAYER_JOIN dispatcher
+     *  fires AsyncPlayerPreLoginEvent → PlayerLoginEvent → PlayerJoinEvent
+     *  in sequence so plugins that listen for any of those events (LP for
+     *  all three, adventure-platform for Join only) reliably observe the
+     *  expected order. Without this ordering, LP's onPlayerLogin gates on
+     *  a user record that onPlayerPreLogin would have created — if Join
+     *  fires before PreLogin, every login is denied. */
+    private static final java.util.concurrent.atomic.AtomicBoolean PLAYER_JOIN_INSTALLED =
+            new java.util.concurrent.atomic.AtomicBoolean();
+    private static final java.util.concurrent.atomic.AtomicBoolean PLAYER_QUIT_INSTALLED =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
+    private static void ensurePlayerJoinInstalled() {
+        if (!PLAYER_JOIN_INSTALLED.compareAndSet(false, true)) return;
+        ServerEvents.PLAYER_JOIN.register((name, version) -> {
+            org.bukkit.entity.Player player = BukkitPlayer.create(name);
+            java.util.UUID uuid = player == null ? null : player.getUniqueId();
+            java.net.InetAddress addr = resolveAddressFor(player);
+
+            AsyncPlayerPreLoginEvent preLogin = new AsyncPlayerPreLoginEvent(name, addr, uuid);
+            dispatchPluginEvent(preLogin);
+            if (preLogin.getLoginResult() != null
+                    && preLogin.getLoginResult() != org.bukkit.event.player.AsyncPlayerPreLoginEvent$Result.ALLOWED) {
+                return;
+            }
+
+            PlayerLoginEvent login = new PlayerLoginEvent(player, "", addr);
+            dispatchPluginEvent(login);
+            if (login.getResult() != null
+                    && login.getResult() != org.bukkit.event.player.PlayerLoginEvent$Result.ALLOWED) {
+                return;
+            }
+
+            PlayerJoinEvent join = new PlayerJoinEvent(player);
+            dispatchPluginEvent(join);
+        });
     }
 
-    private static void bindPlayerQuit(Listener l, Method m) {
-        PlayerLeaveCallback cb = name -> {
-            PlayerQuitEvent ev = new PlayerQuitEvent(BukkitPlayer.create(name));
-            invokeListener(l, m, ev);
-        };
-        ServerEvents.PLAYER_LEAVE.register(cb);
+    private static void ensurePlayerQuitInstalled() {
+        if (!PLAYER_QUIT_INSTALLED.compareAndSet(false, true)) return;
+        ServerEvents.PLAYER_LEAVE.register(name -> {
+            org.bukkit.entity.Player player = BukkitPlayer.create(name);
+            PlayerQuitEvent quit = new PlayerQuitEvent(player);
+            dispatchPluginEvent(quit);
+            // Drop the cached proxy AFTER plugins finish their quit
+            // handling — LP needs the still-injected Permissible to
+            // observe the disconnect — so the next login mints a fresh
+            // perm slot rather than reusing one bound to a closed rd-api
+            // session.
+            BukkitPlayer.evict(name);
+        });
+    }
+
+    private static java.net.InetAddress resolveAddressFor(org.bukkit.entity.Player player) {
+        if (player == null) return null;
+        try {
+            java.net.InetSocketAddress sock = player.getAddress();
+            return sock == null ? null : sock.getAddress();
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    /** Wire an {@link org.bukkit.plugin.EventExecutor}-based registration
+     *  (the form used by {@link org.bukkit.plugin.PluginManager#registerEvent})
+     *  to a real ServerEvents callback. Plugins that go through the
+     *  executor path skip the {@code @EventHandler}-scanning entry point —
+     *  notably adventure-platform-bukkit, which registers anonymous
+     *  listeners with executor-only dispatch to track player viewers.
+     *  Without this wiring the executor is silently dropped and Adventure's
+     *  {@code audiences.player(uuid)} returns the empty audience for every
+     *  online player, so plugin output (LuckPerms /lp help, etc.) reaches
+     *  no one in-game. */
+    public static void registerExecutor(Class<?> evtType,
+                                        org.bukkit.event.Listener listener,
+                                        org.bukkit.event.EventPriority bukkitPriority,
+                                        org.bukkit.plugin.EventExecutor executor,
+                                        String pluginName,
+                                        boolean ignoreCancelled) {
+        if (evtType == null || executor == null || listener == null) return;
+        org.bukkit.event.EventPriority prio = bukkitPriority == null
+                ? org.bukkit.event.EventPriority.NORMAL : bukkitPriority;
+        // Add a DIRECT entry so dispatchPluginEvent finds executor-bound
+        // listeners alongside @EventHandler-annotated method bindings.
+        DIRECT.computeIfAbsent(evtType, k -> new CopyOnWriteArrayList<>())
+                .add(new Bound(listener, null, executor, prio, ignoreCancelled));
+        // Ensure the corresponding ServerEvents callback is wired so the
+        // event actually fires. The composite Join dispatcher covers
+        // PreLogin/Login/Join in order; PlayerQuit has its own dispatcher.
+        // Other event types remain on the per-listener bind* path which
+        // ALSO routes through dispatchPluginEvent via the DIRECT map, so
+        // executor-bound listeners for those types fire correctly even
+        // though we don't install a separate ServerEvents callback here.
+        if (evtType == PlayerJoinEvent.class
+                || evtType == AsyncPlayerPreLoginEvent.class
+                || evtType == PlayerLoginEvent.class) {
+            ensurePlayerJoinInstalled();
+        } else if (evtType == PlayerQuitEvent.class) {
+            ensurePlayerQuitInstalled();
+        }
+    }
+
+    private static void invokeExecutor(org.bukkit.plugin.EventExecutor executor,
+                                       org.bukkit.event.Listener listener,
+                                       org.bukkit.event.Event event) {
+        try {
+            executor.execute(listener, event);
+        } catch (Throwable t) {
+            String key = listener.getClass().getName() + "#executor:"
+                    + t.getClass().getName() + ":"
+                    + (t.getMessage() == null ? "" : t.getMessage());
+            if (SEEN_LISTENER_ERRORS.putIfAbsent(key, Boolean.TRUE) == null) {
+                System.err.println("[Bukkit] Executor for " + listener.getClass().getName()
+                        + " threw " + t.getClass().getName()
+                        + (t.getMessage() == null ? "" : ": " + t.getMessage())
+                        + " (further occurrences silenced)");
+                t.printStackTrace(System.err);
+            }
+        }
     }
 
     private static void bindPlayerMove(Listener l, Method m) {

@@ -1,53 +1,94 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package org.bukkit.event.player;
 
-/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
-@SuppressWarnings({"unchecked", "rawtypes", "unused"})
-public class PlayerLoginEvent extends org.bukkit.event.player.PlayerEvent {
-    public PlayerLoginEvent(org.bukkit.entity.Player arg0, java.lang.String arg1, java.net.InetAddress arg2, java.net.InetAddress arg3) { super((org.bukkit.entity.Player) null); }
-    public PlayerLoginEvent(org.bukkit.entity.Player arg0, java.lang.String arg1, java.net.InetAddress arg2) { super((org.bukkit.entity.Player) null); }
-    public PlayerLoginEvent(org.bukkit.entity.Player arg0, java.lang.String arg1, java.net.InetAddress arg2, org.bukkit.event.player.PlayerLoginEvent$Result arg3, java.lang.String arg4, java.net.InetAddress arg5) { super((org.bukkit.entity.Player) null); }
-    public PlayerLoginEvent(org.bukkit.entity.Player arg0, java.lang.String arg1, java.net.InetAddress arg2, org.bukkit.event.player.PlayerLoginEvent$Result arg3, net.kyori.adventure.text.Component arg4, java.net.InetAddress arg5) { super((org.bukkit.entity.Player) null); }
-    public PlayerLoginEvent() { super((org.bukkit.entity.Player) null); }
-    public java.lang.String getHostname() {
-        return null;
+import org.bukkit.entity.Player;
+
+import java.net.InetAddress;
+
+/**
+ * Stub of Bukkit's {@code PlayerLoginEvent}. Hand-tuned to round-trip
+ * its fields so plugin code that reads them — notably LuckPerms's
+ * {@code BukkitConnectionListener.onPlayerLogin} which calls
+ * {@code e.getPlayer()} and gates on {@code e.getResult()} before
+ * injecting its {@code LuckPermsPermissible} into the player — sees
+ * real values.
+ *
+ * <p>Default result is {@link PlayerLoginEvent$Result#ALLOWED}: by the
+ * time RDForward fires this event the player has already authenticated
+ * and joined the world; plugins can still call {@link #disallow} to
+ * deny the connection (LP does so when its data load failed).
+ */
+public class PlayerLoginEvent extends PlayerEvent {
+
+    private final InetAddress address;
+    private final InetAddress realAddress;
+    private final String hostname;
+    private PlayerLoginEvent$Result result = PlayerLoginEvent$Result.ALLOWED;
+    private String kickMessage = "";
+
+    public PlayerLoginEvent(Player player, String hostname, InetAddress address) {
+        this(player, hostname, address, address);
     }
-    public java.net.InetAddress getAddress() {
-        return null;
+
+    public PlayerLoginEvent(Player player, String hostname, InetAddress address, InetAddress realAddress) {
+        super(player);
+        this.hostname = hostname == null ? "" : hostname;
+        this.address = address;
+        this.realAddress = realAddress == null ? address : realAddress;
     }
-    public java.net.InetAddress getRealAddress() {
-        return null;
+
+    public PlayerLoginEvent(Player player, String hostname, InetAddress address,
+                            PlayerLoginEvent$Result result, String message,
+                            InetAddress realAddress) {
+        this(player, hostname, address, realAddress);
+        this.result = result == null ? PlayerLoginEvent$Result.ALLOWED : result;
+        this.kickMessage = message == null ? "" : message;
     }
-    public org.bukkit.event.player.PlayerLoginEvent$Result getResult() {
-        return null;
+
+    public PlayerLoginEvent(Player player, String hostname, InetAddress address,
+                            PlayerLoginEvent$Result result,
+                            net.kyori.adventure.text.Component message,
+                            InetAddress realAddress) {
+        this(player, hostname, address, realAddress);
+        this.result = result == null ? PlayerLoginEvent$Result.ALLOWED : result;
     }
-    public void setResult(org.bukkit.event.player.PlayerLoginEvent$Result arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.event.player.PlayerLoginEvent.setResult(Lorg/bukkit/event/player/PlayerLoginEvent$Result;)V");
+
+    public PlayerLoginEvent() {
+        super((Player) null);
+        this.address = null;
+        this.realAddress = null;
+        this.hostname = "";
     }
-    public net.kyori.adventure.text.Component kickMessage() {
-        return null;
+
+    public String getHostname() { return hostname; }
+    public InetAddress getAddress() { return address; }
+    public InetAddress getRealAddress() { return realAddress; }
+
+    public PlayerLoginEvent$Result getResult() { return result; }
+    public void setResult(PlayerLoginEvent$Result newResult) {
+        this.result = newResult == null ? PlayerLoginEvent$Result.ALLOWED : newResult;
     }
-    public void kickMessage(net.kyori.adventure.text.Component arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.event.player.PlayerLoginEvent.kickMessage(Lnet/kyori/adventure/text/Component;)V");
-    }
-    public java.lang.String getKickMessage() {
-        return null;
-    }
-    public void setKickMessage(java.lang.String arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.event.player.PlayerLoginEvent.setKickMessage(Ljava/lang/String;)V");
-    }
+
+    public String getKickMessage() { return kickMessage; }
+    public void setKickMessage(String message) { this.kickMessage = message == null ? "" : message; }
+
+    public net.kyori.adventure.text.Component kickMessage() { return null; }
+    public void kickMessage(net.kyori.adventure.text.Component component) { /* component facade is a stub */ }
+
     public void allow() {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.event.player.PlayerLoginEvent.allow()V");
+        this.result = PlayerLoginEvent$Result.ALLOWED;
+        this.kickMessage = "";
     }
-    public void disallow(org.bukkit.event.player.PlayerLoginEvent$Result arg0, java.lang.String arg1) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.event.player.PlayerLoginEvent.disallow(Lorg/bukkit/event/player/PlayerLoginEvent$Result;Ljava/lang/String;)V");
+
+    public void disallow(PlayerLoginEvent$Result newResult, String message) {
+        this.result = newResult == null ? PlayerLoginEvent$Result.KICK_OTHER : newResult;
+        this.kickMessage = message == null ? "" : message;
     }
-    public void disallow(org.bukkit.event.player.PlayerLoginEvent$Result arg0, net.kyori.adventure.text.Component arg1) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.event.player.PlayerLoginEvent.disallow(Lorg/bukkit/event/player/PlayerLoginEvent$Result;Lnet/kyori/adventure/text/Component;)V");
+
+    public void disallow(PlayerLoginEvent$Result newResult, net.kyori.adventure.text.Component message) {
+        this.result = newResult == null ? PlayerLoginEvent$Result.KICK_OTHER : newResult;
     }
-    public org.bukkit.event.HandlerList getHandlers() {
-        return null;
-    }
-    public static org.bukkit.event.HandlerList getHandlerList() {
-        return null;
-    }
+
+    public org.bukkit.event.HandlerList getHandlers() { return null; }
+    public static org.bukkit.event.HandlerList getHandlerList() { return null; }
 }

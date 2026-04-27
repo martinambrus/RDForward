@@ -209,9 +209,17 @@ public class RDServer {
         this.worldGenerator = worldGenerator;
         this.worldSeed = worldSeed;
         this.dataDir = dataDir;
-        this.world = new ServerWorld(worldWidth, worldHeight, worldDepth, dataDir);
-        this.playerManager = new PlayerManager();
         String levelName = ServerProperties.getLevelName();
+        this.world = new ServerWorld(worldWidth, worldHeight, worldDepth, dataDir, levelName);
+        // Install the per-version block-coercion policy so unsupported
+        // blocks placed via Bukkit/mod APIs (or any future frontend) are
+        // remapped to this version's vocabulary instead of corrupting the
+        // world. RubyDung gets the position-aware grass/cobble rule;
+        // Alpha/Beta/Release get the lazy version-chain walker; LCE and
+        // Bedrock keep IDENTITY for now (their replacement files aren't
+        // authored yet — explicit follow-up scope).
+        this.world.setPolicy(choosePolicyFor(protocolVersion, worldHeight));
+        this.playerManager = new PlayerManager();
         File worldDir = (dataDir != null) ? new File(dataDir, levelName) : new File(levelName);
         this.chunkManager = new ChunkManager(worldGenerator, worldSeed, worldDir);
         System.out.println("[RDServer] ChunkManager viewDistance="
@@ -219,6 +227,30 @@ public class RDServer {
         this.chunkManager.setServerWorld(world);
         this.world.setIOThread(chunkManager.getIOThread());
         this.tickLoop = new ServerTickLoop(playerManager, world, chunkManager);
+    }
+
+    /** Pick the {@link com.github.martinambrus.rdforward.api.world.BlockPolicy}
+     *  for the world's protocol version. Mirrors the family-level
+     *  branching the rest of the server uses (see CLAUDE.md "Lazy
+     *  Loading and Code Decoupling"). */
+    private static com.github.martinambrus.rdforward.api.world.BlockPolicy
+            choosePolicyFor(ProtocolVersion v, int worldHeight) {
+        if (v == null) return com.github.martinambrus.rdforward.api.world.BlockPolicy.IDENTITY;
+        ProtocolVersion.Family family = v.getFamily();
+        if (family == ProtocolVersion.Family.PRE_CLASSIC
+                || family == ProtocolVersion.Family.CLASSIC) {
+            // RubyDungWorldGenerator places the surface row at height*2/3.
+            return new com.github.martinambrus.rdforward.server.world.RubyDungBlockPolicy(
+                    worldHeight * 2 / 3);
+        }
+        if (family == ProtocolVersion.Family.ALPHA
+                || family == ProtocolVersion.Family.BETA
+                || family == ProtocolVersion.Family.RELEASE) {
+            return new com.github.martinambrus.rdforward.server.world.VersionedBlockPolicy(v);
+        }
+        // LCE, Bedrock, and any unrecognised family stay on identity
+        // until their replacement files are authored.
+        return com.github.martinambrus.rdforward.api.world.BlockPolicy.IDENTITY;
     }
 
     /**

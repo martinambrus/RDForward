@@ -72,6 +72,14 @@ public final class CommandRegistry {
      */
     public static boolean dispatch(String input, String sender, boolean isConsole,
                                    CommandContext.CommandSender replySender) {
+        // Audit log: every player command lands in the console so
+        // operators can see what was run (and tail history after the
+        // fact for security review). Console-issued commands are not
+        // re-logged here — the caller already echoed them.
+        if (!isConsole) {
+            System.out.println("[Cmd] " + sender + ": /" + input);
+        }
+
         String[] parts = WHITESPACE.split(input, 2);
         String cmdName = parts[0].toLowerCase();
         String[] args = parts.length > 1 ? WHITESPACE.split(parts[1]) : new String[0];

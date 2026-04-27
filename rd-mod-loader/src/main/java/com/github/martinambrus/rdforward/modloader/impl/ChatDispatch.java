@@ -52,8 +52,19 @@ final class ChatDispatch {
     }
 
     static void send(ConnectedPlayer player, String plainText) {
-        Packet p = buildChat(player, plainText);
-        if (p != null) player.sendPacket(p);
+        // Split long messages so pre-Netty clients (Beta 1.7.3 cap = 119
+        // UTF-16 chars; 1.0–1.6.4 use the same packet shape) don't throw
+        // "Received string length longer than maximum allowed" and drop
+        // the connection. PlayerManager.splitChatMessage breaks at the
+        // last full-stop within the limit, falling back to a hard cut.
+        // Modern clients (1.7.2+) are unaffected by the split — they
+        // receive a sequence of system chat lines instead of one.
+        if (plainText == null) return;
+        for (String chunk :
+                com.github.martinambrus.rdforward.server.PlayerManager.splitChatMessage(plainText)) {
+            Packet p = buildChat(player, chunk);
+            if (p != null) player.sendPacket(p);
+        }
     }
 
     private static String escapeJson(String s) {

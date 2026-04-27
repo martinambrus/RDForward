@@ -15,6 +15,16 @@ import io.netty.buffer.ByteBuf;
  */
 public class ChatPacket implements Packet {
 
+    /** Hard cap for legacy MC chat string (Beta 1.7.3 / pre-Netty Release).
+     *  The client decoder throws IOException at strings longer than this. */
+    public static final int MAX_LEGACY_CHARS = 119;
+
+    /** Latch so the warn-on-oversize stack trace fires once per JVM and
+     *  isn't drowned by repeat callers.  Primary mitigation is the truncate;
+     *  the trace is only to surface the unsplit code path during dev. */
+    private static final java.util.concurrent.atomic.AtomicBoolean OVERSIZE_LOGGED =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
     private String message;
 
     public ChatPacket() {}
@@ -30,7 +40,23 @@ public class ChatPacket implements Packet {
 
     @Override
     public void write(ByteBuf buf) {
-        McDataTypes.writeStringAdaptive(buf, message);
+        // Defensive guard: if a caller bypassed PlayerManager.splitChatMessage
+        // and handed us a >119-char message, the client would disconnect with
+        // "Received string length longer than maximum allowed (N > 119)".
+        // Truncate so the connection survives, and emit a one-time stack
+        // trace so the offending call site is visible. ChatDispatch.send and
+        // PlayerManager.broadcastChat/sendChat already pre-split, so this
+        // path should never fire — if it does, we want to know.
+        String out = message;
+        if (out != null && out.length() > MAX_LEGACY_CHARS) {
+            if (OVERSIZE_LOGGED.compareAndSet(false, true)) {
+                new Throwable("[ChatPacket] Oversize message reached encoder (len=" + out.length()
+                        + ", cap=" + MAX_LEGACY_CHARS + "); truncating. Caller bypassed splitChatMessage.")
+                        .printStackTrace();
+            }
+            out = out.substring(0, MAX_LEGACY_CHARS);
+        }
+        McDataTypes.writeStringAdaptive(buf, out);
     }
 
     @Override

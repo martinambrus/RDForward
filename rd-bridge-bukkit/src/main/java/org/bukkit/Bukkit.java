@@ -91,6 +91,29 @@ public final class Bukkit {
         return server != null && server.getOnlineMode();
     }
 
+    /** @return a non-null {@link Server$Spigot} stub. Real Bukkit returns
+     *  {@code Server.Spigot} which carries Spigot/Paper-specific config
+     *  hooks. LoginSecurity's {@code ThreadingModule.onPlayerLogin}
+     *  reads {@code Bukkit.spigot().getConfig().getBoolean(...)}; the
+     *  whole block is wrapped in {@code catch (Exception)} but
+     *  {@link NoSuchMethodError} is an {@link Error}, not an
+     *  {@link Exception}, so it bypasses the swallow and aborts the
+     *  login listener. We return a singleton stub whose
+     *  {@code getConfig()} returns an empty {@link YamlConfiguration},
+     *  matching the no-bungeecord defaults LS expects. */
+    public static Server$Spigot spigot() {
+        return SPIGOT;
+    }
+
+    private static final Server$Spigot SPIGOT = new Server$Spigot() {
+        private final org.bukkit.configuration.file.YamlConfiguration empty =
+                new org.bukkit.configuration.file.YamlConfiguration();
+        @Override public org.bukkit.configuration.file.YamlConfiguration getConfig() { return empty; }
+        @Override public org.bukkit.configuration.file.YamlConfiguration getBukkitConfig() { return empty; }
+        @Override public org.bukkit.configuration.file.YamlConfiguration getSpigotConfig() { return empty; }
+        @Override public org.bukkit.configuration.file.YamlConfiguration getPaperConfig() { return empty; }
+    };
+
     /** @return {@code true} when the current thread is the server's
      *  tick loop. LoginSecurity's {@code PlayerSession.performAction}
      *  calls this on every async auth task to decide whether to bounce

@@ -24,7 +24,7 @@ public final class BukkitWorldAdapter implements World {
     public Block getBlockAt(int x, int y, int z) {
         com.github.martinambrus.rdforward.api.world.Block b = backing.getBlockAt(x, y, z);
         if (b == null) return null;
-        return new Block(this, b.getX(), b.getY(), b.getZ(), MaterialMapper.fromApi(b.getType()));
+        return new BukkitBlock(this, b.getX(), b.getY(), b.getZ(), MaterialMapper.fromApi(b.getType()));
     }
 
     @Override

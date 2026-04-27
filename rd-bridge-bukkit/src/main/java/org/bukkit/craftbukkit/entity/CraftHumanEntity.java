@@ -22,7 +22,15 @@ package org.bukkit.craftbukkit.entity;
  * its non-injected fall-back path.
  */
 public class CraftHumanEntity {
-    private org.bukkit.permissions.PermissibleBase perm;
+    /** Initialised to a non-null {@link org.bukkit.permissions.PermissibleBase}
+     *  so LuckPerms's {@code PermissibleInjector.inject} can read it as
+     *  the previous permissible. The injector calls {@code .getClass()}
+     *  on the value and reads the {@code attachments} list — both fail
+     *  with NPE when {@code perm} is null, denying the player's login.
+     *  Real CraftBukkit assigns {@code perm = new PermissibleBase(this)}
+     *  in the constructor; we use the no-arg form because this class
+     *  doesn't implement {@link org.bukkit.permissions.ServerOperator}. */
+    private org.bukkit.permissions.PermissibleBase perm = new org.bukkit.permissions.PermissibleBase();
 
     /** Read of the {@code perm} field — exposed as a no-op accessor so
      *  test code that wants to verify the field exists does not have

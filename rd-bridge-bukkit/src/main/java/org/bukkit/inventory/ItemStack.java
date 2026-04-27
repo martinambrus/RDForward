@@ -1,14 +1,51 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package org.bukkit.inventory;
 
-/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
+/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar, with
+ *  hand-tuned legacy fields/ctors for plugins compiled against
+ *  pre-Flattening Bukkit (WorldEdit 5.6.1 etc.). See PLAN-FULL-STUBS.md. */
 @SuppressWarnings({"unchecked", "rawtypes", "unused"})
 public class ItemStack implements java.lang.Cloneable, org.bukkit.configuration.serialization.ConfigurationSerializable, org.bukkit.Translatable, net.kyori.adventure.text.event.HoverEventSource, net.kyori.adventure.translation.Translatable, io.papermc.paper.persistence.PersistentDataViewHolder, io.papermc.paper.datacomponent.DataComponentHolder {
+
+    private org.bukkit.Material material;
+    private int amount;
+    private short durability;
+
     protected ItemStack() {}
-    public ItemStack(org.bukkit.Material arg0) {}
-    public ItemStack(org.bukkit.Material arg0, int arg1) {}
-    public ItemStack(org.bukkit.Material arg0, int arg1, short arg2) {}
-    public ItemStack(org.bukkit.Material arg0, int arg1, short arg2, java.lang.Byte arg3) {}
-    public ItemStack(org.bukkit.inventory.ItemStack arg0) throws java.lang.IllegalArgumentException {}
+    public ItemStack(org.bukkit.Material arg0) { this.material = arg0; this.amount = 1; }
+    public ItemStack(org.bukkit.Material arg0, int arg1) { this.material = arg0; this.amount = arg1; }
+    public ItemStack(org.bukkit.Material arg0, int arg1, short arg2) { this.material = arg0; this.amount = arg1; this.durability = arg2; }
+    public ItemStack(org.bukkit.Material arg0, int arg1, short arg2, java.lang.Byte arg3) { this.material = arg0; this.amount = arg1; this.durability = arg2; }
+    public ItemStack(org.bukkit.inventory.ItemStack arg0) throws java.lang.IllegalArgumentException {
+        if (arg0 != null) { this.material = arg0.material; this.amount = arg0.amount; this.durability = arg0.durability; }
+    }
+
+    /** Pre-Flattening legacy ctor. WorldEdit 5.6.1's
+     *  {@code BukkitPlayer.giveItem} calls {@code new ItemStack(271, 1)}
+     *  to mint the wooden axe wand — without this signature {@code //wand}
+     *  raises {@link NoSuchMethodError}. {@code typeId} is resolved
+     *  through {@link org.bukkit.Material#getMaterial(int)}; ids outside
+     *  RDForward's surfaced Material set leave {@code material} null. */
+    public ItemStack(int typeId, int amount) {
+        this.material = org.bukkit.Material.getMaterial(typeId);
+        this.amount = amount;
+    }
+
+    /** Same legacy ctor with damage value. */
+    public ItemStack(int typeId, int amount, short damage) {
+        this.material = org.bukkit.Material.getMaterial(typeId);
+        this.amount = amount;
+        this.durability = damage;
+    }
+
+    /** Pre-Flattening numeric type id. WorldEdit's wand-detection path
+     *  (in {@code WorldEditListener.onPlayerInteract}) checks
+     *  {@code item.getTypeId()} against the configured wand id. */
+    public int getTypeId() { return material == null ? 0 : material.getId(); }
+
+    public void setTypeId(int typeId) {
+        this.material = org.bukkit.Material.getMaterial(typeId);
+    }
     public static org.bukkit.inventory.ItemStack of(org.bukkit.Material arg0) {
         return null;
     }
@@ -23,20 +60,20 @@ public class ItemStack implements java.lang.Cloneable, org.bukkit.configuration.
         return false;
     }
     public org.bukkit.Material getType() {
-        return null;
+        return material;
     }
     public void setType(org.bukkit.Material arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.inventory.ItemStack.setType(Lorg/bukkit/Material;)V");
+        this.material = arg0;
     }
     public org.bukkit.inventory.ItemStack withType(org.bukkit.Material arg0) {
         com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.inventory.ItemStack.withType(Lorg/bukkit/Material;)Lorg/bukkit/inventory/ItemStack;");
         return this;
     }
     public int getAmount() {
-        return 0;
+        return amount;
     }
     public void setAmount(int arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.inventory.ItemStack.setAmount(I)V");
+        this.amount = arg0;
     }
     public org.bukkit.material.MaterialData getData() {
         return null;
@@ -45,10 +82,10 @@ public class ItemStack implements java.lang.Cloneable, org.bukkit.configuration.
         com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.inventory.ItemStack.setData(Lorg/bukkit/material/MaterialData;)V");
     }
     public void setDurability(short arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.inventory.ItemStack.setDurability(S)V");
+        this.durability = arg0;
     }
     public short getDurability() {
-        return (short) 0;
+        return durability;
     }
     public int getMaxStackSize() {
         return 0;

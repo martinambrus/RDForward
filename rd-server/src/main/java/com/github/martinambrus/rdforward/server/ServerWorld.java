@@ -1,7 +1,11 @@
 package com.github.martinambrus.rdforward.server;
 
+import com.github.martinambrus.rdforward.api.world.BlockPolicy;
+import com.github.martinambrus.rdforward.api.world.BlockType;
+import com.github.martinambrus.rdforward.api.world.BlockTypes;
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.server.api.ServerProperties;
+import com.github.martinambrus.rdforward.server.world.BlockCoercionLog;
 import com.github.martinambrus.rdforward.world.BlockRegistry;
 import com.github.martinambrus.rdforward.world.WorldGenerator;
 import com.github.martinambrus.rdforward.world.convert.ServerWorldHeader;
@@ -54,6 +58,16 @@ public class ServerWorld {
     private final int width;
     private final int height;
     private final int depth;
+    /** Stable world name used for {@link BlockCoercionLog} dedup keys.
+     *  Defaults to {@code "overworld"} when not supplied — kept for the
+     *  legacy constructors so existing tests compile unchanged. */
+    private final String name;
+    /** Per-world coercion rule consulted on every block write. Set once
+     *  at startup via {@link #setPolicy(BlockPolicy)}; {@code volatile}
+     *  for safe publication. Defaults to {@link BlockPolicy#IDENTITY}
+     *  so worlds that never declare a policy retain pre-feature
+     *  semantics. */
+    private volatile BlockPolicy policy = BlockPolicy.IDENTITY;
     private final byte[] blocks;
     /**
      * Block ownership IDs, parallel to {@code blocks[]}.
@@ -96,19 +110,47 @@ public class ServerWorld {
     }
 
     public ServerWorld(int width, int height, int depth) {
-        this(width, height, depth, null);
+        this(width, height, depth, null, "overworld");
     }
 
     public ServerWorld(int width, int height, int depth, File dataDir) {
+        this(width, height, depth, dataDir, "overworld");
+    }
+
+    /**
+     * Construct a world with an explicit name used for
+     * {@link BlockCoercionLog} dedup keys. The legacy constructors
+     * delegate here with {@code "overworld"} so existing tests (which
+     * never wired a name) keep their previous behaviour.
+     */
+    public ServerWorld(int width, int height, int depth, File dataDir, String name) {
         this.width = width;
         this.height = height;
         this.depth = depth;
+        this.name = (name == null || name.isBlank()) ? "overworld" : name;
         this.blocks = new byte[width * height * depth];
         this.blockOwnerIds = null; // lazy-allocated on first ownership write
         File dir = (dataDir != null) ? dataDir : new File(".");
         this.saveFile = new File(dir, SAVE_FILE_NAME);
         this.playersFile = new File(dir, PLAYERS_FILE_NAME);
     }
+
+    /** @return the world's stable name. Used as the dedup key for
+     *  {@link BlockCoercionLog}; future multi-world support keys
+     *  per-world coercion logs by this. */
+    public String getName() { return name; }
+
+    /** Install the coercion {@link BlockPolicy} consulted by
+     *  {@link #setBlock(int, int, int, byte)}. Called once during
+     *  server startup after the world is constructed; {@code volatile}
+     *  publication makes the assignment visible to every gameplay
+     *  thread without explicit synchronization. */
+    public void setPolicy(BlockPolicy policy) {
+        this.policy = (policy == null) ? BlockPolicy.IDENTITY : policy;
+    }
+
+    /** @return the currently installed policy; never {@code null}. */
+    public BlockPolicy getPolicy() { return policy; }
 
     /**
      * Generate the world using the given generator.
@@ -145,11 +187,21 @@ public class ServerWorld {
     /**
      * Set a block at the given coordinates.
      * Returns true if the block was changed, false if out of bounds or same value.
+     *
+     * <p>The world's installed {@link BlockPolicy} is consulted before
+     * the write — RubyDung worlds substitute cobblestone or grass per
+     * position, older-version worlds map "future" blocks down to their
+     * nearest equivalent in the world's vocabulary. The first time a
+     * given source block is coerced in a given world,
+     * {@link BlockCoercionLog} emits a one-shot WARNING so operators see
+     * which plugin tried to place an unsupported block; subsequent
+     * placements of the same source block in this world stay silent.
      */
     public boolean setBlock(int x, int y, int z, byte blockType) {
         if (!inBounds(x, y, z)) {
             return false;
         }
+        blockType = applyPolicy(x, y, z, blockType);
         rwLock.writeLock().lock();
         try {
             int index = blockIndex(x, y, z);
@@ -539,6 +591,15 @@ public class ServerWorld {
         }
         if (batch.isEmpty()) return List.of();
 
+        // Run the BlockPolicy on each entry BEFORE taking the write lock
+        // so plugin/mod writes (RDWorld.setBlock -> queueBlockChange)
+        // are coerced exactly like player-click writes that hit
+        // setBlock(byte) directly. Without this the queue path bypasses
+        // the chokepoint and unsupported blocks reach storage verbatim.
+        for (PendingBlockChange c : batch) {
+            c.blockType = applyPolicy(c.x, c.y, c.z, c.blockType);
+        }
+
         // Apply all changes under a single write lock
         List<SetBlockServerPacket> applied = new ArrayList<>();
         rwLock.writeLock().lock();
@@ -555,6 +616,22 @@ public class ServerWorld {
             rwLock.writeLock().unlock();
         }
         return applied;
+    }
+
+    /** Run the installed {@link BlockPolicy} against a (position, requested-id)
+     *  pair and return the coerced byte. Pure / lock-free; both
+     *  {@link #setBlock(int, int, int, byte)} and
+     *  {@link #processPendingBlockChanges()} call this so the chokepoint
+     *  applies regardless of write path. */
+    private byte applyPolicy(int x, int y, int z, byte blockType) {
+        BlockPolicy p = policy;
+        if (p == BlockPolicy.IDENTITY) return blockType;
+        int requestedId = blockType & 0xFF;
+        BlockType requested = BlockTypes.byId(requestedId);
+        BlockType coerced = p.coerce(x, y, z, requested);
+        if (coerced == null || coerced.getId() == requestedId) return blockType;
+        BlockCoercionLog.logOnce(name, requested, coerced);
+        return (byte) coerced.getId();
     }
 
     /**
@@ -815,10 +892,12 @@ public class ServerWorld {
     /** Spawn Z coordinate (chunk-aligned world center). */
     public int getSpawnZ() { return ((depth / 2) >> 4) * 16 + 8; }
 
-    /** A queued block change waiting to be processed. */
+    /** A queued block change waiting to be processed. {@code blockType}
+     *  is mutable so {@link #processPendingBlockChanges()} can rewrite
+     *  it after the policy runs without re-allocating the entry. */
     static class PendingBlockChange {
         final int x, y, z;
-        final byte blockType;
+        byte blockType;
 
         PendingBlockChange(int x, int y, int z, byte blockType) {
             this.x = x;

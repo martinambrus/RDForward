@@ -9,29 +9,73 @@ package org.bukkit;
  * receive AIR and silently noop on any related checks.
  */
 public enum Material {
-    AIR,
-    STONE,
-    GRASS_BLOCK,
-    DIRT,
-    COBBLESTONE,
-    OAK_PLANKS,
-    OAK_SAPLING,
-    BEDROCK,
-    WATER,
-    LAVA,
-    SAND,
-    GRAVEL,
-    GOLD_ORE,
-    IRON_ORE,
-    COAL_ORE,
-    OAK_LOG,
-    OAK_LEAVES,
-    GLASS,
-    TNT;
+    AIR(0),
+    STONE(1),
+    GRASS_BLOCK(2),
+    DIRT(3),
+    COBBLESTONE(4),
+    OAK_PLANKS(5),
+    OAK_SAPLING(6),
+    BEDROCK(7),
+    WATER(8),
+    LAVA(10),
+    SAND(12),
+    GRAVEL(13),
+    GOLD_ORE(14),
+    IRON_ORE(15),
+    COAL_ORE(16),
+    OAK_LOG(17),
+    OAK_LEAVES(18),
+    GLASS(20),
+    TNT(46);
+
+    private final int legacyId;
+    Material(int legacyId) { this.legacyId = legacyId; }
+
+    /** Pre-1.13 numeric block id. Real Bukkit's {@code Material} carried
+     *  the same numeric id on every entry until the Flattening; legacy
+     *  plugins (WorldEdit 5.6.1, EssentialsX pre-2.x, classic Bukkit
+     *  command parsers) call {@link #getMaterial(int)} to resolve user
+     *  input like {@code /set 4} → {@link #COBBLESTONE}. */
+    public int getId() { return legacyId; }
 
     /** True if this material represents empty space. Mirrors upstream helper. */
     public boolean isAir() { return this == AIR; }
 
     /** True if this material is a solid block. Stub treats every non-AIR/WATER/LAVA as solid. */
     public boolean isSolid() { return this != AIR && this != WATER && this != LAVA; }
+
+    /** True if this material is a block (placeable in a world).  All
+     *  Material constants RDForward surfaces are blocks; we do not yet
+     *  model item-only Materials. WorldEdit 5.6.1's {@code
+     *  BukkitWorld.isValidBlockType} calls this after {@link
+     *  #getMaterial(int)} to decide whether the user-provided id is
+     *  actually placeable. */
+    public boolean isBlock() { return true; }
+
+    /** Resolve a Material by pre-Flattening numeric id. Returns
+     *  {@code null} for ids outside our supported set so callers like
+     *  WorldEdit's {@code /set <id>} parser can fail validation cleanly
+     *  rather than placing AIR. WE 5.6.1's {@code
+     *  BukkitWorld.isValidBlockType} explicitly checks
+     *  {@code Material.getMaterial(id) != null && .isBlock()} — without
+     *  this method, the call site throws {@link NoSuchMethodError} and
+     *  the entire //set command bails. */
+    public static Material getMaterial(int legacyId) {
+        for (Material m : VALUES) {
+            if (m.legacyId == legacyId) return m;
+        }
+        return null;
+    }
+
+    /** Resolve a Material by name. {@link #valueOf(String)} throws on
+     *  miss; this lenient variant returns {@code null}, matching the
+     *  upstream Bukkit signature plugins compile against. */
+    public static Material getMaterial(String name) {
+        if (name == null) return null;
+        try { return Material.valueOf(name.toUpperCase(java.util.Locale.ROOT)); }
+        catch (IllegalArgumentException e) { return null; }
+    }
+
+    private static final Material[] VALUES = values();
 }
