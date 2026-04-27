@@ -3,6 +3,9 @@ package org.bukkit.plugin.java;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Server;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -41,7 +44,7 @@ import java.util.logging.Logger;
  * {@code onEnable()}, and the bridge then registers those executors with
  * rd-api's {@code CommandRegistry} under the plugin's mod id.
  */
-public abstract class JavaPlugin extends PluginBase {
+public abstract class JavaPlugin extends PluginBase implements CommandExecutor {
 
     private final Logger logger = Logger.getLogger(getClass().getName());
     private final List<Listener> registeredListeners = new ArrayList<>();
@@ -55,6 +58,19 @@ public abstract class JavaPlugin extends PluginBase {
     public void onLoad() {}
     public void onEnable() {}
     public void onDisable() {}
+
+    /** Default {@link CommandExecutor#onCommand} — real Bukkit 1.x's
+     *  {@code JavaPlugin} implements {@code CommandExecutor} so plugin
+     *  bytecode that casts the plugin instance to {@code CommandExecutor}
+     *  (notably WorldEdit 5.6.1's {@code CommandRegistration} ctor) verifies
+     *  cleanly and the {@code invokeinterface} on {@code onCommand}
+     *  dispatches to the plugin's override. Plugins that don't override
+     *  inherit this no-op which signals "did not handle" so callers can
+     *  fall through to usage strings. */
+    @Override
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        return false;
+    }
 
     @Override
     public Logger getLogger() { return logger; }

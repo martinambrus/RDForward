@@ -57,6 +57,11 @@ public final class BukkitBridge {
                 try { rd.broadcastMessage(msg); } catch (Throwable ignored) {}
             }
         });
+        // Mirror dynamic Bukkit command registrations (plugins that bypass
+        // plugin.yml and reflect SimplePluginManager.commandMap directly —
+        // notably WorldEdit's CommandRegistration) into the rd-api registry
+        // so the typed labels actually dispatch.
+        org.bukkit.command.SimpleCommandMap.setBridgeSink(BukkitBridge::mirrorDynamicCommand);
     }
 
     /** Remove the installed facade. Safe to call when nothing is installed. */
@@ -64,9 +69,49 @@ public final class BukkitBridge {
         installed = null;
         Bukkit.setServer(null);
         com.github.martinambrus.rdforward.api.stub.StubCallLog.setBroadcastSink(null);
+        org.bukkit.command.SimpleCommandMap.setBridgeSink(null);
         // Reset listener registry so successive tests don't see ghost
         // handlers from a prior boot.
         BukkitEventAdapter.clearAll();
+    }
+
+    /** Sink invoked from {@link org.bukkit.command.SimpleCommandMap#register}
+     *  whenever a plugin registers a command dynamically (not via
+     *  {@code plugin.yml}). Each label (the command's primary name plus every
+     *  alias) is forwarded to the rd-api {@link com.github.martinambrus.rdforward.api.command.CommandRegistry}
+     *  under the plugin's mod id (= {@code fallbackPrefix}). The dispatch
+     *  lambda calls {@link org.bukkit.command.Command#execute} on the original
+     *  command, which in WorldEdit's case is a {@code DynamicPluginCommand}
+     *  whose {@code execute} forwards to {@code CommandExecutor.onCommand}. */
+    private static void mirrorDynamicCommand(String fallbackPrefix, org.bukkit.command.Command cmd) {
+        Server rd = currentRdServer();
+        if (rd == null || cmd == null) return;
+        com.github.martinambrus.rdforward.api.command.CommandRegistry registry;
+        try { registry = rd.getCommandRegistry(); } catch (Throwable t) { return; }
+        if (registry == null) return;
+        String modId = fallbackPrefix == null || fallbackPrefix.isEmpty() ? "bukkit" : fallbackPrefix;
+        String description = cmd.getDescription() == null ? "" : cmd.getDescription();
+        java.util.LinkedHashSet<String> labels = new java.util.LinkedHashSet<>();
+        if (cmd.getName() != null) labels.add(cmd.getName());
+        if (cmd.getAliases() != null) {
+            for (Object a : cmd.getAliases()) {
+                String s = String.valueOf(a);
+                if (!s.isEmpty()) labels.add(s);
+            }
+        }
+        for (String label : labels) {
+            final String dispatchLabel = label;
+            registry.register(modId, label, description, ctx -> {
+                org.bukkit.command.CommandSender sender =
+                        BukkitPluginWrapper.resolveSender(ctx.getSenderName(), ctx.isConsole());
+                try {
+                    cmd.execute(sender, dispatchLabel, ctx.getArgs());
+                } catch (Throwable t) {
+                    LOG.warning("[BukkitBridge] Dynamic command '" + dispatchLabel + "' threw: " + t);
+                    ctx.reply("An internal error occurred while executing this command.");
+                }
+            });
+        }
     }
 
     public static boolean isInstalled() { return installed != null; }

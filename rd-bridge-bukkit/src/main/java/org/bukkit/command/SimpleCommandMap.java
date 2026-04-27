@@ -15,6 +15,21 @@ public class SimpleCommandMap implements org.bukkit.command.CommandMap {
     private final java.util.Map<String, org.bukkit.command.Command> known =
             new java.util.LinkedHashMap<>();
 
+    /** Sink invoked on every successful {@link #register} so the
+     *  RDForward bridge can mirror dynamically-registered commands
+     *  (notably WorldEdit 5.6.1's {@code DynamicPluginCommand}, which
+     *  bypasses {@code plugin.yml} and reflects this map straight off
+     *  {@link org.bukkit.plugin.SimplePluginManager}) into the rd-api
+     *  command registry. {@code null} when no bridge is installed (test
+     *  paths, pre-{@code BukkitBridge.install}). */
+    private static volatile java.util.function.BiConsumer<String, org.bukkit.command.Command> bridgeSink;
+
+    /** Bridge hook — install the sink at boot, clear at shutdown. Wired by
+     *  {@code BukkitBridge.install}/{@code uninstall}; not for plugin use. */
+    public static void setBridgeSink(java.util.function.BiConsumer<String, org.bukkit.command.Command> sink) {
+        bridgeSink = sink;
+    }
+
     public SimpleCommandMap(org.bukkit.Server arg0, java.util.Map arg1) {}
     public SimpleCommandMap(org.bukkit.Server arg0) {}
     public SimpleCommandMap() {}
@@ -56,6 +71,10 @@ public class SimpleCommandMap implements org.bukkit.command.CommandMap {
                 String alias = String.valueOf(a);
                 if (!known.containsKey(alias)) known.put(alias, command);
             }
+        }
+        java.util.function.BiConsumer<String, org.bukkit.command.Command> sink = bridgeSink;
+        if (sink != null) {
+            try { sink.accept(fallbackPrefix, command); } catch (Throwable ignored) {}
         }
         return firstOwner;
     }

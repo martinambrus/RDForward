@@ -1,5 +1,6 @@
 package com.github.martinambrus.rdforward.api.stub;
 
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
@@ -39,6 +40,17 @@ public final class StubCallLog {
      *  same dedup as the JUL line. */
     private static volatile java.util.function.Consumer<String> broadcastSink;
 
+    /** Maps a plugin's ClassLoader to its name. Populated by the host
+     *  bridge as it loads each plugin jar; consulted by {@link #logOnce}
+     *  to resolve the calling plugin when the stub site passes a null
+     *  {@code pluginId}. ClassLoader identity (==) is the lookup key —
+     *  every plugin gets its own URLClassLoader, so the mapping is
+     *  unambiguous. */
+    private static final Map<ClassLoader, String> PLUGINS_BY_LOADER = new ConcurrentHashMap<>();
+
+    private static final StackWalker WALKER =
+            StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE);
+
     private StubCallLog() {}
 
     /** Install (or replace) the broadcast sink. {@code null} disables
@@ -50,9 +62,29 @@ public final class StubCallLog {
         broadcastSink = sink;
     }
 
+    /** Register a plugin's ClassLoader so {@link #logOnce} can resolve
+     *  the plugin name from the call stack when the stub site passes
+     *  {@code null}. Idempotent — re-registering with the same name
+     *  is a no-op. Bridges should call this immediately after creating
+     *  the per-plugin classloader. */
+    public static void registerPluginLoader(ClassLoader loader, String pluginName) {
+        if (loader == null || pluginName == null || pluginName.isBlank()) return;
+        PLUGINS_BY_LOADER.put(loader, pluginName);
+    }
+
+    /** Drop the mapping for a plugin classloader. Bridges should call
+     *  this when unloading a plugin so subsequent stub calls (e.g. from
+     *  a daemon thread that outlived the plugin) fall back to
+     *  {@link #UNKNOWN_PLUGIN} rather than reporting a stale name. */
+    public static void unregisterPluginLoader(ClassLoader loader) {
+        if (loader == null) return;
+        PLUGINS_BY_LOADER.remove(loader);
+    }
+
     public static void logOnce(String pluginId, String signature) {
         if (signature == null || signature.isEmpty()) return;
-        String effectiveId = (pluginId == null || pluginId.isBlank()) ? UNKNOWN_PLUGIN : pluginId;
+        String effectiveId = (pluginId == null || pluginId.isBlank()) ? resolveCallerPlugin() : pluginId;
+        if (effectiveId == null || effectiveId.isBlank()) effectiveId = UNKNOWN_PLUGIN;
         Set<String> seen = SEEN.computeIfAbsent(effectiveId, k -> ConcurrentHashMap.newKeySet());
         if (seen.add(signature)) {
             String msg = "[StubCall] Plugin '" + effectiveId + "' called "
@@ -66,6 +98,37 @@ public final class StubCallLog {
         }
     }
 
+    /** Walk the stack and return the name of the first frame whose
+     *  declaring class was loaded by a registered plugin classloader.
+     *  {@code null} when no plugin is on the stack — caller should
+     *  fall back to {@link #UNKNOWN_PLUGIN}. Skips frames inside this
+     *  class so the walker doesn't pick up its own implementation. */
+    private static String resolveCallerPlugin() {
+        if (PLUGINS_BY_LOADER.isEmpty()) return null;
+        return WALKER.walk(stream -> stream
+                .filter(f -> f.getDeclaringClass() != StubCallLog.class)
+                .map(StackWalker.StackFrame::getDeclaringClass)
+                .map(StubCallLog::resolveLoader)
+                .filter(java.util.Objects::nonNull)
+                .findFirst()
+                .orElse(null));
+    }
+
+    /** @return the registered plugin name for {@code cls}'s classloader,
+     *  walking parent classloaders (some plugins shade libraries via a
+     *  child loader) until either a registered name is found or the
+     *  chain ends. {@code null} when no loader in the chain belongs to
+     *  a registered plugin. */
+    private static String resolveLoader(Class<?> cls) {
+        ClassLoader cl = cls.getClassLoader();
+        while (cl != null) {
+            String name = PLUGINS_BY_LOADER.get(cl);
+            if (name != null) return name;
+            cl = cl.getParent();
+        }
+        return null;
+    }
+
     public static boolean hasLogged(String pluginId, String signature) {
         String effectiveId = (pluginId == null || pluginId.isBlank()) ? UNKNOWN_PLUGIN : pluginId;
         Set<String> seen = SEEN.get(effectiveId);
@@ -74,5 +137,6 @@ public final class StubCallLog {
 
     public static void resetForTests() {
         SEEN.clear();
+        PLUGINS_BY_LOADER.clear();
     }
 }

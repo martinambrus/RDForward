@@ -60,6 +60,8 @@ public final class PaperPluginLoader {
             }
             paper = PaperPluginParser.parse(in);
         }
+        com.github.martinambrus.rdforward.api.stub.StubCallLog
+                .registerPluginLoader(classLoader, paper.name());
 
         PluginBootstrap bootstrapper = null;
         BootstrapLifecycleManager lifecycleManager = new BootstrapLifecycleManager();

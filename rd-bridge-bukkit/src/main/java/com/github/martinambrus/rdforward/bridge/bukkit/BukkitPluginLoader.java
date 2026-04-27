@@ -52,6 +52,8 @@ public final class BukkitPluginLoader {
             }
             bukkit = BukkitPluginParser.parse(in);
         }
+        com.github.martinambrus.rdforward.api.stub.StubCallLog
+                .registerPluginLoader(classLoader, bukkit.name());
         Class<?> mainCls = Class.forName(bukkit.main(), true, classLoader);
         if (!JavaPlugin.class.isAssignableFrom(mainCls)) {
             classLoader.close();
