@@ -71,6 +71,12 @@ public final class BukkitPluginLoader {
         plugin.setDataFolder(new java.io.File("plugins/" + bukkit.name()));
         ModDescriptor descriptor = toModDescriptor(bukkit);
         BukkitPluginWrapper wrapper = new BukkitPluginWrapper(plugin, bukkit.name());
+        // Track the plugin by its declared name so getPluginManager()
+        // .getPlugin(name) lookups (mcbans BukkitInterface looks itself
+        // up to pass to disablePlugin) resolve to the live instance.
+        // BukkitPluginWrapper unregisters on every disable / failure
+        // exit so the registry mirrors the live plugin set.
+        BukkitBridge.registerPlugin(bukkit.name(), plugin);
         return new LoadedPlugin(descriptor, bukkit, jarPath, classLoader, plugin, wrapper);
     }
 

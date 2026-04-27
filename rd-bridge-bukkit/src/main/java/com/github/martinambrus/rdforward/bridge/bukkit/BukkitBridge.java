@@ -22,8 +22,11 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
+import org.bukkit.plugin.java.JavaPlugin;
 
 /**
  * Main bridge between RDForward and Bukkit-shaped plugins. {@link #install(Server)}
@@ -40,7 +43,45 @@ public final class BukkitBridge {
 
     private static volatile BukkitServerAdapter installed;
 
+    /** Registry of currently-loaded Bukkit plugins keyed by plugin.yml
+     *  {@code name}. Populated by {@link BukkitPluginLoader} after the
+     *  plugin instance is constructed and cleared by
+     *  {@link BukkitPluginWrapper}'s disable / failure paths. The
+     *  {@link StubPluginManager#getPlugin} accessor reads this map so
+     *  plugins that look themselves up via
+     *  {@code Bukkit.getPluginManager().getPlugin(getName())} (mcbans
+     *  v3.8 in {@code BukkitInterface.pluginInterface(String)}) get a
+     *  real instance instead of {@code null}. */
+    private static final Map<String, JavaPlugin> loadedPlugins = new ConcurrentHashMap<>();
+
     private BukkitBridge() {}
+
+    /** Track {@code plugin} under its declared name. Called from
+     *  {@link BukkitPluginLoader#load} immediately after the plugin
+     *  instance is constructed. */
+    public static void registerPlugin(String name, JavaPlugin plugin) {
+        if (name == null || plugin == null) return;
+        loadedPlugins.put(name, plugin);
+    }
+
+    /** Drop the registry entry for {@code name}. Called by
+     *  {@link BukkitPluginWrapper} when a plugin disables (cleanly,
+     *  self-disables, or throws during enable). Idempotent. */
+    public static void unregisterPlugin(String name) {
+        if (name == null) return;
+        loadedPlugins.remove(name);
+    }
+
+    /** @return the live {@link JavaPlugin} previously registered under
+     *  {@code name}, or {@code null} if none. */
+    public static JavaPlugin lookupPlugin(String name) {
+        return name == null ? null : loadedPlugins.get(name);
+    }
+
+    /** @return a snapshot of every currently-registered plugin. */
+    public static java.util.Collection<JavaPlugin> allPlugins() {
+        return new java.util.ArrayList<>(loadedPlugins.values());
+    }
 
     /** Install a Bukkit server facade backed by {@code rdServer}. */
     public static synchronized void install(Server rdServer) {
@@ -291,11 +332,28 @@ public final class BukkitBridge {
                     arg4 == null ? null : arg4.getName(), arg5);
         }
 
-        @Override public void disablePlugin(Plugin plugin) { /* lifecycle owned by rd-mod-loader */ }
+        /** Real Bukkit's {@code disablePlugin} runs the plugin's {@code
+         *  onDisable}, unregisters its events, and flips its enabled flag.
+         *  RDForward owns the disable + unregister side via rd-mod-loader,
+         *  but plugins (VanishNoPacket 3.14+, mcbans v3.8) call this on
+         *  themselves DURING {@code onEnable} to signal a fatal init
+         *  failure. Flipping the flag here lets {@link
+         *  BukkitPluginWrapper#onEnable} detect the self-disable on
+         *  return and short-circuit listener/command wiring. */
+        @Override
+        public void disablePlugin(Plugin plugin) {
+            if (plugin instanceof org.bukkit.plugin.java.JavaPlugin jp) {
+                jp.setEnabled(false);
+            }
+        }
 
-        @Override public Plugin getPlugin(String name) { return null; }
+        @Override public Plugin getPlugin(String name) { return BukkitBridge.lookupPlugin(name); }
 
-        @Override public Plugin[] getPlugins() { return new Plugin[0]; }
+        @Override
+        public Plugin[] getPlugins() {
+            java.util.Collection<JavaPlugin> snapshot = BukkitBridge.allPlugins();
+            return snapshot.toArray(new Plugin[0]);
+        }
 
         @Override
         public boolean isPluginEnabled(String name) {

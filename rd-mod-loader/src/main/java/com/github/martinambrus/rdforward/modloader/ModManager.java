@@ -136,16 +136,7 @@ public final class ModManager implements com.github.martinambrus.rdforward.api.m
         // Drop strong refs to the old classloader before probing. rebind()
         // would do this too but we need it *before* the GC hint fires so
         // the weak-reference check is meaningful.
-        try {
-            if (c.classLoader() != null) {
-                com.github.martinambrus.rdforward.api.stub.StubCallLog
-                        .unregisterPluginLoader(c.classLoader());
-                c.classLoader().close();
-            }
-        } catch (java.io.IOException ignored) {}
-        c.setClassLoader(null);
-        c.setServerInstance(null);
-        c.setClientInstance(null);
+        releaseClassLoader(c);
 
         // GC hint (NOT relied on). If the classloader is still held by something
         // after the sweep, warn the admin — that's a likely leak source.
@@ -189,7 +180,38 @@ public final class ModManager implements com.github.martinambrus.rdforward.api.m
             c.fail(t);
             LOG.log(java.util.logging.Level.SEVERE,
                     "[ModLoader] " + c.id() + ".onEnable() threw", t);
+            // Sweep any resources the plugin may have registered before
+            // failing (events, commands, scheduler tasks). Plugins that
+            // throw mid-onEnable may have already pushed listeners
+            // through Bukkit.getPluginManager().registerEvents -- without
+            // this sweep those listeners stay live on a dead plugin.
+            sweepOwnedResources(c.id());
+            // Release the classloader so the plugin's classes can be GC'd
+            // and the jar handle is freed. Without this the failed plugin
+            // stays in memory for the rest of the server's lifetime and
+            // its onDisable would still fire on shutdown via the next
+            // disableAll() pass (though the ERROR state already gates
+            // that, the classloader leak is real).
+            releaseClassLoader(c);
         }
+    }
+
+    /** Close the plugin's URLClassLoader and null out container references
+     *  so the JVM can GC the plugin's classes. Mirrors the reload-path
+     *  cleanup in {@link #reload}; called on enable failure to release
+     *  resources for plugins that errored or self-disabled in {@code
+     *  onEnable}. */
+    private void releaseClassLoader(ModContainer c) {
+        try {
+            if (c.classLoader() != null) {
+                com.github.martinambrus.rdforward.api.stub.StubCallLog
+                        .unregisterPluginLoader(c.classLoader());
+                c.classLoader().close();
+            }
+        } catch (java.io.IOException ignored) {}
+        c.setClassLoader(null);
+        c.setServerInstance(null);
+        c.setClientInstance(null);
     }
 
     private void disable(ModContainer c) {

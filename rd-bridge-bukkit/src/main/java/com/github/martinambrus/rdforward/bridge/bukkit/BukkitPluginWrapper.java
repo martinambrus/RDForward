@@ -49,19 +49,48 @@ public final class BukkitPluginWrapper implements ServerMod {
 
     @Override
     public void onEnable(Server server) {
-        plugin.onLoad();
-        plugin.onEnable();
-        for (Listener listener : plugin.getRegisteredListeners()) {
-            BukkitEventAdapter.register(listener, pluginName);
-        }
-        if (server != null && pluginName != null) {
-            registerCommands(server.getCommandRegistry());
+        boolean keepRegistered = false;
+        try {
+            plugin.onLoad();
+            plugin.onEnable();
+            // Detect plugin self-disable: a plugin that fails its own
+            // pre-flight (VanishNoPacket on CraftBukkit-version mismatch,
+            // mcbans on online-mode mismatch) calls setEnabled(false) or
+            // Bukkit.getPluginManager().disablePlugin(this) and returns
+            // normally from onEnable. Without this gate the bridge would
+            // happily wire its half-initialized listeners and commands
+            // into the live registries, ModManager would log "Enabled X",
+            // and onDisable would still fire on shutdown -- exactly the
+            // "semi-loaded" state the operator was hoping to avoid.
+            if (!plugin.isEnabled()) {
+                throw new PluginSelfDisabledException(
+                        pluginName == null ? plugin.getClass().getName() : pluginName);
+            }
+            for (Listener listener : plugin.getRegisteredListeners()) {
+                BukkitEventAdapter.register(listener, pluginName);
+            }
+            if (server != null && pluginName != null) {
+                registerCommands(server.getCommandRegistry());
+            }
+            keepRegistered = true;
+        } finally {
+            // Drop the registry entry on every failure exit (thrown
+            // exception or self-disable) so a half-loaded plugin is
+            // not still discoverable via Bukkit.getPluginManager()
+            // .getPlugin(name) or getPlugins().
+            if (!keepRegistered) {
+                BukkitBridge.unregisterPlugin(pluginName);
+            }
         }
     }
 
     @Override
     public void onDisable() {
-        plugin.onDisable();
+        try {
+            plugin.onDisable();
+        } finally {
+            BukkitBridge.unregisterPlugin(pluginName);
+        }
     }
 
     /** Forward every {@link PluginCommand} with an executor into the rd-api registry.
