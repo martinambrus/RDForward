@@ -43,6 +43,47 @@ public final class DefaultConsoleCommandSender implements ConsoleCommandSender {
         return true;
     }
 
+    @Override
+    public void setOp(boolean op) { /* console is always op */ }
+
+    @Override
+    public boolean isPermissionSet(String name) { return false; }
+
+    @Override
+    public boolean isPermissionSet(org.bukkit.permissions.Permission perm) { return false; }
+
+    @Override
+    public boolean hasPermission(String name) { return true; }
+
+    @Override
+    public boolean hasPermission(org.bukkit.permissions.Permission perm) { return true; }
+
+    @Override
+    public org.bukkit.permissions.PermissionAttachment addAttachment(
+            org.bukkit.plugin.Plugin plugin, String name, boolean value) { return null; }
+
+    @Override
+    public org.bukkit.permissions.PermissionAttachment addAttachment(org.bukkit.plugin.Plugin plugin) { return null; }
+
+    @Override
+    public org.bukkit.permissions.PermissionAttachment addAttachment(
+            org.bukkit.plugin.Plugin plugin, String name, boolean value, int ticks) { return null; }
+
+    @Override
+    public org.bukkit.permissions.PermissionAttachment addAttachment(
+            org.bukkit.plugin.Plugin plugin, int ticks) { return null; }
+
+    @Override
+    public void removeAttachment(org.bukkit.permissions.PermissionAttachment attachment) { /* no-op */ }
+
+    @Override
+    public void recalculatePermissions() { /* no-op */ }
+
+    @Override
+    public java.util.Set<org.bukkit.permissions.PermissionAttachmentInfo> getEffectivePermissions() {
+        return java.util.Collections.emptySet();
+    }
+
     /**
      * Strip Bukkit-style colour codes ({@code §<any-char>}) from
      * {@code input}. Each {@code §} byte and the immediately following

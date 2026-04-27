@@ -77,6 +77,12 @@ public final class BukkitBridge {
         return adapter == null ? null : adapter.rd;
     }
 
+    /** @return the bridge's default {@link World}, or {@code null} if none is installed. */
+    public static World defaultWorld() {
+        BukkitServerAdapter adapter = installed;
+        return adapter == null ? null : adapter.defaultWorld;
+    }
+
     /** Bukkit-shaped server backed by an rd-api Server. */
     private static final class BukkitServerAdapter implements org.bukkit.Server {
 

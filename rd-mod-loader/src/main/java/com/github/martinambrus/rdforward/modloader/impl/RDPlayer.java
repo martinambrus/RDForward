@@ -66,4 +66,12 @@ public final class RDPlayer implements Player {
     public void kick(String reason) {
         player.disconnect();
     }
+
+    @Override
+    public java.net.InetSocketAddress getAddress() {
+        io.netty.channel.Channel ch = player.getChannel();
+        if (ch == null) return null;
+        java.net.SocketAddress addr = ch.remoteAddress();
+        return addr instanceof java.net.InetSocketAddress isa ? isa : null;
+    }
 }

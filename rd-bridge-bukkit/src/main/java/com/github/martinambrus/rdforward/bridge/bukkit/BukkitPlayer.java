@@ -88,6 +88,21 @@ public final class BukkitPlayer {
     private BukkitPlayer() {}
 
     public static Player create(String name) {
+        // Resolve the live rd-api backing (and the bridge's default world)
+        // so events fired by the host — PlayerJoinEvent, PlayerQuitEvent,
+        // PlayerMoveEvent, BlockBreakEvent, AsyncPlayerChatEvent — carry a
+        // Player whose isOnline()/getAddress()/getLocation() reflect the
+        // real session. Without this, plugins that gate logic on
+        // isOnline() (LoginSecurity's isInvalidPlayer check) skip the
+        // join handler and never set their per-player state, leading to
+        // null lookups later in the auth flow.
+        com.github.martinambrus.rdforward.api.server.Server rd = BukkitBridge.currentRdServer();
+        if (rd != null) {
+            com.github.martinambrus.rdforward.api.player.Player backing = rd.getPlayer(name);
+            if (backing != null) {
+                return create(name, backing, BukkitBridge.defaultWorld());
+            }
+        }
         return create(name, null, null);
     }
 
@@ -172,6 +187,8 @@ public final class BukkitPlayer {
                     return cachedUuid;
                 case "isOp":
                     return backing != null && backing.isOp();
+                case "getAddress":
+                    return backing == null ? null : backing.getAddress();
                 case "isBanned":
                 case "isWhitelisted":
                 case "hasPlayedBefore":

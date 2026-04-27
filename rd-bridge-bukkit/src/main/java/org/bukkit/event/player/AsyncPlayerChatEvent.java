@@ -11,9 +11,10 @@ import java.util.Set;
  * typed against {@code PlayerEvent} (LoginSecurity's
  * {@code PlayerListener.onPlayerChat}) verifies cleanly.
  */
-public class AsyncPlayerChatEvent extends PlayerEvent {
+public class AsyncPlayerChatEvent extends PlayerEvent implements org.bukkit.event.Cancellable {
 
     private String message;
+    private boolean cancelled;
 
     public AsyncPlayerChatEvent(Player player, String message) {
         super(player);
@@ -28,4 +29,7 @@ public class AsyncPlayerChatEvent extends PlayerEvent {
 
     public String getMessage() { return message; }
     public void setMessage(String message) { this.message = message; }
+
+    @Override public boolean isCancelled() { return cancelled; }
+    @Override public void setCancelled(boolean cancelled) { this.cancelled = cancelled; }
 }

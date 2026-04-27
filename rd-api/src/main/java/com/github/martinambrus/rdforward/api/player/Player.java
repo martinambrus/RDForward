@@ -27,6 +27,13 @@ public interface Player {
 
     void kick(String reason);
 
+    /**
+     * @return the remote socket address of this player's connection, or
+     *         {@code null} if unavailable (e.g. test fixtures, Bedrock
+     *         sessions without a Netty channel).
+     */
+    default java.net.InetSocketAddress getAddress() { return null; }
+
     /** True if this player's protocol supports the given capability. */
     default boolean supportsCapability(VersionCapability capability) {
         return capability != null && capability.isSupported(getProtocolVersion());

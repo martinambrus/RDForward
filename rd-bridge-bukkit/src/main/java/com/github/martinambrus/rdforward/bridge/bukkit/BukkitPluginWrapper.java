@@ -73,6 +73,23 @@ public final class BukkitPluginWrapper implements ServerMod {
             if (exec == null) continue;
             String name = cmd.getName();
             String description = cmd.getDescription() == null ? "" : cmd.getDescription();
+            // Warn on duplicate command claims so operators notice when
+            // two plugins fight over the same name (e.g. LoginSecurity +
+            // SimpleLogin both claim /login + /register). The rd-mod-loader
+            // CommandConflictResolver keeps the first claimant; the
+            // second plugin's handler is reachable only via its
+            // namespaced alias '<modId>:<name>'. If two auth plugins both
+            // claim /login, only one plugin's session will ever update,
+            // and the other will keep treating the player as
+            // unregistered — surfacing this in the log so operators know
+            // to disable one or set an explicit override.
+            if (registry.exists(name.toLowerCase())) {
+                LOG.warning("[BukkitBridge] Command '/" + name + "' already claimed by another plugin;"
+                        + " plugin '" + pluginName + "' will only be reachable via '/"
+                        + (pluginName == null ? "" : pluginName.toLowerCase()) + ":" + name + "'."
+                        + " If you need this plugin's handler to win, remove the other plugin or"
+                        + " set a command override.");
+            }
             registry.register(pluginName, name, description, ctx -> {
                 CommandSender sender = resolveSender(ctx.getSenderName(), ctx.isConsole());
                 try {
@@ -104,5 +121,19 @@ public final class BukkitPluginWrapper implements ServerMod {
         @Override public String getName() { return name; }
         @Override public void sendMessage(String message) { LOG.info("[" + name + "] " + message); }
         @Override public boolean isOp() { return false; }
+        @Override public void setOp(boolean op) {}
+        @Override public boolean isPermissionSet(String n) { return false; }
+        @Override public boolean isPermissionSet(org.bukkit.permissions.Permission p) { return false; }
+        @Override public boolean hasPermission(String n) { return false; }
+        @Override public boolean hasPermission(org.bukkit.permissions.Permission p) { return false; }
+        @Override public org.bukkit.permissions.PermissionAttachment addAttachment(org.bukkit.plugin.Plugin pl, String n, boolean v) { return null; }
+        @Override public org.bukkit.permissions.PermissionAttachment addAttachment(org.bukkit.plugin.Plugin pl) { return null; }
+        @Override public org.bukkit.permissions.PermissionAttachment addAttachment(org.bukkit.plugin.Plugin pl, String n, boolean v, int t) { return null; }
+        @Override public org.bukkit.permissions.PermissionAttachment addAttachment(org.bukkit.plugin.Plugin pl, int t) { return null; }
+        @Override public void removeAttachment(org.bukkit.permissions.PermissionAttachment a) {}
+        @Override public void recalculatePermissions() {}
+        @Override public java.util.Set<org.bukkit.permissions.PermissionAttachmentInfo> getEffectivePermissions() {
+            return java.util.Collections.emptySet();
+        }
     }
 }
