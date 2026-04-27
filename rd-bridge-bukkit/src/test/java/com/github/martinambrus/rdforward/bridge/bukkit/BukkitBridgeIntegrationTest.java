@@ -345,7 +345,14 @@ class BukkitBridgeIntegrationTest {
         assertNotNull(p);
         assertEquals("carol", p.getName());
         assertEquals(10.0, p.getLocation().getX());
-        assertEquals(64.0, p.getLocation().getY());
+        // Bukkit Player.getLocation() returns feet Y; rd-api Location
+        // stores eye-level Y (= feet + 1.62). The bridge subtracts the
+        // eye height so plugins reading getLocation().getY() see feet.
+        assertEquals(64.0 - 1.62f, p.getLocation().getY(), 1e-3);
+        // Bukkit yaw is 0=South; internal Classic yaw is 0=North. The
+        // bridge adds 180 (mod 360) so plugin ray-traces walk along
+        // the player's actual line of sight.
+        assertEquals((90f + 180f) % 360f, p.getLocation().getYaw(), 1e-3);
 
         Collection<Player> online = Bukkit.getOnlinePlayers();
         assertEquals(1, online.size());

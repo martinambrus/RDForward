@@ -30,13 +30,13 @@ class BukkitEventAdapterTest {
     @BeforeEach
     void clear() {
         ServerEvents.clearAll();
-        BukkitEventAdapter.resetWarnedPlugins();
+        BukkitEventAdapter.clearAll();
     }
 
     @AfterEach
     void clearAfter() {
         ServerEvents.clearAll();
-        BukkitEventAdapter.resetWarnedPlugins();
+        BukkitEventAdapter.clearAll();
     }
 
     static final class AllEventsListener implements Listener {

@@ -3,10 +3,13 @@ package com.github.martinambrus.rdforward.server.world;
 import com.github.martinambrus.rdforward.api.world.BlockType;
 import com.github.martinambrus.rdforward.api.world.BlockTypes;
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
+import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
 import com.github.martinambrus.rdforward.server.ServerWorld;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -96,6 +99,39 @@ class ServerWorldPolicyIntegrationTest {
         // VersionedBlockPolicyTest where we control the BlockType name.
         world.setBlock(5, 5, 5, (byte) BlockTypes.PLANKS.getId());
         assertEquals((byte) BlockTypes.PLANKS.getId(), world.getBlock(5, 5, 5));
+    }
+
+    @Test
+    void queueBlockChangeAppliesPolicyBeforeStorage() {
+        // RDWorld.setBlock(BlockType) -> queueBlockChange path. The
+        // tick loop drains via processPendingBlockChanges which must
+        // run the BlockPolicy too — otherwise plugin/mod writes
+        // bypass the chokepoint and unsupported blocks reach storage.
+        ServerWorld world = newWorld(64, 32, 64, "ruby");
+        world.setPolicy(new RubyDungBlockPolicy(20));
+        world.queueBlockChange(5, 10, 5, (byte) BlockTypes.PLANKS.getId());
+
+        List<SetBlockServerPacket> applied = world.processPendingBlockChanges();
+        assertEquals(1, applied.size(), "one change should drain");
+        // Coerced byte (cobble) is what's stored AND broadcast.
+        assertEquals(BlockTypes.COBBLE.getId(), applied.get(0).getBlockType());
+        assertEquals((byte) BlockTypes.COBBLE.getId(), world.getBlock(5, 10, 5));
+        assertTrue(BlockCoercionLog.hasLogged("ruby", BlockTypes.PLANKS));
+    }
+
+    @Test
+    void queueBlockChangePassesUnchangedBlocksThroughIdentityWorld() {
+        // Identity policy world: queue path stays a fast-path; coerced
+        // byte equals the requested byte and the SetBlockServerPacket
+        // carries that verbatim.
+        ServerWorld world = newWorld(64, 32, 64, "default");
+        world.queueBlockChange(5, 5, 5, (byte) BlockTypes.PLANKS.getId());
+
+        List<SetBlockServerPacket> applied = world.processPendingBlockChanges();
+        assertEquals(1, applied.size());
+        assertEquals(BlockTypes.PLANKS.getId(), applied.get(0).getBlockType());
+        assertEquals((byte) BlockTypes.PLANKS.getId(), world.getBlock(5, 5, 5));
+        assertFalse(BlockCoercionLog.hasLogged("default", BlockTypes.PLANKS));
     }
 
     private ServerWorld newWorld(int w, int h, int d, String name) {

@@ -178,11 +178,18 @@ public final class BukkitEventAdapter {
     }
 
     /** Test-only — clear every registered listener and dedup state so
-     *  successive tests boot cleanly. */
+     *  successive tests boot cleanly. The lazy single-installer guards
+     *  for PLAYER_JOIN / PLAYER_QUIT must also be reset, otherwise a
+     *  test that registered first leaves the AtomicBoolean=true and
+     *  later tests skip the dispatcher registration entirely (a real
+     *  CI failure: BukkitEventAdapterTest's join/quit assertions
+     *  passed in isolation but failed under the full module run). */
     public static void clearAll() {
         DIRECT.clear();
         SEEN_LISTENER_ERRORS.clear();
         warnedPlugins.clear();
+        PLAYER_JOIN_INSTALLED.set(false);
+        PLAYER_QUIT_INSTALLED.set(false);
     }
 
     private static boolean isCancellable(Class<?> evtType) {
