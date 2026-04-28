@@ -52,9 +52,14 @@ public final class RDServer implements Server {
         this.modManager = modManager;
     }
 
-    PlayerManager playerManager() { return delegate.getPlayerManager(); }
+    /** Public so {@code rd-bridge-bukkit} can reach the live
+     *  {@link PlayerManager} for cross-protocol broadcasts (notably
+     *  weather changes triggered through Bukkit's {@code World.setStorm}
+     *  / {@code setThundering}). Package-private was sufficient when only
+     *  intra-package adapters needed it. */
+    public PlayerManager playerManager() { return delegate.getPlayerManager(); }
     ChunkManager chunkManager() { return delegate.getChunkManager(); }
-    ServerWorld serverWorld() { return delegate.getWorld(); }
+    public ServerWorld serverWorld() { return delegate.getWorld(); }
 
     @Override
     public World getWorld() { return world; }

@@ -8,6 +8,15 @@ public interface LivingEntity extends org.bukkit.attribute.Attributable, org.buk
     org.bukkit.Location getEyeLocation();
     java.util.List getLineOfSight(java.util.Set arg0, int arg1);
     org.bukkit.block.Block getTargetBlock(java.util.Set arg0, int arg1);
+    /** Legacy pre-1.5 Bukkit signature using {@link java.util.HashSet}
+     *  rather than {@link java.util.Set}. JVM resolves by exact
+     *  descriptor: Essentials 2.8.x's {@code Commandbigtree} call site
+     *  has descriptor {@code (Ljava/util/HashSet;I)Lorg/bukkit/block/Block;},
+     *  which would {@link NoSuchMethodError} if only the {@code Set}
+     *  variant existed. Forwards to the {@code Set} overload. */
+    default org.bukkit.block.Block getTargetBlock(java.util.HashSet arg0, int arg1) {
+        return getTargetBlock((java.util.Set) arg0, arg1);
+    }
     default org.bukkit.block.Block getTargetBlock(int arg0) {
         com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.entity.LivingEntity.getTargetBlock(I)Lorg/bukkit/block/Block;");
         return null;

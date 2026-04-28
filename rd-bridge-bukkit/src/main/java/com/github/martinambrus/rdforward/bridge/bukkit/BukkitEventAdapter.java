@@ -121,8 +121,9 @@ public final class BukkitEventAdapter {
                 bindBlockBreak(listener, m, prio);
             } else if (evtType == BlockPlaceEvent.class) {
                 bindBlockPlace(listener, m, prio);
-            } else if (evtType == AsyncPlayerChatEvent.class) {
-                bindChat(listener, m, prio);
+            } else if (evtType == AsyncPlayerChatEvent.class
+                    || evtType == org.bukkit.event.player.PlayerChatEvent.class) {
+                bindChat(listener, m, prio, evtType);
             } else if (evtType == PlayerJoinEvent.class
                     || evtType == AsyncPlayerPreLoginEvent.class
                     || evtType == PlayerLoginEvent.class) {
@@ -197,6 +198,7 @@ public final class BukkitEventAdapter {
         return evtType == BlockBreakEvent.class
                 || evtType == BlockPlaceEvent.class
                 || evtType == AsyncPlayerChatEvent.class
+                || evtType == org.bukkit.event.player.PlayerChatEvent.class
                 || evtType == PlayerMoveEvent.class;
     }
 
@@ -239,11 +241,57 @@ public final class BukkitEventAdapter {
         ServerEvents.BLOCK_PLACE.register(prio, cb);
     }
 
-    private static void bindChat(Listener l, Method m, EventPriority prio) {
+    private static void bindChat(Listener l, Method m, EventPriority prio, Class<?> evtType) {
+        // Essentials 2.8.x's mute/format pipeline listens to the legacy
+        // {@link org.bukkit.event.player.PlayerChatEvent}; modern plugins
+        // listen to {@link AsyncPlayerChatEvent}. Fire whichever class
+        // the listener registered for so cancellations from either
+        // pipeline propagate back through {@code ServerEvents.CHAT}.
+        //
+        // For both event flavours we populate {@code getRecipients()} with
+        // the live online roster so plugin pipelines (Essentials's
+        // {@code /ignore}) can prune ignored players. After invoking the
+        // listener we diff the surviving recipient set against the
+        // original online set and forward the removed names — plus any
+        // {@code event.setMessage(...)} rewrite — through
+        // {@link com.github.martinambrus.rdforward.api.event.server.ChatContext}.
+        boolean legacy = evtType == org.bukkit.event.player.PlayerChatEvent.class;
         ChatCallback cb = (name, message) -> {
-            AsyncPlayerChatEvent ev = new AsyncPlayerChatEvent(BukkitPlayer.create(name), message);
-            invokeListener(l, m, ev);
-            return ev.isCancelled() ? EventResult.CANCEL : EventResult.PASS;
+            org.bukkit.entity.Player bukkitPlayer = BukkitPlayer.create(name);
+            org.bukkit.Server server = org.bukkit.Bukkit.getServer();
+            java.util.Set<org.bukkit.entity.Player> originalRecipients = new java.util.HashSet<>();
+            if (server != null) originalRecipients.addAll(server.getOnlinePlayers());
+
+            String finalMessage = message;
+            boolean cancelled;
+            java.util.Set<org.bukkit.entity.Player> survivingRecipients;
+            if (legacy) {
+                org.bukkit.event.player.PlayerChatEvent ev =
+                        new org.bukkit.event.player.PlayerChatEvent(bukkitPlayer, message);
+                ev.getRecipients().addAll(originalRecipients);
+                invokeListener(l, m, ev);
+                cancelled = ev.isCancelled();
+                finalMessage = ev.getMessage();
+                survivingRecipients = ev.getRecipients();
+            } else {
+                AsyncPlayerChatEvent ev = new AsyncPlayerChatEvent(bukkitPlayer, message);
+                ev.getRecipients().addAll(originalRecipients);
+                invokeListener(l, m, ev);
+                cancelled = ev.isCancelled();
+                finalMessage = ev.getMessage();
+                survivingRecipients = ev.getRecipients();
+            }
+            com.github.martinambrus.rdforward.api.event.server.ChatContext ctx =
+                    com.github.martinambrus.rdforward.api.event.server.ChatContext.current();
+            if (ctx != null) {
+                if (finalMessage != null) ctx.setMessage(finalMessage);
+                for (org.bukkit.entity.Player p : originalRecipients) {
+                    if (!survivingRecipients.contains(p)) {
+                        ctx.excluded().add(p.getName());
+                    }
+                }
+            }
+            return cancelled ? EventResult.CANCEL : EventResult.PASS;
         };
         ServerEvents.CHAT.register(prio, cb);
     }

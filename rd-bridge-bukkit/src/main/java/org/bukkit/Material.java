@@ -27,7 +27,63 @@ public enum Material {
     OAK_LOG(17),
     OAK_LEAVES(18),
     GLASS(20),
-    TNT(46);
+    TNT(46),
+    /* ---- Pre-Flattening (1.7.x) aliases. Declared AFTER the canonical
+     *  modern entries so {@link #getMaterial(int)} resolves shared
+     *  legacyIds (e.g. id 6) to the modern name. Each alias exists so
+     *  legacy plugins (Essentials 2.8.x's {@code Util.<clinit>}) can
+     *  resolve them as static fields without {@link NoSuchFieldError}.
+     *  None of these need to map to a real RDForward block — unmapped
+     *  cases fall through to {@link
+     *  com.github.martinambrus.rdforward.api.world.BlockTypes#AIR} via
+     *  {@link com.github.martinambrus.rdforward.bridge.bukkit.MaterialMapper}.
+     *  ---- */
+    SAPLING(6),
+    STATIONARY_WATER(9),
+    STATIONARY_LAVA(11),
+    BED(26),
+    POWERED_RAIL(27),
+    DETECTOR_RAIL(28),
+    LONG_GRASS(31),
+    DEAD_BUSH(32),
+    YELLOW_FLOWER(37),
+    RED_ROSE(38),
+    BROWN_MUSHROOM(39),
+    RED_MUSHROOM(40),
+    STEP(44),
+    TORCH(50),
+    FIRE(51),
+    REDSTONE_WIRE(55),
+    SIGN_POST(63),
+    WOODEN_DOOR(64),
+    LADDER(65),
+    RAILS(66),
+    WALL_SIGN(68),
+    LEVER(69),
+    STONE_PLATE(70),
+    IRON_DOOR_BLOCK(71),
+    WOOD_PLATE(72),
+    REDSTONE_TORCH_OFF(75),
+    REDSTONE_TORCH_ON(76),
+    STONE_BUTTON(77),
+    SUGAR_CANE_BLOCK(83),
+    CAKE(92),
+    DIODE_BLOCK_OFF(93),
+    DIODE_BLOCK_ON(94),
+    TRAP_DOOR(96),
+    PUMPKIN_STEM(104),
+    MELON_STEM(105),
+    VINE(106),
+    WATER_LILY(111),
+    NETHER_WARTS(115),
+    SEEDS(295),
+    SIGN(323),
+    WOOD_DOOR(324),
+    IRON_DOOR(330),
+    REDSTONE(331),
+    DIODE(356),
+    PUMPKIN_SEEDS(361),
+    MELON_SEEDS(362);
 
     private final int legacyId;
     Material(int legacyId) { this.legacyId = legacyId; }

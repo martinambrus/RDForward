@@ -314,6 +314,19 @@ public final class BukkitPlayer {
                 case "getAddress":
                     return backing == null ? null : backing.getAddress();
                 case "isBanned":
+                    return com.github.martinambrus.rdforward.server.api.BanManager.isPlayerBanned(name);
+                case "setBanned":
+                    // Legacy CB-1.x mutator used by Essentials's /ban
+                    // pipeline. Routes to the rd-server ban list which
+                    // also gates future logins via the kick check.
+                    if (argc >= 1 && args[0] instanceof Boolean banned) {
+                        if (banned) {
+                            com.github.martinambrus.rdforward.server.api.BanManager.banPlayer(name);
+                        } else {
+                            com.github.martinambrus.rdforward.server.api.BanManager.unbanPlayer(name);
+                        }
+                    }
+                    return null;
                 case "isWhitelisted":
                 case "hasPlayedBefore":
                 case "isInvulnerable":
@@ -321,6 +334,15 @@ public final class BukkitPlayer {
                     return false;
                 case "getPlayer":
                     return self;
+                case "getServer":
+                    // Real Bukkit's Player extends ServerOperator whose
+                    // getServer() returns the running Bukkit server.
+                    // Essentials's UserData.getHome path calls
+                    // player.getServer() and passes it into
+                    // EssentialsConf.getLocation; without this case the
+                    // proxy default-fills null and Essentials NPEs with
+                    // 'because "server" is null'.
+                    return org.bukkit.Bukkit.getServer();
                 case "hasPermission":
                     return checkPermission(self, args);
                 case "isPermissionSet":
@@ -356,6 +378,10 @@ public final class BukkitPlayer {
                     return PLAYER_EYE_HEIGHT;
                 case "teleport":
                     return doTeleport(args);
+                case "getTargetBlock":
+                    // Pre-1.5 (HashSet) and modern (Set, int) overloads both
+                    // route here. Last argument is the max scan distance.
+                    return doGetTargetBlock(args);
             }
 
             // Messaging / kicking
@@ -566,13 +592,71 @@ public final class BukkitPlayer {
             return null;
         }
 
+        /** Walk the player's line-of-sight one block at a time and
+         *  return the first non-AIR block (or null if the scan reaches
+         *  {@code maxDistance} without hitting one). The block-id
+         *  ignore-set is honoured: any block whose legacy id appears
+         *  there is treated as transparent. RDForward only models a
+         *  handful of materials (see {@link MaterialMapper}) so the
+         *  raycast is coarse — sufficient for Essentials's {@code
+         *  /bigtree} target lookup but not for precision plugins. */
+        private Object doGetTargetBlock(Object[] args) {
+            if (backing == null || world == null || args == null || args.length < 2) return null;
+            int maxDistance = args[1] instanceof Integer i ? i.intValue() : 100;
+            if (maxDistance <= 0) return null;
+            java.util.Set<Integer> ignoreIds = collectIgnoreIds(args[0]);
+
+            com.github.martinambrus.rdforward.api.world.Location eye = backing.getLocation();
+            if (eye == null) return null;
+            float yaw = classicYawToBukkit(eye.yaw());
+            float pitch = eye.pitch();
+            // Bukkit look-vector convention: yaw=0 faces +Z (south), pitch up
+            // is negative. Sin/cos use radians.
+            double yawRad = Math.toRadians(yaw);
+            double pitchRad = Math.toRadians(pitch);
+            double cosPitch = Math.cos(pitchRad);
+            double dx = -cosPitch * Math.sin(yawRad);
+            double dy = -Math.sin(pitchRad);
+            double dz =  cosPitch * Math.cos(yawRad);
+
+            for (int step = 1; step <= maxDistance; step++) {
+                int bx = (int) Math.floor(eye.x() + dx * step);
+                int by = (int) Math.floor(eye.y() + dy * step);
+                int bz = (int) Math.floor(eye.z() + dz * step);
+                org.bukkit.block.Block b = world.getBlockAt(bx, by, bz);
+                if (b == null) continue;
+                org.bukkit.Material type = b.getType();
+                if (type == org.bukkit.Material.AIR) continue;
+                if (!ignoreIds.isEmpty() && ignoreIds.contains(type.getId())) continue;
+                return b;
+            }
+            return null;
+        }
+
+        /** Pre-1.5 Bukkit's {@code getTargetBlock} took a {@code HashSet<Byte>}
+         *  of legacy block ids. Modern Bukkit takes {@code Set<Material>}.
+         *  Normalise either form into a set of integer ids. */
+        private static java.util.Set<Integer> collectIgnoreIds(Object raw) {
+            java.util.Set<Integer> out = new java.util.HashSet<>();
+            if (!(raw instanceof java.util.Collection<?> c)) return out;
+            for (Object o : c) {
+                if (o instanceof Number n) out.add(n.intValue());
+                else if (o instanceof org.bukkit.Material mat) out.add(mat.getId());
+            }
+            return out;
+        }
+
         private Object doTeleport(Object[] args) {
             if (backing == null || args == null || args.length == 0 || !(args[0] instanceof Location loc)) {
                 return false;
             }
+            // Bukkit Location Y is feet-level; rd-api teleport expects
+            // eye-level (feet + 1.62). Without this offset the player
+            // arrives 1.62 blocks below the requested spot — Essentials
+            // /warp lands the player buried in the ground.
             backing.teleport(new com.github.martinambrus.rdforward.api.world.Location(
                     loc.getWorld() == null ? null : loc.getWorld().getName(),
-                    loc.getX(), loc.getY(), loc.getZ(),
+                    loc.getX(), loc.getY() + PLAYER_EYE_HEIGHT, loc.getZ(),
                     loc.getYaw(), loc.getPitch()));
             return true;
         }

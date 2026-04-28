@@ -143,7 +143,26 @@ public class MemorySection implements ConfigurationSection {
     public Object get(String path) {
         String key = resolve(path);
         Object v = values.get(key);
-        return v != null ? v : defaults.get(key);
+        if (v != null) return v;
+        Object d = defaults.get(key);
+        if (d != null) return d;
+        // No direct value at {@code key}, but the path may name a
+        // sub-section (e.g. "homes" when the flat map carries
+        // "homes.home.world" / "homes.home.x" / ...). Real Bukkit's
+        // {@code MemorySection.get} returns the section in that case,
+        // and Essentials's {@code UserData._getHomes} relies on
+        // {@code getConfigurationSection("homes").getValues(false)}
+        // returning a non-empty Map — without this, /home reports
+        // "no homes set" even when the YAML has them.
+        if (key == null || key.isEmpty()) return null;
+        String dotPfx = key + ".";
+        for (String k : values.keySet()) {
+            if (k.startsWith(dotPfx)) return new MemorySection(this, key);
+        }
+        for (String k : defaults.keySet()) {
+            if (k.startsWith(dotPfx)) return new MemorySection(this, key);
+        }
+        return null;
     }
     public Object get(String path, Object def) {
         Object v = get(path);

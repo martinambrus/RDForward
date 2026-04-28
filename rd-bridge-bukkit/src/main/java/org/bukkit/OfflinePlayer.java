@@ -9,6 +9,15 @@ public interface OfflinePlayer extends org.bukkit.permissions.ServerOperator, or
     java.util.UUID getUniqueId();
     com.destroystokyo.paper.profile.PlayerProfile getPlayerProfile();
     boolean isBanned();
+    /**
+     * Legacy CB-1.x ban mutator. Essentials's /ban routes here for both
+     * online and offline targets. Declared abstract so the BukkitPlayer
+     * ByteBuddy proxy (which only routes {@code isAbstract()} methods
+     * through its interceptor) and the ServerSupport offline JDK proxy
+     * both forward to {@code BanManager}; a default body would skip the
+     * ByteBuddy interception path.
+     */
+    void setBanned(boolean banned);
     default org.bukkit.BanEntry banPlayer(java.lang.String arg0) {
         com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.OfflinePlayer.banPlayer(Ljava/lang/String;)Lorg/bukkit/BanEntry;");
         return null;

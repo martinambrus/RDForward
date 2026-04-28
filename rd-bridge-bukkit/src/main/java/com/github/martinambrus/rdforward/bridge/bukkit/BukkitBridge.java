@@ -83,6 +83,35 @@ public final class BukkitBridge {
         return new java.util.ArrayList<>(loadedPlugins.values());
     }
 
+    /**
+     * Lookup helper for {@link org.bukkit.Server#getPluginCommand(String)}.
+     * Scans every loaded plugin's command map for a matching name or
+     * alias, case-insensitive. Lives here (rather than inline in the
+     * Server default) so it can be unit-tested without instantiating
+     * the Server interface — at runtime the patched legacy stub adds
+     * a covariant {@code getOnlinePlayers} that breaks JDK-Proxy-based
+     * test scaffolding.
+     */
+    public static org.bukkit.command.PluginCommand findPluginCommand(String name) {
+        if (name == null) return null;
+        String key = name.toLowerCase(java.util.Locale.ROOT);
+        for (JavaPlugin plugin : loadedPlugins.values()) {
+            java.util.Map<String, org.bukkit.command.PluginCommand> map = plugin.getCommandMap();
+            org.bukkit.command.PluginCommand direct = map.get(key);
+            if (direct != null) return direct;
+            for (org.bukkit.command.PluginCommand pc : map.values()) {
+                if (key.equalsIgnoreCase(pc.getName())) return pc;
+                java.util.List<String> aliases = pc.getAliases();
+                if (aliases != null) {
+                    for (String alias : aliases) {
+                        if (key.equalsIgnoreCase(alias)) return pc;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
     /** Install a Bukkit server facade backed by {@code rdServer}. */
     public static synchronized void install(Server rdServer) {
         if (installed != null) return;

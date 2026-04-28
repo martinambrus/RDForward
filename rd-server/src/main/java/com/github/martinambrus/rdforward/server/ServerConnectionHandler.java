@@ -412,11 +412,16 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
         }
 
         // Fire cancellable chat event
-        EventResult result = ServerEvents.CHAT.invoker().onChat(player.getUsername(), message);
-        if (result == EventResult.CANCEL) return;
+        try (com.github.martinambrus.rdforward.api.event.server.ChatContext chatCtx =
+                     com.github.martinambrus.rdforward.api.event.server.ChatContext.begin(message)) {
+            EventResult result = ServerEvents.CHAT.invoker().onChat(player.getUsername(), message);
+            if (result == EventResult.CANCEL) return;
 
-        System.out.println("[Chat] " + player.getUsername() + ": " + message);
-        playerManager.broadcastChat(player.getPlayerId(), player.getUsername() + ": " + message);
+            String finalMsg = chatCtx.message() != null ? chatCtx.message() : message;
+            System.out.println("[Chat] " + player.getUsername() + ": " + finalMsg);
+            playerManager.broadcastChat(player.getPlayerId(),
+                    player.getUsername() + ": " + finalMsg, chatCtx.excluded());
+        }
     }
 
     @Override

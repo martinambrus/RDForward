@@ -142,6 +142,10 @@ dependencies {
     // 'perm' actually targets a real superclass field) while still
     // implementing the Bukkit Player interface contract.
     implementation 'net.bytebuddy:byte-buddy:1.17.5'
+    // ASM for plugin bytecode rewriting (legacy-Guava compatibility shim).
+    implementation 'org.ow2.asm:asm:9.9.1'
+    implementation 'org.ow2.asm:asm-tree:9.9.1'
+    implementation 'org.ow2.asm:asm-commons:9.9.1'
 
     // compileOnly: libraries referenced in paper-api signatures that the
     // runtime server ships itself. Bundling them here would duplicate state

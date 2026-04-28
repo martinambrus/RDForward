@@ -43,7 +43,7 @@ public final class BukkitPluginLoader {
      */
     public static LoadedPlugin load(Path jarPath, ClassLoader parent) throws IOException, ReflectiveOperationException {
         URL[] urls = { jarPath.toUri().toURL() };
-        URLClassLoader classLoader = new URLClassLoader(urls, parent);
+        URLClassLoader classLoader = new com.github.martinambrus.rdforward.bridge.bukkit.compat.LegacyPluginClassLoader(urls, parent);
         BukkitPluginDescriptor bukkit;
         try (InputStream in = classLoader.getResourceAsStream("plugin.yml")) {
             if (in == null) {

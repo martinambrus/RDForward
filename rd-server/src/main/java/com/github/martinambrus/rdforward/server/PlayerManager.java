@@ -329,8 +329,30 @@ public class PlayerManager {
      * into multiple chat packets so legacy clients don't disconnect.
      */
     public void broadcastChat(byte senderId, String message) {
-        for (String chunk : splitChatMessage(message)) {
-            broadcastPacket(new MessagePacket(senderId, chunk));
+        broadcastChat(senderId, message, java.util.Set.of());
+    }
+
+    /**
+     * Broadcast variant that skips delivery to any player whose
+     * username appears in {@code excludedUsernames}. Used by the chat
+     * pipeline for plugin-driven recipient filtering — e.g. Essentials's
+     * {@code /ignore} populates the exclusion via
+     * {@link com.github.martinambrus.rdforward.api.event.server.ChatContext}.
+     */
+    public void broadcastChat(byte senderId, String message,
+                              java.util.Set<String> excludedUsernames) {
+        if (excludedUsernames == null || excludedUsernames.isEmpty()) {
+            for (String chunk : splitChatMessage(message)) {
+                broadcastPacket(new MessagePacket(senderId, chunk));
+            }
+            return;
+        }
+        java.util.List<String> chunks = splitChatMessage(message);
+        for (ConnectedPlayer cp : playersById.values()) {
+            if (excludedUsernames.contains(cp.getUsername())) continue;
+            for (String chunk : chunks) {
+                cp.sendPacket(new MessagePacket(senderId, chunk));
+            }
         }
     }
 

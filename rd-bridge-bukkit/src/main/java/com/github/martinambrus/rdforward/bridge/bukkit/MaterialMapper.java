@@ -19,16 +19,15 @@ public final class MaterialMapper {
     public static BlockType toApi(Material material) {
         if (material == null) return BlockTypes.AIR;
         return switch (material) {
-            case AIR          -> BlockTypes.AIR;
             case STONE        -> BlockTypes.STONE;
             case GRASS_BLOCK  -> BlockTypes.GRASS;
             case DIRT         -> BlockTypes.DIRT;
             case COBBLESTONE  -> BlockTypes.COBBLE;
             case OAK_PLANKS   -> BlockTypes.PLANKS;
-            case OAK_SAPLING  -> BlockTypes.SAPLING;
+            case OAK_SAPLING, SAPLING -> BlockTypes.SAPLING;
             case BEDROCK      -> BlockTypes.BEDROCK;
-            case WATER        -> BlockTypes.WATER;
-            case LAVA         -> BlockTypes.LAVA;
+            case WATER, STATIONARY_WATER -> BlockTypes.WATER;
+            case LAVA, STATIONARY_LAVA   -> BlockTypes.LAVA;
             case SAND         -> BlockTypes.SAND;
             case GRAVEL       -> BlockTypes.GRAVEL;
             case GOLD_ORE     -> BlockTypes.GOLD_ORE;
@@ -38,6 +37,11 @@ public final class MaterialMapper {
             case OAK_LEAVES   -> BlockTypes.LEAVES;
             case GLASS        -> BlockTypes.GLASS;
             case TNT          -> BlockTypes.TNT;
+            // Pre-Flattening aliases and item-only Materials that
+            // RDForward does not surface as blocks fall through to AIR
+            // — Essentials's static-init lookups round-trip through the
+            // enum without needing a real BlockType target.
+            default           -> BlockTypes.AIR;
         };
     }
 

@@ -877,6 +877,12 @@ public class ServerWorld {
 
     public WeatherState getWeather() { return weather; }
 
+    /** @return ticks remaining on the current weather state, or 0 when
+     *  the state is indefinite. Read by the Bukkit bridge so plugins
+     *  observing {@code World.getWeatherDuration} / {@code
+     *  getThunderDuration} see live values instead of zero. */
+    public int getWeatherDuration() { return weatherDuration; }
+
     public void setWeather(WeatherState state, int durationTicks) {
         this.weather = state;
         this.weatherDuration = durationTicks;

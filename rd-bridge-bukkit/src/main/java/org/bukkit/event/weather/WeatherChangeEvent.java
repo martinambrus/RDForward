@@ -1,27 +1,42 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package org.bukkit.event.weather;
 
-/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
+/**
+ * Bukkit's {@code WeatherChangeEvent}. Fired by
+ * {@code BukkitWorldAdapter.setStorm} before any actual state change so
+ * plugin listeners can veto via {@link #setCancelled(boolean)}.
+ */
 @SuppressWarnings({"unchecked", "rawtypes", "unused"})
-public class WeatherChangeEvent extends org.bukkit.event.weather.WeatherEvent implements org.bukkit.event.Cancellable {
-    public WeatherChangeEvent(org.bukkit.World arg0, boolean arg1, org.bukkit.event.weather.WeatherChangeEvent$Cause arg2) { super((org.bukkit.World) null); }
-    public WeatherChangeEvent(org.bukkit.World arg0, boolean arg1) { super((org.bukkit.World) null); }
-    public WeatherChangeEvent() { super((org.bukkit.World) null); }
-    public boolean toWeatherState() {
-        return false;
+public class WeatherChangeEvent extends WeatherEvent implements org.bukkit.event.Cancellable {
+
+    private final boolean to;
+    private final WeatherChangeEvent$Cause cause;
+    private boolean cancelled;
+
+    public WeatherChangeEvent(org.bukkit.World world, boolean to, WeatherChangeEvent$Cause cause) {
+        super(world);
+        this.to = to;
+        this.cause = cause;
     }
-    public org.bukkit.event.weather.WeatherChangeEvent$Cause getCause() {
-        return null;
+
+    public WeatherChangeEvent(org.bukkit.World world, boolean to) {
+        this(world, to, null);
     }
-    public boolean isCancelled() {
-        return false;
+
+    public WeatherChangeEvent() {
+        super(null);
+        this.to = false;
+        this.cause = null;
     }
-    public void setCancelled(boolean arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.event.weather.WeatherChangeEvent.setCancelled(Z)V");
-    }
-    public org.bukkit.event.HandlerList getHandlers() {
-        return null;
-    }
-    public static org.bukkit.event.HandlerList getHandlerList() {
-        return null;
-    }
+
+    /** @return target weather state — {@code true} for stormy, {@code false} for clear. */
+    public boolean toWeatherState() { return to; }
+
+    public WeatherChangeEvent$Cause getCause() { return cause; }
+
+    @Override public boolean isCancelled() { return cancelled; }
+    @Override public void setCancelled(boolean cancelled) { this.cancelled = cancelled; }
+
+    public org.bukkit.event.HandlerList getHandlers() { return null; }
+    public static org.bukkit.event.HandlerList getHandlerList() { return null; }
 }

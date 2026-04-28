@@ -916,11 +916,16 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
             return PacketSignal.HANDLED;
         }
 
-        EventResult result = ServerEvents.CHAT.invoker().onChat(player.getUsername(), message);
-        if (result == EventResult.CANCEL) return PacketSignal.HANDLED;
+        try (com.github.martinambrus.rdforward.api.event.server.ChatContext ctx =
+                     com.github.martinambrus.rdforward.api.event.server.ChatContext.begin(message)) {
+            EventResult result = ServerEvents.CHAT.invoker().onChat(player.getUsername(), message);
+            if (result == EventResult.CANCEL) return PacketSignal.HANDLED;
 
-        System.out.println("[Chat] " + player.getUsername() + ": " + message);
-        playerManager.broadcastChat(player.getPlayerId(), player.getUsername() + ": " + message);
+            String finalMsg = ctx.message() != null ? ctx.message() : message;
+            System.out.println("[Chat] " + player.getUsername() + ": " + finalMsg);
+            playerManager.broadcastChat(player.getPlayerId(),
+                    player.getUsername() + ": " + finalMsg, ctx.excluded());
+        }
 
         return PacketSignal.HANDLED;
     }

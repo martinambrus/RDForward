@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -97,9 +98,9 @@ public final class ModLoader {
                         c.setBridgeKind(kind);
                         discovered.add(c);
                         preloadedBridges.put(loaded.descriptor().id(), loaded);
-                    } catch (Exception e) {
-                        LOG.severe("[ModLoader] " + kind + " bridge failed to load "
-                                + jar.getFileName() + ": " + e.getMessage());
+                    } catch (Throwable e) {
+                        LOG.log(Level.SEVERE, "[ModLoader] " + kind + " bridge failed to load "
+                                + jar.getFileName() + ": " + e, e);
                     }
                 }
             }
@@ -119,9 +120,9 @@ public final class ModLoader {
                     instantiate(c);
                 }
                 globalContainersById.put(c.id(), c);
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 c.fail(e);
-                LOG.severe("[ModLoader] failed to load " + c.id() + ": " + e.getMessage());
+                LOG.log(Level.SEVERE, "[ModLoader] failed to load " + c.id() + ": " + e, e);
             }
         }
 

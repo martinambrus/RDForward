@@ -39,6 +39,22 @@ public interface Server {
     Player getPlayer(String name);
 
     /**
+     * @return an {@link OfflinePlayer} for {@code name}. If a player by
+     *         this name is currently online, returns that {@link Player}
+     *         (which IS-A {@link OfflinePlayer}). Otherwise returns a
+     *         minimal stub with name and a deterministic offline-mode
+     *         UUID — Essentials's {@code OfflinePlayer.<init>} and
+     *         similar legacy callers only read the name + UUID, so the
+     *         stub satisfies the symbolic link without forcing us to
+     *         model a full offline-player store.
+     */
+    default OfflinePlayer getOfflinePlayer(String name) {
+        Player online = getPlayer(name);
+        if (online != null) return online;
+        return ServerSupport.offlinePlayerStub(name);
+    }
+
+    /**
      * @return the online player with the given offline-mode UUID, or
      *         {@code null} if none. LuckPerms's {@code
      *         LPBukkitBootstrap.isPlayerOnline} calls this every time
@@ -55,6 +71,42 @@ public interface Server {
 
     /** @return every online player, never null. */
     Collection<Player> getOnlinePlayers();
+
+    /**
+     * @return every online player whose name starts with {@code partial}
+     *         (case-insensitive). Real Bukkit returns an exact match
+     *         alone if one is found; otherwise every prefix match.
+     *         Essentials's {@code Commandmute} resolves the target name
+     *         through this and {@link NoSuchMethodError}s without it.
+     */
+    default List<Player> matchPlayer(String partial) {
+        List<Player> matches = new java.util.ArrayList<>();
+        if (partial == null) return matches;
+        String needle = partial.toLowerCase(java.util.Locale.ROOT);
+        Player exact = null;
+        for (Player p : getOnlinePlayers()) {
+            if (p == null) continue;
+            String n = p.getName();
+            if (n == null) continue;
+            String low = n.toLowerCase(java.util.Locale.ROOT);
+            if (low.equals(needle)) { exact = p; break; }
+            if (low.startsWith(needle)) matches.add(p);
+        }
+        if (exact != null) {
+            matches.clear();
+            matches.add(exact);
+        }
+        return matches;
+    }
+
+    /**
+     * @return the configured max-player slot count. Bukkit plugins use
+     *         this for capacity reporting (Essentials's {@code /list}
+     *         output, MOTD slot fields). Default mirrors RDForward's
+     *         {@code ServerProperties} default; concrete adapters
+     *         override to read the live setting.
+     */
+    default int getMaxPlayers() { return 128; }
 
     /** @return every world the server hosts. RDForward ships a single world. */
     List<World> getWorlds();
@@ -97,4 +149,17 @@ public interface Server {
      *         plugin messaging pipeline.
      */
     default Messenger getMessenger() { return ServerSupport.MESSENGER; }
+
+    /**
+     * Look up a {@link org.bukkit.command.PluginCommand} by name or
+     * alias across all loaded plugins. Essentials's {@code /sudo} routes
+     * forced commands through this — if the lookup fails the sudo errors
+     * out without dispatching.
+     *
+     * @return the matching {@link org.bukkit.command.PluginCommand}, or
+     *         {@code null} when no plugin owns a command by that name.
+     */
+    default org.bukkit.command.PluginCommand getPluginCommand(String name) {
+        return com.github.martinambrus.rdforward.bridge.bukkit.BukkitBridge.findPluginCommand(name);
+    }
 }

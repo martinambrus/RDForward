@@ -48,10 +48,103 @@ public interface World {
 
     int getMaxHeight();
 
+    /**
+     * @return Y of the highest non-air block at column ({@code x},
+     *         {@code z}), or 0 if the column is empty. Essentials's
+     *         {@code Commandtop} reads this to find the safe-spawn Y
+     *         above the player's column. Default scans from
+     *         {@link #getMaxHeight()} down — concrete adapters may
+     *         override with a heightmap lookup if available.
+     */
+    default int getHighestBlockYAt(int x, int z) {
+        for (int y = getMaxHeight() - 1; y >= 0; y--) {
+            org.bukkit.block.Block b = getBlockAt(x, y, z);
+            if (b != null && b.getType() != Material.AIR) return y;
+        }
+        return 0;
+    }
+
     long getTime();
 
     /** Noop for RDForward — surfaced so plugins that toggle time of day compile. */
     void setTime(long time);
+
+    /**
+     * Place a small tree (5-block trunk of {@link Material#OAK_LOG} +
+     * 3x3x2 canopy of {@link Material#OAK_LEAVES}) at {@code loc}.
+     * Real Bukkit grows species-specific trees per {@link TreeType};
+     * RDForward only models OAK_LOG / OAK_LEAVES so every species
+     * collapses to the same shape — sufficient for Essentials's
+     * {@code /tree} / {@code /bigtree} commands. Returns whether any
+     * blocks were actually placed.
+     *
+     * <p>Bukkit's {@code Commandbigtree} call site has descriptor
+     * {@code (Lorg/bukkit/Location;Lorg/bukkit/TreeType;)Z} — this is
+     * the pre-1.5 two-arg shape, distinct from the modern
+     * {@code (Location, Random, TreeType)} variant on
+     * {@link RegionAccessor}.
+     */
+    default boolean generateTree(Location loc, TreeType type) {
+        if (loc == null) return false;
+        int bx = loc.getBlockX();
+        int by = loc.getBlockY();
+        int bz = loc.getBlockZ();
+        boolean placed = false;
+        for (int i = 0; i < 5; i++) {
+            placed |= setBlockType(bx, by + i, bz, Material.OAK_LOG);
+        }
+        int top = by + 4;
+        for (int dx = -2; dx <= 2; dx++) {
+            for (int dz = -2; dz <= 2; dz++) {
+                for (int dy = 0; dy <= 1; dy++) {
+                    if (dx == 0 && dz == 0 && dy == 0) continue;
+                    if (Math.abs(dx) == 2 && Math.abs(dz) == 2) continue;
+                    placed |= setBlockType(bx + dx, top + dy, bz + dz, Material.OAK_LEAVES);
+                }
+            }
+        }
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) continue;
+                placed |= setBlockType(bx + dx, top + 2, bz + dz, Material.OAK_LEAVES);
+            }
+        }
+        return placed;
+    }
+
+    /* ---- Weather. RDForward has no weather model; getters report
+     *  clear conditions, setters are no-ops, durations stay at zero.
+     *  Essentials's {@code Commandweather} touches all six on every
+     *  invocation. ---- */
+    default boolean hasStorm() { return false; }
+    default void setStorm(boolean storm) {}
+    default int getWeatherDuration() { return 0; }
+    default void setWeatherDuration(int duration) {}
+    default boolean isThundering() { return false; }
+    default void setThundering(boolean thundering) {}
+    default int getThunderDuration() { return 0; }
+    default void setThunderDuration(int duration) {}
+
+    /**
+     * @return the world's spawn point as a {@link Location}. Default is
+     *         a fallback at (0, maxHeight, 0); concrete adapters
+     *         (notably {@link
+     *         com.github.martinambrus.rdforward.bridge.bukkit.BukkitWorldAdapter})
+     *         override to surface the real chunk-aligned spawn from the
+     *         backing rd-api World. Essentials's home-fallback path calls
+     *         this when no per-user home is set.
+     */
+    default Location getSpawnLocation() {
+        return new Location(this, 0d, getMaxHeight(), 0d, 0f, 0f);
+    }
+
+    /** @return cumulative world age in ticks. Bukkit defines
+     *  {@link #getTime()} as the day-cycle time (modulo 24000) and
+     *  {@code getFullTime()} as the monotonic world age. RDForward
+     *  models a single static-time world, so the same backing tick
+     *  counter satisfies both — Essentials's {@code KeywordReplacer}
+     *  reads it for the {@code @TIME} keyword. */
+    default long getFullTime() { return getTime(); }
 
     /** @return {@link World$Environment#NORMAL}. RDForward only models a
      *  single overworld dimension, but LuckPerms's
