@@ -23,7 +23,7 @@ public final class MaterialMapper {
             case GRASS_BLOCK  -> BlockTypes.GRASS;
             case DIRT         -> BlockTypes.DIRT;
             case COBBLESTONE  -> BlockTypes.COBBLE;
-            case OAK_PLANKS   -> BlockTypes.PLANKS;
+            case OAK_PLANKS, WOOD -> BlockTypes.PLANKS;
             case OAK_SAPLING, SAPLING -> BlockTypes.SAPLING;
             case BEDROCK      -> BlockTypes.BEDROCK;
             case WATER, STATIONARY_WATER -> BlockTypes.WATER;
@@ -33,8 +33,8 @@ public final class MaterialMapper {
             case GOLD_ORE     -> BlockTypes.GOLD_ORE;
             case IRON_ORE     -> BlockTypes.IRON_ORE;
             case COAL_ORE     -> BlockTypes.COAL_ORE;
-            case OAK_LOG      -> BlockTypes.WOOD;
-            case OAK_LEAVES   -> BlockTypes.LEAVES;
+            case OAK_LOG, LOG -> BlockTypes.WOOD;
+            case OAK_LEAVES, LEAVES -> BlockTypes.LEAVES;
             case GLASS        -> BlockTypes.GLASS;
             case TNT          -> BlockTypes.TNT;
             // Pre-Flattening aliases and item-only Materials that
