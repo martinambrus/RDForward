@@ -39,6 +39,20 @@ public interface Server {
     Player getPlayer(String name);
 
     /**
+     * @return the online player whose name exactly matches {@code name}
+     *         (case-insensitive), or {@code null} if none. Real Bukkit's
+     *         {@code getPlayer(String)} is a fuzzy prefix match while
+     *         {@code getPlayerExact} requires an exact name; rd-api's
+     *         {@code getPlayer(String)} is already exact-match, so this
+     *         delegates. Essentials's {@code /s} / {@code /sudo} target
+     *         lookup throws {@link NoSuchMethodError} on every invocation
+     *         without this method.
+     */
+    default Player getPlayerExact(String name) {
+        return getPlayer(name);
+    }
+
+    /**
      * @return an {@link OfflinePlayer} for {@code name}. If a player by
      *         this name is currently online, returns that {@link Player}
      *         (which IS-A {@link OfflinePlayer}). Otherwise returns a

@@ -957,7 +957,7 @@ public class RDServer {
      * Register built-in server commands with the command registry.
      */
     private void registerBuiltInCommands() {
-        CommandRegistry.register("help", "Show available commands", ctx -> {
+        com.github.martinambrus.rdforward.server.api.Command helpHandler = ctx -> {
             int myLevel = ctx.isConsole() ? PermissionManager.MAX_OP_LEVEL
                     : PermissionManager.getOpLevel(ctx.getSenderName());
             ctx.reply("Commands:");
@@ -971,7 +971,13 @@ public class RDServer {
                         ? " (op level " + cmd.requiredOpLevel + ")" : "";
                 ctx.reply("  " + cmd.name + " - " + cmd.description + levelTag);
             }
-        });
+        };
+        CommandRegistry.register("help", "Show available commands", helpHandler);
+        // CraftBukkit's HelpCommand registers "?" as an alias for help, and
+        // Essentials's /essentials:help banner says "to view help from the
+        // console, type ?". Without an alias, typing ? in the console
+        // resolves to nothing and prints "Unknown command".
+        CommandRegistry.register("?", "Alias for help", helpHandler);
 
         CommandRegistry.register("list", "Show connected players", ctx -> {
             Collection<ConnectedPlayer> players = playerManager.getAllPlayers();

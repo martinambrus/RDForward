@@ -1,3 +1,4 @@
+// @rdforward:preserve - hand-tuned: legacy damage(int) for Essentials /suicide
 package org.bukkit.entity;
 
 /** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
@@ -6,6 +7,12 @@ public interface Damageable extends org.bukkit.entity.Entity {
     void damage(double arg0);
     void damage(double arg0, org.bukkit.entity.Entity arg1);
     void damage(double arg0, org.bukkit.damage.DamageSource arg1);
+    /** Legacy CB-1.x int-damage overload. Essentials's
+     *  {@code Commandsuicide} calls {@code player.damage(1000)} after
+     *  setting the last damage cause; without it the command throws
+     *  NoSuchMethodError. Delegate to the modern double form so the
+     *  underlying proxy still no-ops (we don't model damage). */
+    default void damage(int arg0) { damage((double) arg0); }
     double getHealth();
     void setHealth(double arg0);
     default void heal(double arg0) {

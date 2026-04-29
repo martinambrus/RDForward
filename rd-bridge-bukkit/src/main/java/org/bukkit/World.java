@@ -326,6 +326,15 @@ public interface World {
         com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
                 null,
                 "org.bukkit.World.spawn(Lorg/bukkit/Location;Ljava/lang/Class;)Lorg/bukkit/entity/Entity;");
+        if (clazz == null) {
+            // Plugins (e.g. Essentials's /spawnmob) may pass a null class
+            // when EntityType.getEntityClass() doesn't resolve to a known
+            // interface. Returning a stub typed only as Entity would fail
+            // the bytecode-level checkcast that follows ((LivingEntity)
+            // world.spawn(...)). Returning null is safe — Java's
+            // checkcast accepts null for any reference type.
+            return null;
+        }
         return com.github.martinambrus.rdforward.bridge.bukkit.StubEntity.create(clazz, null, loc);
     }
 
