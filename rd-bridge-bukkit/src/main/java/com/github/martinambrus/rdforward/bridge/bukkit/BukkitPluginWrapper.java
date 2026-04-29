@@ -73,6 +73,21 @@ public final class BukkitPluginWrapper implements ServerMod {
             if (server != null && pluginName != null) {
                 registerCommands(server.getCommandRegistry());
             }
+            // Fire PluginEnableEvent AFTER onEnable + listener registration so
+            // listeners the plugin itself registered during onEnable receive
+            // their own enable event — Essentials's
+            // EssentialsPluginListener.onPluginEnable depends on this to swap
+            // its permissionsHandler from NullPermissionsHandler (which denies
+            // every hasPermission call) to SuperpermsHandler. Without this
+            // dispatch every Essentials command treats every player — OPs
+            // included — as unauthorised.
+            try {
+                BukkitEventAdapter.dispatchPluginEvent(
+                        new org.bukkit.event.server.PluginEnableEvent(plugin));
+            } catch (RuntimeException ex) {
+                LOG.warning("[BukkitBridge] PluginEnableEvent dispatch failed for '"
+                        + pluginName + "': " + ex);
+            }
             keepRegistered = true;
         } finally {
             // Drop the registry entry on every failure exit (thrown
@@ -91,6 +106,13 @@ public final class BukkitPluginWrapper implements ServerMod {
         org.bukkit.Bukkit.INSIDE_PLUGIN_LIFECYCLE.set(Boolean.TRUE);
         try {
             plugin.onDisable();
+            try {
+                BukkitEventAdapter.dispatchPluginEvent(
+                        new org.bukkit.event.server.PluginDisableEvent(plugin));
+            } catch (RuntimeException ex) {
+                LOG.warning("[BukkitBridge] PluginDisableEvent dispatch failed for '"
+                        + pluginName + "': " + ex);
+            }
         } finally {
             BukkitBridge.unregisterPlugin(pluginName);
             org.bukkit.Bukkit.INSIDE_PLUGIN_LIFECYCLE.remove();

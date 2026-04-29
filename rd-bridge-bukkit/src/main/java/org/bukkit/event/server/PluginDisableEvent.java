@@ -1,14 +1,31 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package org.bukkit.event.server;
 
-/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
+/**
+ * Fired by RDForward's BukkitPluginWrapper after a plugin's
+ * {@code onDisable()} returns. Mirrors {@link PluginEnableEvent} — used
+ * by Essentials's {@code EssentialsPluginListener} to clean up payment
+ * method bindings when a dependency unloads.
+ */
 @SuppressWarnings({"unchecked", "rawtypes", "unused"})
 public class PluginDisableEvent extends org.bukkit.event.server.PluginEvent {
-    public PluginDisableEvent(org.bukkit.plugin.Plugin arg0) { super((org.bukkit.plugin.Plugin) null); }
-    public PluginDisableEvent() { super((org.bukkit.plugin.Plugin) null); }
-    public org.bukkit.event.HandlerList getHandlers() {
-        return null;
+
+    private static final org.bukkit.event.HandlerList HANDLERS =
+            new org.bukkit.event.HandlerList();
+
+    public PluginDisableEvent(org.bukkit.plugin.Plugin plugin) {
+        super(plugin);
     }
+
+    public PluginDisableEvent() {
+        super();
+    }
+
+    public org.bukkit.event.HandlerList getHandlers() {
+        return HANDLERS;
+    }
+
     public static org.bukkit.event.HandlerList getHandlerList() {
-        return null;
+        return HANDLERS;
     }
 }

@@ -21,6 +21,12 @@
 ## Block Coercion
 - [block-policy.md](block-policy.md): BlockPolicy chokepoint at ServerWorld.setBlock(byte); RubyDung position rule; lazy YAML deltas at /replacements/<key>.yml; COBBLE fallback
 
+## Bukkit Material Catalog
+- [material-catalog.md](material-catalog.md): Material.java is Paper-mirrored bulk catalog (~1848 entries); 19 protected modern ids drive MaterialMapper; GRASS/LOG/LEAVES neutralized; BED=355 / BED_BLOCK=26
+
+## Bukkit Plugin Lifecycle Events
+- [bridge-plugin-events.md](bridge-plugin-events.md): BukkitPluginWrapper must dispatch PluginEnableEvent/PluginDisableEvent — Essentials's permissions handler swap depends on it
+
 ## Server API Work (PLAN-SERVER-API.md)
 - [server-api-decisions.md](server-api-decisions.md): Q1 merged Event/PrioritizedEvent, Q2 Fabric-repackaged client mods, Q3 clean rewrite no backward compat
 
