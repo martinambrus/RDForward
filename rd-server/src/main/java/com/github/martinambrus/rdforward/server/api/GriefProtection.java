@@ -221,10 +221,21 @@ public final class GriefProtection {
                     newOwnerId = ownerId;
                 }
                 if (!isOp) {
-                    // Budget recovered for at least one slot — re-arm the depletion
-                    // notification so the next depletion event is announced again.
-                    getOrCreateData(player).budgetDepletedNotified = false;
-                    checkBudgetWarning(player);
+                    int remaining = BlockOwnerRegistry.getRemainingBudget(player);
+                    if (remaining <= 0) {
+                        // This placement just consumed the final slot. Fire
+                        // the depletion notification on the LAST protected
+                        // block — without this, the message fires only on
+                        // the FIRST unprotected placement (one block too
+                        // late) and the player has already laid an
+                        // unprotected block before realising.
+                        notifyBudgetDepleted(player);
+                    } else {
+                        // Budget recovered for at least one slot — re-arm the depletion
+                        // notification so the next depletion event is announced again.
+                        getOrCreateData(player).budgetDepletedNotified = false;
+                        checkBudgetWarning(player);
+                    }
                 }
             } else {
                 notifyBudgetDepleted(player);
