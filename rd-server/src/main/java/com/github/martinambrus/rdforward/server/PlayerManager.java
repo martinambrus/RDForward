@@ -881,6 +881,19 @@ public class PlayerManager {
             } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_7_2)) {
                 target.sendPacket(new NettyPlayerPositionS2CPacket(
                         x, eyeY, z, alphaYaw, pitch, false));
+            } else if (version.isClassicFormat()) {
+                // RubyDung / Classic family: Alpha PlayerPositionAndLookS2CPacket
+                // would be decoded as MessagePacket (both share id 0x0D) and
+                // misframe the channel — every command-driven teleport (/rtp,
+                // /home, /spawn) was disconnecting the client. Use the Classic
+                // PlayerTeleportPacket (0x08, fixed-point shorts) instead.
+                short fpX = (short) (x * 32);
+                short fpY = (short) (eyeY * 32);
+                short fpZ = (short) (z * 32);
+                int byteYaw = ((int) (classicYaw / 360.0f * 256.0f)) & 0xFF;
+                int bytePitch = ((int) (pitch / 360.0f * 256.0f)) & 0xFF;
+                target.sendPacket(new com.github.martinambrus.rdforward.protocol.packet.classic.PlayerTeleportPacket(
+                        -1, fpX, fpY, fpZ, byteYaw, bytePitch));
             } else {
                 target.sendPacket(new PlayerPositionAndLookS2CPacket(
                         x, eyeY, feetY, z, alphaYaw, pitch, true));
