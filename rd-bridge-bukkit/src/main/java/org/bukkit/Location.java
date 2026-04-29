@@ -50,6 +50,16 @@ public class Location implements Cloneable {
     public int getBlockY() { return (int) Math.floor(y); }
     public int getBlockZ() { return (int) Math.floor(z); }
 
+    /** Resolve the {@link org.bukkit.block.Block} at this location's
+     *  block coordinates, via the wrapped {@link World}. CoreProtect's
+     *  {@code BlockUtil.gravityScan} walks {@code location.getBlock()}
+     *  to detect gravity-affected blocks above a placement; without this
+     *  the listener {@link NoSuchMethodError}s on every block place. */
+    public org.bukkit.block.Block getBlock() {
+        if (world == null) return null;
+        return world.getBlockAt(getBlockX(), getBlockY(), getBlockZ());
+    }
+
     /** Snapshot of the (x,y,z) coordinates as a fresh {@link org.bukkit.util.Vector}.
      *  SimpleLogin's {@code LoginListener.onMove} compares vector deltas to
      *  detect movement after auth — it must not return {@code null}. */

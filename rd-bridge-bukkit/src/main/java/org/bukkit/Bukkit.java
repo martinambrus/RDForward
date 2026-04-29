@@ -122,8 +122,23 @@ public final class Bukkit {
      *  {@code RDForward-TickLoop} — see
      *  {@code com.github.martinambrus.rdforward.server.ServerTickLoop}. */
     public static boolean isPrimaryThread() {
-        return "RDForward-TickLoop".equals(Thread.currentThread().getName());
+        if ("RDForward-TickLoop".equals(Thread.currentThread().getName())) return true;
+        // Bukkit treats plugin lifecycle callbacks (onLoad/onEnable/onDisable)
+        // as running on the primary thread. RDForward boots plugins on the
+        // JVM "main" thread before the tick loop starts, so plugins like
+        // CoreProtect that gate work behind {@code if (!isPrimaryThread()) {
+        // schedule + future.join() }} would deadlock — the scheduled task
+        // queues for a tick loop that has not started, and join() blocks
+        // forever. The bridge plugin wrapper sets this flag for the
+        // duration of every plugin lifecycle call.
+        Boolean inLifecycle = INSIDE_PLUGIN_LIFECYCLE.get();
+        return inLifecycle != null && inLifecycle;
     }
+
+    /** Set true by BukkitPluginWrapper around onLoad/onEnable/onDisable so
+     *  {@link #isPrimaryThread()} returns the Bukkit-correct answer for
+     *  plugins that gate scheduled work behind it. */
+    public static final ThreadLocal<Boolean> INSIDE_PLUGIN_LIFECYCLE = new ThreadLocal<>();
 
     /**
      * Mint a new {@link MapView} for the given world. Real Bukkit

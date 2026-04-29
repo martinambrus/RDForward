@@ -1,67 +1,76 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package org.bukkit.event.player;
 
-/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
+/**
+ * Functional {@link PlayerEvent} subtype that mirrors Bukkit's
+ * shape closely enough for plugins gated on
+ * {@link #isCancelled()} (CoreProtect's inspector mode) to work. The
+ * auto-generated stub returned null from every getter and dropped
+ * cancellation on the floor; CoreProtect's {@code BlockInspector}
+ * registers via {@code @EventHandler PlayerInteractEvent} and cancels
+ * the event to prevent the actual break/place — without state-carrying
+ * fields the cancellation never propagated.
+ */
 @SuppressWarnings({"unchecked", "rawtypes", "unused"})
 public class PlayerInteractEvent extends org.bukkit.event.player.PlayerEvent implements org.bukkit.event.Cancellable {
-    public PlayerInteractEvent(org.bukkit.entity.Player arg0, org.bukkit.event.block.Action arg1, org.bukkit.inventory.ItemStack arg2, org.bukkit.block.Block arg3, org.bukkit.block.BlockFace arg4) { super((org.bukkit.entity.Player) null); }
-    public PlayerInteractEvent(org.bukkit.entity.Player arg0, org.bukkit.event.block.Action arg1, org.bukkit.inventory.ItemStack arg2, org.bukkit.block.Block arg3, org.bukkit.block.BlockFace arg4, org.bukkit.inventory.EquipmentSlot arg5) { super((org.bukkit.entity.Player) null); }
-    public PlayerInteractEvent(org.bukkit.entity.Player arg0, org.bukkit.event.block.Action arg1, org.bukkit.inventory.ItemStack arg2, org.bukkit.block.Block arg3, org.bukkit.block.BlockFace arg4, org.bukkit.inventory.EquipmentSlot arg5, org.bukkit.util.Vector arg6) { super((org.bukkit.entity.Player) null); }
-    public PlayerInteractEvent() { super((org.bukkit.entity.Player) null); }
-    public org.bukkit.event.block.Action getAction() {
-        return null;
+
+    private final org.bukkit.event.block.Action action;
+    private final org.bukkit.inventory.ItemStack item;
+    private final org.bukkit.block.Block clickedBlock;
+    private final org.bukkit.block.BlockFace blockFace;
+    private final org.bukkit.inventory.EquipmentSlot hand;
+    private final org.bukkit.util.Vector clickedPosition;
+    private boolean cancelled;
+    private org.bukkit.event.Event$Result useInteractedBlock = org.bukkit.event.Event$Result.DEFAULT;
+    private org.bukkit.event.Event$Result useItemInHand = org.bukkit.event.Event$Result.DEFAULT;
+
+    public PlayerInteractEvent(org.bukkit.entity.Player p, org.bukkit.event.block.Action a,
+                               org.bukkit.inventory.ItemStack i, org.bukkit.block.Block b,
+                               org.bukkit.block.BlockFace f) {
+        this(p, a, i, b, f, org.bukkit.inventory.EquipmentSlot.HAND, null);
     }
-    public boolean isCancelled() {
-        return false;
+    public PlayerInteractEvent(org.bukkit.entity.Player p, org.bukkit.event.block.Action a,
+                               org.bukkit.inventory.ItemStack i, org.bukkit.block.Block b,
+                               org.bukkit.block.BlockFace f, org.bukkit.inventory.EquipmentSlot h) {
+        this(p, a, i, b, f, h, null);
     }
-    public void setCancelled(boolean arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.event.player.PlayerInteractEvent.setCancelled(Z)V");
+    public PlayerInteractEvent(org.bukkit.entity.Player p, org.bukkit.event.block.Action a,
+                               org.bukkit.inventory.ItemStack i, org.bukkit.block.Block b,
+                               org.bukkit.block.BlockFace f, org.bukkit.inventory.EquipmentSlot h,
+                               org.bukkit.util.Vector pos) {
+        super(p);
+        this.action = a;
+        this.item = i;
+        this.clickedBlock = b;
+        this.blockFace = f;
+        this.hand = h == null ? org.bukkit.inventory.EquipmentSlot.HAND : h;
+        this.clickedPosition = pos;
     }
-    public org.bukkit.inventory.ItemStack getItem() {
-        return null;
-    }
-    public org.bukkit.Material getMaterial() {
-        return null;
-    }
-    public boolean hasBlock() {
-        return false;
-    }
-    public boolean hasItem() {
-        return false;
-    }
-    public boolean isBlockInHand() {
-        return false;
-    }
-    public org.bukkit.block.Block getClickedBlock() {
-        return null;
-    }
-    public org.bukkit.block.BlockFace getBlockFace() {
-        return null;
-    }
-    public org.bukkit.inventory.EquipmentSlot getHand() {
-        return null;
-    }
-    public org.bukkit.util.Vector getClickedPosition() {
-        return null;
-    }
+    public PlayerInteractEvent() { this(null, null, null, null, null, null, null); }
+
+    public org.bukkit.event.block.Action getAction() { return action; }
+    @Override public boolean isCancelled() { return cancelled; }
+    @Override public void setCancelled(boolean c) { this.cancelled = c; }
+    public org.bukkit.inventory.ItemStack getItem() { return item; }
+    public org.bukkit.Material getMaterial() { return item == null ? org.bukkit.Material.AIR : item.getType(); }
+    public boolean hasBlock() { return clickedBlock != null; }
+    public boolean hasItem() { return item != null; }
+    public boolean isBlockInHand() { return hasItem() && getMaterial().isBlock(); }
+    public org.bukkit.block.Block getClickedBlock() { return clickedBlock; }
+    public org.bukkit.block.BlockFace getBlockFace() { return blockFace; }
+    public org.bukkit.inventory.EquipmentSlot getHand() { return hand; }
+    public org.bukkit.util.Vector getClickedPosition() { return clickedPosition; }
     public org.bukkit.Location getInteractionPoint() {
-        return null;
+        if (clickedBlock == null || clickedPosition == null) return null;
+        return new org.bukkit.Location(clickedBlock.getWorld(),
+                clickedBlock.getX() + clickedPosition.getX(),
+                clickedBlock.getY() + clickedPosition.getY(),
+                clickedBlock.getZ() + clickedPosition.getZ());
     }
-    public org.bukkit.event.Event$Result useInteractedBlock() {
-        return null;
-    }
-    public void setUseInteractedBlock(org.bukkit.event.Event$Result arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.event.player.PlayerInteractEvent.setUseInteractedBlock(Lorg/bukkit/event/Event$Result;)V");
-    }
-    public org.bukkit.event.Event$Result useItemInHand() {
-        return null;
-    }
-    public void setUseItemInHand(org.bukkit.event.Event$Result arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.event.player.PlayerInteractEvent.setUseItemInHand(Lorg/bukkit/event/Event$Result;)V");
-    }
-    public org.bukkit.event.HandlerList getHandlers() {
-        return null;
-    }
-    public static org.bukkit.event.HandlerList getHandlerList() {
-        return null;
-    }
+    public org.bukkit.event.Event$Result useInteractedBlock() { return useInteractedBlock; }
+    public void setUseInteractedBlock(org.bukkit.event.Event$Result r) { this.useInteractedBlock = r; }
+    public org.bukkit.event.Event$Result useItemInHand() { return useItemInHand; }
+    public void setUseItemInHand(org.bukkit.event.Event$Result r) { this.useItemInHand = r; }
+    public org.bukkit.event.HandlerList getHandlers() { return null; }
+    public static org.bukkit.event.HandlerList getHandlerList() { return null; }
 }

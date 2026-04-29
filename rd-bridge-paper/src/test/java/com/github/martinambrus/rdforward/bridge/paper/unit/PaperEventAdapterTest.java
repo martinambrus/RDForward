@@ -70,8 +70,12 @@ class PaperEventAdapterTest {
             @EventHandler public void onChat(AsyncChatEvent e) {}
         }
         PaperEventAdapter.register(new HybridListener(), "paper-plugin");
-        assertEquals(1, ServerEvents.BLOCK_BREAK.getListenerInfo().size(),
-                "Bukkit-side @EventHandler must also be wired through the Paper adapter");
+        // The Bukkit adapter installs a one-time LOWEST PIE pre-fire
+        // wrapper alongside the plugin's BlockBreakEvent listener so
+        // PlayerInteractEvent cancellation propagates through
+        // BLOCK_BREAK. Hence 2 listeners total (pre-fire + plugin).
+        assertEquals(2, ServerEvents.BLOCK_BREAK.getListenerInfo().size(),
+                "Bukkit-side @EventHandler must also be wired through the Paper adapter (PIE pre-fire + plugin)");
         assertEquals(1, ServerEvents.CHAT.getListenerInfo().size(),
                 "Paper-only AsyncChatEvent must also be wired");
     }

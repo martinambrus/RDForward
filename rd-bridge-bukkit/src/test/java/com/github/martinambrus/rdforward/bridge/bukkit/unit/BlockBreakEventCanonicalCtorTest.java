@@ -46,9 +46,18 @@ class BlockBreakEventCanonicalCtorTest {
     }
 
     @Test
-    void legacyFiveArgCtorKeepsBlockNull() {
+    void legacyFiveArgCtorSynthesisesBlockAtCoordsCarryingPlayerWorld() {
+        // CoreProtect's BlockBreakListener throws NPE if event.getBlock()
+        // is null, so the 5-arg adapter ctor synthesises a BukkitBlock
+        // at the given coords (player's world, MaterialMapper-resolved
+        // type id). Older behaviour returned null — change is deliberate
+        // and tested here.
         BlockBreakEvent ev = new BlockBreakEvent((Player) null, 1, 2, 3, 17);
-        assertNull(ev.getBlock(), "legacy 5-arg ctor produces no block");
+        assertNotNull(ev.getBlock(),
+                "legacy 5-arg ctor must synthesise a non-null Block (CoreProtect contract)");
+        assertEquals(1, ev.getBlock().getX());
+        assertEquals(2, ev.getBlock().getY());
+        assertEquals(3, ev.getBlock().getZ());
         assertEquals(1, ev.getX());
         assertEquals(2, ev.getY());
         assertEquals(3, ev.getZ());

@@ -1,6 +1,11 @@
 // @rdforward:preserve - hand-tuned facade, do not regenerate
 package org.bukkit.event.block;
 
+import com.github.martinambrus.rdforward.api.world.BlockTypes;
+import com.github.martinambrus.rdforward.bridge.bukkit.BukkitBlock;
+import com.github.martinambrus.rdforward.bridge.bukkit.MaterialMapper;
+import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
@@ -23,11 +28,16 @@ public final class BlockBreakEvent extends Event {
 
     public BlockBreakEvent(Player player, int x, int y, int z, int blockType) {
         this.player = player;
-        this.block = null;
         this.x = x;
         this.y = y;
         this.z = z;
         this.blockType = blockType;
+        // Synthesize the broken Block so listeners that call
+        // {@code event.getBlock().getWorld()/getType()/getLocation()}
+        // (CoreProtect's {@code BlockBreakListener}) don't NPE.
+        World world = player == null ? null : player.getWorld();
+        Material mat = MaterialMapper.fromApi(BlockTypes.byId(blockType));
+        this.block = new BukkitBlock(world, x, y, z, mat);
     }
 
     /** Canonical Bukkit ctor. The prior 5-arg form used by the

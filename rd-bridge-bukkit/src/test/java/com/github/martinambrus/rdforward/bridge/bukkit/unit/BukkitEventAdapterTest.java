@@ -79,8 +79,15 @@ class BukkitEventAdapterTest {
         AllEventsListener listener = new AllEventsListener();
         BukkitEventAdapter.register(listener, "test-plugin");
 
-        assertEquals(1, ServerEvents.BLOCK_BREAK.getListenerInfo().size());
-        assertEquals(1, ServerEvents.BLOCK_PLACE.getListenerInfo().size());
+        // Each block-break / block-place listener registration also
+        // installs a one-time LOWEST-priority PIE pre-fire wrapper so
+        // CoreProtect-style PlayerInteractEvent cancellation reaches
+        // the host CANCEL check (see PlayerInteractEventPreFireTest).
+        // Hence each of these events carries 2 listeners: the pre-fire
+        // wrapper at LOWEST + the plugin's listener at its declared
+        // priority.
+        assertEquals(2, ServerEvents.BLOCK_BREAK.getListenerInfo().size());
+        assertEquals(2, ServerEvents.BLOCK_PLACE.getListenerInfo().size());
         assertEquals(1, ServerEvents.CHAT.getListenerInfo().size());
         // PJE / PQE dispatch was relocated to PLAYER_JOIN_ANNOUNCE /
         // PLAYER_LEAVE_ANNOUNCE so the bridge can read setJoinMessage /
@@ -91,8 +98,13 @@ class BukkitEventAdapterTest {
         assertEquals(1, ServerEvents.PLAYER_LEAVE_ANNOUNCE.listenerCount());
         assertEquals(1, ServerEvents.PLAYER_MOVE.listenerCount());
 
-        assertEquals(EventPriority.LOW, ServerEvents.BLOCK_BREAK.getListenerInfo().get(0).priority());
-        assertEquals(EventPriority.HIGH, ServerEvents.BLOCK_PLACE.getListenerInfo().get(0).priority());
+        // Plugin listener priorities — index [1] is the plugin's
+        // listener; index [0] is the LOWEST PIE pre-fire wrapper.
+        assertEquals(EventPriority.LOWEST, ServerEvents.BLOCK_BREAK.getListenerInfo().get(0).priority(),
+                "first listener is the PIE pre-fire wrapper at LOWEST");
+        assertEquals(EventPriority.LOW, ServerEvents.BLOCK_BREAK.getListenerInfo().get(1).priority());
+        assertEquals(EventPriority.LOWEST, ServerEvents.BLOCK_PLACE.getListenerInfo().get(0).priority());
+        assertEquals(EventPriority.HIGH, ServerEvents.BLOCK_PLACE.getListenerInfo().get(1).priority());
         assertEquals(EventPriority.MONITOR, ServerEvents.CHAT.getListenerInfo().get(0).priority());
     }
 
@@ -209,8 +221,10 @@ class BukkitEventAdapterTest {
     void nullPluginNameAllowedForTestHarness() {
         AllEventsListener listener = new AllEventsListener();
         BukkitEventAdapter.register(listener);
-        assertEquals(1, ServerEvents.BLOCK_BREAK.getListenerInfo().size());
-        ListenerInfo info = ServerEvents.BLOCK_BREAK.getListenerInfo().get(0);
+        // Pre-fire wrapper at index 0 (LOWEST) + plugin's listener at
+        // index 1 (LOW).
+        assertEquals(2, ServerEvents.BLOCK_BREAK.getListenerInfo().size());
+        ListenerInfo info = ServerEvents.BLOCK_BREAK.getListenerInfo().get(1);
         assertNotNull(info.listenerClass());
     }
 }

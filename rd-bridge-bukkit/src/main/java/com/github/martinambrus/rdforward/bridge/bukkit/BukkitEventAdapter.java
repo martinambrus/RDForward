@@ -192,6 +192,7 @@ public final class BukkitEventAdapter {
         PLAYER_JOIN_INSTALLED.set(false);
         PLAYER_QUIT_INSTALLED.set(false);
         SERVER_LIST_PING_INSTALLED.set(false);
+        PIE_PRE_FIRE_INSTALLED.set(false);
     }
 
     private static boolean isCancellable(Class<?> evtType) {
@@ -224,6 +225,7 @@ public final class BukkitEventAdapter {
     }
 
     private static void bindBlockBreak(Listener l, Method m, EventPriority prio) {
+        ensurePlayerInteractPreFireInstalled();
         BlockBreakCallback cb = (name, x, y, z, blockType) -> {
             BlockBreakEvent ev = new BlockBreakEvent(BukkitPlayer.create(name), x, y, z, blockType);
             invokeListener(l, m, ev);
@@ -233,12 +235,60 @@ public final class BukkitEventAdapter {
     }
 
     private static void bindBlockPlace(Listener l, Method m, EventPriority prio) {
+        ensurePlayerInteractPreFireInstalled();
         BlockPlaceCallback cb = (name, x, y, z, newBlockType) -> {
             BlockPlaceEvent ev = new BlockPlaceEvent(BukkitPlayer.create(name), x, y, z, newBlockType);
             invokeListener(l, m, ev);
             return ev.isCancelled() ? EventResult.CANCEL : EventResult.PASS;
         };
         ServerEvents.BLOCK_PLACE.register(prio, cb);
+    }
+
+    /** Install one-time LOWEST-priority callbacks on BLOCK_BREAK +
+     *  BLOCK_PLACE that fire PlayerInteractEvent and return CANCEL if
+     *  any PIE listener cancelled it. Must be at LOWEST so it runs
+     *  before any per-listener Bukkit handler — and crucially before
+     *  MONITOR-registered handlers (CoreProtect's BlockBreakListener
+     *  and BlockPlaceListener), whose return values our PrioritizedEvent
+     *  invoker discards by design. Without this hoisting, PIE
+     *  cancellation set by inspector mode never reached the server's
+     *  CANCEL-check at AlphaConnectionHandler.handleDigging /
+     *  handleBlockPlacement and the world was mutated anyway. */
+    private static final java.util.concurrent.atomic.AtomicBoolean PIE_PRE_FIRE_INSTALLED =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+    private static void ensurePlayerInteractPreFireInstalled() {
+        if (!PIE_PRE_FIRE_INSTALLED.compareAndSet(false, true)) return;
+        ServerEvents.BLOCK_BREAK.register(EventPriority.LOWEST,
+                (name, x, y, z, blockType) -> {
+                    org.bukkit.entity.Player player = BukkitPlayer.create(name);
+                    boolean cancelled = firePlayerInteract(player, x, y, z, blockType,
+                            org.bukkit.event.block.Action.LEFT_CLICK_BLOCK);
+                    return cancelled ? EventResult.CANCEL : EventResult.PASS;
+                });
+        ServerEvents.BLOCK_PLACE.register(EventPriority.LOWEST,
+                (name, x, y, z, newBlockType) -> {
+                    org.bukkit.entity.Player player = BukkitPlayer.create(name);
+                    boolean cancelled = firePlayerInteract(player, x, y, z, newBlockType,
+                            org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK);
+                    return cancelled ? EventResult.CANCEL : EventResult.PASS;
+                });
+    }
+
+    /** Build a PlayerInteractEvent at the given coords and dispatch to
+     *  every registered PIE listener via {@link #dispatchPluginEvent}.
+     *  @return true iff the event was cancelled by any listener. */
+    private static boolean firePlayerInteract(org.bukkit.entity.Player player,
+                                              int x, int y, int z, int blockTypeId,
+                                              org.bukkit.event.block.Action action) {
+        org.bukkit.World world = player == null ? null : player.getWorld();
+        org.bukkit.Material mat = MaterialMapper.fromApi(
+                com.github.martinambrus.rdforward.api.world.BlockTypes.byId(blockTypeId));
+        org.bukkit.block.Block block = new BukkitBlock(world, x, y, z, mat);
+        org.bukkit.event.player.PlayerInteractEvent pie =
+                new org.bukkit.event.player.PlayerInteractEvent(
+                        player, action, null, block, org.bukkit.block.BlockFace.SELF);
+        dispatchPluginEvent(pie);
+        return pie.isCancelled();
     }
 
     private static void bindChat(Listener l, Method m, EventPriority prio, Class<?> evtType) {

@@ -77,4 +77,89 @@ public interface Block {
     /** Noop variant carrying a physics flag. */
     default void setData(byte data, boolean applyPhysics) {
     }
+
+    /** @return a snapshot {@link BlockState} for this block. CoreProtect's
+     *  {@code BlockBreakListener.processBlockBreak} captures the state to
+     *  log the broken block's material; without this method the listener
+     *  {@link NoSuchMethodError}s on every break. */
+    default BlockState getState() {
+        return new com.github.martinambrus.rdforward.bridge.bukkit.BukkitBlockState(
+                getWorld(), getX(), getY(), getZ(), getType());
+    }
+
+    /** @return a snapshot {@link org.bukkit.block.data.BlockData} for
+     *  this block. CoreProtect's {@code BlockPlaceListener} stores the
+     *  placed block's namespaced descriptor via
+     *  {@code getBlockData().getAsString()}; RDForward has no per-block
+     *  state model, so the descriptor is just {@code "minecraft:<name>"}. */
+    default org.bukkit.block.data.BlockData getBlockData() {
+        return new com.github.martinambrus.rdforward.bridge.bukkit.BukkitBlockData(getType());
+    }
+
+    /** Block adjacent to this one in the given direction. CoreProtect's
+     *  inspector path computes the placement target as
+     *  {@code clickedBlock.getRelative(blockFace)} and queries audit
+     *  history there; without this method the call {@link
+     *  NoSuchMethodError}s mid-inspect. Uses the face's
+     *  {@link BlockFace#getModX()}/{@code getModY()}/{@code getModZ()}
+     *  offsets — {@link BlockFace#SELF} returns this block. */
+    default Block getRelative(BlockFace face) {
+        if (face == null) return this;
+        return new com.github.martinambrus.rdforward.bridge.bukkit.BukkitBlock(
+                getWorld(),
+                getX() + face.getModX(),
+                getY() + face.getModY(),
+                getZ() + face.getModZ(),
+                getType());
+    }
+
+    /** Set this block's data. CoreProtect's
+     *  {@code BlockUtils.setTypeAndData} hits this signature during
+     *  rollback to restore a recorded block. RDForward has no per-block
+     *  state model, so we forward only the underlying material — the
+     *  physics flag is ignored (no neighbor updates fire here). */
+    default void setBlockData(org.bukkit.block.data.BlockData data, boolean applyPhysics) {
+        if (data == null) { setType(Material.AIR); return; }
+        setType(data.getMaterial());
+    }
+
+    /** Convenience overload — physics defaults to true on real Bukkit
+     *  but is dropped here since RDForward doesn't model neighbor ticks. */
+    default void setBlockData(org.bukkit.block.data.BlockData data) {
+        setBlockData(data, true);
+    }
+
+    /** @return whether entities can pass through this block. CoreProtect's
+     *  {@code BlockUtils.passableBlock} reads this during
+     *  {@code Teleport.performSafeTeleport} (called from rollback's
+     *  per-chunk processing) to find a safe Y above the rollback origin.
+     *  RDForward has no per-block collision model, so AIR is the only
+     *  passable type. */
+    default boolean isPassable() {
+        Material t = getType();
+        return t == null || t == Material.AIR;
+    }
+
+    /** Snapshot {@link org.bukkit.Chunk} containing this block. CoreProtect's
+     *  {@code RollbackProcessor.processChunk} calls
+     *  {@code block.getChunk()} then feeds it to
+     *  {@code World.isChunkLoaded(Chunk)} and reads
+     *  {@code chunk.getEntities()} during rollback iteration. RDForward
+     *  has no per-chunk addressing in the rd-api world, so we synthesize
+     *  the chunk coords from the block's world coords (>>4). */
+    default org.bukkit.Chunk getChunk() {
+        return new com.github.martinambrus.rdforward.bridge.bukkit.BukkitChunk(
+                getWorld(), getX() >> 4, getZ() >> 4);
+    }
+
+    /** Convenience overload — explicit step distance along a face. */
+    default Block getRelative(BlockFace face, int distance) {
+        if (face == null) return this;
+        return new com.github.martinambrus.rdforward.bridge.bukkit.BukkitBlock(
+                getWorld(),
+                getX() + face.getModX() * distance,
+                getY() + face.getModY() * distance,
+                getZ() + face.getModZ() * distance,
+                getType());
+    }
 }

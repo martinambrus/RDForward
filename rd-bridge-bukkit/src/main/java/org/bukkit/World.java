@@ -17,6 +17,21 @@ public interface World {
     /** @return a Bukkit {@link Block} view of the world block at {@code (x,y,z)}, or null if out of bounds. */
     Block getBlockAt(int x, int y, int z);
 
+    /** Minimum Y coordinate of the world. Bukkit 1.17+ added this so
+     *  modern plugins (CoreProtect's {@code Bukkit_v1_17.getMinHeight}
+     *  in rollback iteration) can iterate from world bottom upward.
+     *  RDForward worlds are 0-based and Alpha-shaped, so 0 is the
+     *  Y-floor. */
+    default int getMinHeight() { return 0; }
+
+    /** Convenience overload — CoreProtect's {@code BlockBreakListener}
+     *  feeds a {@link org.bukkit.Location} pulled from the event. Forwards
+     *  to {@link #getBlockAt(int,int,int)} using the location's int coords. */
+    default Block getBlockAt(org.bukkit.Location loc) {
+        if (loc == null) return null;
+        return getBlockAt(loc.getBlockX(), loc.getBlockY(), loc.getBlockZ());
+    }
+
     /** Set the block type at {@code (x,y,z)}. @return true if the placement succeeded. */
     boolean setBlockType(int x, int y, int z, Material type);
 
@@ -44,6 +59,29 @@ public interface World {
      *  whole world in memory and treats every chunk as loaded. */
     default boolean isChunkLoaded(int chunkX, int chunkZ) {
         return true;
+    }
+
+    /** CoreProtect's {@code RollbackProcessor.processChunk} guards
+     *  rollback work with {@code world.isChunkLoaded(block.getChunk())}.
+     *  RDForward keeps the whole world in memory, so every chunk is
+     *  loaded — accept any non-null chunk. */
+    default boolean isChunkLoaded(org.bukkit.Chunk chunk) {
+        return chunk != null;
+    }
+
+    /** CoreProtect's {@code RollbackProcessor.processChunk} requests
+     *  the chunk at a {@link Location} immediately after the loaded
+     *  check. Returns a snapshot {@link org.bukkit.Chunk} whose chunk
+     *  coords are derived from the location's int block coords. */
+    default org.bukkit.Chunk getChunkAt(Location loc) {
+        if (loc == null) return null;
+        return new com.github.martinambrus.rdforward.bridge.bukkit.BukkitChunk(
+                this, loc.getBlockX() >> 4, loc.getBlockZ() >> 4);
+    }
+
+    /** Chunk-coords overload mirroring real Bukkit. */
+    default org.bukkit.Chunk getChunkAt(int chunkX, int chunkZ) {
+        return new com.github.martinambrus.rdforward.bridge.bukkit.BukkitChunk(this, chunkX, chunkZ);
     }
 
     int getMaxHeight();

@@ -108,6 +108,13 @@ public interface Server {
      */
     default int getMaxPlayers() { return 128; }
 
+    /** @return the configured Java listener port. CoreProtect's
+     *  {@code NetworkHandler} reads this at startup to phone home its
+     *  server fingerprint; without the override the worker thread
+     *  {@link NoSuchMethodError}s on every metrics tick. Default
+     *  mirrors RDForward's {@code server.properties} default. */
+    default int getPort() { return 25565; }
+
     /** @return every world the server hosts. RDForward ships a single world. */
     List<World> getWorlds();
 

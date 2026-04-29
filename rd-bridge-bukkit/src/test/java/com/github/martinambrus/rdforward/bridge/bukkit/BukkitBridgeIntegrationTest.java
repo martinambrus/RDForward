@@ -145,7 +145,12 @@ class BukkitBridgeIntegrationTest {
             assertEquals("true", System.getProperty(TestBukkitPlugin.PROP_ENABLE));
 
             List<ListenerInfo> infos = ServerEvents.BLOCK_PLACE.getListenerInfo();
-            assertEquals(1, infos.size(), "BukkitEventAdapter should have wired one BLOCK_PLACE listener");
+            // Two listeners: the one-time LOWEST PIE pre-fire wrapper
+            // (installed alongside the first block-place binding so
+            // CoreProtect-style PIE cancellation propagates) and the
+            // plugin's own BlockPlaceEvent listener.
+            assertEquals(2, infos.size(),
+                    "BukkitEventAdapter should have wired the PIE pre-fire wrapper + the plugin's BLOCK_PLACE listener");
 
             ServerEvents.BLOCK_PLACE.invoker().onBlockPlace("alice", 1, 2, 3, 7);
             assertEquals("alice,1,2,3,7", System.getProperty(TestBukkitPlugin.PROP_FIRED));

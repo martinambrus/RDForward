@@ -56,4 +56,21 @@ public class BlockPlaceEvent extends Event {
     public int getNewBlockType() { return newBlockType; }
     public Block getBlockPlaced() { return placedBlock; }
     public Block getBlock() { return placedBlock; }
+
+    /** @return synthesized BlockState representing what was at the
+     *  placement coordinates BEFORE the placement. RDForward does not
+     *  snapshot pre-placement state, so the stand-in is AIR at the
+     *  placement coords. CoreProtect's BlockPlaceListener calls
+     *  {@code event.getBlockReplacedState().getType()} to log the
+     *  pre-placement material; AIR is correct for the common case
+     *  (placing on empty space) and harmless when wrong. */
+    public BlockState getBlockReplacedState() {
+        World world = placedBlock == null ? null : placedBlock.getWorld();
+        return new com.github.martinambrus.rdforward.bridge.bukkit.BukkitBlockState(world, x, y, z, Material.AIR);
+    }
+
+    public boolean canBuild() { return true; }
+    public Block getBlockAgainst() { return placedBlock; }
+    public ItemStack getItemInHand() { return null; }
+    public EquipmentSlot getHand() { return EquipmentSlot.HAND; }
 }

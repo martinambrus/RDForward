@@ -50,6 +50,7 @@ public final class BukkitPluginWrapper implements ServerMod {
     @Override
     public void onEnable(Server server) {
         boolean keepRegistered = false;
+        org.bukkit.Bukkit.INSIDE_PLUGIN_LIFECYCLE.set(Boolean.TRUE);
         try {
             plugin.onLoad();
             plugin.onEnable();
@@ -81,15 +82,18 @@ public final class BukkitPluginWrapper implements ServerMod {
             if (!keepRegistered) {
                 BukkitBridge.unregisterPlugin(pluginName);
             }
+            org.bukkit.Bukkit.INSIDE_PLUGIN_LIFECYCLE.remove();
         }
     }
 
     @Override
     public void onDisable() {
+        org.bukkit.Bukkit.INSIDE_PLUGIN_LIFECYCLE.set(Boolean.TRUE);
         try {
             plugin.onDisable();
         } finally {
             BukkitBridge.unregisterPlugin(pluginName);
+            org.bukkit.Bukkit.INSIDE_PLUGIN_LIFECYCLE.remove();
         }
     }
 
