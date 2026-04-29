@@ -86,6 +86,17 @@ final class ServerSupport {
                 (proxy, method, args) -> handleOfflinePlayerCall(method, args, name, uuid));
     }
 
+    /** UUID-keyed variant of {@link #offlinePlayerStub(String)}. Used by
+     *  {@code Server.getOfflinePlayer(UUID)} when no online player matches
+     *  and we have no persistent UUID->name cache to consult — name stays
+     *  {@code null}, matching real Bukkit's behaviour for an unknown UUID. */
+    static OfflinePlayer offlinePlayerStubByUuid(UUID uuid) {
+        return (OfflinePlayer) Proxy.newProxyInstance(
+                OfflinePlayer.class.getClassLoader(),
+                new Class<?>[] { OfflinePlayer.class },
+                (proxy, method, args) -> handleOfflinePlayerCall(method, args, null, uuid));
+    }
+
     private static Object handleOfflinePlayerCall(Method method, Object[] args, String name, UUID uuid) {
         switch (method.getName()) {
             case "getName": return name;

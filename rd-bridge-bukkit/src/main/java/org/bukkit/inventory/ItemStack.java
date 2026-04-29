@@ -19,6 +19,12 @@ public class ItemStack implements java.lang.Cloneable, org.bukkit.configuration.
      *  {@code id:count:damage} to disk — without this fallback the saved
      *  id is 0 and the recall is lossy. */
     private int legacyId;
+    /** Lazily-allocated meta backing — created on first {@link #getItemMeta()}
+     *  call so an unread stack stays meta-free. {@link #setItemMeta} replaces
+     *  it; {@link #getItemMeta} returns the same instance on subsequent
+     *  reads so a plugin's mutate-without-setItemMeta pattern still sticks
+     *  (Essentials's /lore relies on this). */
+    private org.bukkit.inventory.meta.ItemMeta meta;
 
     protected ItemStack() {}
     public ItemStack(org.bukkit.Material arg0) { setType(arg0); this.amount = 1; }
@@ -26,7 +32,13 @@ public class ItemStack implements java.lang.Cloneable, org.bukkit.configuration.
     public ItemStack(org.bukkit.Material arg0, int arg1, short arg2) { setType(arg0); this.amount = arg1; this.durability = arg2; }
     public ItemStack(org.bukkit.Material arg0, int arg1, short arg2, java.lang.Byte arg3) { setType(arg0); this.amount = arg1; this.durability = arg2; }
     public ItemStack(org.bukkit.inventory.ItemStack arg0) throws java.lang.IllegalArgumentException {
-        if (arg0 != null) { this.material = arg0.material; this.legacyId = arg0.legacyId; this.amount = arg0.amount; this.durability = arg0.durability; }
+        if (arg0 != null) {
+            this.material = arg0.material;
+            this.legacyId = arg0.legacyId;
+            this.amount = arg0.amount;
+            this.durability = arg0.durability;
+            this.meta = arg0.meta == null ? null : arg0.meta.clone();
+        }
     }
 
     /** Pre-Flattening legacy ctor. WorldEdit 5.6.1's
@@ -169,14 +181,33 @@ public class ItemStack implements java.lang.Cloneable, org.bukkit.configuration.
         return false;
     }
     public org.bukkit.inventory.meta.ItemMeta getItemMeta() {
-        return null;
+        if (this.meta == null) {
+            this.meta = createDefaultMeta();
+        }
+        return this.meta;
     }
     public boolean hasItemMeta() {
-        return false;
+        return this.meta != null;
     }
     public boolean setItemMeta(org.bukkit.inventory.meta.ItemMeta arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.inventory.ItemStack.setItemMeta(Lorg/bukkit/inventory/meta/ItemMeta;)Z");
-        return false;
+        this.meta = arg0;
+        return true;
+    }
+
+    /** Pick the meta subtype that matches the stack's material so a
+     *  {@code (SkullMeta) item.getItemMeta()} cast in plugin code succeeds.
+     *  Legacy {@code SKULL_ITEM} (id 397) covers every skull subtype on
+     *  pre-flattening; durability 3 narrows it to the player-head variant
+     *  Essentials uses, but we return SkullMeta for any durability since
+     *  some plugins read meta before setting durability. {@code PLAYER_HEAD}
+     *  is the modern flattened id. Other materials fall back to the
+     *  generic ItemMeta backing. */
+    private org.bukkit.inventory.meta.ItemMeta createDefaultMeta() {
+        if (this.material == org.bukkit.Material.SKULL_ITEM
+                || this.material == org.bukkit.Material.PLAYER_HEAD) {
+            return new com.github.martinambrus.rdforward.bridge.bukkit.meta.BridgeSkullMeta();
+        }
+        return new com.github.martinambrus.rdforward.bridge.bukkit.meta.BridgeItemMeta();
     }
     public java.lang.String getTranslationKey() {
         return null;

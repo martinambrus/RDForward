@@ -69,6 +69,48 @@ public interface Server {
     }
 
     /**
+     * @return an {@link OfflinePlayer} for the given offline-mode UUID. If
+     *         a player with that UUID is currently online, returns the
+     *         live {@link Player}; otherwise a stub carrying that UUID
+     *         and a best-effort name (null when the UUID has never been
+     *         seen — matches real Bukkit behaviour for unknown UUIDs).
+     *         Essentials's {@code com.earth2me.essentials.OfflinePlayer}
+     *         constructor calls {@code Server.getOfflinePlayer(UUID)} for
+     *         every cache miss in {@code UserMap}; without this overload
+     *         {@code /balancetop} (and any path that walks {@code UserMap})
+     *         throws {@link NoSuchMethodError}.
+     */
+    default OfflinePlayer getOfflinePlayer(java.util.UUID id) {
+        if (id == null) return null;
+        Player online = getPlayer(id);
+        if (online != null) return online;
+        return ServerSupport.offlinePlayerStubByUuid(id);
+    }
+
+    /**
+     * @return the {@link BanList} for the requested type, backed by
+     *         RDForward's {@link com.github.martinambrus.rdforward.server.api.BanManager}.
+     *         Essentials's {@code /unbanip} (and the rest of its ban
+     *         commands) reach the flat-file ban store through this
+     *         method; without it every {@code /banip}/{@code /unbanip}
+     *         throws {@link NoSuchMethodError}.
+     */
+    default BanList getBanList(BanList$Type type) {
+        return new com.github.martinambrus.rdforward.bridge.bukkit.ban.BridgeBanList(type);
+    }
+
+    /**
+     * @return list of crafting recipes whose result matches {@code stack}.
+     *         RDForward does not model the crafting registry, so this
+     *         returns an empty list — Essentials's {@code /recipes} just
+     *         reports "no recipes found" instead of throwing
+     *         {@link NoSuchMethodError}.
+     */
+    default java.util.List<org.bukkit.inventory.Recipe> getRecipesFor(org.bukkit.inventory.ItemStack stack) {
+        return java.util.Collections.emptyList();
+    }
+
+    /**
      * @return the online player with the given offline-mode UUID, or
      *         {@code null} if none. LuckPerms's {@code
      *         LPBukkitBootstrap.isPlayerOnline} calls this every time

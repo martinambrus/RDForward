@@ -2,6 +2,7 @@
 package com.github.martinambrus.rdforward.bridge.bukkit.compat;
 
 import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.LoadingCache;
 
 import java.util.concurrent.ExecutionException;
@@ -34,5 +35,17 @@ public final class GuavaCompat {
             return typed.get(key);
         }
         return cache.getIfPresent(key);
+    }
+
+    /**
+     * Replacement for legacy {@code CacheBuilder.maximumSize(int)} — that
+     * overload was removed in Guava 11 and only the {@code long} variant
+     * survives. Rewriter swaps {@code INVOKEVIRTUAL maximumSize(I)} for an
+     * {@code INVOKESTATIC} into this shim, which preserves the call-site
+     * stack shape (CacheBuilder + int → CacheBuilder) so no frame fixup is
+     * needed for older class files (Essentials Pre-2.14 is class file v50).
+     */
+    public static CacheBuilder<?, ?> maximumSize(CacheBuilder<?, ?> builder, int size) {
+        return builder.maximumSize(size);
     }
 }

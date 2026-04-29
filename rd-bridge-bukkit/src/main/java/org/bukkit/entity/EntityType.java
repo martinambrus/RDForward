@@ -12,7 +12,15 @@ public enum EntityType implements org.bukkit.Keyed, org.bukkit.Translatable, net
     // are in the main enum above; these aliases never get returned by
     // EntityType.fromName for new code, they exist only so symbolic links
     // resolve.
-    PIG_ZOMBIE, MUSHROOM_COW, SNOWMAN;
+    PIG_ZOMBIE, MUSHROOM_COW, SNOWMAN,
+    // Pre-1.13 boat / minecart / crystal aliases. Essentials Pre-2.14's
+    // Mob.<clinit> table references these by symbolic name (BOAT became
+    // OAK_BOAT and friends; ENDER_CRYSTAL became END_CRYSTAL; the
+    // MINECART_* names became *_MINECART). Class init throws
+    // NoSuchFieldError before /spawnmob / /kittycannon dispatch runs,
+    // so add them so the symbolic link resolves.
+    BOAT, ENDER_CRYSTAL,
+    MINECART_CHEST, MINECART_FURNACE, MINECART_HOPPER, MINECART_MOB_SPAWNER, MINECART_TNT;
     public java.lang.String getName() {
         return null;
     }

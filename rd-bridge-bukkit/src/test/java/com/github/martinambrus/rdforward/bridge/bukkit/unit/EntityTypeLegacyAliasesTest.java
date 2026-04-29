@@ -44,4 +44,38 @@ class EntityTypeLegacyAliasesTest {
         assertNotNull(EntityType.valueOf("MOOSHROOM"));
         assertNotNull(EntityType.valueOf("SNOW_GOLEM"));
     }
+
+    @Test
+    void boatAliasIsPresent() {
+        // Renamed to per-wood OAK_BOAT / BIRCH_BOAT / ... in modern API.
+        // Essentials Pre-2.14's Mob.<clinit> reads BOAT directly.
+        assertNotNull(EntityType.valueOf("BOAT"));
+    }
+
+    @Test
+    void enderCrystalAliasIsPresent() {
+        // Renamed to END_CRYSTAL in modern API.
+        assertNotNull(EntityType.valueOf("ENDER_CRYSTAL"));
+    }
+
+    @Test
+    void minecartLegacyAliasesArePresent() {
+        // Pre-1.13 names: MINECART_CHEST etc. — modern names append
+        // _MINECART (CHEST_MINECART, FURNACE_MINECART, ...).
+        assertNotNull(EntityType.valueOf("MINECART_CHEST"));
+        assertNotNull(EntityType.valueOf("MINECART_FURNACE"));
+        assertNotNull(EntityType.valueOf("MINECART_HOPPER"));
+        assertNotNull(EntityType.valueOf("MINECART_MOB_SPAWNER"));
+        assertNotNull(EntityType.valueOf("MINECART_TNT"));
+    }
+
+    @Test
+    void modernBoatAndMinecartNamesStillExist() {
+        // Aliases must not displace the modern names.
+        assertNotNull(EntityType.valueOf("OAK_BOAT"));
+        assertNotNull(EntityType.valueOf("END_CRYSTAL"));
+        assertNotNull(EntityType.valueOf("CHEST_MINECART"));
+        assertNotNull(EntityType.valueOf("FURNACE_MINECART"));
+        assertNotNull(EntityType.valueOf("TNT_MINECART"));
+    }
 }

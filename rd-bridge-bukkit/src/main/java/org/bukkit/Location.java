@@ -67,6 +67,43 @@ public class Location implements Cloneable {
         return new org.bukkit.util.Vector(x, y, z);
     }
 
+    /** Unit vector pointing along the location's facing — Bukkit's
+     *  standard yaw/pitch -> direction formula. Essentials's
+     *  {@code Commandfireball} multiplies this by a speed to set the
+     *  spawned fireball's velocity; without it /fireball throws
+     *  {@link NoSuchMethodError}. Yaw here is Bukkit-convention
+     *  (0 = South) — {@code BukkitPlayer.Handler.getLocation} already
+     *  converts Classic yaw before constructing the Location. */
+    public org.bukkit.util.Vector getDirection() {
+        // RDForward's Vector stub has no-op setX/Y/Z (returns this without
+        // mutating), so build the components first and hand them to the
+        // 3-arg ctor instead of mutating after construction.
+        double rotXrad = Math.toRadians(yaw);
+        double rotYrad = Math.toRadians(pitch);
+        double y = -Math.sin(rotYrad);
+        double xz = Math.cos(rotYrad);
+        double x = -xz * Math.sin(rotXrad);
+        double z = xz * Math.cos(rotXrad);
+        return new org.bukkit.util.Vector(x, y, z);
+    }
+
+    /** Inverse of {@link #getDirection()} — sets yaw/pitch so the
+     *  location faces along {@code v}. Mirrors Bukkit's signature so
+     *  plugins that chain {@code loc.setDirection(target.subtract(loc))}
+     *  link cleanly. */
+    public Location setDirection(org.bukkit.util.Vector v) {
+        if (v == null) return this;
+        double dx = v.getX(), dy = v.getY(), dz = v.getZ();
+        if (dx == 0.0 && dz == 0.0) {
+            this.pitch = dy > 0 ? -90.0f : 90.0f;
+            return this;
+        }
+        double xz = Math.sqrt(dx * dx + dz * dz);
+        this.yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+        this.pitch = (float) Math.toDegrees(Math.atan2(-dy, xz));
+        return this;
+    }
+
     /** Real Bukkit's {@code Location.add(double,double,double)} mutates
      *  this instance and returns it. VanishNoPacket's
      *  {@code VanishManager.toggleVanishQuiet} calls

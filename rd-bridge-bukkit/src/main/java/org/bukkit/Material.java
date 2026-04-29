@@ -1886,6 +1886,34 @@ public enum Material {
     /** True if this material represents empty space. Mirrors upstream helper. */
     public boolean isAir() { return this == AIR; }
 
+    /** Default stack-size cap. Real Bukkit picks 64 / 16 / 1 per material;
+     *  RDForward does not model the per-material table, so every entry
+     *  reports the common-case 64. Essentials's {@code ItemDb.get} uses
+     *  this to clamp {@code /give} amounts; returning 64 means a request
+     *  for {@code /give X stone 200} caps at 64 (matches vanilla for a
+     *  single stack), instead of {@link NoSuchMethodError} on dispatch. */
+    public int getMaxStackSize() { return 64; }
+
+    /** Pre-Flattening: returned the {@link org.bukkit.material.MaterialData}
+     *  subclass associated with the material (e.g. Sign.class). Modern
+     *  Bukkit dropped per-material data classes in favour of BlockData;
+     *  RDForward does not model either, so this stub returns
+     *  {@code null}. Essentials Pre-2.14's {@code Worth.setPrice}
+     *  branches on null to pick the durability-aware key path —
+     *  matches what we want for damage-variant items. */
+    public Class<? extends org.bukkit.material.MaterialData> getData() { return null; }
+
+    /** Maximum durability before the item breaks. Real Bukkit returns
+     *  per-tool values (wooden 59, stone 131, iron 250, diamond 1561,
+     *  netherite 2031) and 0 for non-damageable items. RDForward does
+     *  not model the tool table, so every material reports 0 — matches
+     *  the non-damageable case. Essentials's {@code Commandhat} uses
+     *  this to gate the held item: maxDurability == 0 ⇒ block-like ⇒
+     *  acceptable hat. Tools therefore become valid hats here, which
+     *  matches how /hat behaved on legacy servers before damage was
+     *  per-stack. */
+    public short getMaxDurability() { return 0; }
+
     /** @return the namespaced key {@code minecraft:<lowercase_name>}.
      *  CoreProtect's {@code BlockPlaceLogger} persists
      *  {@code material.getKey()} as the canonical block descriptor in

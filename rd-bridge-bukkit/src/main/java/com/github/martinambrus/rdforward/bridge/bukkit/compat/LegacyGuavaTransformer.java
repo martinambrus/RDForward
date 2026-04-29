@@ -22,6 +22,12 @@ import org.objectweb.asm.Opcodes;
  *       to {@code INVOKESTATIC GuavaCompat.cacheGet(Cache, Object)} —
  *       receiver becomes first arg, no stack-shape change, stack maps stay
  *       valid.</li>
+ *   <li>{@code CacheBuilder.maximumSize(int) -> CacheBuilder} (only
+ *       {@code maximumSize(long)} survives in modern Guava). Rewritten
+ *       to {@code INVOKESTATIC GuavaCompat.maximumSize(CacheBuilder, int)}
+ *       so the int argument flows through unchanged — receiver becomes
+ *       first arg, stack shape stays (CacheBuilder + int → CacheBuilder),
+ *       no I2L injection or frame fixup needed.</li>
  * </ul>
  *
  * <p>Conservative scope: only the two signatures above are touched. Any
@@ -82,6 +88,14 @@ public final class LegacyGuavaTransformer {
                     && "(Ljava/lang/Object;)Ljava/lang/Object;".equals(descriptor)) {
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, GUAVA_COMPAT, "cacheGet",
                         "(L" + CACHE + ";Ljava/lang/Object;)Ljava/lang/Object;", false);
+                return;
+            }
+            if (opcode == Opcodes.INVOKEVIRTUAL
+                    && CACHE_BUILDER.equals(owner)
+                    && "maximumSize".equals(name)
+                    && ("(I)L" + CACHE_BUILDER + ";").equals(descriptor)) {
+                super.visitMethodInsn(Opcodes.INVOKESTATIC, GUAVA_COMPAT, "maximumSize",
+                        "(L" + CACHE_BUILDER + ";I)L" + CACHE_BUILDER + ";", false);
                 return;
             }
             super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);

@@ -450,6 +450,30 @@ public final class BukkitPlayer {
                     return 0;
                 case "getInventory":
                     return resolveInventory();
+                case "getItemInHand":
+                case "getItemInMainHand": {
+                    // Real Bukkit's Player.getItemInHand() / getItemInMainHand()
+                    // route through the inventory but NEVER return null —
+                    // an empty held slot surfaces as an AIR-typed ItemStack.
+                    // Essentials's /book, /skull, /more, /lore all call
+                    // item.getType() immediately after, so a null here NPEs
+                    // the command. Default to AIR so the WRITTEN_BOOK / etc.
+                    // material checks fail cleanly.
+                    org.bukkit.inventory.ItemStack held =
+                            resolveInventory().getItemInMainHand();
+                    return held == null
+                            ? new org.bukkit.inventory.ItemStack(org.bukkit.Material.AIR)
+                            : held;
+                }
+                case "getItemInOffHand":
+                    return new org.bukkit.inventory.ItemStack(org.bukkit.Material.AIR);
+                case "setItemInHand":
+                case "setItemInMainHand": {
+                    if (argc >= 1 && args[0] instanceof org.bukkit.inventory.ItemStack stk) {
+                        resolveInventory().setItemInMainHand(stk);
+                    }
+                    return null;
+                }
                 case "getGameMode":
                     // Real Bukkit's getGameMode is non-null; Essentials's
                     // /whois calls user.getGameMode().toString() and NPEs

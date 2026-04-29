@@ -71,6 +71,8 @@ public class PlayerInteractEvent extends org.bukkit.event.player.PlayerEvent imp
     public void setUseInteractedBlock(org.bukkit.event.Event$Result r) { this.useInteractedBlock = r; }
     public org.bukkit.event.Event$Result useItemInHand() { return useItemInHand; }
     public void setUseItemInHand(org.bukkit.event.Event$Result r) { this.useItemInHand = r; }
-    public org.bukkit.event.HandlerList getHandlers() { return null; }
-    public static org.bukkit.event.HandlerList getHandlerList() { return null; }
+    // Inherits getHandlers() / getHandlerList() from Event so plugins
+    // that self-unregister via event.getHandlers().unregister(this)
+    // (Essentials's SignPlayerListener) reach a non-null HandlerList.
+    // The prior return-null overrides masked the base method and NPE'd.
 }

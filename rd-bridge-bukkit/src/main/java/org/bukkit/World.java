@@ -84,6 +84,17 @@ public interface World {
         return new com.github.martinambrus.rdforward.bridge.bukkit.BukkitChunk(this, chunkX, chunkZ);
     }
 
+    /** Snapshot of currently-loaded chunks. RDForward keeps the whole
+     *  world resident in memory rather than streaming chunks in/out, so
+     *  there is no real "loaded set" to enumerate. Essentials's {@code /gc}
+     *  reads {@code getLoadedChunks().length} purely as a stat for the
+     *  status report — returning an empty array means the report shows
+     *  zero loaded chunks instead of throwing {@link NoSuchMethodError},
+     *  which is honest about RDForward's lack of streaming. */
+    default org.bukkit.Chunk[] getLoadedChunks() {
+        return new org.bukkit.Chunk[0];
+    }
+
     int getMaxHeight();
 
     /**
