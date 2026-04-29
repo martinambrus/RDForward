@@ -13,6 +13,7 @@ import com.github.martinambrus.rdforward.protocol.packet.classic.PlayerTeleportP
 import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
 import com.github.martinambrus.rdforward.server.api.CommandRegistry;
 import com.github.martinambrus.rdforward.server.api.ServerProperties;
+import com.github.martinambrus.rdforward.server.gamemode.GameModeUtil;
 import com.github.martinambrus.rdforward.server.auth.MojangSessionVerifier;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -612,8 +613,12 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Entity ID: playerId + 1 (entity 0 is sometimes special in Alpha)
         int entityId = player.getPlayerId() + 1;
 
-        // Send LoginS2C (format varies by version)
-        int gm = ServerProperties.getGameMode();
+        // Send LoginS2C (format varies by version). Clamp the configured
+        // gamemode to what the client's wire field can actually express:
+        // adventure (2) and spectator (3) on a Beta 1.8 - Release 1.2.5
+        // client are out of range and fall back to survival rather than
+        // be sent raw, where the client behaviour is undefined.
+        int gm = GameModeUtil.clampForLogin(ServerProperties.getGameMode(), clientVersion);
         int diff = ServerProperties.getDifficulty();
         if (clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_3_1)) {
             // Release 1.3.1+: no empty username, gameMode/dimension as byte.

@@ -17,6 +17,7 @@ import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerP
 import com.github.martinambrus.rdforward.protocol.packet.netty.*;
 import com.github.martinambrus.rdforward.server.api.CommandRegistry;
 import com.github.martinambrus.rdforward.server.api.ServerProperties;
+import com.github.martinambrus.rdforward.server.gamemode.GameModeUtil;
 import com.github.martinambrus.rdforward.server.auth.MojangSessionVerifier;
 import com.github.martinambrus.rdforward.api.event.server.ServerEvents;
 import com.github.martinambrus.rdforward.protocol.BlockStateMapper;
@@ -842,7 +843,12 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // v573 (1.15) added hashedSeed + enableRespawnScreen.
         // v477 (1.14) removed difficulty from JoinGame and added viewDistance.
         // v108 (1.9.1) changed dimension from byte to int.
-        int gm = ServerProperties.getGameMode();
+        // Clamp the configured gamemode to what the client's JoinGame
+        // wire field can express. All Netty clients (1.7.2+) support the
+        // full 0..3 range, so this is a no-op for them — but adding the
+        // clamp here shields any future pre-1.8 Netty path from carrying
+        // spectator/adventure that the JoinGame variant doesn't model.
+        int gm = GameModeUtil.clampForLogin(ServerProperties.getGameMode(), clientVersion);
         int diff = ServerProperties.getDifficulty();
         if (isV768) {
             ctx.writeAndFlush(new JoinGamePacketV768(entityId, gm,
