@@ -49,6 +49,11 @@ class GriefProtectionDepletionTimingTest {
         BlockOwnerRegistry.clearForTesting();
         BlockOwnerRegistry.INITIAL_BUDGET = savedBudget;
         BlockOwnerRegistry.ACCRUAL_PER_HOUR = savedAccrual;
+        // Restore the default rate-tracker cap. setUp called init(0, ...)
+        // to disable the rate tracker for this scenario; without restoring
+        // the static, GriefProtection.RateTracker instances constructed
+        // by other tests in the same JVM start with tokens=0 and fail.
+        GriefProtection.init(17, pm, null, null);
         GriefProtection.disable();
     }
 
