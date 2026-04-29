@@ -36,6 +36,11 @@ public final class LegacyPluginClassLoader extends URLClassLoader {
             } catch (Throwable t) {
                 transformed = raw;
             }
+            try {
+                transformed = LegacyHealthTransformer.transform(transformed);
+            } catch (Throwable t) {
+                // leave whatever we had after the previous pass
+            }
             return defineClass(name, transformed, 0, transformed.length);
         } catch (IOException e) {
             throw new ClassNotFoundException(name, e);
