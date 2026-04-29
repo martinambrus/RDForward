@@ -89,4 +89,22 @@ public final class RDPlayer implements Player {
         java.net.SocketAddress addr = ch.remoteAddress();
         return addr instanceof java.net.InetSocketAddress isa ? isa : null;
     }
+
+    @Override
+    public void setFlySpeed(float speed) { player.setFlySpeed(speed); }
+
+    @Override
+    public void setWalkSpeed(float speed) { player.setWalkSpeed(speed); }
+
+    @Override
+    public float getFlySpeed() { return player.getFlySpeed(); }
+
+    @Override
+    public float getWalkSpeed() { return player.getWalkSpeed(); }
+
+    @Override
+    public void setGameMode(int gameMode) { player.setGameMode(gameMode); }
+
+    @Override
+    public int getGameMode() { return player.getGameMode(); }
 }

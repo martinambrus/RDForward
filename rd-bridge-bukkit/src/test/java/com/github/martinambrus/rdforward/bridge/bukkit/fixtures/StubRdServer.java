@@ -218,6 +218,10 @@ public final class StubRdServer implements Server {
         public final List<Location> teleports = new ArrayList<>();
         public String kickedReason;
         public boolean op;
+        public float flySpeed = 0.05f;
+        public float walkSpeed = 0.2f;
+        public final List<Float> flySpeedSets = new ArrayList<>();
+        public final List<Float> walkSpeedSets = new ArrayList<>();
 
         public StubRdPlayer(String name, Location start) {
             this.name = name;
@@ -231,5 +235,34 @@ public final class StubRdServer implements Server {
         @Override public ProtocolVersion getProtocolVersion() { return null; }
         @Override public boolean isOp() { return op; }
         @Override public void kick(String reason) { kickedReason = reason; }
+
+        @Override
+        public void setFlySpeed(float speed) {
+            if (speed < -1.0f || speed > 1.0f) {
+                throw new IllegalArgumentException("Fly speed must be between -1 and 1, got " + speed);
+            }
+            this.flySpeed = speed;
+            flySpeedSets.add(speed);
+        }
+
+        @Override
+        public void setWalkSpeed(float speed) {
+            if (speed < -1.0f || speed > 1.0f) {
+                throw new IllegalArgumentException("Walk speed must be between -1 and 1, got " + speed);
+            }
+            this.walkSpeed = speed;
+            walkSpeedSets.add(speed);
+        }
+
+        @Override public float getFlySpeed() { return flySpeed; }
+        @Override public float getWalkSpeed() { return walkSpeed; }
+
+        public int gameMode = 1;
+        public final List<Integer> gameModeSets = new ArrayList<>();
+        @Override public void setGameMode(int gm) {
+            this.gameMode = gm;
+            gameModeSets.add(gm);
+        }
+        @Override public int getGameMode() { return gameMode; }
     }
 }

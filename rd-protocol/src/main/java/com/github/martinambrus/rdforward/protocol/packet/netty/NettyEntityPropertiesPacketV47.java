@@ -47,6 +47,10 @@ public class NettyEntityPropertiesPacketV47 implements Packet {
         McDataTypes.writeVarInt(buf, 0); // 0 modifiers
     }
 
+    public int getEntityId() { return entityId; }
+    public String getKey() { return key; }
+    public double getValue() { return value; }
+
     @Override
     public void read(ByteBuf buf) {
         entityId = McDataTypes.readVarInt(buf);

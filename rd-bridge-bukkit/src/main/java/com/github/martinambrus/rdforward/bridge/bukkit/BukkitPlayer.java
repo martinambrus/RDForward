@@ -412,6 +412,27 @@ public final class BukkitPlayer {
                     return null;
             }
 
+            // Movement-speed multipliers — Essentials's /speed (and aliases
+            // /flyspeed, /wspeed) call setFlySpeed / setWalkSpeed expecting
+            // the change to push to the client. Route to the rd-api backing
+            // which dispatches the codec-appropriate abilities packet.
+            switch (n) {
+                case "setFlySpeed":
+                    if (backing != null && argc >= 1 && args[0] instanceof Float f) {
+                        backing.setFlySpeed(f);
+                    }
+                    return null;
+                case "setWalkSpeed":
+                    if (backing != null && argc >= 1 && args[0] instanceof Float f) {
+                        backing.setWalkSpeed(f);
+                    }
+                    return null;
+                case "getFlySpeed":
+                    return backing == null ? 0.1f : backing.getFlySpeed();
+                case "getWalkSpeed":
+                    return backing == null ? 0.2f : backing.getWalkSpeed();
+            }
+
             // Health / stats — safe defaults
             switch (n) {
                 case "getHealth":
@@ -430,6 +451,23 @@ public final class BukkitPlayer {
                 case "getInventory":
                     return resolveInventory();
                 case "getGameMode":
+                    // Real Bukkit's getGameMode is non-null; Essentials's
+                    // /whois calls user.getGameMode().toString() and NPEs
+                    // on null. Read the per-player gamemode from the
+                    // rd-api backing (which falls back to server.properties
+                    // before /gamemode has been called on the session).
+                    return resolveGameMode(backing);
+                case "setGameMode":
+                    // Essentials's /gamemode and aliases (/gms /gmc /gma
+                    // /gmsp) call player.setGameMode(GameMode). Convert
+                    // the Bukkit enum to the protocol int and route to
+                    // the rd-api backing — GameModeDispatcher clamps to
+                    // what the client wire format can carry and sends
+                    // ChangeGameStatePacket / NettyChangeGameStatePacket.
+                    if (backing != null && argc >= 1 && args[0] instanceof org.bukkit.GameMode gm) {
+                        backing.setGameMode(bukkitGameModeToInt(gm));
+                    }
+                    return null;
                 case "getEnderChest":
                 case "getOpenInventory":
                     return null;
@@ -484,6 +522,43 @@ public final class BukkitPlayer {
             // Anything else returns a type-safe default so the abstract
             // method contract is satisfied without throwing.
             return defaultValue(m.getReturnType());
+        }
+
+        /** Map the rd-api backing's gamemode int (or the server-properties
+         *  default if no backing is bound yet) to the Bukkit enum constant.
+         *  Falls back to {@link org.bukkit.GameMode#SURVIVAL} on any
+         *  failure — never returns null, which is the contract real
+         *  Bukkit's {@code Player.getGameMode} guarantees. */
+        private static org.bukkit.GameMode resolveGameMode(
+                com.github.martinambrus.rdforward.api.player.Player backing) {
+            try {
+                int gm = backing != null
+                        ? backing.getGameMode()
+                        : com.github.martinambrus.rdforward.server.api.ServerProperties.getGameMode();
+                switch (gm) {
+                    case 1: return org.bukkit.GameMode.CREATIVE;
+                    case 2: return org.bukkit.GameMode.ADVENTURE;
+                    case 3: return org.bukkit.GameMode.SPECTATOR;
+                    default: return org.bukkit.GameMode.SURVIVAL;
+                }
+            } catch (Throwable t) {
+                return org.bukkit.GameMode.SURVIVAL;
+            }
+        }
+
+        /** Convert a Bukkit {@link org.bukkit.GameMode} enum constant to
+         *  the protocol int (0=survival, 1=creative, 2=adventure,
+         *  3=spectator). Cannot rely on {@code GameMode.getValue()} since
+         *  the stub returns 0 for every constant. Switch on enum name
+         *  instead. */
+        private static int bukkitGameModeToInt(org.bukkit.GameMode gm) {
+            if (gm == null) return 0;
+            switch (gm.name()) {
+                case "CREATIVE":  return 1;
+                case "ADVENTURE": return 2;
+                case "SPECTATOR": return 3;
+                default:          return 0;
+            }
         }
 
         /** Pre-join lookups (or fixtures without an rd-api backing) keep

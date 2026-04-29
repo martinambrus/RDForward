@@ -45,6 +45,10 @@ public class NettyEntityPropertiesPacketV766 implements Packet {
     @Override
     public int getPacketId() { return 0x75; }
 
+    public int getEntityId() { return entityId; }
+    public int getAttributeId() { return attributeId; }
+    public double getValue() { return value; }
+
     @Override
     public void write(ByteBuf buf) {
         McDataTypes.writeVarInt(buf, entityId);

@@ -2,6 +2,8 @@ package com.github.martinambrus.rdforward.server;
 
 import com.github.martinambrus.rdforward.protocol.ProtocolVersion;
 import com.github.martinambrus.rdforward.protocol.packet.Packet;
+import com.github.martinambrus.rdforward.server.abilities.AbilitiesDispatcherFactory;
+import com.github.martinambrus.rdforward.server.abilities.AbilitiesSpeedDispatcher;
 import com.github.martinambrus.rdforward.server.bedrock.BedrockSessionWrapper;
 import com.github.martinambrus.rdforward.server.mcpe.MCPESessionWrapper;
 import io.netty.channel.Channel;
@@ -76,6 +78,32 @@ public class ConnectedPlayer {
     // short duration after teleport, giving old clients time to process the
     // position + chunk data. Prevents false "stuck at unloaded chunk" kicks.
     private volatile long teleportGraceUntil = 0;
+
+    // Player movement-speed multipliers exposed via Bukkit's
+    // setFlySpeed/setWalkSpeed. Defaults match vanilla — 0.05 (fly) and
+    // 0.2 (walk). Updates push to the client via the codec-aware
+    // AbilitiesSpeedDispatcher; pre-1.6.1 / Alpha / Classic / RubyDung
+    // sessions silently no-op (no on-wire field).
+    // Bukkit's API-side defaults: getFlySpeed = 0.1, getWalkSpeed = 0.2.
+    // Wire-side defaults sent to the client during the join sequence are
+    // value/2 (0.05 fly / 0.1 walk) — that conversion lives in the
+    // per-codec abilities dispatcher.
+    private volatile float flySpeed = 0.1f;
+    private volatile float walkSpeed = 0.2f;
+
+    // Per-session gamemode int (0=survival, 1=creative, 2=adventure,
+    // 3=spectator). Sentinel -1 means "never explicitly set on this
+    // session" — getGameMode() then falls back to ServerProperties so
+    // a fresh session reflects the operator's configured default rather
+    // than a stale write from a previous join. /gamemode at runtime
+    // routes through GameModeDispatcher which clamps the value to
+    // what the client wire format can express.
+    private volatile int gameMode = -1;
+
+    // Lazily-resolved per-session strategy that pushes flySpeed/walkSpeed
+    // changes onto the wire. Computed once from the bound session/codec
+    // (Bedrock vs Netty vs Alpha vs no-op for older protocols).
+    private volatile AbilitiesSpeedDispatcher abilitiesDispatcher;
 
     public ConnectedPlayer(byte playerId, String username, String uuid, Channel channel, ProtocolVersion protocolVersion) {
         this.playerId = playerId;
@@ -203,6 +231,85 @@ public class ConnectedPlayer {
     public ProtocolVersion getProtocolVersion() { return protocolVersion; }
     public boolean isAlphaverClient() { return alphaverClient; }
     public void setAlphaverClient(boolean alphaverClient) { this.alphaverClient = alphaverClient; }
+
+    /** Current fly-speed multiplier as last set via {@link #setFlySpeed}.
+     *  Bukkit API default 0.1f (the wire value sent in PlayerAbilities is
+     *  half this — see the abilities dispatcher). */
+    public float getFlySpeed() { return flySpeed; }
+
+    /** Current walk-speed multiplier as last set via {@link #setWalkSpeed}.
+     *  Vanilla default 0.2f. */
+    public float getWalkSpeed() { return walkSpeed; }
+
+    /** Store a new fly-speed multiplier on this session. Bukkit semantics:
+     *  range -1.0 to 1.0 inclusive. Throws {@link IllegalArgumentException}
+     *  out of range. Caller is responsible for dispatching the change to
+     *  the client via the appropriate AbilitiesSpeedDispatcher. */
+    public void setFlySpeed(float speed) {
+        if (speed < -1.0f || speed > 1.0f) {
+            throw new IllegalArgumentException("Fly speed must be between -1 and 1, got " + speed);
+        }
+        this.flySpeed = speed;
+        pushAbilitiesSpeeds();
+    }
+
+    /** Store a new walk-speed multiplier on this session. Bukkit semantics:
+     *  range -1.0 to 1.0 inclusive. Throws {@link IllegalArgumentException}
+     *  out of range. Dispatches the change to the client. */
+    public void setWalkSpeed(float speed) {
+        if (speed < -1.0f || speed > 1.0f) {
+            throw new IllegalArgumentException("Walk speed must be between -1 and 1, got " + speed);
+        }
+        this.walkSpeed = speed;
+        pushAbilitiesSpeeds();
+    }
+
+    /** Resolve and cache the per-session abilities dispatcher, then push the
+     *  current flySpeed/walkSpeed onto the wire. Pre-1.6.1 / Beta / Classic /
+     *  RubyDung / legacy MCPE sessions resolve to a no-op dispatcher. */
+    public void pushAbilitiesSpeeds() {
+        AbilitiesSpeedDispatcher d = abilitiesDispatcher;
+        if (d == null) {
+            d = AbilitiesDispatcherFactory.forSession(this);
+            abilitiesDispatcher = d;
+        }
+        d.push(this);
+    }
+
+    /** @return current gamemode int, or the operator's configured default
+     *  if {@link #setGameMode} has never been called on this session. */
+    public int getGameMode() {
+        int local = gameMode;
+        if (local >= 0) return local;
+        try {
+            return com.github.martinambrus.rdforward.server.api.ServerProperties.getGameMode();
+        } catch (Throwable t) {
+            return 1;
+        }
+    }
+
+    /** Apply a runtime gamemode change. The value is clamped to what the
+     *  client's wire format supports (e.g. spectator on 1.7.x falls back
+     *  to survival), the change packet is sent via
+     *  {@link com.github.martinambrus.rdforward.server.gamemode.GameModeDispatcher},
+     *  and the post-clamp value is stored so subsequent
+     *  {@link #getGameMode} reads see what the client actually has.
+     *  Sessions that can't carry a gamemode change (Classic / RubyDung /
+     *  Indev / Bedrock / MCPE) silently no-op. */
+    public void setGameMode(int requested) {
+        int delivered = com.github.martinambrus.rdforward.server.gamemode.GameModeDispatcher.push(
+                this, requested);
+        if (delivered >= 0) {
+            this.gameMode = delivered;
+        } else {
+            // Wire didn't carry the change (Classic / Bedrock / MCPE /
+            // pre-Beta-1.8). Still record the requested value clamped
+            // by the protocol-version range so getGameMode reflects the
+            // operator's intent for plugin-side bookkeeping.
+            this.gameMode = com.github.martinambrus.rdforward.server.gamemode.GameModeUtil
+                    .clampForRuntime(requested, getProtocolVersion());
+        }
+    }
     public boolean isEaglecraftClient() { return eaglecraftClient; }
     public void setEaglecraftClient(boolean eaglecraftClient) { this.eaglecraftClient = eaglecraftClient; }
 
