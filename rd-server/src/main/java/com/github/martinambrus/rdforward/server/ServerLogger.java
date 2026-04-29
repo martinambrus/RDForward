@@ -107,7 +107,8 @@ public final class ServerLogger {
             @Override
             public String format(java.util.logging.LogRecord r) {
                 StringBuilder sb = new StringBuilder(128);
-                sb.append('[').append(r.getLevel()).append("] ").append(formatMessage(r));
+                sb.append('[').append(r.getLevel()).append("] ")
+                        .append(stripChatColors(formatMessage(r)));
                 sb.append(System.lineSeparator());
                 Throwable t = r.getThrown();
                 if (t != null) {
@@ -124,6 +125,47 @@ public final class ServerLogger {
             h.setFormatter(compact);
         }
         setModLoaderVerbose(false);
+    }
+
+    /**
+     * Strip Bukkit-style chat colour codes ({@code §<any-char>}, plus the
+     * {@code &<x>} alias Essentials emits when its translator routes a
+     * tl() entry to the plugin logger). Each prefix consumes the
+     * following character. Real Spigot translates these to ANSI escape
+     * sequences via Log4j2; RDForward's JUL pipeline strips them so the
+     * raw section sign doesn't surface as {@code ?} on consoles whose
+     * charset can't render U+00A7.
+     */
+    static String stripChatColors(String input) {
+        if (input == null || input.isEmpty()) return input;
+        int len = input.length();
+        StringBuilder out = new StringBuilder(len);
+        for (int i = 0; i < len; i++) {
+            char c = input.charAt(i);
+            if ((c == '§' || c == '&') && i + 1 < len) {
+                char next = input.charAt(i + 1);
+                if (isColorCodeChar(next)) {
+                    i++;
+                    continue;
+                }
+            }
+            out.append(c);
+        }
+        return out.toString();
+    }
+
+    /** True if {@code c} is a Bukkit colour-code suffix: {@code 0-9},
+     *  {@code a-f}, or one of the formatting flags {@code k l m n o r x}.
+     *  Restricting the alphabet here keeps an unrelated literal {@code &}
+     *  followed by, say, a space or an alphanumeric word from being
+     *  silently swallowed. */
+    private static boolean isColorCodeChar(char c) {
+        char lower = Character.toLowerCase(c);
+        return (lower >= '0' && lower <= '9')
+                || (lower >= 'a' && lower <= 'f')
+                || lower == 'k' || lower == 'l' || lower == 'm'
+                || lower == 'n' || lower == 'o' || lower == 'r'
+                || lower == 'x';
     }
 
     /**
