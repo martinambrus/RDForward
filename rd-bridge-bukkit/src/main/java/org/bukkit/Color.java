@@ -1,103 +1,164 @@
+// @rdforward:preserve - real impl, not auto-generated stub
 package org.bukkit;
 
-/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * Immutable RGB(A) colour. Real implementation (not a stub) because plugins
+ * like Essentials read colours from config and round-trip them through
+ * {@code asRGB()} / {@code fromRGB(int)}; returning {@code null} from
+ * {@code fromRGB} crashes any caller that chains {@code .asRGB()}.
+ *
+ * <p>Wire-compatible with Paper's {@code org.bukkit.Color} surface used by
+ * Bukkit-style plugins: ARGB packing, range-checked factories, immutable
+ * setters that return a new instance, and a {@link
+ * org.bukkit.configuration.serialization.ConfigurationSerializable} map
+ * shape that mirrors Bukkit's own.
+ */
 @SuppressWarnings({"unchecked", "rawtypes", "unused"})
 public class Color implements org.bukkit.configuration.serialization.ConfigurationSerializable {
-    public static final org.bukkit.Color WHITE = null;
-    public static final org.bukkit.Color SILVER = null;
-    public static final org.bukkit.Color GRAY = null;
-    public static final org.bukkit.Color BLACK = null;
-    public static final org.bukkit.Color RED = null;
-    public static final org.bukkit.Color MAROON = null;
-    public static final org.bukkit.Color YELLOW = null;
-    public static final org.bukkit.Color OLIVE = null;
-    public static final org.bukkit.Color LIME = null;
-    public static final org.bukkit.Color GREEN = null;
-    public static final org.bukkit.Color AQUA = null;
-    public static final org.bukkit.Color TEAL = null;
-    public static final org.bukkit.Color BLUE = null;
-    public static final org.bukkit.Color NAVY = null;
-    public static final org.bukkit.Color FUCHSIA = null;
-    public static final org.bukkit.Color PURPLE = null;
-    public static final org.bukkit.Color ORANGE = null;
-    public Color() {}
-    public static org.bukkit.Color fromARGB(int arg0, int arg1, int arg2, int arg3) throws java.lang.IllegalArgumentException {
-        return null;
+
+    private static final int BIT_MASK = 0xff;
+
+    public static final Color WHITE   = fromRGB(0xFFFFFF);
+    public static final Color SILVER  = fromRGB(0xC0C0C0);
+    public static final Color GRAY    = fromRGB(0x808080);
+    public static final Color BLACK   = fromRGB(0x000000);
+    public static final Color RED     = fromRGB(0xFF0000);
+    public static final Color MAROON  = fromRGB(0x800000);
+    public static final Color YELLOW  = fromRGB(0xFFFF00);
+    public static final Color OLIVE   = fromRGB(0x808000);
+    public static final Color LIME    = fromRGB(0x00FF00);
+    public static final Color GREEN   = fromRGB(0x008000);
+    public static final Color AQUA    = fromRGB(0x00FFFF);
+    public static final Color TEAL    = fromRGB(0x008080);
+    public static final Color BLUE    = fromRGB(0x0000FF);
+    public static final Color NAVY    = fromRGB(0x000080);
+    public static final Color FUCHSIA = fromRGB(0xFF00FF);
+    public static final Color PURPLE  = fromRGB(0x800080);
+    public static final Color ORANGE  = fromRGB(0xFFA500);
+
+    private final byte alpha;
+    private final byte red;
+    private final byte green;
+    private final byte blue;
+
+    /** Default alpha=255, all colour channels=0. Public no-arg ctor exists
+     *  on real Bukkit Color for serializer compatibility. */
+    public Color() { this(255, 0, 0, 0); }
+
+    private Color(int alpha, int red, int green, int blue) {
+        check(alpha, "alpha");
+        check(red, "red");
+        check(green, "green");
+        check(blue, "blue");
+        this.alpha = (byte) alpha;
+        this.red = (byte) red;
+        this.green = (byte) green;
+        this.blue = (byte) blue;
     }
-    public static org.bukkit.Color fromRGB(int arg0, int arg1, int arg2) throws java.lang.IllegalArgumentException {
-        return null;
+
+    private static void check(int v, String name) {
+        if (v < 0 || v > 255) {
+            throw new IllegalArgumentException(name + " (" + v + ") is not in range 0-255");
+        }
     }
-    public static org.bukkit.Color fromBGR(int arg0, int arg1, int arg2) throws java.lang.IllegalArgumentException {
-        return null;
+
+    public static Color fromARGB(int alpha, int red, int green, int blue) {
+        return new Color(alpha, red, green, blue);
     }
-    public static org.bukkit.Color fromRGB(int arg0) throws java.lang.IllegalArgumentException {
-        return null;
+
+    public static Color fromRGB(int red, int green, int blue) {
+        return new Color(255, red, green, blue);
     }
-    public static org.bukkit.Color fromARGB(int arg0) {
-        return null;
+
+    public static Color fromBGR(int blue, int green, int red) {
+        return new Color(255, red, green, blue);
     }
-    public static org.bukkit.Color fromBGR(int arg0) throws java.lang.IllegalArgumentException {
-        return null;
+
+    public static Color fromRGB(int rgb) {
+        if ((rgb & 0xFF000000) != 0) {
+            throw new IllegalArgumentException("Extranous data in: " + rgb + ". Use fromARGB for parsing ARGB ints.");
+        }
+        return fromRGB((rgb >> 16) & BIT_MASK, (rgb >> 8) & BIT_MASK, rgb & BIT_MASK);
     }
-    public int getAlpha() {
-        return 0;
+
+    public static Color fromARGB(int argb) {
+        return fromARGB((argb >> 24) & BIT_MASK, (argb >> 16) & BIT_MASK,
+                (argb >> 8) & BIT_MASK, argb & BIT_MASK);
     }
-    public org.bukkit.Color setAlpha(int arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.Color.setAlpha(I)Lorg/bukkit/Color;");
+
+    public static Color fromBGR(int bgr) {
+        if ((bgr & 0xFF000000) != 0) {
+            throw new IllegalArgumentException("Extranous data in: " + bgr + ". Use fromARGB for parsing ARGB ints.");
+        }
+        return fromBGR((bgr >> 16) & BIT_MASK, (bgr >> 8) & BIT_MASK, bgr & BIT_MASK);
+    }
+
+    public int getAlpha() { return BIT_MASK & alpha; }
+    public int getRed()   { return BIT_MASK & red;   }
+    public int getGreen() { return BIT_MASK & green; }
+    public int getBlue()  { return BIT_MASK & blue;  }
+
+    public Color setAlpha(int alpha) { return fromARGB(alpha, getRed(), getGreen(), getBlue()); }
+    public Color setRed(int red)     { return fromARGB(getAlpha(), red, getGreen(), getBlue()); }
+    public Color setGreen(int green) { return fromARGB(getAlpha(), getRed(), green, getBlue()); }
+    public Color setBlue(int blue)   { return fromARGB(getAlpha(), getRed(), getGreen(), blue); }
+
+    public int asRGB()  { return (getRed() << 16) | (getGreen() << 8) | getBlue(); }
+    public int asARGB() { return (getAlpha() << 24) | (getRed() << 16) | (getGreen() << 8) | getBlue(); }
+    public int asBGR()  { return (getBlue() << 16) | (getGreen() << 8) | getRed(); }
+
+    /** Mixing not implemented in stub — returns {@code this}. */
+    public Color mixDyes(DyeColor[] dyes) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null,
+                "org.bukkit.Color.mixDyes([Lorg/bukkit/DyeColor;)Lorg/bukkit/Color;");
         return this;
     }
-    public int getRed() {
-        return 0;
-    }
-    public org.bukkit.Color setRed(int arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.Color.setRed(I)Lorg/bukkit/Color;");
+
+    /** Mixing not implemented in stub — returns {@code this}. */
+    public Color mixColors(Color[] colors) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null,
+                "org.bukkit.Color.mixColors([Lorg/bukkit/Color;)Lorg/bukkit/Color;");
         return this;
     }
-    public int getGreen() {
-        return 0;
+
+    @Override
+    public boolean equals(Object o) {
+        if (!(o instanceof Color)) return false;
+        Color other = (Color) o;
+        return getAlpha() == other.getAlpha()
+                && getRed() == other.getRed()
+                && getGreen() == other.getGreen()
+                && getBlue() == other.getBlue();
     }
-    public org.bukkit.Color setGreen(int arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.Color.setGreen(I)Lorg/bukkit/Color;");
-        return this;
+
+    @Override
+    public int hashCode() { return asARGB() ^ Color.class.hashCode(); }
+
+    @Override
+    public Map<String, Object> serialize() {
+        Map<String, Object> m = new HashMap<>();
+        m.put("ALPHA", getAlpha());
+        m.put("RED", getRed());
+        m.put("BLUE", getBlue());
+        m.put("GREEN", getGreen());
+        return m;
     }
-    public int getBlue() {
-        return 0;
+
+    public static Color deserialize(Map<String, Object> map) {
+        return fromARGB(asInt("ALPHA", map, 255),
+                asInt("RED", map, 0), asInt("GREEN", map, 0), asInt("BLUE", map, 0));
     }
-    public org.bukkit.Color setBlue(int arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.Color.setBlue(I)Lorg/bukkit/Color;");
-        return this;
+
+    private static int asInt(String key, Map<String, Object> map, int def) {
+        Object v = map.get(key);
+        return v instanceof Number ? ((Number) v).intValue() : def;
     }
-    public int asRGB() {
-        return 0;
-    }
-    public int asARGB() {
-        return 0;
-    }
-    public int asBGR() {
-        return 0;
-    }
-    public org.bukkit.Color mixDyes(org.bukkit.DyeColor[] arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.Color.mixDyes([Lorg/bukkit/DyeColor;)Lorg/bukkit/Color;");
-        return this;
-    }
-    public org.bukkit.Color mixColors(org.bukkit.Color[] arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.Color.mixColors([Lorg/bukkit/Color;)Lorg/bukkit/Color;");
-        return this;
-    }
-    public boolean equals(java.lang.Object arg0) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.Color.equals(Ljava/lang/Object;)Z");
-        return false;
-    }
-    public int hashCode() {
-        return 0;
-    }
-    public java.util.Map serialize() {
-        return java.util.Collections.emptyMap();
-    }
-    public static org.bukkit.Color deserialize(java.util.Map arg0) {
-        return null;
-    }
-    public java.lang.String toString() {
-        return null;
+
+    @Override
+    public String toString() {
+        return "Color:[argb0x" + Integer.toHexString(asARGB()).toUpperCase() + "]";
     }
 }

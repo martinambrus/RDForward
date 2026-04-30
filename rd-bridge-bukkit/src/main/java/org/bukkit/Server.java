@@ -222,6 +222,59 @@ public interface Server {
      * @return the matching {@link org.bukkit.command.PluginCommand}, or
      *         {@code null} when no plugin owns a command by that name.
      */
+    /**
+     * EssentialsX's {@code /disposal} hands the resulting {@link
+     * org.bukkit.inventory.Inventory} to the player's
+     * {@code openInventory} for a throwaway item-dump UI. RDForward has
+     * no client-side container UI, but the call must NOT throw — a
+     * {@link NoSuchMethodError} here aborts the command (and any other
+     * plugin that builds custom GUIs) before its message reaches the
+     * player. Returns a no-op array-backed
+     * {@link com.github.martinambrus.rdforward.bridge.bukkit.StubInventory}
+     * sized to {@code size}; the player never actually sees it.
+     */
+    default org.bukkit.inventory.Inventory createInventory(
+            org.bukkit.inventory.InventoryHolder holder, int size, String title) {
+        return new com.github.martinambrus.rdforward.bridge.bukkit.StubInventory(
+                holder, size, title);
+    }
+
+    /** Title-less overload — defaults to empty string. */
+    default org.bukkit.inventory.Inventory createInventory(
+            org.bukkit.inventory.InventoryHolder holder, int size) {
+        return createInventory(holder, size, "");
+    }
+
+    /** Type-only overload. Real Bukkit picks the slot count from the
+     *  {@link org.bukkit.event.inventory.InventoryType}; we don't model
+     *  type-specific layouts so size collapses to 9 (single row). */
+    default org.bukkit.inventory.Inventory createInventory(
+            org.bukkit.inventory.InventoryHolder holder,
+            org.bukkit.event.inventory.InventoryType type) {
+        return createInventory(holder, 9, "");
+    }
+
+    /** Type + title overload. */
+    default org.bukkit.inventory.Inventory createInventory(
+            org.bukkit.inventory.InventoryHolder holder,
+            org.bukkit.event.inventory.InventoryType type, String title) {
+        return createInventory(holder, 9, title);
+    }
+
+    /**
+     * EssentialsX's {@code UserWarpEvent.<init>} (constructed for
+     * {@code /warp}, {@code /sethome}, {@code /tpaccept} etc.) calls
+     * {@code Bukkit.getServer().isPrimaryThread()} to decide whether
+     * {@code isAsynchronous} on the event should be set. A
+     * {@link NoSuchMethodError} here aborts the command before any
+     * teleport runs. Delegates to {@link Bukkit#isPrimaryThread()} which
+     * already handles the RDForward tick-thread + plugin-lifecycle
+     * cases.
+     */
+    default boolean isPrimaryThread() {
+        return Bukkit.isPrimaryThread();
+    }
+
     default org.bukkit.command.PluginCommand getPluginCommand(String name) {
         return com.github.martinambrus.rdforward.bridge.bukkit.BukkitBridge.findPluginCommand(name);
     }

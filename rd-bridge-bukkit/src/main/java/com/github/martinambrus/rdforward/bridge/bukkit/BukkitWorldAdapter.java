@@ -7,7 +7,10 @@ import com.github.martinambrus.rdforward.server.ServerWorld;
 import com.github.martinambrus.rdforward.server.ServerWorld.WeatherState;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.RegionAccessor;
 import org.bukkit.World;
+import org.bukkit.WorldBorder;
 import org.bukkit.block.Block;
 import org.bukkit.event.weather.ThunderChangeEvent;
 import org.bukkit.event.weather.WeatherChangeEvent;
@@ -23,7 +26,7 @@ import org.bukkit.event.weather.WeatherChangeEvent;
  * {@link WeatherChangeEvent} / {@link ThunderChangeEvent} are fired
  * before any state change so plugin listeners can veto.
  */
-public final class BukkitWorldAdapter implements World {
+public final class BukkitWorldAdapter implements World, RegionAccessor {
 
     private final com.github.martinambrus.rdforward.api.world.World backing;
 
@@ -50,6 +53,24 @@ public final class BukkitWorldAdapter implements World {
     }
 
     @Override public int getMaxHeight() { return backing.getHeight(); }
+
+    /** Override the World default to size the border to the actual rd-server
+     *  world bounds. The default {@link RDStubWorldBorder} reports
+     *  {@code Integer.MAX_VALUE}; EssentialsX's {@code RandomTeleport.getMaxRange}
+     *  reads {@code border.getSize() / 2.0} as the default max-range, which
+     *  with MAX_VALUE picks teleport targets ~1 billion blocks away — far
+     *  outside our 256-block world, so the player ends up in unloaded chunks
+     *  and the position packet effectively no-ops on the client. */
+    @Override
+    public WorldBorder getWorldBorder() {
+        if (cachedBorder == null) {
+            RDStubWorldBorder b = new RDStubWorldBorder(this);
+            b.setSize(Math.min(backing.getWidth(), backing.getDepth()));
+            cachedBorder = b;
+        }
+        return cachedBorder;
+    }
+    private WorldBorder cachedBorder;
     @Override public long getTime() { return backing.getTime(); }
     @Override public void setTime(long time) { backing.setTime(time); }
 
@@ -179,5 +200,83 @@ public final class BukkitWorldAdapter implements World {
         ServerWorld sw = serverWorld();
         if (sw == null) return;
         sw.setWeather(sw.getWeather(), duration);
+    }
+
+    /* ---- {@link RegionAccessor} surface. EssentialsX's
+     *  {@code PaperBiomeKeyProvider.getBiomeKey} casts
+     *  {@code (RegionAccessor) block.getWorld()} during /tpr's biome
+     *  exclusion check; without this the cast throws CCE silently inside
+     *  the CompletableFuture chain and the teleport never fires. Most
+     *  methods are stubs — RDForward has no entity / per-block-data /
+     *  fluid model — but the type assignability is what matters at the
+     *  bytecode CHECKCAST instruction. ---- */
+
+    @Override public org.bukkit.block.Biome getBiome(int x, int y, int z) { return Block.RD_STUB_BIOME; }
+    @Override public org.bukkit.block.Biome getComputedBiome(int x, int y, int z) { return Block.RD_STUB_BIOME; }
+    @Override public void setBiome(int x, int y, int z, org.bukkit.block.Biome biome) { /* no-op */ }
+    @Override public org.bukkit.block.BlockState getBlockState(int x, int y, int z) {
+        return new BukkitBlockState(this, x, y, z, getType(x, y, z));
+    }
+    @Override public io.papermc.paper.block.fluid.FluidData getFluidData(int x, int y, int z) { return null; }
+    @Override public org.bukkit.block.data.BlockData getBlockData(int x, int y, int z) {
+        return new BukkitBlockData(getType(x, y, z));
+    }
+    @Override public Material getType(int x, int y, int z) {
+        com.github.martinambrus.rdforward.api.world.Block b = backing.getBlockAt(x, y, z);
+        return b == null ? Material.AIR : MaterialMapper.fromApi(b.getType());
+    }
+    @Override public void setBlockData(int x, int y, int z, org.bukkit.block.data.BlockData data) {
+        if (data == null) { backing.setBlock(x, y, z, MaterialMapper.toApi(Material.AIR)); return; }
+        backing.setBlock(x, y, z, MaterialMapper.toApi(data.getMaterial()));
+    }
+    @Override public boolean generateTree(Location loc, java.util.Random rand, org.bukkit.TreeType type) {
+        return generateTree(loc, type);
+    }
+    @Override public boolean generateTree(Location loc, java.util.Random rand, org.bukkit.TreeType type, java.util.function.Consumer consumer) {
+        return generateTree(loc, type);
+    }
+    @Override public boolean generateTree(Location loc, java.util.Random rand, org.bukkit.TreeType type, java.util.function.Predicate predicate) {
+        return generateTree(loc, type);
+    }
+    @Override public java.util.List getLivingEntities() { return java.util.Collections.emptyList(); }
+    @Override public java.util.Collection getEntitiesByClass(Class clazz) { return java.util.Collections.emptyList(); }
+    @Override public java.util.Collection getEntitiesByClasses(Class[] classes) { return java.util.Collections.emptyList(); }
+    @Override public org.bukkit.entity.Entity createEntity(Location loc, Class clazz) { return null; }
+    @Override public org.bukkit.entity.Entity spawn(Location loc, Class clazz, java.util.function.Consumer consumer, org.bukkit.event.entity.CreatureSpawnEvent$SpawnReason reason) { return null; }
+    @Override public org.bukkit.entity.Entity spawn(Location loc, Class clazz, boolean random, java.util.function.Consumer consumer) { return null; }
+    @Override public int getHighestBlockYAt(int x, int z, org.bukkit.HeightMap hm) { return getHighestBlockYAt(x, z); }
+    @Override public int getHighestBlockYAt(Location loc, org.bukkit.HeightMap hm) { return getHighestBlockYAt(loc); }
+    @Override public org.bukkit.entity.Entity addEntity(org.bukkit.entity.Entity entity) { return entity; }
+    @Override public io.papermc.paper.world.MoonPhase getMoonPhase() { return null; }
+    @Override public NamespacedKey getKey() { return NamespacedKey.minecraft(getName() == null ? "world" : getName().toLowerCase(java.util.Locale.ENGLISH)); }
+    @Override public boolean lineOfSightExists(Location from, Location to) { return true; }
+    @Override public boolean hasCollisionsIn(org.bukkit.util.BoundingBox box) { return false; }
+    @Override public java.util.Set getFeatureFlags() { return java.util.Collections.emptySet(); }
+
+    /* Default-default conflicts between {@link World} and
+     *  {@link RegionAccessor} — Java forces a class override when the
+     *  same signature has visible defaults on two unrelated interfaces.
+     *  RegionAccessor's {@code spawn} is raw {@code Entity spawn(Location, Class)};
+     *  World's is generic {@code <T extends Entity> T spawn(Location, Class<T>)}.
+     *  Same erasure → name clash without a single bridge override using raw types. */
+    @Override public org.bukkit.entity.Entity spawnEntity(Location loc, org.bukkit.entity.EntityType type) {
+        return World.super.spawnEntity(loc, type);
+    }
+    @Override public org.bukkit.entity.Entity spawn(Location loc, Class clazz) {
+        return World.super.spawn(loc, clazz);
+    }
+
+    /* getHighestBlockYAt(Location) — World provides a default but Java
+     *  still requires explicit resolution because RegionAccessor declares
+     *  it abstract on the same interface set. Bridge to World.super. */
+    @Override public int getHighestBlockYAt(Location loc) {
+        return World.super.getHighestBlockYAt(loc);
+    }
+    @Override public int getHighestBlockYAt(int x, int z) {
+        return World.super.getHighestBlockYAt(x, z);
+    }
+    @Override public java.util.List getEntities() { return World.super.getEntities(); }
+    @Override public org.bukkit.entity.Entity spawnEntity(Location loc, org.bukkit.entity.EntityType type, boolean random) {
+        return World.super.spawnEntity(loc, type, random);
     }
 }

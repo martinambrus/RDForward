@@ -51,11 +51,16 @@ class WorldFacadeDefaultsTest {
     }
 
     @Test
-    void getBlockDataReturnsZeroByDefault() {
-        // RDForward does not model the data nibble — must read 0 so
-        // WE 5.6.1's LocalWorld.getBlock fallback yields a stable byte.
+    void blockGetDataReturnsZeroByDefault() {
+        // RDForward does not model the data nibble. WE 5.6.1's
+        // BukkitWorld.getBlockData reads it via {@code block.getData()}
+        // (Block, not World), so the zero default must live on Block.
+        // The legacy {@code World.getBlockData(int,int,int)} byte form
+        // was removed — it conflicted with RegionAccessor's
+        // {@code BlockData getBlockData(int,int,int)}, and WE never
+        // actually called it.
         StubWorld w = new StubWorld(Material.STONE);
-        assertEquals((byte) 0, w.getBlockData(0, 0, 0));
+        assertEquals((byte) 0, w.getBlockAt(0, 0, 0).getData());
     }
 
     @Test

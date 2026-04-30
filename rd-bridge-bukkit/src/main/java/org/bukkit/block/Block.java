@@ -162,4 +162,40 @@ public interface Block {
                 getZ() + face.getModZ() * distance,
                 getType());
     }
+
+    /** RDForward has no per-block biome data, but Essentials's
+     *  {@code RandomTeleport.isExcludedBiome} (called from {@code /tpr}'s
+     *  cache-fill and the per-attempt valid-location filter) calls
+     *  {@code block.getBiome().name().toLowerCase()} unconditionally —
+     *  a {@link NoSuchMethodError} or null biome here completes the
+     *  per-attempt CompletableFuture exceptionally with no
+     *  {@code .exceptionally} attached, hanging the whole {@code /tpr}
+     *  chain (the user sees only "Teleporting..." and never moves). The
+     *  stub returns a singleton "plains" biome whose name and key are
+     *  both non-null so the contains-check evaluates and the chain
+     *  proceeds. */
+    default org.bukkit.block.Biome getBiome() {
+        return RD_STUB_BIOME;
+    }
+
+    /** Singleton "plains" {@link org.bukkit.block.Biome} stub. */
+    org.bukkit.block.Biome RD_STUB_BIOME = new RDStubBiome();
+
+    /** Minimal {@link org.bukkit.block.Biome} impl returning {@code "plains"}
+     *  for {@code name()} / {@code getKey()} / {@code key()}. All other
+     *  methods return safe defaults; the only call site that reads back
+     *  through here is EssentialsX's biome-exclusion check. */
+    final class RDStubBiome extends org.bukkit.block.Biome {
+        private static final org.bukkit.NamespacedKey KEY =
+                org.bukkit.NamespacedKey.minecraft("plains");
+        @Override public java.lang.String name() { return "plains"; }
+        @Override public int ordinal() { return 0; }
+        @Override public int compareTo(org.bukkit.util.OldEnum other) { return 0; }
+        @Override public org.bukkit.NamespacedKey getKey() { return KEY; }
+        @Override public net.kyori.adventure.key.Key key() {
+            return net.kyori.adventure.key.Key.key("minecraft", "plains");
+        }
+        @Override public java.lang.String translationKey() { return "biome.minecraft.plains"; }
+        @Override public java.lang.String toString() { return "plains"; }
+    }
 }

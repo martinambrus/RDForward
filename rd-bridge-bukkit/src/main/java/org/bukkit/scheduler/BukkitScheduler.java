@@ -8,9 +8,10 @@ import org.bukkit.plugin.Plugin;
  * {@link com.github.martinambrus.rdforward.api.scheduler.Scheduler} via
  * {@link com.github.martinambrus.rdforward.bridge.bukkit.BukkitSchedulerAdapter}.
  *
- * <p>The {@code Async} variants also run on the server tick thread —
- * RDForward does not offer an async task pool. Plugins requiring true
- * async work must spin their own threads.
+ * <p>The {@code Async} variants execute on a dedicated daemon thread
+ * pool, so plugins that block on I/O inside async tasks (EssentialsX's
+ * {@code UpdateChecker.getVersionMessages} calls
+ * {@code CompletableFuture.join()}) do not stall the tick thread.
  */
 public interface BukkitScheduler {
 
@@ -20,13 +21,13 @@ public interface BukkitScheduler {
 
     BukkitTask runTaskTimer(Plugin plugin, Runnable task, long delayTicks, long periodTicks);
 
-    /** Same as {@link #runTask} — RDForward runs everything on the tick thread. */
+    /** Submit {@code task} to the Bukkit-bridge async daemon pool. */
     BukkitTask runTaskAsynchronously(Plugin plugin, Runnable task);
 
-    /** Same as {@link #runTaskLater} — RDForward has no async pool. */
+    /** Schedule {@code task} on the Bukkit-bridge async daemon pool after {@code delayTicks}. */
     BukkitTask runTaskLaterAsynchronously(Plugin plugin, Runnable task, long delayTicks);
 
-    /** Same as {@link #runTaskTimer} — RDForward has no async pool. */
+    /** Schedule {@code task} on the Bukkit-bridge async daemon pool with fixed period. */
     BukkitTask runTaskTimerAsynchronously(Plugin plugin, Runnable task, long delayTicks, long periodTicks);
 
     /** Cancel every task owned by {@code plugin}. Returns the number cancelled. */
@@ -56,8 +57,7 @@ public interface BukkitScheduler {
         return BukkitSchedulerSupport.NEXT_LEGACY_TASK_ID.getAndIncrement();
     }
 
-    /** Legacy variant — RDForward has no async pool, so this routes to
-     *  the synchronous task path like {@link #runTaskAsynchronously}. */
+    /** Legacy variant — routes to {@link #runTaskAsynchronously}. */
     default int scheduleAsyncDelayedTask(Plugin plugin, Runnable task) {
         runTaskAsynchronously(plugin, task);
         return BukkitSchedulerSupport.NEXT_LEGACY_TASK_ID.getAndIncrement();

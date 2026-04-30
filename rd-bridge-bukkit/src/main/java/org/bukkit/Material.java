@@ -1969,6 +1969,20 @@ public enum Material {
     /** True if this material is a solid block. Stub treats every non-AIR/WATER/LAVA as solid. */
     public boolean isSolid() { return this != AIR && this != WATER && this != LAVA; }
 
+    /** True if this material does not block light. Deprecated in real Bukkit
+     *  (since 1.13) but still called by Essentials's LocationUtil during the
+     *  safe-teleport scan. Stub treats AIR and the two fluid materials as
+     *  transparent — sufficient for the scan to skip the player's head/feet
+     *  voxels without rejecting the destination outright. */
+    public boolean isTransparent() { return this == AIR || this == WATER || this == LAVA; }
+
+    /** True if this material can exist in item form. Real Bukkit returns
+     *  false for purely-block materials (e.g. fire, end_portal). Stub
+     *  treats every non-AIR material as an item — Essentials's
+     *  CustomItemResolver only rejects values that fail this check, and
+     *  AIR is the only non-item Material we need to filter. */
+    public boolean isItem() { return this != AIR; }
+
     /** True if this material is a block (placeable in a world).  All
      *  Material constants RDForward surfaces are blocks; we do not yet
      *  model item-only Materials. WorldEdit 5.6.1's {@code

@@ -46,13 +46,13 @@ class ServerGetPluginCommandTest {
         PluginCommand fly = new PluginCommand("fly");
         fly.setAliases(List.of("flight"));
         alphaCommands.put("fly", fly);
-        alpha.setCommandMap(alphaCommands);
+        alpha.setRDPluginCommands(alphaCommands);
 
         Map<String, PluginCommand> betaCommands = new LinkedHashMap<>();
         PluginCommand msg = new PluginCommand("msg");
         msg.setAliases(List.of("tell", "w"));
         betaCommands.put("msg", msg);
-        beta.setCommandMap(betaCommands);
+        beta.setRDPluginCommands(betaCommands);
 
         BukkitBridge.registerPlugin("alpha", alpha);
         BukkitBridge.registerPlugin("beta", beta);

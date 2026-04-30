@@ -65,7 +65,7 @@ public final class BukkitPluginLoader {
         plugin.setDescription(toDescriptionFile(bukkit));
         Map<String, PluginCommand> commands = buildCommandMap(bukkit);
         for (PluginCommand pc : commands.values()) pc.setPlugin(plugin);
-        plugin.setCommandMap(commands);
+        plugin.setRDPluginCommands(commands);
         plugin.setFile(jarPath.toFile());
         plugin.setClassLoader(classLoader);
         plugin.setDataFolder(new java.io.File("plugins/" + bukkit.name()));
@@ -103,7 +103,30 @@ public final class BukkitPluginLoader {
                 bukkit.main(),
                 "",
                 List.of(bukkit.author()),
-                bukkit.depend());
+                bukkit.depend(),
+                toCommandsMap(bukkit.commands()));
+    }
+
+    /** Convert parsed {@code plugin.yml} commands into the map shape Bukkit
+     *  exposes via {@link PluginDescriptionFile#getCommands()}: outer key is
+     *  the command name, inner map mirrors the original yaml keys
+     *  ({@code description}, {@code usage}, {@code aliases}, {@code permission}).
+     *  EssentialsX iterates this in its {@code reload} path to register
+     *  fallback aliases. */
+    private static Map<String, Map<String, Object>> toCommandsMap(
+            Map<String, BukkitPluginDescriptor.CommandSpec> specs) {
+        if (specs == null || specs.isEmpty()) return java.util.Collections.emptyMap();
+        Map<String, Map<String, Object>> out = new LinkedHashMap<>();
+        for (Map.Entry<String, BukkitPluginDescriptor.CommandSpec> e : specs.entrySet()) {
+            BukkitPluginDescriptor.CommandSpec spec = e.getValue();
+            Map<String, Object> inner = new LinkedHashMap<>();
+            if (spec.description() != null) inner.put("description", spec.description());
+            if (spec.usage() != null)       inner.put("usage", spec.usage());
+            if (spec.aliases() != null && !spec.aliases().isEmpty()) inner.put("aliases", spec.aliases());
+            if (spec.permission() != null)  inner.put("permission", spec.permission());
+            out.put(e.getKey(), inner);
+        }
+        return out;
     }
 
     /** Synthesise an rd-api {@link ModDescriptor} from a {@code plugin.yml}.

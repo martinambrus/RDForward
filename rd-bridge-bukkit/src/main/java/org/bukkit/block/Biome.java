@@ -2,7 +2,17 @@ package org.bukkit.block;
 
 /** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
 @SuppressWarnings({"unchecked", "rawtypes", "unused"})
-public interface Biome extends org.bukkit.util.OldEnum, org.bukkit.Keyed, net.kyori.adventure.translation.Translatable {
+/* MUST be a class, not an interface. EssentialsX 2.21.2's
+ *  {@code LegacyBiomeNameProvider.getBiomeName} emits {@code invokevirtual
+ *  Biome.name()} (it was compiled against an older Paper where Biome was
+ *  an enum). With Biome as an interface, that bytecode raises
+ *  {@link IncompatibleClassChangeError} silently inside the
+ *  CompletableFuture chain that {@code RandomTeleport.attemptRandomLocation}
+ *  drives — and {@code /tpr} hangs at "Teleporting to a random location..."
+ *  with no further activity. Keeping Biome as an abstract class lets
+ *  {@code invokevirtual Biome.name} resolve correctly to the subclass override.
+ */
+public abstract class Biome implements org.bukkit.util.OldEnum, org.bukkit.Keyed, net.kyori.adventure.translation.Translatable {
     public static final org.bukkit.block.Biome BADLANDS = null;
     public static final org.bukkit.block.Biome BAMBOO_JUNGLE = null;
     public static final org.bukkit.block.Biome BASALT_DELTAS = null;
@@ -69,13 +79,13 @@ public interface Biome extends org.bukkit.util.OldEnum, org.bukkit.Keyed, net.ky
     public static final org.bukkit.block.Biome WINDSWEPT_SAVANNA = null;
     public static final org.bukkit.block.Biome WOODED_BADLANDS = null;
     public static final org.bukkit.block.Biome CUSTOM = null;
-    static org.bukkit.block.Biome valueOf(java.lang.String arg0) {
+    public static org.bukkit.block.Biome valueOf(java.lang.String arg0) {
         return null;
     }
-    static org.bukkit.block.Biome[] values() {
+    public static org.bukkit.block.Biome[] values() {
         return new org.bukkit.block.Biome[0];
     }
-    default java.lang.String translationKey() {
+    @Override public java.lang.String translationKey() {
         return null;
     }
 }

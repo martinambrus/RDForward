@@ -6,8 +6,15 @@ import com.github.martinambrus.rdforward.modloader.admin.CommandConflictResolver
 import com.github.martinambrus.rdforward.modloader.admin.EventManager;
 import com.github.martinambrus.rdforward.modloader.impl.RDServer;
 
+import java.lang.reflect.Method;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.logging.Logger;
 
 /**
@@ -22,16 +29,32 @@ public final class ModSystem {
 
     private static final Logger LOG = Logger.getLogger(ModSystem.class.getName());
 
-    /** Bridge installer FQCNs invoked reflectively before mod enable so plugin
-     *  bytecode that calls {@code Bukkit.getServer()} or
+    /** Per-{@link BridgeKind} installer FQCN invoked reflectively before mod
+     *  enable so plugin bytecode that calls {@code Bukkit.getServer()} or
      *  {@code Bukkit.getPluginManager()} during {@code onEnable} sees a live
-     *  facade. Each entry must declare a public static
-     *  {@code install(com.github.martinambrus.rdforward.api.server.Server)} and
-     *  matching {@code uninstall()}. Missing classes are tolerated so a
-     *  stripped build without bridge modules still boots. */
-    private static final String[] BRIDGE_INSTALLERS = {
-            "com.github.martinambrus.rdforward.bridge.bukkit.BukkitBridge",
-    };
+     *  facade. Each entry must declare a public static {@code uninstall()};
+     *  {@code install} accepts either {@code (Server)} (Bukkit, Paper, Forge,
+     *  NeoForge, PocketMine) or no args (Fabric server bridge wires itself
+     *  against the static {@code ServerEvents} dispatcher and needs no rd-api
+     *  Server reference). Probe order is {@code (Server)} first, no-arg
+     *  fallback. Missing classes are tolerated so a stripped build without a
+     *  given bridge module still boots. */
+    private static final Map<BridgeKind, String> BRIDGE_INSTALLER_FQCN;
+
+    static {
+        Map<BridgeKind, String> map = new EnumMap<>(BridgeKind.class);
+        map.put(BridgeKind.BUKKIT,     "com.github.martinambrus.rdforward.bridge.bukkit.BukkitBridge");
+        map.put(BridgeKind.PAPER,      "com.github.martinambrus.rdforward.bridge.paper.PaperBridge");
+        map.put(BridgeKind.FABRIC,     "com.github.martinambrus.rdforward.bridge.fabric.server.FabricServerBridge");
+        map.put(BridgeKind.FORGE,      "com.github.martinambrus.rdforward.bridge.forge.ForgeBridge");
+        map.put(BridgeKind.NEOFORGE,   "com.github.martinambrus.rdforward.bridge.neoforge.NeoForgeBridge");
+        map.put(BridgeKind.POCKETMINE, "com.github.martinambrus.rdforward.bridge.pocketmine.PocketMineBridge");
+        BRIDGE_INSTALLER_FQCN = Map.copyOf(map);
+    }
+
+    /** Tracks which kinds were actually installed so {@link #uninstallBridges()}
+     *  uninstalls the same set in reverse order. Reset on every install pass. */
+    private static final Deque<BridgeKind> installedKinds = new ArrayDeque<>();
 
     private final RDServer apiServer;
     private final ModManager manager;
@@ -75,7 +98,7 @@ public final class ModSystem {
         manager.setContainers(containers);
         apiServer.setModManager(manager);
         AdminCommands.bindManager(manager);
-        installBridges(apiServer);
+        installBridges(apiServer, activeKinds(containers));
         manager.enableAll();
         java.util.function.Predicate<String> isModPresent = id -> manager.get(id) != null;
         EventManager.applyOverrides(isModPresent);
@@ -95,42 +118,100 @@ public final class ModSystem {
         uninstallBridges();
     }
 
-    /** Reflectively call each bridge's {@code install(Server)} so plugin code
-     *  that invokes {@code Bukkit.getServer()} during {@code onEnable} resolves
-     *  to a live facade. Missing bridge classes are silently skipped — a
-     *  stripped build without {@code rd-bridge-bukkit} still boots.
-     *
-     *  <p>The parameter type is the api-level
-     *  {@link com.github.martinambrus.rdforward.api.server.Server} so unit
-     *  tests can drive the install hook with a stub server without booting
-     *  a full {@code rd-server}. */
+    /** Legacy single-arg overload retained for the bridge install unit
+     *  tests, which exercise the dispatch end-to-end without booting a
+     *  full mod loader. Installs every bridge whose installer class is on
+     *  the classpath — preserves the pre-lazy behaviour for callers that
+     *  do not own a populated container list. Production boot uses
+     *  {@link #installBridges(com.github.martinambrus.rdforward.api.server.Server, Set)}
+     *  with the actual detected set. */
     static void installBridges(com.github.martinambrus.rdforward.api.server.Server apiServer) {
-        for (String fqcn : BRIDGE_INSTALLERS) {
-            try {
-                Class<?> cls = Class.forName(fqcn, true, ModSystem.class.getClassLoader());
-                cls.getMethod("install", com.github.martinambrus.rdforward.api.server.Server.class)
-                        .invoke(null, apiServer);
-            } catch (ClassNotFoundException ignored) {
-                // bridge module absent — skip
-            } catch (ReflectiveOperationException e) {
-                LOG.warning("[ModSystem] failed to install " + fqcn + ": " + e);
+        installBridges(apiServer, EnumSet.complementOf(EnumSet.of(BridgeKind.NATIVE)));
+    }
+
+    /** Reflectively call {@code install} on each bridge whose
+     *  {@link BridgeKind} appears in {@code activeKinds}. Skips kinds with
+     *  no installer registered (e.g. {@link BridgeKind#NATIVE}) and silently
+     *  ignores missing classes so a stripped build without a given bridge
+     *  module still boots.
+     *
+     *  <p>Lazy-load semantics: a deployment that loads only Forge mods will
+     *  not initialise {@code BukkitBridge} or its Material/Sound/ItemType
+     *  enum stubs, and vice versa. Each bridge's static init runs only when
+     *  a matching plugin or mod jar was discovered.
+     *
+     *  <p>Install order is fixed by enum declaration; {@link #installedKinds}
+     *  records the actual order so {@link #uninstallBridges} can unwind in
+     *  reverse. */
+    static void installBridges(com.github.martinambrus.rdforward.api.server.Server apiServer,
+                               Set<BridgeKind> activeKinds) {
+        installedKinds.clear();
+        for (BridgeKind kind : BridgeKind.values()) {
+            if (kind == BridgeKind.NATIVE || !activeKinds.contains(kind)) continue;
+            String fqcn = BRIDGE_INSTALLER_FQCN.get(kind);
+            if (fqcn == null) continue;
+            if (invokeInstall(fqcn, apiServer)) {
+                installedKinds.push(kind);
             }
         }
     }
 
-    /** Symmetric counterpart to {@link #installBridges}. Calls
-     *  {@code uninstall()} so subsequent server boots in the same JVM (e.g.
-     *  test suites) start with a clean facade. */
+    /** Symmetric counterpart to {@link #installBridges}. Walks
+     *  {@link #installedKinds} in reverse so dependent bridges (e.g. Paper
+     *  → Bukkit) tear down in the opposite order they were brought up. */
     static void uninstallBridges() {
-        for (String fqcn : BRIDGE_INSTALLERS) {
+        while (!installedKinds.isEmpty()) {
+            BridgeKind kind = installedKinds.pop();
+            String fqcn = BRIDGE_INSTALLER_FQCN.get(kind);
+            if (fqcn == null) continue;
+            invokeUninstall(fqcn);
+        }
+    }
+
+    private static Set<BridgeKind> activeKinds(List<ModContainer> containers) {
+        EnumSet<BridgeKind> kinds = EnumSet.noneOf(BridgeKind.class);
+        for (ModContainer c : containers) {
+            BridgeKind k = c.bridgeKind();
+            if (k != null && k != BridgeKind.NATIVE) kinds.add(k);
+        }
+        return kinds;
+    }
+
+    /** @return {@code true} if the install method was located and invoked
+     *  successfully (so we should record the kind for symmetric uninstall),
+     *  {@code false} if the class was absent or the call failed. */
+    private static boolean invokeInstall(String fqcn,
+                                         com.github.martinambrus.rdforward.api.server.Server apiServer) {
+        try {
+            Class<?> cls = Class.forName(fqcn, true, ModSystem.class.getClassLoader());
+            // Probe (Server) overload first (bukkit/paper/forge/neoforge/pocketmine);
+            // fall back to no-arg (fabric server bridge wires itself against
+            // the static ServerEvents dispatcher and takes no rd-api Server).
+            Method install;
             try {
-                Class<?> cls = Class.forName(fqcn, true, ModSystem.class.getClassLoader());
-                cls.getMethod("uninstall").invoke(null);
-            } catch (ClassNotFoundException ignored) {
-                // skip
-            } catch (ReflectiveOperationException e) {
-                LOG.warning("[ModSystem] failed to uninstall " + fqcn + ": " + e);
+                install = cls.getMethod("install", com.github.martinambrus.rdforward.api.server.Server.class);
+                install.invoke(null, apiServer);
+            } catch (NoSuchMethodException nsme) {
+                install = cls.getMethod("install");
+                install.invoke(null);
             }
+            return true;
+        } catch (ClassNotFoundException ignored) {
+            return false;
+        } catch (ReflectiveOperationException e) {
+            LOG.warning("[ModSystem] failed to install " + fqcn + ": " + e);
+            return false;
+        }
+    }
+
+    private static void invokeUninstall(String fqcn) {
+        try {
+            Class<?> cls = Class.forName(fqcn, true, ModSystem.class.getClassLoader());
+            cls.getMethod("uninstall").invoke(null);
+        } catch (ClassNotFoundException ignored) {
+            // bridge module absent — nothing to undo
+        } catch (ReflectiveOperationException e) {
+            LOG.warning("[ModSystem] failed to uninstall " + fqcn + ": " + e);
         }
     }
 }

@@ -434,9 +434,15 @@ class BukkitBridgeIntegrationTest {
             assertEquals(3, cancelled);
             assertTrue(rd.scheduler.scheduled.get(0).cancelled);
 
+            // Async submissions go to the bridge's daemon executor, NOT the
+            // rd-api Scheduler — running them on the tick thread caused a
+            // 30s login stall when EssentialsX's UpdateChecker called
+            // CompletableFuture.join() inside an async task.
+            int beforeAsync = rd.scheduler.scheduled.size();
             BukkitTask asyncT = Bukkit.getScheduler().runTaskAsynchronously(plugin, noop);
             assertNotNull(asyncT);
-            assertEquals("SchedTest", rd.scheduler.scheduled.get(3).owner);
+            assertFalse(asyncT.isSync());
+            assertEquals(beforeAsync, rd.scheduler.scheduled.size());
         } finally {
             BukkitBridge.uninstall();
         }

@@ -746,9 +746,9 @@ public final class BukkitPlayer {
         }
 
         private Object doTeleport(Object[] args) {
-            if (backing == null || args == null || args.length == 0 || !(args[0] instanceof Location loc)) {
-                return false;
-            }
+            if (backing == null) return false;
+            if (args == null || args.length == 0) return false;
+            if (!(args[0] instanceof Location loc)) return false;
             // Bukkit Location Y is feet-level; rd-api teleport expects
             // eye-level (feet + 1.62). Without this offset the player
             // arrives 1.62 blocks below the requested spot — Essentials

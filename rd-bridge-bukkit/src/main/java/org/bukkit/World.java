@@ -14,6 +14,79 @@ public interface World {
 
     String getName();
 
+    /** @return stable per-world UUID. EssentialsX's {@code LazyLocation
+     *  .fromLocation} reads this when persisting a player's logout
+     *  location to user config — without it the quit handler crashes with
+     *  NoSuchMethodError. RDForward only models a single world, so deriving
+     *  the UUID from the world name keeps it stable across boots without
+     *  introducing per-world identity tracking. */
+    default java.util.UUID getUID() {
+        String n = getName();
+        return java.util.UUID.nameUUIDFromBytes((n == null ? "world" : n)
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    /** @return a stub {@link WorldBorder} reflecting the rd-server world
+     *  bounds. EssentialsX's {@code RandomTeleport.getCenter} resolves the
+     *  border centre for {@code /tpr} target picking; without this default
+     *  the call hits {@link NoSuchMethodError} and the command aborts. The
+     *  stub reports the world's metric centre and a size large enough to
+     *  cover any rd-server map (max int), and accepts mutation no-op so
+     *  plugins that try to {@code setSize} / {@code setCenter} survive.
+     */
+    default WorldBorder getWorldBorder() {
+        return new RDStubWorldBorder(this);
+    }
+
+    /** Default {@link WorldBorder} backed by an rd-server world's bounds. */
+    final class RDStubWorldBorder implements WorldBorder {
+        private final World world;
+        private double size = Integer.MAX_VALUE;
+        private Location center;
+        private double damageBuffer = 5.0;
+        private double damageAmount = 0.2;
+        private int warningTimeTicks = 300;
+        private int warningDistance = 5;
+
+        public RDStubWorldBorder(World world) {
+            this.world = world;
+            // Bukkit World has no width/depth getters; use the world's spawn
+            // location as the natural border centre. Plugins that mutate via
+            // setCenter override this immediately.
+            this.center = world.getSpawnLocation();
+        }
+
+        @Override public World getWorld() { return world; }
+        @Override public void reset() { /* no-op */ }
+        @Override public double getSize() { return size; }
+        @Override public void setSize(double s) { this.size = s; }
+        @Override public void changeSize(double s, long t) { this.size = s; }
+        @Override public Location getCenter() { return center; }
+        @Override public void setCenter(double x, double z) {
+            double y = center == null ? 0 : center.getY();
+            this.center = new Location(world, x, y, z, 0f, 0f);
+        }
+        @Override public void setCenter(Location loc) {
+            if (loc != null) this.center = loc;
+        }
+        @Override public double getDamageBuffer() { return damageBuffer; }
+        @Override public void setDamageBuffer(double v) { this.damageBuffer = v; }
+        @Override public double getDamageAmount() { return damageAmount; }
+        @Override public void setDamageAmount(double v) { this.damageAmount = v; }
+        @Override public int getWarningTimeTicks() { return warningTimeTicks; }
+        @Override public void setWarningTimeTicks(int v) { this.warningTimeTicks = v; }
+        @Override public int getWarningDistance() { return warningDistance; }
+        @Override public void setWarningDistance(int v) { this.warningDistance = v; }
+        @Override public boolean isInside(Location loc) {
+            if (loc == null || center == null) return false;
+            double dx = Math.abs(loc.getX() - center.getX());
+            double dz = Math.abs(loc.getZ() - center.getZ());
+            return dx <= size / 2.0 && dz <= size / 2.0;
+        }
+        @Override public double getMaxSize() { return Integer.MAX_VALUE; }
+        @Override public double getMaxCenterCoordinate() { return Integer.MAX_VALUE; }
+    }
+
     /** @return a Bukkit {@link Block} view of the world block at {@code (x,y,z)}, or null if out of bounds. */
     Block getBlockAt(int x, int y, int z);
 
@@ -44,14 +117,6 @@ public interface World {
         if (b == null) return 0;
         Material t = b.getType();
         return t == null ? 0 : t.getId();
-    }
-
-    /** Pre-Flattening data nibble at {@code (x,y,z)}. RDForward does
-     *  not model block data — return 0. WE 5.6.1's {@code
-     *  LocalWorld.getBlock} reads this when its NMS-direct path fails
-     *  (which it always does here, since we have no NMS layer). */
-    default byte getBlockData(int x, int y, int z) {
-        return 0;
     }
 
     /** WorldEdit 5.6.1's {@code BukkitWorld.checkLoadedChunk} guards
@@ -111,6 +176,15 @@ public interface World {
             if (b != null && b.getType() != Material.AIR) return y;
         }
         return 0;
+    }
+
+    /** Location-based overload. EssentialsX's {@code RandomTeleport
+     *  .getCenter} resolves the safe Y for a candidate teleport target
+     *  via {@code world.getHighestBlockYAt(loc)} — the int-coords form
+     *  is not exposed in the same call site. */
+    default int getHighestBlockYAt(org.bukkit.Location loc) {
+        if (loc == null) return 0;
+        return getHighestBlockYAt(loc.getBlockX(), loc.getBlockZ());
     }
 
     long getTime();

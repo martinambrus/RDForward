@@ -27,6 +27,9 @@
 ## Bukkit Plugin Lifecycle Events
 - [bridge-plugin-events.md](bridge-plugin-events.md): BukkitPluginWrapper must dispatch PluginEnableEvent/PluginDisableEvent — Essentials's permissions handler swap depends on it
 
+## Bukkit Biome / RegionAccessor Stub Shape
+- [bridge-biome-class.md](bridge-biome-class.md): Biome MUST be an abstract class (EssentialsX 2.21.2 emits invokevirtual on Biome.name); BukkitWorldAdapter MUST implement RegionAccessor (PaperBiomeKeyProvider casts world). Either gap silently kills /tpr inside CompletableFuture.thenAccept
+
 ## Server API Work (PLAN-SERVER-API.md)
 - [server-api-decisions.md](server-api-decisions.md): Q1 merged Event/PrioritizedEvent, Q2 Fabric-repackaged client mods, Q3 clean rewrite no backward compat
 
@@ -39,6 +42,11 @@
 ## E2E Test Rules
 - NEVER run two Gradle test suites in parallel. They share the Gradle daemon and will conflict/kill each other. Always run sequentially.
 - Do NOT re-run already-completed cross-version tests. Only run missing/untested pairs. Use temporary test classes that check for existing baselines and skip completed pairs. Only re-run cross tests when the user explicitly asks.
+- [feedback_e2e_spawn_protection.md](feedback_e2e_spawn_protection.md): E2ETestServer disables spawn protection via server.properties so agents can break/place blocks at spawn
+
+## Hytale Protocol
+- [hytale-protocol.md](hytale-protocol.md): Wire formats — DrawType enum, BlockType layout, reserved IDs, client log path
+- [hytale-server-flow.md](hytale-server-flow.md): Complete connection flow from decompiled server — packet sequence, registry order, entity creation
 
 ## Architecture
 - Multi-module Gradle project: rd-protocol, rd-world, rd-server, rd-client, rd-game, rd-e2e-agent (Java 8), rd-e2e (Java 21)

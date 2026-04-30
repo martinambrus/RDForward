@@ -253,14 +253,22 @@ public abstract class JavaPlugin extends PluginBase implements CommandExecutor {
         return commandMap.get(name);
     }
 
-    /** Bridge hook — populate the plugin's command map from {@code plugin.yml}. */
-    public void setCommandMap(Map<String, PluginCommand> map) {
+    /** Bridge hook — populate the plugin's command map from {@code plugin.yml}.
+     *
+     *  <p>Renamed from {@code setCommandMap} to avoid clashing with plugin-internal
+     *  same-named methods (notably Essentials's {@code Map<String,
+     *  IEssentialsCommand> getCommandMap()} — same erased signature, so JVM
+     *  dispatch picked the plugin's override and our 151-entry map was lost). */
+    public void setRDPluginCommands(Map<String, PluginCommand> map) {
         commandMap.clear();
         commandMap.putAll(map);
     }
 
-    /** @return every command declared in {@code plugin.yml}. Read-only. */
-    public Map<String, PluginCommand> getCommandMap() {
+    /** @return every command declared in {@code plugin.yml}. Read-only.
+     *
+     *  <p>Name disambiguated from {@code getCommandMap} for the same reason
+     *  as {@link #setRDPluginCommands}. */
+    public Map<String, PluginCommand> getRDPluginCommands() {
         return Collections.unmodifiableMap(commandMap);
     }
 }

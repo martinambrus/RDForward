@@ -196,8 +196,15 @@ public class ServerTickLoop implements Runnable {
             chunkManager.saveAllDirty();
         }
 
-        // Fire tick event for mods
-        ServerEvents.SERVER_TICK.invoker().onServerTick(tickCount);
+        // Fire tick event for mods. Wrap in try/catch so a single misbehaving
+        // listener (e.g. a Bukkit-bridge scheduled task throwing) cannot break
+        // the tick chain and starve chunk delivery for every player.
+        try {
+            ServerEvents.SERVER_TICK.invoker().onServerTick(tickCount);
+        } catch (Throwable t) {
+            System.err.println("SERVER_TICK invoker threw at count=" + tickCount + ": " + t);
+            t.printStackTrace();
+        }
 
         // Flush all buffered writes for this tick in a single batch.
         // This coalesces block changes, pings, time updates, and chunk

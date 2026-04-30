@@ -96,7 +96,7 @@ public final class BukkitBridge {
         if (name == null) return null;
         String key = name.toLowerCase(java.util.Locale.ROOT);
         for (JavaPlugin plugin : loadedPlugins.values()) {
-            java.util.Map<String, org.bukkit.command.PluginCommand> map = plugin.getCommandMap();
+            java.util.Map<String, org.bukkit.command.PluginCommand> map = plugin.getRDPluginCommands();
             org.bukkit.command.PluginCommand direct = map.get(key);
             if (direct != null) return direct;
             for (org.bukkit.command.PluginCommand pc : map.values()) {
@@ -115,7 +115,13 @@ public final class BukkitBridge {
     /** Install a Bukkit server facade backed by {@code rdServer}. */
     public static synchronized void install(Server rdServer) {
         if (installed != null) return;
-        BukkitServerAdapter adapter = new BukkitServerAdapter(rdServer);
+        // Instantiate via the NMS-shaped subclass so that
+        // Bukkit.getServer().getClass().getPackage().getName() resolves to
+        // "org.bukkit.craftbukkit.v1_21_R1". Essentials's ReflUtil and
+        // similar version-detection helpers split that package on '.' and
+        // read index 3 expecting the NMS version segment; a non-NMS
+        // package layout fails their whitelist regex (v\d+_\d+_R\d+).
+        BukkitServerAdapter adapter = new org.bukkit.craftbukkit.v1_21_R1.CraftServer(rdServer);
         installed = adapter;
         Bukkit.setServer(adapter);
         // StubCallLog broadcast sink intentionally NOT installed: stub
@@ -169,10 +175,16 @@ public final class BukkitBridge {
 
     /** Remove the installed facade. Safe to call when nothing is installed. */
     public static synchronized void uninstall() {
+        BukkitServerAdapter adapter = installed;
         installed = null;
         Bukkit.setServer(null);
         com.github.martinambrus.rdforward.api.stub.StubCallLog.setBroadcastSink(null);
         org.bukkit.command.SimpleCommandMap.setBridgeSink(null);
+        // Stop the async-task daemon pools owned by the scheduler adapter
+        // so a hot-reinstall doesn't leak threads / reuse a shut-down pool.
+        if (adapter != null && adapter.scheduler instanceof BukkitSchedulerAdapter sched) {
+            sched.shutdown();
+        }
         // Reset listener registry so successive tests don't see ghost
         // handlers from a prior boot.
         BukkitEventAdapter.clearAll();
@@ -231,16 +243,22 @@ public final class BukkitBridge {
         return adapter == null ? null : adapter.defaultWorld;
     }
 
-    /** Bukkit-shaped server backed by an rd-api Server. */
-    private static final class BukkitServerAdapter implements org.bukkit.Server {
+    /** Bukkit-shaped server backed by an rd-api Server.
+     *
+     *  <p>Public so that {@link org.bukkit.craftbukkit.v1_21_R1.CraftServer}
+     *  can subclass it. The CraftServer subclass exists solely to lie about
+     *  the package name to plugins (notably Essentials) that derive the NMS
+     *  version from {@code getClass().getPackage()}.
+     */
+    public static class BukkitServerAdapter implements org.bukkit.Server {
 
-        private final Server rd;
+        final Server rd;
         private final PluginManager pluginManager;
         private final BukkitScheduler scheduler;
         private final ConsoleCommandSender console = new DefaultConsoleCommandSender();
-        private final World defaultWorld;
+        final World defaultWorld;
 
-        BukkitServerAdapter(Server rd) {
+        public BukkitServerAdapter(Server rd) {
             this.rd = rd;
             this.scheduler = new BukkitSchedulerAdapter(rd.getScheduler());
             this.defaultWorld = new BukkitWorldAdapter(rd.getWorld());
@@ -272,7 +290,7 @@ public final class BukkitBridge {
 
         @Override public String getName() { return "RDForward"; }
         @Override public String getVersion() { return "bridge-1.0"; }
-        @Override public String getBukkitVersion() { return "1.21.11-R0.1-STUB"; }
+        @Override public String getBukkitVersion() { return "26.1.2-R0.1"; }
         @Override public Logger getLogger() { return LOG; }
 
         @Override

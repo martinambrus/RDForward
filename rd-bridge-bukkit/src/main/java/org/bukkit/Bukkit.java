@@ -81,6 +81,20 @@ public final class Bukkit {
         return server == null ? null : server.getWorld(name);
     }
 
+    /** UUID-keyed world lookup. EssentialsX's {@code LazyLocation
+     *  .location} resolves a saved logout/teleport target by re-hydrating
+     *  the world via the UUID it persisted earlier; without this overload
+     *  every {@code /tpr}, {@code /back}, and {@code /home} that round-trips
+     *  through {@code LazyLocation} aborts on {@link NoSuchMethodError}.
+     *  Walks the world list and matches against {@link World#getUID()}. */
+    public static World getWorld(java.util.UUID uid) {
+        if (uid == null || server == null) return null;
+        for (World w : server.getWorlds()) {
+            if (w != null && uid.equals(w.getUID())) return w;
+        }
+        return null;
+    }
+
     /** @return {@code false} when no server is installed; otherwise
      *  delegates to {@link Server#getOnlineMode()}. LoginSecurity's
      *  bundled bStats {@code Metrics.appendPlatformData} calls this
@@ -139,6 +153,53 @@ public final class Bukkit {
      *  {@link #isPrimaryThread()} returns the Bukkit-correct answer for
      *  plugins that gate scheduled work behind it. */
     public static final ThreadLocal<Boolean> INSIDE_PLUGIN_LIFECYCLE = new ThreadLocal<>();
+
+    /** Real Paper exposes the internal NMS bridge via {@code getUnsafe()}.
+     *  EssentialsX's shaded {@code BukkitComponentSerializer.<clinit>}
+     *  resolves {@code Bukkit.getUnsafe()} at first message dispatch and
+     *  hard-fails the static initialiser on {@link NoSuchMethodError},
+     *  poisoning the class for the rest of the session (every subsequent
+     *  send throws {@code NoClassDefFoundError: Could not initialize
+     *  class ...BukkitComponentSerializer}). RDForward has no NMS, so we
+     *  return a JDK-Proxy stub that logs once per unique method via
+     *  {@link com.github.martinambrus.rdforward.api.stub.StubCallLog} and
+     *  hands back type-appropriate zeros / nulls. Adventure's fallback
+     *  path null-checks each serializer return and substitutes its own
+     *  defaults, so the clinit completes. */
+    public static UnsafeValues getUnsafe() {
+        return STUB_UNSAFE;
+    }
+
+    private static final UnsafeValues STUB_UNSAFE = (UnsafeValues)
+            java.lang.reflect.Proxy.newProxyInstance(
+                    UnsafeValues.class.getClassLoader(),
+                    new Class<?>[] { UnsafeValues.class },
+                    (proxy, method, args) -> {
+                        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                                null, "org.bukkit.UnsafeValues." + method.getName());
+                        // EssentialsX's PaperBiomeKeyProvider reads
+                        // {@code Bukkit.getUnsafe().getBiomeKey(...)} during
+                        // the /tpr biome-exclusion check and immediately
+                        // calls {@code .toString()} on the result. A null
+                        // here NPEs synchronously inside the CompletableFuture
+                        // lambda that {@code RandomTeleport.attemptRandomLocation}
+                        // chains through, so the whole future hangs and
+                        // /tpr never reaches teleport. Return a stable
+                        // namespaced key.
+                        if ("getBiomeKey".equals(method.getName())) {
+                            return org.bukkit.NamespacedKey.minecraft("plains");
+                        }
+                        Class<?> rt = method.getReturnType();
+                        if (rt == boolean.class) return false;
+                        if (rt == int.class) return 0;
+                        if (rt == long.class) return 0L;
+                        if (rt == short.class) return (short) 0;
+                        if (rt == byte.class) return (byte) 0;
+                        if (rt == double.class) return 0.0;
+                        if (rt == float.class) return 0.0f;
+                        if (rt == char.class) return '\0';
+                        return null;
+                    });
 
     /**
      * Mint a new {@link MapView} for the given world. Real Bukkit

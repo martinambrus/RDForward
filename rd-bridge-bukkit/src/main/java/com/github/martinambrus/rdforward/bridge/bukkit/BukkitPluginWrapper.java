@@ -129,7 +129,7 @@ public final class BukkitPluginWrapper implements ServerMod {
      */
     private void registerCommands(CommandRegistry registry) {
         if (registry == null) return;
-        for (Map.Entry<String, PluginCommand> entry : plugin.getCommandMap().entrySet()) {
+        for (Map.Entry<String, PluginCommand> entry : plugin.getRDPluginCommands().entrySet()) {
             PluginCommand cmd = entry.getValue();
             CommandExecutor exec = cmd.getExecutor();
             if (exec == null) continue;

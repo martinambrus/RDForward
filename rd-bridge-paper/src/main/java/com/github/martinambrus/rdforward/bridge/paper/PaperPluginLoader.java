@@ -93,7 +93,7 @@ public final class PaperPluginLoader {
         }
         Map<String, PluginCommand> commands = buildCommandMap(paper);
         for (PluginCommand pc : commands.values()) pc.setPlugin(plugin);
-        plugin.setCommandMap(commands);
+        plugin.setRDPluginCommands(commands);
         plugin.setFile(jarPath.toFile());
         plugin.setClassLoader(classLoader);
         plugin.setDataFolder(new java.io.File("plugins/" + paper.name()));
