@@ -131,13 +131,20 @@ public final class BukkitPluginLoader {
 
     /** Synthesise an rd-api {@link ModDescriptor} from a {@code plugin.yml}.
      *
-     * <p>Bukkit {@code depend:} entries reference other Bukkit plugins (Vault,
-     * WorldEdit, ...) that are not RDForward mods. They are surfaced as
-     * <em>soft</em> dependencies so {@code DependencyResolver} treats them as
-     * load-order hints rather than fatal missing requirements. */
+     * <p>Maps Bukkit's load-order semantics 1-1: {@code depend:} becomes a
+     * <em>hard</em> dependency (resolution refuses to load the plugin if
+     * any listed plugin is missing), {@code softdepend:} becomes a
+     * <em>soft</em> dependency (load-order hint, missing entries are
+     * tolerated). Treating {@code depend:} as soft (the previous shape)
+     * let plugins like EssentialsDiscordLink boot without their required
+     * partner plugin and NPE on every event — the operator now sees a
+     * clean "X requires Y but it is not installed" error from
+     * {@code DependencyResolver} instead. */
     private static ModDescriptor toModDescriptor(BukkitPluginDescriptor bukkit) {
+        Map<String, String> hardDeps = new HashMap<>();
+        for (String d : bukkit.depend()) hardDeps.put(d, "*");
         Map<String, String> softDeps = new HashMap<>();
-        for (String d : bukkit.depend()) softDeps.put(d, "*");
+        for (String d : bukkit.softdepend()) softDeps.put(d, "*");
         Map<String, String> entrypoints = Map.of(ModDescriptor.ENTRYPOINT_SERVER, bukkit.main());
         return new ModDescriptor(
                 bukkit.name(),
@@ -147,7 +154,7 @@ public final class BukkitPluginLoader {
                 List.of(bukkit.author()),
                 "*",
                 entrypoints,
-                Map.of(),
+                hardDeps,
                 softDeps,
                 List.of(),
                 false,

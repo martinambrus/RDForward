@@ -6,6 +6,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Plugin classloader that runs every plugin-owned class through
@@ -15,20 +17,56 @@ import java.net.URLClassLoader;
  * <p>The transformer is a no-op for any class whose constant pool does
  * not reference Guava's cache types, so the cost on regular classes is a
  * single {@link ClassReader} scan.
+ *
+ * <p>Loaders register themselves in a static set so that a plugin which
+ * declares another plugin in its {@code depend:} list (e.g. EssentialsAntiBuild
+ * referencing {@code com.earth2me.essentials.IConf}) can resolve the
+ * dependency's classes through its sibling classloader. The sibling lookup
+ * is one-hop: when sibling's class is returned, its defining classloader
+ * is the sibling, so any further class resolutions JVM performs on that
+ * class go through the sibling directly, without re-entering this loader.
  */
 public final class LegacyPluginClassLoader extends URLClassLoader {
 
+    private static final Set<LegacyPluginClassLoader> REGISTRY = ConcurrentHashMap.newKeySet();
+
     public LegacyPluginClassLoader(URL[] urls, ClassLoader parent) {
         super(urls, parent);
+        REGISTRY.add(this);
+    }
+
+    @Override
+    public void close() throws IOException {
+        REGISTRY.remove(this);
+        super.close();
     }
 
     @Override
     protected Class<?> findClass(String name) throws ClassNotFoundException {
+        Class<?> own = findClassFromOwn(name);
+        if (own != null) return own;
+        for (LegacyPluginClassLoader other : REGISTRY) {
+            if (other == this) continue;
+            Class<?> c = other.findClassFromOwn(name);
+            if (c != null) return c;
+        }
+        throw new ClassNotFoundException(name);
+    }
+
+    /**
+     * Try to load {@code name} from this classloader's own URLs only.
+     * Does NOT recurse into the sibling registry, so cross-plugin class
+     * resolution never produces cycles even when many plugins are loaded.
+     *
+     * @return the loaded class, or {@code null} if this loader's URLs do
+     *         not contain a definition for {@code name}
+     */
+    public Class<?> findClassFromOwn(String name) {
+        Class<?> already = findLoadedClass(name);
+        if (already != null) return already;
         String resourceName = name.replace('.', '/') + ".class";
         try (InputStream in = findResourceAsStream(resourceName)) {
-            if (in == null) {
-                return super.findClass(name);
-            }
+            if (in == null) return null;
             byte[] raw = readAll(in);
             byte[] transformed;
             try {
@@ -41,9 +79,16 @@ public final class LegacyPluginClassLoader extends URLClassLoader {
             } catch (Throwable t) {
                 // leave whatever we had after the previous pass
             }
+            try {
+                transformed = LegacySnakeYamlTransformer.transform(transformed);
+            } catch (Throwable t) {
+                // leave whatever we had after the previous pass
+            }
             return defineClass(name, transformed, 0, transformed.length);
         } catch (IOException e) {
-            throw new ClassNotFoundException(name, e);
+            return null;
+        } catch (LinkageError e) {
+            return findLoadedClass(name);
         }
     }
 

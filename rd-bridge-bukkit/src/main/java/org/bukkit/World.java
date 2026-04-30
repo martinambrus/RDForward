@@ -261,6 +261,41 @@ public interface World {
         return new Location(this, 0d, getMaxHeight(), 0d, 0f, 0f);
     }
 
+    /** EssentialsSpawn's {@code SpawnStorage.setSpawn} calls
+     *  {@code world.setSpawnLocation(x, y, z)} after stashing the
+     *  per-group spawn in its own {@code spawns.yml} — purely to keep
+     *  the world's vanilla spawn in sync. RDForward's {@code ServerWorld}
+     *  computes spawn from world bounds and has no mutable spawn point,
+     *  so the call is a no-op. Returning {@code false} matches Bukkit
+     *  semantics for "spawn unchanged" and keeps Essentials's own
+     *  {@code spawns.yml} as the source of truth for {@code /spawn}.
+     *  Without this overload {@code /setspawn} crashes with
+     *  NoSuchMethodError. */
+    default boolean setSpawnLocation(int x, int y, int z) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.setSpawnLocation(III)Z");
+        return false;
+    }
+
+    /** Bukkit also exposes a {@code (x, y, z, angle)} overload
+     *  (paper-api 1.16+) and a {@code Location} overload. Stub them
+     *  alongside the int form so plugins that pick any variant still
+     *  link. Same no-op + log-once shape. */
+    default boolean setSpawnLocation(int x, int y, int z, float angle) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.setSpawnLocation(IIIF)Z");
+        return false;
+    }
+
+    default boolean setSpawnLocation(Location location) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.setSpawnLocation(Lorg/bukkit/Location;)Z");
+        return false;
+    }
+
     /** @return cumulative world age in ticks. Bukkit defines
      *  {@link #getTime()} as the day-cycle time (modulo 24000) and
      *  {@code getFullTime()} as the monotonic world age. RDForward

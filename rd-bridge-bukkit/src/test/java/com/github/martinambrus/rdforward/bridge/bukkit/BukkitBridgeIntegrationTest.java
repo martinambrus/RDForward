@@ -82,17 +82,49 @@ class BukkitBridgeIntegrationTest {
             assertEquals("TestBukkit", loaded.descriptor().id());
             assertEquals("2.3.4", loaded.descriptor().version());
             assertEquals(TestBukkitPlugin.class.getName(), loaded.descriptor().serverEntrypoint());
-            // Bukkit `depend:` entries reference peer plugins (Vault,
-            // WorldEdit, ...) that are not RDForward mods, so
-            // BukkitPluginLoader surfaces them as soft dependencies — the
-            // DependencyResolver treats them as load-order hints rather
-            // than fatal missing requirements. Hard dependencies stay
-            // empty.
-            assertTrue(loaded.descriptor().dependencies().isEmpty(),
-                    "Bukkit `depend:` should not produce hard deps");
-            assertEquals("*", loaded.descriptor().softDependencies().get("coreMod"));
+            // Bukkit semantics: `depend:` is a hard requirement (the
+            // DependencyResolver refuses to load the plugin if any
+            // listed peer is missing), `softdepend:` is the load-order
+            // hint. The bridge maps the two lists 1-1 onto the rd-api
+            // descriptor's hard / soft dependency surfaces — without
+            // the hard mapping, plugins like EssentialsDiscordLink
+            // boot without their required partner and NPE at runtime.
+            assertEquals("*", loaded.descriptor().dependencies().get("coreMod"));
+            assertTrue(loaded.descriptor().softDependencies().isEmpty(),
+                    "no soft deps when plugin.yml has no softdepend section");
             assertNotNull(loaded.plugin());
             assertTrue(loaded.plugin() instanceof TestBukkitPlugin);
+        } finally {
+            loaded.classLoader().close();
+        }
+    }
+
+    @Test
+    void loadMapsSoftDependsToSoftDependencies(@TempDir Path dir) throws Exception {
+        // EssentialsX-style plugin.yml with both depend: and softdepend:
+        // — verify the bridge surfaces them on the rd-api descriptor's
+        // matching maps. Without separate mapping, the resolver could
+        // not tell required peers (which gate load) apart from optional
+        // ones (which only influence ordering).
+        String yml = """
+                name: SoftDependProbe
+                version: 1.0.0
+                main: %s
+                depend: [coreMod]
+                softdepend: [Vault, LuckPerms]
+                """.formatted(TestBukkitPlugin.class.getName());
+
+        Path jar = writePluginJarWithRawYml(dir.resolve("plugin.jar"), yml);
+        BukkitPluginLoader.LoadedPlugin loaded =
+                BukkitPluginLoader.load(jar, getClass().getClassLoader());
+        try {
+            assertEquals("*", loaded.descriptor().dependencies().get("coreMod"));
+            assertEquals("*", loaded.descriptor().softDependencies().get("Vault"));
+            assertEquals("*", loaded.descriptor().softDependencies().get("LuckPerms"));
+            assertEquals(1, loaded.descriptor().dependencies().size(),
+                    "softdepend entries must not appear in hard deps");
+            assertEquals(2, loaded.descriptor().softDependencies().size(),
+                    "depend entries must not appear in soft deps");
         } finally {
             loaded.classLoader().close();
         }
@@ -540,6 +572,21 @@ class BukkitBridgeIntegrationTest {
             jar.closeEntry();
 
             copyClassBytes(jar, mainClass);
+            copyClassBytes(jar, TestBukkitListener.class.getName());
+        }
+        return target;
+    }
+
+    /** Like {@link #writePluginJar} but accepts a fully-formed
+     *  {@code plugin.yml} body — used by tests that need to exercise
+     *  fields the helper's structured signature does not expose
+     *  (softdepend, custom commands blocks, etc.). */
+    private Path writePluginJarWithRawYml(Path target, String yml) throws IOException {
+        try (JarOutputStream jar = new JarOutputStream(Files.newOutputStream(target))) {
+            jar.putNextEntry(new JarEntry("plugin.yml"));
+            jar.write(yml.getBytes());
+            jar.closeEntry();
+            copyClassBytes(jar, TestBukkitPlugin.class.getName());
             copyClassBytes(jar, TestBukkitListener.class.getName());
         }
         return target;

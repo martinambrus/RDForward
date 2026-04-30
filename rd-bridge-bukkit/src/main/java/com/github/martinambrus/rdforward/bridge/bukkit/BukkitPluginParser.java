@@ -25,13 +25,24 @@ public final class BukkitPluginParser {
         String name = requireString(root, "name");
         String version = requireString(root, "version");
         String main = requireString(root, "main");
-        List<String> depend = new ArrayList<>();
-        Object dep = root.get("depend");
-        if (dep instanceof List<?> list) {
-            for (Object d : list) depend.add(String.valueOf(d));
-        }
+        List<String> depend = readStringList(root.get("depend"));
+        List<String> softdepend = readStringList(root.get("softdepend"));
         Map<String, BukkitPluginDescriptor.CommandSpec> commands = parseCommands(root.get("commands"));
-        return new BukkitPluginDescriptor(name, version, main, List.copyOf(depend), commands);
+        return new BukkitPluginDescriptor(name, version, main,
+                List.copyOf(depend), List.copyOf(softdepend), commands);
+    }
+
+    /** Pull a list-of-strings field, accepting both YAML list shape
+     *  ({@code [a, b]}) and a single bare string. Returns an empty list
+     *  for a missing or empty-shaped value. */
+    private static List<String> readStringList(Object raw) {
+        List<String> out = new ArrayList<>();
+        if (raw instanceof List<?> list) {
+            for (Object d : list) out.add(String.valueOf(d));
+        } else if (raw instanceof String s && !s.isBlank()) {
+            out.add(s);
+        }
+        return out;
     }
 
     private static Map<String, BukkitPluginDescriptor.CommandSpec> parseCommands(Object raw) {

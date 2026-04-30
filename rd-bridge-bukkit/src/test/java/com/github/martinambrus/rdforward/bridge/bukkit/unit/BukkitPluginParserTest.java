@@ -31,6 +31,7 @@ class BukkitPluginParserTest {
         assertEquals("1.2.3", d.version());
         assertEquals("com.example.Demo", d.main());
         assertTrue(d.depend().isEmpty(), "depend defaults to empty list");
+        assertTrue(d.softdepend().isEmpty(), "softdepend defaults to empty list");
         assertTrue(d.commands().isEmpty(), "commands defaults to empty map");
     }
 
@@ -68,16 +69,89 @@ class BukkitPluginParserTest {
 
     @Test
     void ignoresUnknownTopLevelFields() {
+        // softdepend IS modelled now (Bukkit-shaped optional load-order
+        // hints), but other top-level keys like loadbefore / website
+        // are still tolerated so plugin.ymls don't have to be sanitised.
         String yml = """
                 name: Demo
                 version: '1.0'
                 main: com.example.Demo
-                softdepend: [SomeOtherPlugin]
                 loadbefore: [Y]
                 website: https://example.com/
                 """;
         BukkitPluginDescriptor d = parse(yml);
         assertEquals("Demo", d.name());
+    }
+
+    @Test
+    void parsesSoftDependList() {
+        // EssentialsX's plugin.yml ships {@code softdepend: [Vault, LuckPerms]}
+        // — neither is required for boot, but if either is present the
+        // resolver should order Essentials after them. Mapping the field
+        // separately from {@code depend:} is what allows the resolver to
+        // tell required dependencies (which must exist) apart from
+        // optional ones (which only influence ordering).
+        String yml = """
+                name: Demo
+                version: '1.0'
+                main: com.example.Demo
+                softdepend: [Vault, LuckPerms]
+                """;
+        BukkitPluginDescriptor d = parse(yml);
+        assertEquals(2, d.softdepend().size());
+        assertTrue(d.softdepend().contains("Vault"));
+        assertTrue(d.softdepend().contains("LuckPerms"));
+        assertTrue(d.depend().isEmpty(), "softdepend must not bleed into hard deps");
+    }
+
+    @Test
+    void acceptsBareStringDepend() {
+        // YAML allows a single-element dep to be written as a bare scalar
+        // ({@code depend: SinglePlugin}) rather than a list. Real plugin
+        // ymls in the wild ship both forms — InventoryPresets uses the
+        // bare scalar — so the parser must coerce either to a List.
+        String yml = """
+                name: Demo
+                version: '1.0'
+                main: com.example.Demo
+                depend: SinglePlugin
+                """;
+        BukkitPluginDescriptor d = parse(yml);
+        assertEquals(1, d.depend().size());
+        assertEquals("SinglePlugin", d.depend().get(0));
+    }
+
+    @Test
+    void acceptsBareStringSoftDepend() {
+        String yml = """
+                name: Demo
+                version: '1.0'
+                main: com.example.Demo
+                softdepend: Vault
+                """;
+        BukkitPluginDescriptor d = parse(yml);
+        assertEquals(1, d.softdepend().size());
+        assertEquals("Vault", d.softdepend().get(0));
+    }
+
+    @Test
+    void parsesBothDependAndSoftDepend() {
+        // EssentialsAntiBuild-shape: hard depends on Essentials AND soft
+        // depends on Vault. The two lists must remain independent;
+        // mixing them collapses the difference between "required" and
+        // "load-order hint".
+        String yml = """
+                name: Demo
+                version: '1.0'
+                main: com.example.Demo
+                depend: [Essentials]
+                softdepend: [Vault]
+                """;
+        BukkitPluginDescriptor d = parse(yml);
+        assertEquals(1, d.depend().size());
+        assertTrue(d.depend().contains("Essentials"));
+        assertEquals(1, d.softdepend().size());
+        assertTrue(d.softdepend().contains("Vault"));
     }
 
     @Test

@@ -155,6 +155,29 @@ public final class BukkitPlayer {
                         return defaultValue(rt);
                     });
 
+    /** No-op {@link org.bukkit.scoreboard.Scoreboard} stub returned by
+     *  {@code Player.getScoreboard()}. Real Bukkit always hands plugins
+     *  a non-null scoreboard (the main scoreboard if no per-player one
+     *  has been set), and EssentialsChat's lowest-priority listener
+     *  immediately calls {@code player.getScoreboard().getPlayerTeam(player)}
+     *  on every chat message — null here NPEs the whole chat pipeline.
+     *  RDForward has no scoreboard / team model, so every method
+     *  returns a safe default: empty sets for queries, null for the
+     *  team / objective / entity lookups (which Bukkit semantics
+     *  define as "not registered"). */
+    private static final org.bukkit.scoreboard.Scoreboard STUB_SCOREBOARD =
+            (org.bukkit.scoreboard.Scoreboard) Proxy.newProxyInstance(
+                    BukkitPlayer.class.getClassLoader(),
+                    new Class<?>[] { org.bukkit.scoreboard.Scoreboard.class },
+                    (proxy, method, args) -> {
+                        Class<?> rt = method.getReturnType();
+                        if (rt == java.util.Set.class) return Collections.emptySet();
+                        if (rt == java.util.List.class) return Collections.emptyList();
+                        if (rt == java.util.Collection.class) return Collections.emptyList();
+                        if (rt == java.util.Map.class) return Collections.emptyMap();
+                        return defaultValue(rt);
+                    });
+
     public static Player create(String name) {
         // Resolve the live rd-api backing (and the bridge's default world)
         // so events fired by the host — PlayerJoinEvent, PlayerQuitEvent,
@@ -494,6 +517,10 @@ public final class BukkitPlayer {
                     return null;
                 case "getEnderChest":
                 case "getOpenInventory":
+                    return null;
+                case "getScoreboard":
+                    return STUB_SCOREBOARD;
+                case "setScoreboard":
                     return null;
                 case "getPersistentDataContainer": {
                     StubPersistentDataContainer existing = pdc;

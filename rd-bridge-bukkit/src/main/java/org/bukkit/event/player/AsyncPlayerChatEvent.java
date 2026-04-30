@@ -13,7 +13,18 @@ import java.util.Set;
  */
 public class AsyncPlayerChatEvent extends PlayerEvent implements org.bukkit.event.Cancellable {
 
+    /** Bukkit's documented default format. EssentialsChat reads it via
+     *  {@code event.getFormat()} as the seed for its own
+     *  {@code {DISPLAYNAME}} / {@code {MESSAGE}} substitutions and writes
+     *  the result back via {@code setFormat}. The bridge does not yet
+     *  apply the format to the broadcast envelope (rd-server prepends a
+     *  fixed {@code "username: "} prefix), but the field MUST exist or
+     *  EssentialsChatPlayerListenerLowest crashes the chat dispatch
+     *  with NoSuchMethodError on every message. */
+    private static final String DEFAULT_FORMAT = "<%1$s> %2$s";
+
     private String message;
+    private String format = DEFAULT_FORMAT;
     private boolean cancelled;
     // Mutable — modern plugins remove recipients here; bridge diffs
     // against the original online set to feed broadcastChat exclusions.
@@ -33,6 +44,8 @@ public class AsyncPlayerChatEvent extends PlayerEvent implements org.bukkit.even
 
     public String getMessage() { return message; }
     public void setMessage(String message) { this.message = message; }
+    public String getFormat() { return format; }
+    public void setFormat(String format) { this.format = format; }
     public Set<Player> getRecipients() { return recipients; }
 
     @Override public boolean isCancelled() { return cancelled; }

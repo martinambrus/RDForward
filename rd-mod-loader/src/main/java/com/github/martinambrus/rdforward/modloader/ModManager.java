@@ -54,11 +54,55 @@ public final class ModManager implements com.github.martinambrus.rdforward.api.m
         for (ModContainer c : resolved) containers.put(c.id(), c);
     }
 
-    /** Enable every container in load order. Mods already ENABLED are skipped. */
+    /** Enable every container in load order. Mods already ENABLED are skipped.
+     *
+     *  <p>Cascade-disable: before enabling a mod, every hard dependency
+     *  must already be in {@link ModState#ENABLED}. If any dep is in a
+     *  non-ENABLED state (failed, self-disabled, or otherwise dropped
+     *  out during its own enable), the dependent is skipped with a
+     *  clean SEVERE log instead of being allowed to crash on a missing
+     *  service. The container ends up in {@link ModState#ERROR} so
+     *  {@code /mod list} surfaces the skipped state and a future
+     *  {@code /mod &lt;id&gt; enable} can retry once the operator has
+     *  fixed the dep. Soft deps are never load-gated here.
+     */
     public void enableAll() {
         for (ModContainer c : containers.values()) {
-            if (c.state() == ModState.DISCOVERED) enable(c);
+            if (c.state() != ModState.DISCOVERED) continue;
+            ModContainer brokenDep = firstBrokenHardDep(c);
+            if (brokenDep != null) {
+                String reason = c.id() + " requires " + brokenDep.id()
+                        + " but " + brokenDep.id() + " did not enable cleanly (state="
+                        + brokenDep.state() + ")";
+                LOG.log(java.util.logging.Level.SEVERE,
+                        "[ModLoader] Skipping " + c.id() + ": " + reason);
+                c.fail(new IllegalStateException(reason));
+                // The dependent never reached onEnable, so there are no
+                // resources to sweep — but the classloader was opened by
+                // the loader and stays held until close(). Release it so
+                // the jar handle is freed and the plugin's classes can
+                // be GC'd.
+                releaseClassLoader(c);
+                continue;
+            }
+            enable(c);
         }
+    }
+
+    /** @return the first hard-dep container of {@code c} whose state is
+     *  not {@link ModState#ENABLED}, or {@code null} if every hard dep
+     *  is enabled. Deps that are absent from the container map are
+     *  ignored — {@code DependencyResolver} has already validated the
+     *  hard-dep set against installed mods, so an unknown id at this
+     *  point means the dep was filtered out for another reason and is
+     *  treated as "not our problem". */
+    private ModContainer firstBrokenHardDep(ModContainer c) {
+        for (String depId : c.descriptor().dependencies().keySet()) {
+            ModContainer dep = containers.get(depId);
+            if (dep == null) continue;
+            if (dep.state() != ModState.ENABLED) return dep;
+        }
+        return null;
     }
 
     /**
