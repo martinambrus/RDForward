@@ -922,7 +922,8 @@ public class BedrockGameplayHandler implements BedrockPacketHandler {
             if (result == EventResult.CANCEL) return PacketSignal.HANDLED;
 
             String finalMsg = ctx.message() != null ? ctx.message() : message;
-            System.out.println("[Chat] " + player.getUsername() + ": " + finalMsg);
+            System.out.println("[Chat] " + player.getUsername() + ": "
+                    + com.github.martinambrus.rdforward.server.ChatConsoleFormat.strip(finalMsg));
             playerManager.broadcastChat(player.getPlayerId(),
                     player.getUsername() + ": " + finalMsg, ctx.excluded());
         }

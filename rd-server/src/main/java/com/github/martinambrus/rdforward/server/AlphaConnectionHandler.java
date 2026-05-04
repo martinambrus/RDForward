@@ -1447,7 +1447,8 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
             if (result == EventResult.CANCEL) return;
 
             String finalMsg = chatCtx.message() != null ? chatCtx.message() : message;
-            System.out.println("[Chat] " + player.getUsername() + ": " + finalMsg);
+            System.out.println("[Chat] " + player.getUsername() + ": "
+                    + ChatConsoleFormat.strip(finalMsg));
             playerManager.broadcastChat(player.getPlayerId(),
                     player.getUsername() + ": " + finalMsg, chatCtx.excluded());
         }
