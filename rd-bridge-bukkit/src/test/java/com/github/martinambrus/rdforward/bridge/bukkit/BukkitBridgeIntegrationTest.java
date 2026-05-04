@@ -462,8 +462,7 @@ class BukkitBridgeIntegrationTest {
             assertEquals(40, rd.scheduler.scheduled.get(1).delay);
             assertEquals(20, rd.scheduler.scheduled.get(2).period);
 
-            int cancelled = Bukkit.getScheduler().cancelTasks(plugin);
-            assertEquals(3, cancelled);
+            Bukkit.getScheduler().cancelTasks(plugin);
             assertTrue(rd.scheduler.scheduled.get(0).cancelled);
 
             // Async submissions go to the bridge's daemon executor, NOT the

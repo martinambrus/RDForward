@@ -30,8 +30,8 @@ public interface BukkitScheduler {
     /** Schedule {@code task} on the Bukkit-bridge async daemon pool with fixed period. */
     BukkitTask runTaskTimerAsynchronously(Plugin plugin, Runnable task, long delayTicks, long periodTicks);
 
-    /** Cancel every task owned by {@code plugin}. Returns the number cancelled. */
-    int cancelTasks(Plugin plugin);
+    /** Cancel every task owned by {@code plugin}. */
+    void cancelTasks(Plugin plugin);
 
     /**
      * Legacy Bukkit-3 API. LuckPerms's {@code BukkitSchedulerAdapter}

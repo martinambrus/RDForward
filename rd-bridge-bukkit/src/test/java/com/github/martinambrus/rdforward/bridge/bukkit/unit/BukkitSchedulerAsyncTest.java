@@ -73,19 +73,20 @@ class BukkitSchedulerAsyncTest {
         CountDownLatch ran = new CountDownLatch(1);
         // 100 ticks = 5s — long enough that cancel happens first.
         adapter.runTaskLaterAsynchronously(plugin, ran::countDown, 100);
-        int cancelled = adapter.cancelTasks(plugin);
-        assertEquals(1, cancelled);
+        adapter.cancelTasks(plugin);
         assertFalse(ran.await(500, TimeUnit.MILLISECONDS),
                 "cancelled task still ran");
     }
 
     @Test
-    void cancelTasksCountsBothSyncAndAsync() {
+    void cancelTasksCancelsBothSyncAndAsync() throws InterruptedException {
+        CountDownLatch asyncRan = new CountDownLatch(1);
         adapter.runTask(plugin, () -> {});
         adapter.runTaskTimer(plugin, () -> {}, 0, 20);
-        adapter.runTaskLaterAsynchronously(plugin, () -> {}, 100);
-        int cancelled = adapter.cancelTasks(plugin);
-        assertEquals(3, cancelled, "should cancel 2 sync + 1 async");
+        adapter.runTaskLaterAsynchronously(plugin, asyncRan::countDown, 100);
+        adapter.cancelTasks(plugin);
+        assertFalse(asyncRan.await(500, TimeUnit.MILLISECONDS),
+                "cancelled async task still ran");
     }
 
     @Test

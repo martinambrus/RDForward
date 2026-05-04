@@ -151,17 +151,15 @@ public final class BukkitSchedulerAdapter implements BukkitScheduler {
     }
 
     @Override
-    public int cancelTasks(Plugin plugin) {
+    public void cancelTasks(Plugin plugin) {
         String owner = ownerId(plugin);
-        int sync = backing.cancelByOwner(owner);
-        int async = 0;
+        backing.cancelByOwner(owner);
         Set<Future<?>> set = asyncFutures.remove(owner);
         if (set != null) {
             for (Future<?> f : set) {
-                if (f.cancel(false)) async++;
+                f.cancel(false);
             }
         }
-        return sync + async;
     }
 
     /** Stop the async pools and drop pending futures. Called from
