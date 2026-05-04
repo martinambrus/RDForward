@@ -655,18 +655,23 @@ public final class BukkitEventAdapter {
     }
 
     private static void bindPlayerMove(Listener l, Method m) {
+        ConcurrentHashMap<String, double[]> lastPos = new ConcurrentHashMap<>();
         PlayerMoveCallback cb = (name, x, y, z, yaw, pitch) -> {
             double dx = x / 32.0;
             double dy = y / 32.0;
             double dz = z / 32.0;
             float fyaw = (yaw & 0xFF) * 360f / 256f;
             float fpitch = pitch * 360f / 256f;
-            // Pass the bridge default world so listeners that immediately
-            // call event.getTo().getWorld().getName() (MAdvanced 4.x's
-            // PlayerListener.onPlayerMove) don't NPE.
             org.bukkit.World world = BukkitBridge.defaultWorld();
-            Location loc = new Location(world, dx, dy, dz, fyaw, fpitch);
-            PlayerMoveEvent ev = new PlayerMoveEvent(BukkitPlayer.create(name), loc, loc);
+            Location to = new Location(world, dx, dy, dz, fyaw, fpitch);
+            double[] prev = lastPos.put(name, new double[]{dx, dy, dz});
+            Location from;
+            if (prev != null) {
+                from = new Location(world, prev[0], prev[1], prev[2]);
+            } else {
+                from = to;
+            }
+            PlayerMoveEvent ev = new PlayerMoveEvent(BukkitPlayer.create(name), from, to);
             invokeListener(l, m, ev);
         };
         ServerEvents.PLAYER_MOVE.register(cb);

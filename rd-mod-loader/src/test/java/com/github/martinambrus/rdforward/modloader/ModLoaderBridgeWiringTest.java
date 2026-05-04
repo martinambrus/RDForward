@@ -132,6 +132,34 @@ class ModLoaderBridgeWiringTest {
     }
 
     @Test
+    void bukkitPluginsWithDepsLoadInDependencyOrder(@TempDir Path dir) throws Exception {
+        Path modsDir = Files.createDirectories(dir.resolve("mods"));
+        // Provider: no dependencies
+        writeBukkitJar(modsDir.resolve("provider.jar"),
+                "Provider",
+                BridgeFixturePlugin.class.getName());
+        // Consumer: soft-depends on Provider
+        writeBukkitJarWithSoftDep(modsDir.resolve("consumer.jar"),
+                "Consumer",
+                BridgeFixturePlugin.class.getName(),
+                "Provider");
+
+        List<ModContainer> containers = ModLoader.load(modsDir, getClass().getClassLoader());
+        assertEquals(2, containers.size());
+
+        // Dependency resolver must place Provider before Consumer
+        assertEquals("Provider", containers.get(0).id());
+        assertEquals("Consumer", containers.get(1).id());
+
+        // Both must be fully instantiated after deferred binding
+        for (ModContainer c : containers) {
+            assertNotNull(c.classLoader());
+            assertNotNull(c.serverMod());
+            assertEquals(BridgeKind.BUKKIT, c.bridgeKind());
+        }
+    }
+
+    @Test
     void jarWithoutManifestIsSkippedNotFatal(@TempDir Path dir) throws Exception {
         Path modsDir = Files.createDirectories(dir.resolve("mods"));
         // Empty jar with one harmless META-INF entry — no rdmod / paper /
@@ -154,6 +182,20 @@ class ModLoaderBridgeWiringTest {
                 + "version: '1.0.0'\n"
                 + "main: " + mainClass + "\n"
                 + "author: testfixture\n";
+        try (JarOutputStream jar = new JarOutputStream(Files.newOutputStream(target))) {
+            jar.putNextEntry(new JarEntry("plugin.yml"));
+            jar.write(yaml.getBytes(StandardCharsets.UTF_8));
+            jar.closeEntry();
+            copyClassBytes(jar, mainClass);
+        }
+    }
+
+    private void writeBukkitJarWithSoftDep(Path target, String name, String mainClass, String dep) throws IOException {
+        String yaml = "name: " + name + "\n"
+                + "version: '1.0.0'\n"
+                + "main: " + mainClass + "\n"
+                + "author: testfixture\n"
+                + "softdepend: [" + dep + "]\n";
         try (JarOutputStream jar = new JarOutputStream(Files.newOutputStream(target))) {
             jar.putNextEntry(new JarEntry("plugin.yml"));
             jar.write(yaml.getBytes(StandardCharsets.UTF_8));

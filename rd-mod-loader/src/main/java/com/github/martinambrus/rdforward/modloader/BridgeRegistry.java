@@ -97,6 +97,51 @@ public final class BridgeRegistry {
     }
 
     /**
+     * Attempt to extract a {@link ModDescriptor} from {@code jar} via the
+     * bridge loader's {@code readDescriptor(Path)} method without creating
+     * a classloader or loading any plugin classes.
+     *
+     * <p>Returns the descriptor on success, or {@code null} if the bridge
+     * loader does not support descriptor-only extraction (i.e. does not
+     * declare a {@code readDescriptor(Path)} method). The caller should
+     * fall back to {@link #dispatch} in that case.
+     */
+    public static ModDescriptor readDescriptor(BridgeKind kind, Path jar) throws IOException {
+        if (kind == null || kind == BridgeKind.NATIVE) {
+            throw new IllegalArgumentException("readDescriptor requires a non-NATIVE BridgeKind");
+        }
+        String fqcn = LOADER_FQCN.get(kind);
+        Class<?> loaderCls;
+        try {
+            loaderCls = Class.forName(fqcn, true, BridgeRegistry.class.getClassLoader());
+        } catch (ClassNotFoundException e) {
+            return null;
+        }
+        Method readDesc;
+        try {
+            readDesc = loaderCls.getMethod("readDescriptor", Path.class);
+        } catch (NoSuchMethodException e) {
+            return null;
+        }
+        Object result;
+        try {
+            result = readDesc.invoke(null, jar);
+        } catch (java.lang.reflect.InvocationTargetException ite) {
+            Throwable cause = ite.getCause();
+            if (cause instanceof IOException io) throw io;
+            if (cause instanceof RuntimeException re) throw re;
+            throw new IOException("Bridge loader " + fqcn + ".readDescriptor threw: " + cause, cause);
+        } catch (IllegalAccessException e) {
+            throw new IOException("Bridge loader " + fqcn + ".readDescriptor not accessible", e);
+        }
+        if (!(result instanceof ModDescriptor md)) {
+            throw new IOException("Bridge loader " + fqcn
+                    + ".readDescriptor returned non-ModDescriptor: " + result);
+        }
+        return md;
+    }
+
+    /**
      * Reflectively call the bridge's {@code load(Path, ClassLoader)} static
      * method and adapt its return value to {@link Loaded}.
      *

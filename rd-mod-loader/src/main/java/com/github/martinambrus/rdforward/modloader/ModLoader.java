@@ -107,11 +107,18 @@ public final class ModLoader {
                     }
                     warnIfMisplaced(kind, dir, jar);
                     try {
-                        BridgeRegistry.Loaded loaded = BridgeRegistry.dispatch(kind, jar, apiParent);
-                        ModContainer c = new ModContainer(loaded.descriptor(), jar);
-                        c.setBridgeKind(kind);
-                        discovered.add(c);
-                        preloadedBridges.put(loaded.descriptor().id(), loaded);
+                        ModDescriptor bridgeDesc = BridgeRegistry.readDescriptor(kind, jar);
+                        if (bridgeDesc != null) {
+                            ModContainer c = new ModContainer(bridgeDesc, jar);
+                            c.setBridgeKind(kind);
+                            discovered.add(c);
+                        } else {
+                            BridgeRegistry.Loaded loaded = BridgeRegistry.dispatch(kind, jar, apiParent);
+                            ModContainer c = new ModContainer(loaded.descriptor(), jar);
+                            c.setBridgeKind(kind);
+                            discovered.add(c);
+                            preloadedBridges.put(loaded.descriptor().id(), loaded);
+                        }
                     } catch (Throwable e) {
                         LOG.log(Level.SEVERE, "[ModLoader] " + kind + " bridge failed to load "
                                 + jar.getFileName() + ": " + e, e);
@@ -138,6 +145,11 @@ public final class ModLoader {
                 if (preloaded != null) {
                     c.setClassLoader(preloaded.classLoader());
                     c.setServerInstance(preloaded.serverMod());
+                } else if (c.bridgeKind() != BridgeKind.NATIVE) {
+                    BridgeRegistry.Loaded loaded = BridgeRegistry.dispatch(
+                            c.bridgeKind(), c.jarPath(), apiParent);
+                    c.setClassLoader(loaded.classLoader());
+                    c.setServerInstance(loaded.serverMod());
                 } else {
                     bindClassLoader(c);
                     instantiate(c);

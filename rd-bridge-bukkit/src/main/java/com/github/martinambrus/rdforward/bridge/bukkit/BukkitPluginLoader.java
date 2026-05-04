@@ -84,6 +84,28 @@ public final class BukkitPluginLoader {
         return new LoadedPlugin(descriptor, bukkit, jarPath, classLoader, plugin, wrapper);
     }
 
+    /**
+     * Descriptor-only extraction: opens the jar, parses {@code plugin.yml},
+     * and returns the corresponding rd-api {@link ModDescriptor} without
+     * creating a classloader or loading any plugin classes.
+     *
+     * <p>Used by {@code BridgeRegistry} during the scan phase so that
+     * dependency resolution can proceed before any bridge plugin is
+     * instantiated.
+     */
+    public static ModDescriptor readDescriptor(Path jarPath) throws IOException {
+        try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(jarPath.toFile())) {
+            java.util.zip.ZipEntry entry = zf.getEntry("plugin.yml");
+            if (entry == null) {
+                throw new IOException("plugin.yml missing from " + jarPath);
+            }
+            try (InputStream in = zf.getInputStream(entry)) {
+                BukkitPluginDescriptor bukkit = BukkitPluginParser.parse(in);
+                return toModDescriptor(bukkit);
+            }
+        }
+    }
+
     /** Turn each {@code commands:} entry into a ready-to-configure {@link PluginCommand}. */
     private static Map<String, PluginCommand> buildCommandMap(BukkitPluginDescriptor bukkit) {
         Map<String, PluginCommand> out = new LinkedHashMap<>();
