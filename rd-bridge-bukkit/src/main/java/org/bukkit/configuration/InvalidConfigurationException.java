@@ -4,7 +4,7 @@ package org.bukkit.configuration;
 @SuppressWarnings({"unchecked", "rawtypes", "unused"})
 public class InvalidConfigurationException extends java.lang.Exception {
     public InvalidConfigurationException() {}
-    public InvalidConfigurationException(java.lang.String arg0) {}
-    public InvalidConfigurationException(java.lang.Throwable arg0) {}
-    public InvalidConfigurationException(java.lang.String arg0, java.lang.Throwable arg1) {}
+    public InvalidConfigurationException(java.lang.String msg) { super(msg); }
+    public InvalidConfigurationException(java.lang.Throwable cause) { super(cause); }
+    public InvalidConfigurationException(java.lang.String msg, java.lang.Throwable cause) { super(msg, cause); }
 }

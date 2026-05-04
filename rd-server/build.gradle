@@ -41,6 +41,10 @@ dependencies {
     runtimeOnly 'org.xerial:sqlite-jdbc:3.49.1.0'
     runtimeOnly 'com.mysql:mysql-connector-j:9.2.0'
     runtimeOnly 'com.mojang:brigadier:1.3.10'
+    // Legacy Bukkit/CraftBukkit shipped json-simple on the server classpath.
+    // Plugins (Jail 2.x's Update.query, several older auth/economy plugins)
+    // import org.json.simple.JSONValue and NoClassDefFoundError without it.
+    runtimeOnly 'com.googlecode.json-simple:json-simple:1.1.1'
 }
 
 jar {

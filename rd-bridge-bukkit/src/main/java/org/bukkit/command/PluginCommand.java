@@ -38,6 +38,19 @@ public class PluginCommand extends Command implements PluginIdentifiableCommand 
         if (owner instanceof CommandExecutor ce) this.executor = ce;
     }
 
+    /** Routes through the executor, matching real Bukkit behavior.
+     *  When a plugin creates {@code PluginCommand} instances and registers
+     *  them via {@code commandMap.register()}, the dispatch path calls
+     *  this method. Without the override, the base-class no-op swallows
+     *  every invocation silently. */
+    @Override
+    public boolean execute(CommandSender sender, String commandLabel, String[] args) {
+        if (executor != null) {
+            return executor.onCommand(sender, this, commandLabel, args);
+        }
+        return false;
+    }
+
     public CommandExecutor getExecutor() { return executor; }
     public void setExecutor(CommandExecutor executor) { this.executor = executor; }
 

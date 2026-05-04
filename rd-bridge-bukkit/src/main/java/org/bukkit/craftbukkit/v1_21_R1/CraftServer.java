@@ -3,6 +3,7 @@ package org.bukkit.craftbukkit.v1_21_R1;
 
 import com.github.martinambrus.rdforward.api.server.Server;
 import com.github.martinambrus.rdforward.bridge.bukkit.BukkitBridge;
+import org.bukkit.command.SimpleCommandMap;
 
 /**
  * Thin subclass whose sole purpose is to make
@@ -19,7 +20,16 @@ import com.github.martinambrus.rdforward.bridge.bukkit.BukkitBridge;
  */
 public final class CraftServer extends BukkitBridge.BukkitServerAdapter {
 
+    private final SimpleCommandMap commandMap = new SimpleCommandMap();
+
     public CraftServer(Server rd) {
         super(rd);
+    }
+
+    /** Expose the command map so plugins that cast to CraftServer can
+     *  register commands dynamically (HomeSpawnPlus's CommandRegister
+     *  casts {@code Bukkit.getServer()} to CraftServer to reach this). */
+    public SimpleCommandMap getCommandMap() {
+        return commandMap;
     }
 }

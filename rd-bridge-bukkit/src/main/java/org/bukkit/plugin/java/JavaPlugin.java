@@ -22,6 +22,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
 
+import com.avaje.ebean.EbeanServer;
+import com.avaje.ebean.NoOpEbeanServer;
+
 /**
  * Stub of Bukkit's {@code JavaPlugin} base class. Extends {@link PluginBase}
  * so every plugin instance satisfies the {@link org.bukkit.plugin.Plugin}
@@ -199,35 +202,65 @@ public abstract class JavaPlugin extends PluginBase implements CommandExecutor {
     }
 
     /**
-     * @return the plugin's {@code config.yml}-backed configuration. Real
-     *         paper-api lazily loads from {@code <dataFolder>/config.yml}
-     *         and falls back to the bundled {@code config.yml} resource.
-     *         RDForward returns an empty {@link YamlConfiguration} that is
-     *         safe to read/write but never persisted — every accessor on
-     *         {@link org.bukkit.configuration.MemorySection} returns the
-     *         caller-supplied default. The instance is non-null and stable
-     *         across calls so plugins (e.g. SimpleLogin) that store the
-     *         result in a field continue to function.
+     * @return the plugin's {@code config.yml}-backed configuration. Lazily
+     *         calls {@link #reloadConfig()} on first access so the file
+     *         (and its bundled defaults) are picked up before plugin code
+     *         reads keys.
      */
     public FileConfiguration getConfig() {
-        if (config == null) {
-            config = new YamlConfiguration();
-        }
+        if (config == null) reloadConfig();
         return config;
     }
 
-    /** Stub — matches upstream signature. Real save is a no-op under RDForward. */
-    public void saveDefaultConfig() {}
-
-    /** Re-creates the in-memory {@link YamlConfiguration} so subsequent
-     *  {@link #getConfig()} calls observe a fresh instance. RDForward never
-     *  parses the underlying file, so the resulting configuration is empty. */
-    public void reloadConfig() {
-        config = new YamlConfiguration();
+    /** Extract {@code config.yml} from the plugin jar to
+     *  {@code <dataFolder>/config.yml} when the file is not yet present.
+     *  Real paper-api copies bytes verbatim; RDForward does the same so
+     *  plugins (Jail 3.x's {@code JailIO.loadConfig}) that read keys
+     *  immediately after this call observe the bundled defaults. */
+    public void saveDefaultConfig() {
+        File target = new File(getDataFolder(), "config.yml");
+        if (target.exists()) return;
+        try (InputStream in = getResource("config.yml")) {
+            if (in == null) return;
+            target.getParentFile().mkdirs();
+            java.nio.file.Files.copy(in, target.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } catch (java.io.IOException ignored) {}
     }
 
-    /** Stub — matches upstream signature. Real save is a no-op under RDForward. */
-    public void saveConfig() {}
+    /** Re-load the {@code <dataFolder>/config.yml} file (if present) and
+     *  set the bundled jar {@code config.yml} resource as the defaults
+     *  source — matching real paper-api semantics. Plugins that ship a
+     *  default config and read keys without first running
+     *  {@link #saveDefaultConfig()} (Jail 3.x's
+     *  {@code JailVoteManager.<init>} reads {@code jailvote.time}) still
+     *  observe the bundled value because the missing on-disk key falls
+     *  through to {@code defaults}. */
+    public void reloadConfig() {
+        YamlConfiguration loaded = new YamlConfiguration();
+        File onDisk = new File(getDataFolder(), "config.yml");
+        if (onDisk.isFile()) {
+            try { loaded.load(onDisk); } catch (Exception ignored) {}
+        }
+        try (InputStream in = getResource("config.yml")) {
+            if (in != null) {
+                YamlConfiguration defaults = YamlConfiguration.loadConfiguration(in);
+                loaded.setDefaults(defaults);
+            }
+        } catch (java.io.IOException ignored) {}
+        config = loaded;
+    }
+
+    /** Persist the current in-memory configuration to
+     *  {@code <dataFolder>/config.yml}. */
+    public void saveConfig() {
+        if (config == null) return;
+        File target = new File(getDataFolder(), "config.yml");
+        try {
+            target.getParentFile().mkdirs();
+            config.save(target);
+        } catch (java.io.IOException ignored) {}
+    }
 
     /** @return the plugin's live enabled flag. Defaults to {@code true}
      *  on construction; flipped by {@link #setEnabled(boolean)} when a
@@ -262,6 +295,16 @@ public abstract class JavaPlugin extends PluginBase implements CommandExecutor {
     public void setRDPluginCommands(Map<String, PluginCommand> map) {
         commandMap.clear();
         commandMap.putAll(map);
+    }
+
+    /** Returns the EbeanServer for this plugin. Real Bukkit/CraftBukkit
+     *  initialises an embedded Ebean ORM when {@code plugin.yml} declares
+     *  {@code database: true}. RDForward has no embedded database, so this
+     *  returns a no-op stub whose methods throw {@code UnsupportedOperationException}.
+     *  Plugins that use Ebean (HomeSpawnPlus, dynmap) can catch those exceptions
+     *  and fall back to YAML or file-based storage. */
+    public EbeanServer getDatabase() {
+        return new NoOpEbeanServer();
     }
 
     /** @return every command declared in {@code plugin.yml}. Read-only.

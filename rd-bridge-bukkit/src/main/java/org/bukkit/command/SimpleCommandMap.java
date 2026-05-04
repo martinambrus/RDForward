@@ -46,8 +46,9 @@ public class SimpleCommandMap implements org.bukkit.command.CommandMap {
     }
 
     @Override
-    public boolean register(java.lang.String label, org.bukkit.command.Command command) {
-        return register(label, null, command);
+    public boolean register(java.lang.String fallbackPrefix, org.bukkit.command.Command command) {
+        if (command == null) return false;
+        return register(command.getName(), fallbackPrefix, command);
     }
 
     @Override

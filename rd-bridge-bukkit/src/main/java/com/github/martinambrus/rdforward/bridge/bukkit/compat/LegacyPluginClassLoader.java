@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -33,6 +34,13 @@ public final class LegacyPluginClassLoader extends URLClassLoader {
     public LegacyPluginClassLoader(URL[] urls, ClassLoader parent) {
         super(urls, parent);
         REGISTRY.add(this);
+    }
+
+    /** Snapshot of all live plugin classloaders. Used by
+     *  {@code YamlConfiguration.loadFromString} to resolve SnakeYAML
+     *  {@code !!} class tags from plugin data files. */
+    public static List<URLClassLoader> allLoaders() {
+        return List.copyOf(REGISTRY);
     }
 
     @Override
@@ -81,6 +89,11 @@ public final class LegacyPluginClassLoader extends URLClassLoader {
             }
             try {
                 transformed = LegacySnakeYamlTransformer.transform(transformed);
+            } catch (Throwable t) {
+                // leave whatever we had after the previous pass
+            }
+            try {
+                transformed = LegacyCraftServerTransformer.transform(transformed);
             } catch (Throwable t) {
                 // leave whatever we had after the previous pass
             }

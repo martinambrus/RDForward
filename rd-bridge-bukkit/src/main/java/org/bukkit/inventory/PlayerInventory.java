@@ -1,8 +1,22 @@
+// @rdforward:preserve - hand-tuned facade, do not regenerate
 package org.bukkit.inventory;
 
-/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
+/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar plus
+ *  hand-tuned legacy overloads. See PLAN-FULL-STUBS.md. */
 @SuppressWarnings({"unchecked", "rawtypes", "unused"})
 public interface PlayerInventory extends org.bukkit.inventory.Inventory {
+
+    /** Pre-Bukkit-1.x legacy form. Jail 2.1's
+     *  {@code JailZoneCreation.selectstart} calls
+     *  {@code player.getInventory().contains(int)} with a raw material
+     *  id read from its config (default 280 = stick). Resolves the id
+     *  to a {@link org.bukkit.Material} via the legacy id table and
+     *  delegates to {@link #contains(org.bukkit.Material)}. Returns
+     *  {@code false} when the id is unknown so callers don't NPE. */
+    default boolean contains(int materialId) {
+        org.bukkit.Material mat = org.bukkit.Material.getMaterial(materialId);
+        return mat != null && contains(mat);
+    }
     org.bukkit.inventory.ItemStack[] getArmorContents();
     org.bukkit.inventory.ItemStack[] getExtraContents();
     org.bukkit.inventory.ItemStack getHelmet();

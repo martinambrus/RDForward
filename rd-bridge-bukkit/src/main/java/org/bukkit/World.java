@@ -187,6 +187,20 @@ public interface World {
         return getHighestBlockYAt(loc.getBlockX(), loc.getBlockZ());
     }
 
+    /** Returns the highest non-air block at the given location. HomeSpawnPlus's
+     *  spawn logic calls this to find a safe Y for the spawn point. */
+    default org.bukkit.block.Block getHighestBlockAt(org.bukkit.Location loc) {
+        if (loc == null) return null;
+        int y = getHighestBlockYAt(loc.getBlockX(), loc.getBlockZ());
+        return getBlockAt(loc.getBlockX(), y, loc.getBlockZ());
+    }
+
+    /** Coordinate-based overload. */
+    default org.bukkit.block.Block getHighestBlockAt(int x, int z) {
+        int y = getHighestBlockYAt(x, z);
+        return getBlockAt(x, y, z);
+    }
+
     long getTime();
 
     /** Noop for RDForward — surfaced so plugins that toggle time of day compile. */

@@ -33,6 +33,16 @@ public interface Server {
 
     PluginManager getPluginManager();
     BukkitScheduler getScheduler();
+
+    /** RDForward has no scoreboard model; returns a chained no-op stub
+     *  so plugins (Jail 2.x's {@code JailScoreboardManager},
+     *  EssentialsChat's chat listener) that walk
+     *  {@code getScoreboardManager().getNewScoreboard().registerNewObjective(...)}
+     *  observe non-null values at every step instead of NPE-ing on a
+     *  null intermediate. */
+    default org.bukkit.scoreboard.ScoreboardManager getScoreboardManager() {
+        return com.github.martinambrus.rdforward.bridge.bukkit.ScoreboardStubs.MANAGER;
+    }
     ConsoleCommandSender getConsoleSender();
 
     /** @return the player with this name, or null if not online. */
@@ -122,7 +132,13 @@ public interface Server {
         for (Player p : getOnlinePlayers()) {
             if (p != null && id.equals(p.getUniqueId())) return p;
         }
-        return null;
+        // Fallback to the BukkitPlayer cache so quit listeners that call
+        // Bukkit.getPlayer(uuid) DURING the dispatch (mChat 4.x's
+        // PlayerListener.onPlayerQuit) still observe the proxy — the
+        // rd-api session has already been unregistered by the time
+        // PLAYER_LEAVE_ANNOUNCE fires, so getOnlinePlayers() no longer
+        // contains the quitting player.
+        return com.github.martinambrus.rdforward.bridge.bukkit.BukkitPlayer.findByUuid(id);
     }
 
     /** @return every online player, never null. */
@@ -277,5 +293,13 @@ public interface Server {
 
     default org.bukkit.command.PluginCommand getPluginCommand(String name) {
         return com.github.martinambrus.rdforward.bridge.bukkit.BukkitBridge.findPluginCommand(name);
+    }
+
+    /** @return the server's world-container directory. Real Bukkit defaults
+     *  to the server CWD; RDForward does the same so plugins that probe for
+     *  {@code <world>/players/<name>.dat} (HomeSpawnPlus's new-player
+     *  detection) resolve against the correct root. */
+    default java.io.File getWorldContainer() {
+        return new java.io.File(".");
     }
 }

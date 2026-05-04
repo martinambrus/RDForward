@@ -24,15 +24,22 @@ public record BukkitPluginDescriptor(
         String main,
         List<String> depend,
         List<String> softdepend,
-        Map<String, CommandSpec> commands
+        Map<String, CommandSpec> commands,
+        boolean database
 ) {
     public BukkitPluginDescriptor(String name, String version, String main, List<String> depend) {
-        this(name, version, main, depend, List.of(), Map.of());
+        this(name, version, main, depend, List.of(), Map.of(), false);
     }
 
     public BukkitPluginDescriptor(String name, String version, String main,
                                   List<String> depend, List<String> softdepend) {
-        this(name, version, main, depend, softdepend, Map.of());
+        this(name, version, main, depend, softdepend, Map.of(), false);
+    }
+
+    public BukkitPluginDescriptor(String name, String version, String main,
+                                  List<String> depend, List<String> softdepend,
+                                  Map<String, CommandSpec> commands) {
+        this(name, version, main, depend, softdepend, commands, false);
     }
 
     public String author() { return name; }

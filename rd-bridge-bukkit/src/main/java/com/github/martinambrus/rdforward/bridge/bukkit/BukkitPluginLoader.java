@@ -104,7 +104,8 @@ public final class BukkitPluginLoader {
                 "",
                 List.of(bukkit.author()),
                 bukkit.depend(),
-                toCommandsMap(bukkit.commands()));
+                toCommandsMap(bukkit.commands()),
+                bukkit.database());
     }
 
     /** Convert parsed {@code plugin.yml} commands into the map shape Bukkit

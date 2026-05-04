@@ -69,6 +69,15 @@ public final class Bukkit {
         return server == null ? null : server.getPlayer(name);
     }
 
+    /** UUID-keyed online player lookup. mChat 4.x's
+     *  {@code API.checkPermissions} dispatches on
+     *  {@code Bukkit.getPlayer(uuid)} during join/quit listeners — without
+     *  the static delegate the listener {@code NoSuchMethodError}s on
+     *  every join. Delegates to {@link Server#getPlayer(java.util.UUID)}. */
+    public static Player getPlayer(java.util.UUID id) {
+        return server == null ? null : server.getPlayer(id);
+    }
+
     public static Collection<Player> getOnlinePlayers() {
         return server == null ? List.of() : server.getOnlinePlayers();
     }
@@ -79,6 +88,13 @@ public final class Bukkit {
 
     public static World getWorld(String name) {
         return server == null ? null : server.getWorld(name);
+    }
+
+    /** @return the server's world-container directory. Delegates to
+     *  {@link Server#getWorldContainer()}. HomeSpawnPlus's new-player
+     *  detection probes for {@code <world>/players/<name>.dat}. */
+    public static java.io.File getWorldContainer() {
+        return server == null ? new java.io.File(".") : server.getWorldContainer();
     }
 
     /** UUID-keyed world lookup. EssentialsX's {@code LazyLocation

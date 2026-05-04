@@ -237,6 +237,22 @@ public final class BukkitPlayer {
         }
     }
 
+    /** Cache-backed UUID lookup used by {@link org.bukkit.Server#getPlayer(java.util.UUID)}.
+     *  PLAYER_LEAVE_ANNOUNCE fires AFTER the rd-api session is unregistered,
+     *  so {@code Server.getOnlinePlayers()} no longer contains the quitting
+     *  player and a UUID lookup against that list returns null. mChat 4.x's
+     *  quit listener calls {@code Bukkit.getPlayer(uuid).hasPermission(...)}
+     *  unguarded; this fallback returns the still-cached proxy until
+     *  {@link #evict(String)} clears it post-dispatch, so the listener sees
+     *  the same Player instance the join path observed. */
+    public static Player findByUuid(java.util.UUID id) {
+        if (id == null) return null;
+        for (Player p : CACHE.values()) {
+            if (p != null && id.equals(p.getUniqueId())) return p;
+        }
+        return null;
+    }
+
     private static Player mint(String name,
                                com.github.martinambrus.rdforward.api.player.Player backing,
                                World world) {
@@ -467,8 +483,8 @@ public final class BukkitPlayer {
                     return 5.0f;
                 case "getExp":
                 case "getExhaustion":
-                case "getTotalExperience":
                     return 0.0f;
+                case "getTotalExperience":
                 case "getLevel":
                     return 0;
                 case "getInventory":

@@ -17,6 +17,28 @@ public interface CommandSender extends org.bukkit.permissions.Permissible {
 
     void sendMessage(String message);
 
+    /** Multi-line convenience overload — real Bukkit fans the array out
+     *  one element per line. MChannels 4.x's {@code sendDefaultMessage}
+     *  calls this with a help-text array; without the declaration the
+     *  command {@code NoSuchMethodError}s on every invocation. */
+    default void sendMessage(String[] messages) {
+        if (messages == null) return;
+        for (String m : messages) {
+            if (m != null) sendMessage(m);
+        }
+    }
+
+    /** Pre-Adventure raw-message sink. Real Bukkit's {@code sendRawMessage}
+     *  bypasses the per-sender chat formatting pipeline and writes the
+     *  argument verbatim. RDForward has no such pipeline, so this just
+     *  delegates to {@link #sendMessage(String)}. mChat 3.x's
+     *  {@code MessageUtil.log} calls this on the console sender during
+     *  {@code onEnable} — without a declaration the plugin
+     *  {@code NoSuchMethodError}s at link time. */
+    default void sendRawMessage(String message) {
+        sendMessage(message);
+    }
+
     /** @return true if this sender has operator privileges. */
     boolean isOp();
 }

@@ -4,6 +4,7 @@ package org.bukkit.configuration;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.configuration.serialization.ConfigurationSerialization;
 import org.bukkit.configuration.serialization.ConfigurationSerializable;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.Vector;
@@ -143,9 +144,9 @@ public class MemorySection implements ConfigurationSection {
     public Object get(String path) {
         String key = resolve(path);
         Object v = values.get(key);
-        if (v != null) return v;
+        if (v != null) return maybeDeserialize(v);
         Object d = defaults.get(key);
-        if (d != null) return d;
+        if (d != null) return maybeDeserialize(d);
         // No direct value at {@code key}, but the path may name a
         // sub-section (e.g. "homes" when the flat map carries
         // "homes.home.world" / "homes.home.x" / ...). Real Bukkit's
@@ -156,6 +157,17 @@ public class MemorySection implements ConfigurationSection {
         // "no homes set" even when the YAML has them.
         if (key == null || key.isEmpty()) return null;
         String dotPfx = key + ".";
+        // Check if this sub-section represents a serialized object
+        // (has a "==" key). If so, reconstruct the Map and deserialize.
+        String typeKey = key + "." + ConfigurationSerialization.SERIALIZED_TYPE_KEY;
+        Object typeVal = values.get(typeKey);
+        if (typeVal == null) typeVal = defaults.get(typeKey);
+        if (typeVal != null) {
+            Map<String, Object> map = collectSubMap(key, values);
+            if (map.isEmpty()) map = collectSubMap(key, defaults);
+            ConfigurationSerializable cs = ConfigurationSerialization.deserializeObject(map);
+            if (cs != null) return cs;
+        }
         for (String k : values.keySet()) {
             if (k.startsWith(dotPfx)) return new MemorySection(this, key);
         }
@@ -364,6 +376,37 @@ public class MemorySection implements ConfigurationSection {
                 || value instanceof Long || value instanceof Double
                 || value instanceof Float || value instanceof Short
                 || value instanceof Byte || value instanceof Character;
+    }
+
+    /** Collect all flat entries under {@code prefix} into a nested Map,
+     *  reversing the dot-flattening done by {@link #flattenInto}.
+     *  For example, prefix "homes.2" with entries "homes.2.x"=1.0,
+     *  "homes.2.y"=2.0 produces {"x":1.0, "y":2.0}. */
+    private static Map<String, Object> collectSubMap(String prefix, Map<String, Object> flat) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        String dotPfx = prefix + ".";
+        for (Map.Entry<String, Object> e : flat.entrySet()) {
+            if (e.getKey().startsWith(dotPfx)) {
+                String rest = e.getKey().substring(dotPfx.length());
+                out.put(rest, e.getValue());
+            }
+        }
+        return out;
+    }
+
+    /** If the value is a Map containing a {@code "=="} key, try to
+     *  deserialize it via {@link ConfigurationSerialization}. */
+    private static Object maybeDeserialize(Object o) {
+        if (o instanceof Map) {
+            Map<?, ?> map = (Map<?, ?>) o;
+            if (map.containsKey(ConfigurationSerialization.SERIALIZED_TYPE_KEY)) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> typed = (Map<String, Object>) map;
+                ConfigurationSerializable cs = ConfigurationSerialization.deserializeObject(typed);
+                if (cs != null) return cs;
+            }
+        }
+        return o;
     }
     protected Object getDefault(String path) { return defaults.get(resolve(path)); }
 

@@ -37,22 +37,22 @@ public interface PluginManager {
                                Plugin plugin, boolean ignoreCancelled) {
     }
 
-    /** Pre-Bukkit-1.x event registration form. LogBlockQuestioner 0.02
-     *  uses this in {@code onEnable} — without the method the plugin
-     *  {@link NoSuchMethodError}s. RDForward does not currently route
-     *  the legacy enum into {@code ServerEvents} (event types map to
-     *  modern Event classes via a not-yet-built mapping table), so
-     *  this is a logged no-op for now. Plugins that go through it
-     *  load cleanly but their listeners do not fire. */
+    /** Pre-Bukkit-1.x event registration form. Legacy plugins (Jail 2.1,
+     *  LogBlockQuestioner 0.02) call this in {@code onEnable} with a
+     *  concrete listener subclass ({@code BlockListener / PlayerListener
+     *  / EntityListener}) and an enum-named priority. Routes the call
+     *  through {@link com.github.martinambrus.rdforward.bridge.bukkit.BukkitEventAdapter#registerLegacy}
+     *  which maps the {@code Event$Type} onto a modern Event class +
+     *  base-listener method, maps {@code Event$Priority} onto
+     *  {@link EventPriority}, and installs the same {@code bind*}/{@code
+     *  ensure*} ServerEvents wiring as the modern {@code @EventHandler}
+     *  path. Event types whose modern counterpart is not yet wired into
+     *  ServerEvents stay registered for {@code callEvent} dispatch but
+     *  do not observe real server actions. */
     default void registerEvent(org.bukkit.event.Event$Type type, Listener listener,
                                org.bukkit.event.Event$Priority priority, Plugin plugin) {
-        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
-                null,
-                "org.bukkit.plugin.PluginManager.registerEvent("
-                        + "Lorg/bukkit/event/Event$Type;"
-                        + "Lorg/bukkit/event/Listener;"
-                        + "Lorg/bukkit/event/Event$Priority;"
-                        + "Lorg/bukkit/plugin/Plugin;)V");
+        com.github.martinambrus.rdforward.bridge.bukkit.BukkitEventAdapter.registerLegacy(
+                type, listener, priority, plugin == null ? null : plugin.getName());
     }
 
     /**

@@ -452,30 +452,48 @@ public class InventoryAdapter {
             }
             return;
         }
-        // Translate Notch ID for registry-ID protocols (1.13+).
+        // Translate Notch ID for registry-ID protocols (1.13+). Each
+        // toV*ItemId table only covers legacy block IDs 0-255; pre-Flattening
+        // item IDs (256-2256, e.g. stick=280, wooden_sword=268) and any
+        // unmapped block IDs return -1. Sending a registry-ID packet with
+        // id=-1 and count>0 corrupts the client decoder
+        // (DecoderException: Failed to decode packet 'container_set_slot'),
+        // so when the mapper has no entry we fall through to an empty-slot
+        // packet for the corresponding version. This loses the visible item
+        // until the legacy item-ID table grows to cover that id, but keeps
+        // the connection alive.
+        int id;
         if (version.isAtLeast(ProtocolVersion.RELEASE_1_21_2)) {
-            int id = BlockStateMapper.toV765ItemId(legacyItemId);
+            id = BlockStateMapper.toV765ItemId(legacyItemId);
+            if (id < 0) { player.sendPacket(new NettySetSlotPacketV766(0, 0, slot, -1, 0)); return; }
             player.sendPacket(new NettySetSlotPacketV766(0, 0, slot, id, count));
         } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_20_5)) {
-            int id = BlockStateMapper.toV765ItemId(legacyItemId);
+            id = BlockStateMapper.toV765ItemId(legacyItemId);
+            if (id < 0) { player.sendPacket(new NettySetSlotPacketV756(0, 0, slot, -1, 0)); return; }
             player.sendPacket(new NettySetSlotPacketV756(0, 0, slot, id, count));
         } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_19)) {
-            int id = BlockStateMapper.toV759ItemId(legacyItemId);
+            id = BlockStateMapper.toV759ItemId(legacyItemId);
+            if (id < 0) { player.sendPacket(new NettySetSlotPacketV756(0, 0, slot, -1, 0)); return; }
             player.sendPacket(new NettySetSlotPacketV756(0, 0, slot, id, count));
         } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_17_1)) {
-            int id = BlockStateMapper.toV755ItemId(legacyItemId);
+            id = BlockStateMapper.toV755ItemId(legacyItemId);
+            if (id < 0) { player.sendPacket(new NettySetSlotPacketV756(0, 0, slot, -1, 0)); return; }
             player.sendPacket(new NettySetSlotPacketV756(0, 0, slot, id, count));
         } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_17)) {
-            int id = BlockStateMapper.toV755ItemId(legacyItemId);
+            id = BlockStateMapper.toV755ItemId(legacyItemId);
+            if (id < 0) { player.sendPacket(new NettySetSlotPacketV404(0, slot, -1, 0)); return; }
             player.sendPacket(new NettySetSlotPacketV404(0, slot, id, count));
         } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_16)) {
-            int id = BlockStateMapper.toV735ItemId(legacyItemId);
+            id = BlockStateMapper.toV735ItemId(legacyItemId);
+            if (id < 0) { player.sendPacket(new NettySetSlotPacketV404(0, slot, -1, 0)); return; }
             player.sendPacket(new NettySetSlotPacketV404(0, slot, id, count));
         } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_13_2)) {
-            int id = BlockStateMapper.toV393ItemId(legacyItemId);
+            id = BlockStateMapper.toV393ItemId(legacyItemId);
+            if (id < 0) { player.sendPacket(new NettySetSlotPacketV404(0, slot, -1, 0)); return; }
             player.sendPacket(new NettySetSlotPacketV404(0, slot, id, count));
         } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_13)) {
-            int id = BlockStateMapper.toV393ItemId(legacyItemId);
+            id = BlockStateMapper.toV393ItemId(legacyItemId);
+            if (id < 0) { player.sendPacket(new NettySetSlotPacketV393(0, slot, -1, 0)); return; }
             player.sendPacket(new NettySetSlotPacketV393(0, slot, id, count));
         } else if (version.isAtLeast(ProtocolVersion.RELEASE_1_8)) {
             player.sendPacket(new NettySetSlotPacketV47(0, slot, legacyItemId, count, damage));
