@@ -23,7 +23,7 @@ package org.bukkit;
  * neutralized to id {@code -1} so {@link #getMaterial(int)} resolves the
  * numeric id to the modern name.
  */
-public enum Material {
+public enum Material implements Keyed {
     ACACIA_BOAT(-1),
     ACACIA_BUTTON(-1),
     ACACIA_CHEST_BOAT(-1),
