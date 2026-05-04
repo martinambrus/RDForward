@@ -155,7 +155,9 @@ class BlockDefaultsTest {
         int lastSetX, lastSetY, lastSetZ;
 
         @Override public String getName() { return "stub"; }
-        @Override public Block getBlockAt(int x, int y, int z) { return null; }
+        @Override public Block getBlockAt(int x, int y, int z) {
+            return new BukkitBlock(this, x, y, z, Material.STONE);
+        }
         @Override public boolean setBlockType(int x, int y, int z, Material type) {
             this.lastSetX = x; this.lastSetY = y; this.lastSetZ = z;
             this.lastSetType = type;
