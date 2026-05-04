@@ -105,12 +105,22 @@ public interface Block {
      *  offsets — {@link BlockFace#SELF} returns this block. */
     default Block getRelative(BlockFace face) {
         if (face == null) return this;
+        int nx = getX() + face.getModX();
+        int ny = getY() + face.getModY();
+        int nz = getZ() + face.getModZ();
+        // Resolve the neighbor through the world so its Material reflects
+        // the actual block at (nx, ny, nz). Earlier versions cloned this
+        // block's own type at the offset coordinates — HomeSpawnPlus's
+        // {@code Teleport.isSafeBlock} reads up/down via getRelative and
+        // compares the down block's id to AIR/lava/fire to validate a
+        // safe spawn; with the clone behaviour every neighbour read as
+        // the same material as {@code this}, so safeLocation never found
+        // a safe block and bubbled a downstream NPE. Falls back to the
+        // own-type clone only when no World is available.
+        org.bukkit.World w = getWorld();
+        if (w != null) return w.getBlockAt(nx, ny, nz);
         return new com.github.martinambrus.rdforward.bridge.bukkit.BukkitBlock(
-                getWorld(),
-                getX() + face.getModX(),
-                getY() + face.getModY(),
-                getZ() + face.getModZ(),
-                getType());
+                w, nx, ny, nz, getType());
     }
 
     /** Set this block's data. CoreProtect's

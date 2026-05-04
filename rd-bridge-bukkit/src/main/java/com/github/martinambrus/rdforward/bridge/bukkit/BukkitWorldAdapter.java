@@ -36,15 +36,19 @@ public final class BukkitWorldAdapter implements World, RegionAccessor {
 
     @Override public String getName() { return backing.getName(); }
 
+    /** Override getBlockAt(Location) to log when called from HSP's findSafeLocation2. */
+    @Override
+    public Block getBlockAt(org.bukkit.Location loc) {
+        if (loc == null) return null;
+        return getBlockAt(loc.getBlockX(), loc.getBlockY(), loc.getBlockZ());
+    }
+
     @Override
     public Block getBlockAt(int x, int y, int z) {
         com.github.martinambrus.rdforward.api.world.Block b = backing.getBlockAt(x, y, z);
-        // Out-of-bounds coords (Y below floor / above ceiling, unloaded
-        // chunk) return null from rd-api but Bukkit plugins (Essentials's
-        // teleport-safety check) call .getType() unconditionally — return
-        // an AIR-typed Block stub at the requested coords instead.
+        Material mat = b == null ? Material.AIR : MaterialMapper.fromApi(b.getType());
         if (b == null) return new BukkitBlock(this, x, y, z, Material.AIR);
-        return new BukkitBlock(this, b.getX(), b.getY(), b.getZ(), MaterialMapper.fromApi(b.getType()));
+        return new BukkitBlock(this, b.getX(), b.getY(), b.getZ(), mat);
     }
 
     @Override
@@ -75,14 +79,54 @@ public final class BukkitWorldAdapter implements World, RegionAccessor {
     @Override public void setTime(long time) { backing.setTime(time); }
 
     /** Chunk-aligned world center, mirroring {@code ServerWorld.getSpawnX/Z}.
-     *  Y is the max height so plugin-side safe-teleport scans start above
-     *  ground. Bukkit feet-level convention; the +0.5 centers the player
-     *  on the spawn block. */
+     *  Y rides the highest non-air block at the spawn column so plugins
+     *  that run a "safe spawn" probe (HomeSpawnPlus's Teleport.findSafeLocation2,
+     *  EssentialsX's spawn warmup) see solid ground directly below feet
+     *  instead of an unbounded air column. Earlier versions returned
+     *  {@code backing.getHeight()} (the world ceiling); HSP then scanned
+     *  ±maxRange levels and never reached real ground, returned null,
+     *  and a downstream re-entry crashed with a null-baseLocation NPE.
+     *  Bukkit feet-level convention; +0.5 centers the player on the
+     *  spawn block. */
     @Override
     public Location getSpawnLocation() {
         int spawnX = ((backing.getWidth() / 2) >> 4) * 16 + 8;
         int spawnZ = ((backing.getDepth() / 2) >> 4) * 16 + 8;
-        return new Location(this, spawnX + 0.5, backing.getHeight(), spawnZ + 0.5, 0f, 0f);
+        int height = backing.getHeight();
+        // Walk down from the world ceiling looking for the first
+        // air-air-solid stack: feet (Y) air, head (Y+1) air, ground
+        // (Y-1) solid. {@code getHighestBlockYAt} alone reports the
+        // topmost non-air block, but if the spawn column has player-
+        // placed blocks near the ceiling it returns a Y where there's
+        // no air gap above. HomeSpawnPlus's {@code Teleport.findSafeLocation2}
+        // needs the air-gap pattern to mark the spawn safe; without it
+        // the strategy result wraps null, gets re-entered downstream,
+        // and crashes with a null-baseLocation NPE.
+        int groundY = -1;
+        for (int y = height - 1; y >= 1; y--) {
+            org.bukkit.block.Block feet = getBlockAt(spawnX, y, spawnZ);
+            org.bukkit.block.Block head = getBlockAt(spawnX, y + 1, spawnZ);
+            org.bukkit.block.Block floor = getBlockAt(spawnX, y - 1, spawnZ);
+            if (feet != null && feet.getType() == Material.AIR
+                    && (head == null || head.getType() == Material.AIR)
+                    && floor != null && floor.getType() != Material.AIR) {
+                groundY = y;
+                break;
+            }
+        }
+        if (groundY < 0) {
+            // No air-air-solid stack — column is either fully air (rare;
+            // unwritten overlay) or fully solid (player filled the whole
+            // shaft). Pick the highest non-air Y +1 instead and trust the
+            // plugin-side safety scan to handle the head/feet check.
+            int top = -1;
+            for (int y = height - 1; y >= 0; y--) {
+                org.bukkit.block.Block b = getBlockAt(spawnX, y, spawnZ);
+                if (b != null && b.getType() != Material.AIR) { top = y; break; }
+            }
+            groundY = top >= 0 ? Math.min(top + 1, height - 1) : height / 3;
+        }
+        return new Location(this, spawnX + 0.5, groundY, spawnZ + 0.5, 0f, 0f);
     }
 
     /* ---- Weather. Backed by {@link ServerWorld#getWeather} /

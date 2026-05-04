@@ -39,4 +39,13 @@ public interface Plugin {
 
     /** @return the plugin's data folder. JavaPlugin overrides. */
     default File getDataFolder() { return null; }
+
+    /** @return the plugin's persistent configuration. JavaPlugin overrides
+     *  with the real round-trip {@code config.yml} loader; HomeSpawnPlus's
+     *  {@code BukkitYamlConfigFile.getRootConfigurationSection} calls this
+     *  through the {@code Plugin} interface, so the method must be visible
+     *  here (not only on JavaPlugin). */
+    default org.bukkit.configuration.file.FileConfiguration getConfig() {
+        return new org.bukkit.configuration.file.YamlConfiguration();
+    }
 }

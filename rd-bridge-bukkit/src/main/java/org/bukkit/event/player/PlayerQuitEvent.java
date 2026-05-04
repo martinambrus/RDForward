@@ -2,10 +2,12 @@
 package org.bukkit.event.player;
 
 import org.bukkit.entity.Player;
-import org.bukkit.event.Event;
 
-public final class PlayerQuitEvent extends Event {
-    private final Player player;
+/** Real Bukkit's {@code PlayerQuitEvent extends PlayerEvent}; HomeSpawnPlus's
+ *  shaded {@code commonlib.server.bukkit.events.PlayerQuitEvent} is compiled
+ *  against that contract and its constructor calls {@code super(PlayerEvent)}.
+ *  Extending {@code Event} directly causes VerifyError on plugin load. */
+public final class PlayerQuitEvent extends PlayerEvent {
     private String quitMessage;
 
     public PlayerQuitEvent(Player player) {
@@ -17,11 +19,9 @@ public final class PlayerQuitEvent extends Event {
      *  reads it back and returns it through
      *  {@code PLAYER_LEAVE_ANNOUNCE}. */
     public PlayerQuitEvent(Player player, String quitMessage) {
-        this.player = player;
+        super(player);
         this.quitMessage = quitMessage == null ? "" : quitMessage;
     }
-
-    public Player getPlayer() { return player; }
 
     public String getQuitMessage() { return quitMessage; }
 

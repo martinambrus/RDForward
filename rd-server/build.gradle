@@ -56,7 +56,11 @@ jar {
                 // the "WARNING: A restricted method in java.lang.System has been
                 // called" line on JDK 22+; also future-proofs against the
                 // "deny by default" rollout in later releases.
-                'Enable-Native-Access': 'ALL-UNNAMED'
+                'Enable-Native-Access': 'ALL-UNNAMED',
+                // Legacy Bukkit plugins shipped pre-JPMS Guice/cglib that reflectively
+                // calls ClassLoader.defineClass; HomeSpawnPlus's onEnable trips
+                // InaccessibleObjectException on JDK 17+ without this open.
+                'Add-Opens': 'java.base/java.lang'
         )
     }
 }
@@ -85,7 +89,11 @@ task fatJar(type: Jar) {
                 // the "WARNING: A restricted method in java.lang.System has been
                 // called" line on JDK 22+; also future-proofs against the
                 // "deny by default" rollout in later releases.
-                'Enable-Native-Access': 'ALL-UNNAMED'
+                'Enable-Native-Access': 'ALL-UNNAMED',
+                // Legacy Bukkit plugins shipped pre-JPMS Guice/cglib that reflectively
+                // calls ClassLoader.defineClass; HomeSpawnPlus's onEnable trips
+                // InaccessibleObjectException on JDK 17+ without this open.
+                'Add-Opens': 'java.base/java.lang'
         )
     }
 

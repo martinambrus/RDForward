@@ -54,6 +54,10 @@ public final class BukkitPluginLoader {
         }
         com.github.martinambrus.rdforward.api.stub.StubCallLog
                 .registerPluginLoader(classLoader, bukkit.name());
+        // Set data dir BEFORE loading any classes so NullFileParentTransformer
+        // can bake the path into File(File,String) / File(String,String) calls.
+        ((com.github.martinambrus.rdforward.bridge.bukkit.compat.LegacyPluginClassLoader) classLoader)
+                .setPluginDataDir("plugins/" + bukkit.name());
         Class<?> mainCls = Class.forName(bukkit.main(), true, classLoader);
         if (!JavaPlugin.class.isAssignableFrom(mainCls)) {
             com.github.martinambrus.rdforward.api.stub.StubCallLog.unregisterPluginLoader(classLoader);

@@ -129,7 +129,16 @@ public class MemorySection implements ConfigurationSection {
         int i = prefix.lastIndexOf('.');
         return i >= 0 ? prefix.substring(i + 1) : prefix;
     }
-    public Configuration getRoot() { return null; }
+    public Configuration getRoot() {
+        // Walk to the top of the parent chain. The root of any well-formed
+        // tree is a Configuration (MemoryConfiguration / YamlConfiguration).
+        // HomeSpawnPlus's BukkitYamlConfigFile.getRootConfigurationSection
+        // calls yaml.getRoot() and falls back to a null path when this
+        // returns null, so a top-level YamlConfiguration MUST report itself.
+        ConfigurationSection cs = this;
+        while (cs.getParent() != null) cs = cs.getParent();
+        return (cs instanceof Configuration) ? (Configuration) cs : null;
+    }
     public ConfigurationSection getParent() { return parent; }
 
     public void addDefault(String path, Object value) { defaults.put(resolve(path), value); }

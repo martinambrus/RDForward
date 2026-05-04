@@ -791,7 +791,11 @@ public final class BukkitPlayer {
         private Object doTeleport(Object[] args) {
             if (backing == null) return false;
             if (args == null || args.length == 0) return false;
-            if (!(args[0] instanceof Location loc)) return false;
+            if (!(args[0] instanceof Location loc)) {
+                java.util.logging.Logger.getLogger("RDForward/BukkitBridge").warning(
+                    "[BukkitPlayer] teleport called with non-Location arg: " + (args[0] == null ? "null" : args[0].getClass().getName()));
+                return false;
+            }
             // Bukkit Location Y is feet-level; rd-api teleport expects
             // eye-level (feet + 1.62). Without this offset the player
             // arrives 1.62 blocks below the requested spot — Essentials

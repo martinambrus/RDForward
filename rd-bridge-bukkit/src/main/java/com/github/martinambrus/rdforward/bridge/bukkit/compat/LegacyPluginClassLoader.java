@@ -31,9 +31,21 @@ public final class LegacyPluginClassLoader extends URLClassLoader {
 
     private static final Set<LegacyPluginClassLoader> REGISTRY = ConcurrentHashMap.newKeySet();
 
+    /** Plugin data directory path (e.g. "plugins/HomeSpawnPlus"), set by BukkitPluginLoader
+     *  before any classes are loaded. Used by {@link NullFileParentTransformer} to redirect
+     *  null-parent {@code new File(null, child)} calls to the plugin's data directory. */
+    private volatile String pluginDataDir;
+
     public LegacyPluginClassLoader(URL[] urls, ClassLoader parent) {
         super(urls, parent);
         REGISTRY.add(this);
+    }
+
+    /** Set the plugin data directory path. Must be called before any plugin classes
+     *  are loaded so {@link NullFileParentTransformer} can bake the path into the
+     *  rewritten bytecode. */
+    public void setPluginDataDir(String dir) {
+        this.pluginDataDir = dir;
     }
 
     /** Snapshot of all live plugin classloaders. Used by
@@ -96,6 +108,20 @@ public final class LegacyPluginClassLoader extends URLClassLoader {
                 transformed = LegacyCraftServerTransformer.transform(transformed);
             } catch (Throwable t) {
                 // leave whatever we had after the previous pass
+            }
+            if (pluginDataDir != null) {
+                try {
+                    transformed = NullFileParentTransformer.transform(transformed, pluginDataDir);
+                } catch (Throwable t) {
+                    // leave whatever we had after the previous pass
+                }
+            }
+            if (name.equals("com.andune.minecraft.hsp.shade.commonlib.Teleport")) {
+                try {
+                    transformed = HSPSafeLocationPatch.transform(transformed);
+                } catch (Throwable t) {
+                    // leave unpatched on failure
+                }
             }
             return defineClass(name, transformed, 0, transformed.length);
         } catch (IOException e) {

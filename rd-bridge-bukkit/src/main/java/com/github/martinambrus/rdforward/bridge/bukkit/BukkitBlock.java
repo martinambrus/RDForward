@@ -34,6 +34,10 @@ public final class BukkitBlock implements Block {
     @Override public int getZ() { return z; }
     @Override public Material getType() { return type; }
 
+    @Override public int getTypeId() {
+        return type == null ? 0 : type.getId();
+    }
+
     @Override
     public void setType(Material type) {
         this.type = type;

@@ -2,10 +2,13 @@
 package org.bukkit.event.player;
 
 import org.bukkit.entity.Player;
-import org.bukkit.event.Event;
 
-public final class PlayerJoinEvent extends Event {
-    private final Player player;
+/** Real Bukkit's {@code PlayerJoinEvent extends PlayerEvent}; HomeSpawnPlus's
+ *  shaded {@code commonlib.server.bukkit.events.PlayerJoinEvent} is compiled
+ *  against that contract and its constructor calls {@code super(PlayerEvent)}.
+ *  Keeping the parent as plain {@code Event} causes the JVM verifier to
+ *  reject the {@code invokespecial} on load with VerifyError. */
+public final class PlayerJoinEvent extends PlayerEvent {
     private String joinMessage;
 
     public PlayerJoinEvent(Player player) {
@@ -20,11 +23,9 @@ public final class PlayerJoinEvent extends Event {
      *  listener invocation and feeds it into the
      *  {@code PLAYER_JOIN_ANNOUNCE} return value. */
     public PlayerJoinEvent(Player player, String joinMessage) {
-        this.player = player;
+        super(player);
         this.joinMessage = joinMessage == null ? "" : joinMessage;
     }
-
-    public Player getPlayer() { return player; }
 
     public String getJoinMessage() { return joinMessage; }
 

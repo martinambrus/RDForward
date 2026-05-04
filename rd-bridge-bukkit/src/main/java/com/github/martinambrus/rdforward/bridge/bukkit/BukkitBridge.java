@@ -344,9 +344,21 @@ public final class BukkitBridge {
         private final PermissionRegistry registry;
         private final ModManager modManager;
 
+        /** Mirror of {@link SimplePluginManager#commandMap} declared on this
+         *  exact class so plugins (HomeSpawnPlus's
+         *  {@code BukkitCommandRegister.getCommandMap}) that look up the
+         *  field via {@code pm.getClass().getDeclaredField("commandMap")}
+         *  find it. {@code getDeclaredField} does not walk the superclass,
+         *  so the inherited public field on {@code SimplePluginManager} is
+         *  invisible to that lookup. Aliased to the parent's field in the
+         *  constructor so the same {@link org.bukkit.command.SimpleCommandMap}
+         *  instance backs both names. */
+        public org.bukkit.command.SimpleCommandMap commandMap;
+
         StubPluginManager(PermissionRegistry registry, ModManager modManager) {
             this.registry = registry;
             this.modManager = modManager;
+            this.commandMap = super.commandMap;
         }
 
         @Override

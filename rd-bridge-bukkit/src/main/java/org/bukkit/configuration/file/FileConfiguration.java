@@ -74,6 +74,16 @@ public abstract class FileConfiguration extends org.bukkit.configuration.MemoryC
         load(new File(filename));
     }
 
+    /** Pre-Bukkit-1.7 form. Modern Bukkit dropped the InputStream variant
+     *  (replaced by {@link #load(Reader)} so plugins control the charset),
+     *  but HomeSpawnPlus's {@code HomeSpawnPlusBukkit.getBootstrapConfig}
+     *  and other legacy plugins still call this with the raw stream from
+     *  {@code Plugin.getResource(...)}. Wrap as UTF-8 and delegate. */
+    public void load(java.io.InputStream stream) throws IOException, org.bukkit.configuration.InvalidConfigurationException {
+        if (stream == null) return;
+        load(new java.io.InputStreamReader(stream, StandardCharsets.UTF_8));
+    }
+
     public abstract void loadFromString(String contents) throws org.bukkit.configuration.InvalidConfigurationException;
 
     /** Returns an empty header — RDForward never composes the YAML
