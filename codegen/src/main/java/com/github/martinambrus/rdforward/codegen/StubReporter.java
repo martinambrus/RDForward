@@ -123,7 +123,11 @@ public final class StubReporter {
             // get(NamespacedKey): Enum) with the same source signature.
             // Java source cannot declare both; we emit the Keyed form and
             // accept the Enum-returning bridge as dropped.
-            "org/bukkit/Registry$SimpleRegistry#get(Lorg/bukkit/NamespacedKey;)Ljava/lang/Enum;");
+            "org/bukkit/Registry$SimpleRegistry#get(Lorg/bukkit/NamespacedKey;)Ljava/lang/Enum;",
+            // SimpleRegistry.getType() returns the raw Class<T> of the registry
+            // element type. Hand-written SimpleRegistry does not carry generics;
+            // the method is unused by WorldEdit/WorldGuard.
+            "org/bukkit/Registry$SimpleRegistry#getType()Ljava/lang/Class;");
 
     private StubReporter() {}
 
