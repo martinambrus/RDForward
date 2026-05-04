@@ -9,11 +9,12 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Cancellable;
 import org.bukkit.event.Event;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
-public class BlockPlaceEvent extends Event {
+public class BlockPlaceEvent extends Event implements Cancellable {
     private final Player player;
     private final int x, y, z, newBlockType;
     private final Block placedBlock;

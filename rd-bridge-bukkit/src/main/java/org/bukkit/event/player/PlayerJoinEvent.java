@@ -8,7 +8,7 @@ import org.bukkit.entity.Player;
  *  against that contract and its constructor calls {@code super(PlayerEvent)}.
  *  Keeping the parent as plain {@code Event} causes the JVM verifier to
  *  reject the {@code invokespecial} on load with VerifyError. */
-public final class PlayerJoinEvent extends PlayerEvent {
+public class PlayerJoinEvent extends PlayerEvent {
     private String joinMessage;
 
     public PlayerJoinEvent(Player player) {

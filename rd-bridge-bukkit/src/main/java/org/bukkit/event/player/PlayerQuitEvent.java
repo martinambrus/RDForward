@@ -7,7 +7,7 @@ import org.bukkit.entity.Player;
  *  shaded {@code commonlib.server.bukkit.events.PlayerQuitEvent} is compiled
  *  against that contract and its constructor calls {@code super(PlayerEvent)}.
  *  Extending {@code Event} directly causes VerifyError on plugin load. */
-public final class PlayerQuitEvent extends PlayerEvent {
+public class PlayerQuitEvent extends PlayerEvent {
     private String quitMessage;
 
     public PlayerQuitEvent(Player player) {

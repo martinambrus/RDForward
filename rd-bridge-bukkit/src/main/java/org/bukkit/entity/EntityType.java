@@ -20,7 +20,13 @@ public enum EntityType implements org.bukkit.Keyed, org.bukkit.Translatable, net
     // NoSuchFieldError before /spawnmob / /kittycannon dispatch runs,
     // so add them so the symbolic link resolves.
     BOAT, ENDER_CRYSTAL,
-    MINECART_CHEST, MINECART_FURNACE, MINECART_HOPPER, MINECART_MOB_SPAWNER, MINECART_TNT;
+    MINECART_CHEST, MINECART_FURNACE, MINECART_HOPPER, MINECART_MOB_SPAWNER, MINECART_TNT,
+    // Pre-1.11 entity aliases. WorldGuard 6.2's Materials.<clinit> and
+    // RegionProtectionListener reference these by symbolic name.
+    // THROWN_EXP_BOTTLE -> EXPERIENCE_BOTTLE, PRIMED_TNT -> TNT,
+    // FIREWORK -> FIREWORK_ROCKET, MINECART_COMMAND -> COMMAND_BLOCK_MINECART,
+    // SMALL_FIREBALL -> SMALL_FIREBALL (same name in modern).
+    THROWN_EXP_BOTTLE, PRIMED_TNT, FIREWORK, MINECART_COMMAND;
     public java.lang.String getName() {
         return null;
     }

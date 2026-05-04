@@ -8,6 +8,7 @@ import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Cancellable;
 import org.bukkit.event.Event;
 
 /**
@@ -20,7 +21,7 @@ import org.bukkit.event.Event;
  * {@code Commandbreak}) that {@code new BlockBreakEvent(block, player)}
  * link cleanly via the canonical ctor.
  */
-public final class BlockBreakEvent extends Event {
+public class BlockBreakEvent extends Event implements Cancellable {
 
     private final Player player;
     private final Block block;

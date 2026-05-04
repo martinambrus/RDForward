@@ -78,4 +78,13 @@ class EntityTypeLegacyAliasesTest {
         assertNotNull(EntityType.valueOf("FURNACE_MINECART"));
         assertNotNull(EntityType.valueOf("TNT_MINECART"));
     }
+
+    @Test
+    void pre1_11EntityAliases() {
+        // WorldGuard 6.2's Materials.<clinit> references these pre-1.11 names.
+        assertNotNull(EntityType.valueOf("THROWN_EXP_BOTTLE"));
+        assertNotNull(EntityType.valueOf("PRIMED_TNT"));
+        assertNotNull(EntityType.valueOf("FIREWORK"));
+        assertNotNull(EntityType.valueOf("MINECART_COMMAND"));
+    }
 }
