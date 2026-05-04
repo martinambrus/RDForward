@@ -72,6 +72,6 @@ public class BlockPlaceEvent extends Event implements Cancellable {
 
     public boolean canBuild() { return true; }
     public Block getBlockAgainst() { return placedBlock; }
-    public ItemStack getItemInHand() { return null; }
+    public ItemStack getItemInHand() { return new ItemStack(Material.AIR); }
     public EquipmentSlot getHand() { return EquipmentSlot.HAND; }
 }
