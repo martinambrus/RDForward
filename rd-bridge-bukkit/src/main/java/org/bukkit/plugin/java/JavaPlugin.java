@@ -297,6 +297,19 @@ public abstract class JavaPlugin extends PluginBase implements CommandExecutor {
         commandMap.putAll(map);
     }
 
+    /** bSpace overrides this to provide its {@code PlanetsChunkGenerator}.
+     *  RDForward doesn't support custom world generators yet — default
+     *  returns null. Without this method the JVM throws
+     *  {@link NoSuchMethodError} from the plugin's override site. */
+    public org.bukkit.generator.ChunkGenerator getDefaultWorldGenerator(String worldName, String id) {
+        return null;
+    }
+
+    /** Single-arg overload — some plugins call this form. */
+    public org.bukkit.generator.ChunkGenerator getDefaultWorldGenerator(String worldName) {
+        return getDefaultWorldGenerator(worldName, null);
+    }
+
     /** Returns the EbeanServer for this plugin. Real Bukkit/CraftBukkit
      *  initialises an embedded Ebean ORM when {@code plugin.yml} declares
      *  {@code database: true}. RDForward has no embedded database, so this

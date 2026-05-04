@@ -562,6 +562,36 @@ public class ServerWorld {
             }
         }
         System.out.println("Saved " + snapshot.size() + " player position(s) to " + playersFile);
+        touchLegacyPlayerFiles(snapshot.keySet());
+    }
+
+    /**
+     * Create per-player {@code <worldName>/players/<name>.dat} marker files
+     * so legacy plugins (FirstJoin 1.3 checks {@code new File(world + "/players/" + name + ".dat").exists()})
+     * can distinguish first-time joins from returning players. RDForward stores
+     * all player data collectively in {@code server-players.dat}; these markers
+     * are purely for plugin compatibility.
+     */
+    private void touchLegacyPlayerFiles(java.util.Set<String> playerNames) {
+        if (playerNames.isEmpty()) return;
+        File playersDir = new File(name, "players");
+        for (String playerName : playerNames) {
+            try {
+                if (!playersDir.exists()) playersDir.mkdirs();
+                File marker = new File(playersDir, playerName + ".dat");
+                if (!marker.exists()) marker.createNewFile();
+            } catch (java.io.IOException ignored) {}
+        }
+    }
+
+    private void touchLegacyPlayerFile(String playerName) {
+        if (playerName == null) return;
+        try {
+            File playersDir = new File(name, "players");
+            if (!playersDir.exists()) playersDir.mkdirs();
+            File marker = new File(playersDir, playerName + ".dat");
+            if (!marker.exists()) marker.createNewFile();
+        } catch (java.io.IOException ignored) {}
     }
 
 
@@ -640,6 +670,7 @@ public class ServerWorld {
      */
     public void rememberPlayerPosition(ConnectedPlayer player) {
         gatherPlayerPositions(Collections.singletonList(player));
+        touchLegacyPlayerFile(player.getUsername());
     }
 
     /**
@@ -682,6 +713,7 @@ public class ServerWorld {
     }
 
     public void savePlayerPosition(String username) {
+        if (username == null) return;
         int cx = getSpawnX();
         int cz = getSpawnZ();
         int spawnY = height * 2 / 3 + 1;
@@ -690,6 +722,7 @@ public class ServerWorld {
         short fy = (short) Math.round((safe[1] + (double) 1.62f) * 32);
         short fz = (short) Math.round((safe[2] + 0.5) * 32);
         playerPositionCache.put(username, new short[]{fx, fy, fz, 0, 0});
+        touchLegacyPlayerFile(username);
     }
 
     /**

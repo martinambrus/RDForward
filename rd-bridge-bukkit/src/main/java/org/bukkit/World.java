@@ -492,4 +492,12 @@ public interface World {
     default java.util.List<org.bukkit.entity.Entity> getEntities() {
         return java.util.Collections.emptyList();
     }
+
+    /** bSpace's {@code SpaceWorldHandler.loadSpaceWorlds} calls
+     *  {@code world.getGenerator()} on every loaded world to identify
+     *  space worlds. RDForward doesn't support custom generators yet —
+     *  return null so no world is misidentified. */
+    default org.bukkit.generator.ChunkGenerator getGenerator() {
+        return null;
+    }
 }
