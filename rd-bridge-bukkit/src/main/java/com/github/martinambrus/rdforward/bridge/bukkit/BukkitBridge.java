@@ -42,6 +42,7 @@ public final class BukkitBridge {
     private static final Logger LOG = Logger.getLogger("RDForward/BukkitBridge");
 
     private static volatile BukkitServerAdapter installed;
+    private static volatile com.github.martinambrus.rdforward.bridge.bukkit.vault.VaultStubOwner vaultStubOwner;
 
     /** Registry of currently-loaded Bukkit plugins keyed by plugin.yml
      *  {@code name}. Populated by {@link BukkitPluginLoader} after the
@@ -140,6 +141,46 @@ public final class BukkitBridge {
         rdServer.setVisibilityFilter((sender, recipient) ->
                 !PlayerVisibilityRegistry.isHidden(recipient, sender));
         installNmsWarnOnceFilter();
+        installVaultStubProviders();
+    }
+
+    /** Register stub Vault {@code Economy} and {@code Permission} service
+     *  providers if no real Vault plugin is loaded. Plugins like Bananas
+     *  declare {@code depend: [Vault]} and call
+     *  {@code getRegistration(Economy.class)} during {@code onEnable};
+     *  without these stubs every Vault-dependent plugin would either fail
+     *  to resolve or NPE on first use. Registered at
+     *  {@link org.bukkit.plugin.ServicePriority#Lowest} so any real economy
+     *  / perms-Vault plugin (iConomy, EssentialsEco, LuckPerms) wins via
+     *  {@link org.bukkit.plugin.ServicesManager#getRegistration}. */
+    private static void installVaultStubProviders() {
+        if (loadedPlugins.containsKey("Vault")) return;
+        BukkitServerAdapter adapter = installed;
+        if (adapter == null) return;
+        org.bukkit.plugin.ServicesManager services = adapter.getServicesManager();
+        if (services == null) return;
+        com.github.martinambrus.rdforward.bridge.bukkit.vault.VaultStubOwner owner =
+                new com.github.martinambrus.rdforward.bridge.bukkit.vault.VaultStubOwner();
+        vaultStubOwner = owner;
+        registerPlugin("Vault", owner);
+        services.register(net.milkbowl.vault.economy.Economy.class,
+                new com.github.martinambrus.rdforward.bridge.bukkit.vault.BridgeStubEconomy(),
+                owner, org.bukkit.plugin.ServicePriority.Lowest);
+        services.register(net.milkbowl.vault.permission.Permission.class,
+                new com.github.martinambrus.rdforward.bridge.bukkit.vault.BridgeStubPermission(),
+                owner, org.bukkit.plugin.ServicePriority.Lowest);
+    }
+
+    private static void uninstallVaultStubProviders() {
+        com.github.martinambrus.rdforward.bridge.bukkit.vault.VaultStubOwner owner = vaultStubOwner;
+        vaultStubOwner = null;
+        if (owner == null) return;
+        BukkitServerAdapter adapter = installed;
+        if (adapter != null) {
+            org.bukkit.plugin.ServicesManager services = adapter.getServicesManager();
+            if (services != null) services.unregisterAll(owner);
+        }
+        unregisterPlugin("Vault");
     }
 
     /** WE 5.6.1's {@code BukkitWorld} resolves two NMS Methods at clinit
@@ -175,6 +216,7 @@ public final class BukkitBridge {
 
     /** Remove the installed facade. Safe to call when nothing is installed. */
     public static synchronized void uninstall() {
+        uninstallVaultStubProviders();
         BukkitServerAdapter adapter = installed;
         installed = null;
         Bukkit.setServer(null);

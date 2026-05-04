@@ -30,6 +30,27 @@ public final class DependencyResolver {
      *     declares an incompatible version range, or if a cycle exists
      */
     public static List<ModContainer> resolve(Collection<ModContainer> containers) throws ResolutionException {
+        return resolve(containers, java.util.Set.of());
+    }
+
+    /**
+     * Resolve overload that accepts a set of mod ids supplied by the host
+     * platform itself rather than by a discovered jar. Hard deps that
+     * match {@code providedExternally} are accepted as satisfied (no
+     * version check, no graph edge); soft deps in the same set are
+     * skipped from the edge map. Used by the Bukkit bridge to advertise
+     * that a stub Vault provider is registered, so plugins declaring
+     * {@code depend: [Vault]} resolve without a real Vault.jar.
+     *
+     * <p>If a container with the same id is also discovered, the real
+     * container wins — the real version is checked against the dep range
+     * normally and the bridge-supplied entry is ignored. This keeps a
+     * dropped-in Vault.jar authoritative.
+     */
+    public static List<ModContainer> resolve(Collection<ModContainer> containers,
+                                             java.util.Set<String> providedExternally)
+            throws ResolutionException {
+        java.util.Set<String> external = providedExternally == null ? java.util.Set.of() : providedExternally;
         Map<String, ModContainer> byId = new LinkedHashMap<>();
         for (ModContainer c : containers) {
             if (byId.put(c.id(), c) != null) {
@@ -41,6 +62,7 @@ public final class DependencyResolver {
             for (Map.Entry<String, String> dep : c.descriptor().dependencies().entrySet()) {
                 ModContainer target = byId.get(dep.getKey());
                 if (target == null) {
+                    if (external.contains(dep.getKey())) continue;
                     throw new ResolutionException(
                             c.id() + " requires " + dep.getKey() + " " + dep.getValue()
                                     + " but it is not installed");
@@ -61,6 +83,7 @@ public final class DependencyResolver {
         }
         for (ModContainer c : byId.values()) {
             for (String depId : c.descriptor().dependencies().keySet()) {
+                if (!byId.containsKey(depId)) continue; // satisfied by host, no edge
                 if (edges.get(depId).add(c.id())) {
                     indegree.merge(c.id(), 1, Integer::sum);
                 }

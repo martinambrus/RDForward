@@ -93,7 +93,8 @@ public final class ModSystem {
         AdminCommands.register();
         CommandConflictResolver.install(configDir.resolve("command-overrides.json"));
         List<Path> dirs = pluginsDir == null ? List.of(modsDir) : List.of(modsDir, pluginsDir);
-        List<ModContainer> containers = ModLoader.load(dirs, ModSystem.class.getClassLoader());
+        List<ModContainer> containers = ModLoader.load(
+                dirs, ModSystem.class.getClassLoader(), bridgeProvidedIds());
         ModManager manager = new ModManager(apiServer);
         manager.setContainers(containers);
         apiServer.setModManager(manager);
@@ -165,6 +166,29 @@ public final class ModSystem {
             String fqcn = BRIDGE_INSTALLER_FQCN.get(kind);
             if (fqcn == null) continue;
             invokeUninstall(fqcn);
+        }
+    }
+
+    /** Mod ids advertised as "provided by the host platform" so plugins
+     *  declaring them as a hard dep resolve without a real jar. Probes
+     *  bridge installer FQCNs reflectively — same one-way relationship
+     *  used in {@link #BRIDGE_INSTALLER_FQCN} — so a stripped build
+     *  without the corresponding bridge module contributes nothing. */
+    private static Set<String> bridgeProvidedIds() {
+        java.util.Set<String> ids = new java.util.HashSet<>();
+        if (isClassPresent(BRIDGE_INSTALLER_FQCN.get(BridgeKind.BUKKIT))) {
+            ids.add("Vault");
+        }
+        return ids;
+    }
+
+    private static boolean isClassPresent(String fqcn) {
+        if (fqcn == null) return false;
+        try {
+            Class.forName(fqcn, false, ModSystem.class.getClassLoader());
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
         }
     }
 

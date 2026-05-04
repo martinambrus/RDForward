@@ -56,7 +56,7 @@ public final class ModLoader {
      */
     public static List<ModContainer> load(Path modsDir, ClassLoader apiClassLoader)
             throws IOException, DescriptorParser.ModDescriptorException, DependencyResolver.ResolutionException {
-        return load(List.of(modsDir), apiClassLoader);
+        return load(List.of(modsDir), apiClassLoader, java.util.Set.of());
     }
 
     /**
@@ -68,6 +68,20 @@ public final class ModLoader {
      * jars belong in {@code mods/} — but misplaced jars still load.
      */
     public static List<ModContainer> load(List<Path> dirs, ClassLoader apiClassLoader)
+            throws IOException, DescriptorParser.ModDescriptorException, DependencyResolver.ResolutionException {
+        return load(dirs, apiClassLoader, java.util.Set.of());
+    }
+
+    /**
+     * Multi-directory overload with host-provided id set. Ids in
+     * {@code providedExternally} satisfy hard deps without a discovered
+     * jar — used by the Bukkit bridge to advertise a synthetic Vault
+     * provider so plugins declaring {@code depend: [Vault]} resolve
+     * without a real Vault.jar. Already-discovered ids in the set are
+     * automatically dropped (real install wins).
+     */
+    public static List<ModContainer> load(List<Path> dirs, ClassLoader apiClassLoader,
+                                          java.util.Set<String> providedExternally)
             throws IOException, DescriptorParser.ModDescriptorException, DependencyResolver.ResolutionException {
         apiParent = apiClassLoader;
 
@@ -106,7 +120,16 @@ public final class ModLoader {
             }
         }
 
-        List<ModContainer> ordered = DependencyResolver.resolve(discovered);
+        java.util.Set<String> external;
+        if (providedExternally == null || providedExternally.isEmpty()) {
+            external = java.util.Set.of();
+        } else {
+            java.util.Set<String> discoveredIds = new java.util.HashSet<>();
+            for (ModContainer c : discovered) discoveredIds.add(c.id());
+            external = new java.util.HashSet<>(providedExternally);
+            external.removeAll(discoveredIds);
+        }
+        List<ModContainer> ordered = DependencyResolver.resolve(discovered, external);
 
         globalContainersById.clear();
         for (ModContainer c : ordered) {

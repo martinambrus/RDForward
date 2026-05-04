@@ -118,8 +118,11 @@ class BukkitPermissionRegistryIntegrationTest {
     @Test
     void isPluginEnabledFalseSilentlyWhenNoModManager() {
         // StubRdServer.modManager defaults to null — bridge must answer false
-        // without spamming StubCallLog.
-        assertFalse(Bukkit.getServer().getPluginManager().isPluginEnabled("Vault"));
+        // without spamming StubCallLog. Use a name guaranteed not to be
+        // registered: the bridge auto-installs a synthetic 'Vault' owner
+        // when no real Vault is present, so probing 'Vault' would now
+        // return true on the loadedPlugins fast-path.
+        assertFalse(Bukkit.getServer().getPluginManager().isPluginEnabled("DefinitelyMissing"));
     }
 
     @Test

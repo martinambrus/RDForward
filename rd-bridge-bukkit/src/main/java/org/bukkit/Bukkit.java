@@ -61,6 +61,15 @@ public final class Bukkit {
         return server == null ? null : server.getScheduler();
     }
 
+    /** Static accessor real Bukkit added in 1.0; some plugins (Vault's
+     *  bStats Metrics, MapMetrics) call it directly rather than via
+     *  {@code Bukkit.getServer().getServicesManager()} — without this
+     *  shortcut they {@link NoSuchMethodError} during their {@code
+     *  onEnable}. */
+    public static org.bukkit.plugin.ServicesManager getServicesManager() {
+        return server == null ? null : server.getServicesManager();
+    }
+
     public static ConsoleCommandSender getConsoleSender() {
         return server == null ? null : server.getConsoleSender();
     }

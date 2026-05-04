@@ -120,4 +120,41 @@ class DependencyResolverTest {
         List<ModContainer> out = DependencyResolver.resolve(List.of(addon));
         assertEquals(List.of("addon"), ids(out));
     }
+
+    @Test
+    void hostProvidedHardDepResolvesWithoutContainer() throws DependencyResolver.ResolutionException {
+        ModContainer plugin = mod("Bananas", "0.0.1", Map.of("Vault", "*"));
+        List<ModContainer> out = DependencyResolver.resolve(
+                List.of(plugin), java.util.Set.of("Vault"));
+        assertEquals(List.of("Bananas"), ids(out));
+    }
+
+    @Test
+    void hostProvidedDoesNotInfluenceLoadOrder() throws DependencyResolver.ResolutionException {
+        ModContainer a = mod("a", "1.0", Map.of("Vault", "*"));
+        ModContainer b = mod("b", "1.0", Map.of());
+        List<ModContainer> out = DependencyResolver.resolve(
+                List.of(a, b), java.util.Set.of("Vault"));
+        assertEquals(List.of("a", "b"), ids(out));
+    }
+
+    @Test
+    void realContainerWinsOverHostProvidedId() throws DependencyResolver.ResolutionException {
+        ModContainer realVault = mod("Vault", "1.7.3", Map.of());
+        ModContainer plugin = mod("Bananas", "0.0.1", Map.of("Vault", ">=1.0"));
+        List<ModContainer> out = DependencyResolver.resolve(
+                List.of(plugin, realVault), java.util.Set.of("Vault"));
+        assertEquals(List.of("Vault", "Bananas"), ids(out));
+    }
+
+    @Test
+    void hostProvidedDoesNotMaskMismatchedRealVersion() {
+        ModContainer realVault = mod("Vault", "0.5", Map.of());
+        ModContainer plugin = mod("Bananas", "0.0.1", Map.of("Vault", ">=1.0"));
+        DependencyResolver.ResolutionException ex = assertThrows(
+                DependencyResolver.ResolutionException.class,
+                () -> DependencyResolver.resolve(
+                        List.of(plugin, realVault), java.util.Set.of("Vault")));
+        assertTrue(ex.getMessage().contains("found version 0.5"));
+    }
 }
