@@ -302,4 +302,14 @@ public interface Server {
     default java.io.File getWorldContainer() {
         return new java.io.File(".");
     }
+
+    /**
+     * Accepts a custom recipe registration. RDForward does not model the
+     * crafting registry, so the recipe is silently discarded. Returns
+     * {@code true} so plugins (GravelClay's {@code onEnable}) don't
+     * abort with {@link NoSuchMethodError}.
+     */
+    default boolean addRecipe(org.bukkit.inventory.Recipe recipe) {
+        return true;
+    }
 }
