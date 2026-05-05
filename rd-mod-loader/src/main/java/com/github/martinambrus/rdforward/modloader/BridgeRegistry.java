@@ -9,9 +9,14 @@ import java.io.InputStreamReader;
 import java.lang.reflect.Method;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.logging.Logger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -49,6 +54,26 @@ public final class BridgeRegistry {
     }
 
     private BridgeRegistry() {}
+
+    /**
+     * Lightweight directory scan that detects which bridge kinds are present
+     * without loading any plugin classes. Used by {@link ModSystem} to install
+     * bridges before {@link ModLoader#load} triggers class forName and static
+     * initialisers that may call {@code Bukkit.getXxx()}.
+     */
+    public static Set<BridgeKind> scanKinds(List<Path> dirs) throws IOException {
+        EnumSet<BridgeKind> kinds = EnumSet.noneOf(BridgeKind.class);
+        for (Path dir : dirs) {
+            if (!Files.exists(dir)) continue;
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, "*.jar")) {
+                for (Path jar : stream) {
+                    BridgeKind kind = detect(jar);
+                    if (kind != null && kind != BridgeKind.NATIVE) kinds.add(kind);
+                }
+            }
+        }
+        return kinds;
+    }
 
     /** Result of a successful bridge dispatch: descriptor, owning classloader, ServerMod wrapper. */
     public record Loaded(ModDescriptor descriptor, URLClassLoader classLoader, Object serverMod) {}

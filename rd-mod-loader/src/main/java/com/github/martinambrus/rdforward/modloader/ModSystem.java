@@ -93,12 +93,20 @@ public final class ModSystem {
         AdminCommands.register();
         CommandConflictResolver.install(configDir.resolve("command-overrides.json"));
         List<Path> dirs = pluginsDir == null ? List.of(modsDir) : List.of(modsDir, pluginsDir);
+        // Pre-scan dirs to detect which bridge kinds are present, then install
+        // bridges BEFORE loading any plugin classes. Plugin static initialisers
+        // (e.g. EpicQuest's EpicMain.<clinit>) call Bukkit.getPluginManager()
+        // which returns null if Bukkit.setServer() has not been called yet.
+        Set<BridgeKind> preKinds = BridgeRegistry.scanKinds(dirs);
+        installBridges(apiServer, preKinds);
         List<ModContainer> containers = ModLoader.load(
                 dirs, ModSystem.class.getClassLoader(), bridgeProvidedIds());
         ModManager manager = new ModManager(apiServer);
         manager.setContainers(containers);
         apiServer.setModManager(manager);
         AdminCommands.bindManager(manager);
+        // Bridges already installed above from pre-scan; this call is kept for
+        // cases where boot() is invoked via the legacy single-arg overload.
         installBridges(apiServer, activeKinds(containers));
         manager.enableAll();
         java.util.function.Predicate<String> isModPresent = id -> manager.get(id) != null;

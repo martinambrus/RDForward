@@ -213,6 +213,11 @@ public class ItemStack implements java.lang.Cloneable, org.bukkit.configuration.
                 || this.material == org.bukkit.Material.PLAYER_HEAD) {
             return new com.github.martinambrus.rdforward.bridge.bukkit.meta.BridgeSkullMeta();
         }
+        if (this.material == org.bukkit.Material.WRITTEN_BOOK
+                || this.material == org.bukkit.Material.WRITABLE_BOOK
+                || this.material == org.bukkit.Material.BOOK) {
+            return new com.github.martinambrus.rdforward.bridge.bukkit.meta.BridgeBookMeta();
+        }
         return new com.github.martinambrus.rdforward.bridge.bukkit.meta.BridgeItemMeta();
     }
     public java.lang.String getTranslationKey() {

@@ -331,4 +331,68 @@ class InventoryAdapterDispatchTest {
         assertEquals(1, pkt.getItemId(), "stone is Notch ID 1");
         assertEquals(2, pkt.getCount());
     }
+
+    // ---- Item ID filtering for old clients ----
+
+    @Test
+    void slotUpdateFiltersItemsBeyondClientRange() {
+        // WRITTEN_BOOK is item 387, added in 1.3.1. Release 1.2.4 (v29)
+        // doesn't know this item; sending it crashes the client with NPE.
+        InventoryAdapter adapter = new InventoryAdapter();
+        adapter.initPlayer(USER);
+        adapter.putItem(USER, 37, new InventoryItem(387, 1, 0)); // written book
+        CapturingPlayer p = new CapturingPlayer(ProtocolVersion.RELEASE_1_2_4);
+        adapter.sendSlotUpdate(p, 37);
+        // Should emit a SetSlotV22 with itemId = -1 (empty) instead of 387
+        assertEquals(1, p.sent.size());
+        SetSlotPacketV22 pkt = (SetSlotPacketV22) p.sent.get(0);
+        assertEquals(-1, pkt.getItemId(),
+                "item 387 must be filtered to empty for pre-1.3.1 clients");
+    }
+
+    @Test
+    void slotUpdateAllowsItemsWithinClientRange() {
+        // Item 340 (Book) exists in 1.2.4 — must pass through unfiltered.
+        InventoryAdapter adapter = new InventoryAdapter();
+        adapter.initPlayer(USER);
+        adapter.putItem(USER, 37, new InventoryItem(340, 1, 0));
+        CapturingPlayer p = new CapturingPlayer(ProtocolVersion.RELEASE_1_2_4);
+        adapter.sendSlotUpdate(p, 37);
+        assertEquals(1, p.sent.size());
+        SetSlotPacketV22 pkt = (SetSlotPacketV22) p.sent.get(0);
+        assertEquals(340, pkt.getItemId(),
+                "item 340 (Book) must pass through for 1.2.4 clients");
+    }
+
+    @Test
+    void slotUpdateNoFilterForModernClients() {
+        // 1.8+ clients know the full item range; no filtering needed.
+        InventoryAdapter adapter = new InventoryAdapter();
+        adapter.initPlayer(USER);
+        adapter.putItem(USER, 37, new InventoryItem(387, 1, 0));
+        CapturingPlayer p = new CapturingPlayer(ProtocolVersion.RELEASE_1_8);
+        adapter.sendSlotUpdate(p, 37);
+        assertEquals(1, p.sent.size());
+        NettySetSlotPacketV47 pkt = (NettySetSlotPacketV47) p.sent.get(0);
+        assertEquals(387, pkt.getItemId(),
+                "1.8+ clients must receive item 387 unfiltered");
+    }
+
+    @Test
+    void fullInventoryFiltersItemsBeyondClientRange() {
+        InventoryAdapter adapter = new InventoryAdapter();
+        adapter.initPlayer(USER);
+        adapter.putItem(USER, 36, new InventoryItem(1, 10, 0));   // stone — ok
+        adapter.putItem(USER, 37, new InventoryItem(387, 1, 0));  // written book — filtered
+        CapturingPlayer p = new CapturingPlayer(ProtocolVersion.RELEASE_1_2_4);
+        adapter.sendFullInventory(p);
+        // 1.2.4 uses WindowItemsV22
+        assertEquals(1, p.sent.size());
+        assertInstanceOf(WindowItemsPacketV22.class, p.sent.get(0));
+        WindowItemsPacketV22 pkt = (WindowItemsPacketV22) p.sent.get(0);
+        // Slot 36 = stone (should pass), slot 37 = book (should be -1)
+        assertEquals(1, pkt.getItemIds()[36]);
+        assertEquals(-1, pkt.getItemIds()[37],
+                "item 387 in full inventory must be filtered for pre-1.3.1 clients");
+    }
 }

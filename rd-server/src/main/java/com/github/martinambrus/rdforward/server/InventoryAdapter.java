@@ -293,6 +293,20 @@ public class InventoryAdapter {
         int count = (s == null || s.isEmpty()) ? 0 : s.count;
         int damage = (s == null || s.isEmpty()) ? 0 : s.damage;
         ProtocolVersion v = player.getProtocolVersion();
+
+        // Filter items that don't exist for old clients. Bukkit plugins can
+        // give any Material; the legacy item ID may be beyond the client's
+        // known range. Sending an unknown item ID crashes pre-Netty clients
+        // (NPE in ItemStack.getItem → ItemRenderer). Replace with empty.
+        if (legacyId > 0) {
+            int cap = maxItemIdFor(v);
+            if (cap > 0 && legacyId > cap) {
+                legacyId = -1;
+                count = 0;
+                damage = 0;
+            }
+        }
+
         ProtocolVersion.Family family = v.getFamily();
 
         if (family == ProtocolVersion.Family.RELEASE && v.isAtLeast(ProtocolVersion.RELEASE_1_7_2)) {
@@ -387,12 +401,13 @@ public class InventoryAdapter {
         // Build raw arrays (no per-version item-id translation needed —
         // pre-1.13 protocols use Notch IDs directly, matching the
         // adapter's storage form).
+        int cap = maxItemIdFor(v);
         short[] ids = new short[INVENTORY_SIZE];
         byte[] counts = new byte[INVENTORY_SIZE];
         short[] damages = new short[INVENTORY_SIZE];
         for (int i = 0; i < INVENTORY_SIZE; i++) {
             ItemStack s = inv[i];
-            if (s == null || s.isEmpty()) {
+            if (s == null || s.isEmpty() || (cap > 0 && s.itemId > cap)) {
                 ids[i] = -1;
             } else {
                 ids[i] = (short) s.itemId;
@@ -512,9 +527,10 @@ public class InventoryAdapter {
         short[] ids = new short[length];
         byte[] counts = new byte[length];
         short[] damages = new short[length];
+        int cap = maxItemIdFor(player.getProtocolVersion());
         for (int i = 0; i < length; i++) {
             ItemStack s = inv[wireStart + i];
-            if (s == null || s.isEmpty()) {
+            if (s == null || s.isEmpty() || (cap > 0 && s.itemId > cap)) {
                 ids[i] = -1;
             } else {
                 ids[i] = (short) s.itemId;
@@ -536,5 +552,31 @@ public class InventoryAdapter {
         } else if (wireSlot >= 1 && wireSlot <= 4) {
             sendAlphaSection(player, inv, -2, 1, 4);
         }
+    }
+
+    /**
+     * Maximum legacy item ID the client knows about. Items beyond this
+     * range are replaced with empty slots in {@link #sendSlotUpdate} and
+     * {@link #sendAlphaSection} so the client doesn't crash with an NPE
+     * trying to render an unknown item. Returns 0 (no cap) for versions
+     * where the full legacy ID range is valid or where the mapping layer
+     * handles it (Netty 1.13+).
+     *
+     * <p>Notable item additions:
+     * <ul>
+     *   <li>1.3.1 (v39): Written Book 387, Book and Quill 386, Emerald 388,
+     *       Ender Chest 130 (block), Tripwire Hook 131, etc.</li>
+     *   <li>1.2.4 (v29): items up to ~356 (Repeater)</li>
+     *   <li>1.0 (v22): items up to ~350 (Eye of Ender, etc.)</li>
+     * </ul>
+     */
+    private static int maxItemIdFor(ProtocolVersion v) {
+        if (v.isAtLeast(ProtocolVersion.RELEASE_1_7_2)) return 0; // Netty: mapper handles it
+        if (v.isAtLeast(ProtocolVersion.RELEASE_1_3_1)) return 0; // full legacy range valid
+        if (v.isAtLeast(ProtocolVersion.RELEASE_1_0))    return 383;
+        if (v.isAtLeast(ProtocolVersion.BETA_1_8))       return 356;
+        if (v.isAtLeast(ProtocolVersion.BETA_1_0))       return 350;
+        if (v.isAtLeast(ProtocolVersion.ALPHA_1_2_0))    return 340;
+        return 322;
     }
 }
