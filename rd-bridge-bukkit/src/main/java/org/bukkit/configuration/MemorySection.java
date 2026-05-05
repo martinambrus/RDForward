@@ -386,10 +386,7 @@ public class MemorySection implements ConfigurationSection {
                 return new MemorySection(this, full);
             }
         }
-        // Return an empty section view instead of null. Many plugins
-        // (Sortal, etc.) skip the null-check and call .getKeys() directly;
-        // an empty view returns an empty Set and avoids the NPE.
-        return new MemorySection(this, full);
+        return null;
     }
     public boolean isConfigurationSection(String path) {
         String key = resolve(path);
