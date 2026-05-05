@@ -251,6 +251,32 @@ public abstract class JavaPlugin extends PluginBase implements CommandExecutor {
         config = loaded;
     }
 
+    /** Extract a resource from the plugin JAR to the data folder.
+     *  {@code resourcePath} is relative to the jar root (e.g. "config.yml"
+     *  or "lang/en.yml"). If {@code replace} is false and the target file
+     *  already exists, the copy is skipped. Parent directories are created
+     *  as needed. */
+    public void saveResource(String resourcePath, boolean replace) {
+        if (resourcePath == null || resourcePath.isEmpty()) {
+            throw new IllegalArgumentException("ResourcePath cannot be null or empty");
+        }
+        String normalized = resourcePath.replace('\\', '/');
+        InputStream in = getResource(normalized);
+        if (in == null) {
+            throw new IllegalArgumentException("The embedded resource '" + normalized + "' cannot be found in " + getFile());
+        }
+        File out = new File(getDataFolder(), normalized);
+        out.getParentFile().mkdirs();
+        if (!replace && out.exists()) return;
+        try {
+            java.nio.file.Files.copy(in, out.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } catch (java.io.IOException e) {
+            logger.warning("Could not save " + normalized + " to " + out + ": " + e.getMessage());
+        } finally {
+            try { in.close(); } catch (java.io.IOException ignored) {}
+        }
+    }
+
     /** Persist the current in-memory configuration to
      *  {@code <dataFolder>/config.yml}. */
     public void saveConfig() {
