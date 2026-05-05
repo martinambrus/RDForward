@@ -522,6 +522,17 @@ public interface World {
         return java.util.Collections.emptyList();
     }
 
+    /** ClearLag's {@code CheckCmd} iterates entities by class to count
+     *  monsters/animals. RDForward has no entity system — return empty. */
+    default <T extends org.bukkit.entity.Entity> java.util.Collection<T> getEntitiesByClass(java.lang.Class<T> cls) {
+        return java.util.Collections.emptyList();
+    }
+
+    /** Multi-class variant. Same empty-collection stub. */
+    default java.util.Collection<org.bukkit.entity.Entity> getEntitiesByClasses(java.lang.Class<?>... classes) {
+        return java.util.Collections.emptyList();
+    }
+
     /** @return players currently in this world. XcraftGate's
      *  {@code DataWorld.checkInactive} reads this every tick to decide
      *  whether to unload an empty world. Default returns empty list;
@@ -536,5 +547,34 @@ public interface World {
      *  return null so no world is misidentified. */
     default org.bukkit.generator.ChunkGenerator getGenerator() {
         return null;
+    }
+
+    /** ClearLag's {@code PluginManager.reloadConfiguration} calls this
+     *  to prevent spawn chunks from being kept in memory during clears.
+     *  RDForward keeps the whole world resident — no-op + log once. */
+    default void setKeepSpawnInMemory(boolean keep) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.setKeepSpawnInMemory(Z)V");
+    }
+
+    /* ---- Spawn limits. ClearLag and similar lag-reduction plugins set
+     *  these to 0 to disable specific mob categories. RDForward has no
+     *  spawn-limit system — all are no-ops + log once. ---- */
+    default void setWaterAnimalSpawnLimit(int limit) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null, "org.bukkit.World.setWaterAnimalSpawnLimit(I)V");
+    }
+    default void setAnimalSpawnLimit(int limit) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null, "org.bukkit.World.setAnimalSpawnLimit(I)V");
+    }
+    default void setMonsterSpawnLimit(int limit) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null, "org.bukkit.World.setMonsterSpawnLimit(I)V");
+    }
+    default void setAmbientSpawnLimit(int limit) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null, "org.bukkit.World.setAmbientSpawnLimit(I)V");
     }
 }

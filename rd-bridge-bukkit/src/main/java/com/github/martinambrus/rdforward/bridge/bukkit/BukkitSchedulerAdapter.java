@@ -36,6 +36,7 @@ public final class BukkitSchedulerAdapter implements BukkitScheduler {
 
     private final Scheduler backing;
     private final AtomicInteger taskIds = new AtomicInteger(1);
+    private final ConcurrentMap<Integer, RDBukkitTask> taskRegistry = new ConcurrentHashMap<>();
 
     private final ExecutorService asyncPool;
     private final ScheduledExecutorService asyncScheduler;
@@ -83,17 +84,22 @@ public final class BukkitSchedulerAdapter implements BukkitScheduler {
         };
     }
 
+    private RDBukkitTask register(RDBukkitTask task) {
+        taskRegistry.put(task.getTaskId(), task);
+        return task;
+    }
+
     @Override
     public BukkitTask runTask(Plugin plugin, Runnable task) {
         ScheduledTask st = backing.runLater(ownerId(plugin), 0, task);
-        return new RDBukkitTask(taskIds.getAndIncrement(), plugin, st);
+        return register(new RDBukkitTask(taskIds.getAndIncrement(), plugin, st));
     }
 
     @Override
     public BukkitTask runTaskLater(Plugin plugin, Runnable task, long delayTicks) {
         int delay = delayTicks < 0 ? 0 : (int) Math.min(Integer.MAX_VALUE, delayTicks);
         ScheduledTask st = backing.runLater(ownerId(plugin), delay, task);
-        return new RDBukkitTask(taskIds.getAndIncrement(), plugin, st);
+        return register(new RDBukkitTask(taskIds.getAndIncrement(), plugin, st));
     }
 
     @Override
@@ -101,7 +107,7 @@ public final class BukkitSchedulerAdapter implements BukkitScheduler {
         int delay = delayTicks < 0 ? 0 : (int) Math.min(Integer.MAX_VALUE, delayTicks);
         int period = periodTicks < 1 ? 1 : (int) Math.min(Integer.MAX_VALUE, periodTicks);
         ScheduledTask st = backing.runRepeating(ownerId(plugin), delay, period, task);
-        return new RDBukkitTask(taskIds.getAndIncrement(), plugin, st);
+        return register(new RDBukkitTask(taskIds.getAndIncrement(), plugin, st));
     }
 
     @Override
@@ -118,7 +124,7 @@ public final class BukkitSchedulerAdapter implements BukkitScheduler {
         });
         holder[0] = f;
         registerFuture(owner, f);
-        return new RDBukkitTask(taskIds.getAndIncrement(), plugin, f, owner, this);
+        return register(new RDBukkitTask(taskIds.getAndIncrement(), plugin, f, owner, this));
     }
 
     @Override
@@ -136,7 +142,7 @@ public final class BukkitSchedulerAdapter implements BukkitScheduler {
         }, delayMs, TimeUnit.MILLISECONDS);
         holder[0] = f;
         registerFuture(owner, f);
-        return new RDBukkitTask(taskIds.getAndIncrement(), plugin, f, owner, this);
+        return register(new RDBukkitTask(taskIds.getAndIncrement(), plugin, f, owner, this));
     }
 
     @Override
@@ -147,7 +153,7 @@ public final class BukkitSchedulerAdapter implements BukkitScheduler {
         long periodMs = Math.max(1L, periodTicks) * 50L;
         Future<?> f = asyncScheduler.scheduleAtFixedRate(wrapped, delayMs, periodMs, TimeUnit.MILLISECONDS);
         registerFuture(owner, f);
-        return new RDBukkitTask(taskIds.getAndIncrement(), plugin, f, owner, this);
+        return register(new RDBukkitTask(taskIds.getAndIncrement(), plugin, f, owner, this));
     }
 
     @Override
@@ -160,6 +166,17 @@ public final class BukkitSchedulerAdapter implements BukkitScheduler {
                 f.cancel(false);
             }
         }
+    }
+
+    /** Cancel a task by its integer ID. Used by legacy {@code cancelTask(int)}. */
+    public void cancelTaskById(int taskId) {
+        RDBukkitTask task = taskRegistry.remove(taskId);
+        if (task != null) task.cancel();
+    }
+
+    @Override
+    public void cancelTask(int taskId) {
+        cancelTaskById(taskId);
     }
 
     /** Stop the async pools and drop pending futures. Called from
