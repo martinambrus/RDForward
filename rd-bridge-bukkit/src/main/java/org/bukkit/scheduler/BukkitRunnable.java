@@ -31,6 +31,26 @@ public abstract class BukkitRunnable implements Runnable {
         return task;
     }
 
+    public synchronized BukkitTask runTaskAsynchronously(Plugin plugin) {
+        checkNotScheduled();
+        task = plugin.getServer().getScheduler().runTaskAsynchronously(plugin, this);
+        return task;
+    }
+
+    public synchronized BukkitTask runTaskLaterAsynchronously(Plugin plugin, long delayTicks) {
+        checkNotScheduled();
+        task = plugin.getServer().getScheduler().runTaskLaterAsynchronously(plugin, this, delayTicks);
+        return task;
+    }
+
+    /** AuthMe 5.6's {@code CleanupTask} extends BukkitRunnable and calls
+     *  {@code runTaskTimerAsynchronously(plugin, delay, period)} during onEnable. */
+    public synchronized BukkitTask runTaskTimerAsynchronously(Plugin plugin, long delayTicks, long periodTicks) {
+        checkNotScheduled();
+        task = plugin.getServer().getScheduler().runTaskTimerAsynchronously(plugin, this, delayTicks, periodTicks);
+        return task;
+    }
+
     /** @return task id once scheduled. */
     public synchronized int getTaskId() {
         if (task == null) throw new IllegalStateException("not scheduled yet");
