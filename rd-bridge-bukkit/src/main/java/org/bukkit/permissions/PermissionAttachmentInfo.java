@@ -1,20 +1,39 @@
 package org.bukkit.permissions;
 
-/** Auto-generated stub from paper-api-26.1.2.build.20-alpha.jar. See PLAN-FULL-STUBS.md. */
-@SuppressWarnings({"unchecked", "rawtypes", "unused"})
 public class PermissionAttachmentInfo {
-    public PermissionAttachmentInfo(org.bukkit.permissions.Permissible arg0, java.lang.String arg1, org.bukkit.permissions.PermissionAttachment arg2, boolean arg3) {}
-    public PermissionAttachmentInfo() {}
-    public org.bukkit.permissions.Permissible getPermissible() {
-        return null;
+
+    private final Permissible permissible;
+    private final String permission;
+    private final PermissionAttachment attachment;
+    private final boolean value;
+
+    public PermissionAttachmentInfo(Permissible permissible, String permission, PermissionAttachment attachment, boolean value) {
+        this.permissible = permissible;
+        this.permission = permission;
+        this.attachment = attachment;
+        this.value = value;
     }
-    public java.lang.String getPermission() {
-        return null;
+
+    public PermissionAttachmentInfo() {
+        this.permissible = null;
+        this.permission = null;
+        this.attachment = null;
+        this.value = false;
     }
-    public org.bukkit.permissions.PermissionAttachment getAttachment() {
-        return null;
+
+    public Permissible getPermissible() {
+        return permissible;
     }
+
+    public String getPermission() {
+        return permission;
+    }
+
+    public PermissionAttachment getAttachment() {
+        return attachment;
+    }
+
     public boolean getValue() {
-        return false;
+        return value;
     }
 }

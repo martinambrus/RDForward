@@ -77,4 +77,22 @@ public interface BukkitScheduler {
     /** Legacy cancel-by-id — RDForward's tasks are short-lived enough
      *  that we don't actually track ids; the call is a no-op. */
     default void cancelTask(int taskId) {}
+
+    /**
+     * Calls the given {@link java.util.concurrent.Callable} on the next
+     * server tick and returns a {@link java.util.concurrent.Future} with
+     * the result. bPermissions uses this to check online players from
+     * its internal MainThread. Executes synchronously (immediate) since
+     * RDForward's scheduler runs on the tick thread already.
+     */
+    default <T> java.util.concurrent.Future<T> callSyncMethod(Plugin plugin, java.util.concurrent.Callable<T> task) {
+        try {
+            T result = task.call();
+            return java.util.concurrent.CompletableFuture.completedFuture(result);
+        } catch (Exception e) {
+            java.util.concurrent.CompletableFuture<T> failed = new java.util.concurrent.CompletableFuture<>();
+            failed.completeExceptionally(e);
+            return failed;
+        }
+    }
 }

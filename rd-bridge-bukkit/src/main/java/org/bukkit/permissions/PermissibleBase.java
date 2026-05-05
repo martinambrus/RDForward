@@ -1,6 +1,8 @@
 // @rdforward:preserve - hand-tuned facade, do not regenerate
 package org.bukkit.permissions;
 
+import java.util.*;
+
 /**
  * Bukkit-shaped {@code PermissibleBase}. Carries the upstream
  * {@code attachments} field name and a backing {@link java.util.List}
@@ -57,6 +59,10 @@ public class PermissibleBase implements org.bukkit.permissions.Permissible {
     }
 
     public boolean isPermissionSet(java.lang.String name) {
+        if (name == null) return false;
+        for (PermissionAttachment att : attachments) {
+            if (att.getPermissions().containsKey(name)) return true;
+        }
         return false;
     }
 
@@ -65,7 +71,15 @@ public class PermissibleBase implements org.bukkit.permissions.Permissible {
     }
 
     public boolean hasPermission(java.lang.String name) {
-        return false;
+        if (name == null) return false;
+        // Check attachments (last added = highest priority)
+        for (int i = attachments.size() - 1; i >= 0; i--) {
+            PermissionAttachment att = attachments.get(i);
+            Boolean val = att.getPermissions().get(name);
+            if (val != null) return val;
+        }
+        // Default: op gets everything
+        return isOp();
     }
 
     public boolean hasPermission(org.bukkit.permissions.Permission perm) {
@@ -75,34 +89,53 @@ public class PermissibleBase implements org.bukkit.permissions.Permissible {
     public org.bukkit.permissions.PermissionAttachment addAttachment(org.bukkit.plugin.Plugin plugin,
                                                                      java.lang.String name,
                                                                      boolean value) {
-        return null;
+        PermissionAttachment att = addAttachment(plugin);
+        if (att != null) att.setPermission(name, value);
+        return att;
     }
 
     public org.bukkit.permissions.PermissionAttachment addAttachment(org.bukkit.plugin.Plugin plugin) {
-        return null;
+        PermissionAttachment att = new PermissionAttachment(plugin, this);
+        attachments.add(att);
+        return att;
     }
 
     public void removeAttachment(org.bukkit.permissions.PermissionAttachment attachment) {
         if (attachment != null) attachments.remove(attachment);
     }
 
-    public void recalculatePermissions() {}
+    public void recalculatePermissions() {
+        // Rebuild the permissions map from all attachments for
+        // getEffectivePermissions() callers.
+        permissions.clear();
+        for (PermissionAttachment att : attachments) {
+            for (Map.Entry<String, Boolean> entry : att.getPermissions().entrySet()) {
+                permissions.put(entry.getKey(),
+                        new PermissionAttachmentInfo(att.getPermissible(), entry.getKey(), att, entry.getValue()));
+            }
+        }
+    }
 
     public void clearPermissions() {
         attachments.clear();
+        permissions.clear();
     }
 
     public org.bukkit.permissions.PermissionAttachment addAttachment(org.bukkit.plugin.Plugin plugin,
                                                                      java.lang.String name,
                                                                      boolean value, int ticks) {
-        return null;
+        return addAttachment(plugin, name, value);
     }
 
     public org.bukkit.permissions.PermissionAttachment addAttachment(org.bukkit.plugin.Plugin plugin, int ticks) {
-        return null;
+        return addAttachment(plugin);
     }
 
     public java.util.Set getEffectivePermissions() {
-        return java.util.Collections.emptySet();
+        // If permissions map is empty, rebuild from attachments.
+        if (permissions.isEmpty() && !attachments.isEmpty()) {
+            recalculatePermissions();
+        }
+        return new java.util.HashSet<>(permissions.values());
     }
 }

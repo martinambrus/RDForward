@@ -391,6 +391,14 @@ public final class BukkitPlayer {
                 case "recalculatePermissions":
                     forwardToInjectedPermissible(self, "recalculatePermissions");
                     return null;
+                case "addAttachment":
+                    return doAddAttachment(self, args, argc);
+                case "removeAttachment":
+                    doRemoveAttachment(self, args);
+                    return null;
+                case "clearPermissions":
+                    doClearPermissions(self);
+                    return null;
             }
 
             // World / Location / movement
@@ -658,9 +666,15 @@ public final class BukkitPlayer {
             // return only flat default-permission values.
             org.bukkit.permissions.Permissible injected = readInjectedPermissible(self);
             if (injected != null) return injected.hasPermission(permName);
+            // Check the base PermissibleBase — bPermissions (and similar
+            // attachment-based plugins) set permissions via PermissionAttachment
+            // on the default perm field rather than injecting a custom Permissible.
+            org.bukkit.permissions.PermissibleBase base = readBasePermissible(self);
+            if (base != null && base.isPermissionSet(permName)) {
+                return base.hasPermission(permName);
+            }
             // Fallback to RDForward's permission manager when no plugin
-            // has installed a custom Permissible (or only the default
-            // PermissibleBase, which always returns false in our stub).
+            // has installed a custom Permissible and no attachment covers it.
             com.github.martinambrus.rdforward.api.server.Server rd = BukkitBridge.currentRdServer();
             if (rd != null && rd.getPermissionManager() != null) {
                 return rd.getPermissionManager().hasPermission(name, permName);
@@ -684,6 +698,9 @@ public final class BukkitPlayer {
             if (permName == null || permName.isEmpty()) return false;
             org.bukkit.permissions.Permissible injected = readInjectedPermissible(self);
             if (injected != null) return injected.isPermissionSet(permName);
+            // Check base PermissibleBase for attachment-based plugins (bPermissions).
+            org.bukkit.permissions.PermissibleBase base = readBasePermissible(self);
+            if (base != null && base.isPermissionSet(permName)) return true;
             // No injected permissible — defer to op flag so console-style
             // operators still satisfy resolvers that rely on
             // isPermissionSet for op-default bypasses.
@@ -691,22 +708,55 @@ public final class BukkitPlayer {
         }
 
         /** Forward {@code getEffectivePermissions} to the LP-injected
-         *  Permissible. WEPIF's DinnerPermsResolver iterates this set to
-         *  enumerate {@code group.X} entries when answering
-         *  {@code getGroups(player)}. */
+         *  Permissible, or fall through to the base perm field when
+         *  no plugin has replaced it (bPermissions uses attachments
+         *  on the default PermissibleBase). */
         private java.util.Set<org.bukkit.permissions.PermissionAttachmentInfo>
                 getEffectivePermissionsFromInjected(Object self) {
             org.bukkit.permissions.Permissible injected = readInjectedPermissible(self);
             if (injected != null) return injected.getEffectivePermissions();
+            org.bukkit.permissions.PermissibleBase base = readBasePermissible(self);
+            if (base != null) return base.getEffectivePermissions();
             return java.util.Collections.emptySet();
         }
 
         private void forwardToInjectedPermissible(Object self, String methodName) {
             org.bukkit.permissions.Permissible injected = readInjectedPermissible(self);
-            if (injected == null) return;
-            try {
-                injected.getClass().getMethod(methodName).invoke(injected);
-            } catch (ReflectiveOperationException ignored) {}
+            if (injected != null) {
+                try {
+                    injected.getClass().getMethod(methodName).invoke(injected);
+                } catch (ReflectiveOperationException ignored) {}
+                return;
+            }
+            org.bukkit.permissions.PermissibleBase base = readBasePermissible(self);
+            if (base != null) {
+                try {
+                    base.getClass().getMethod(methodName).invoke(base);
+                } catch (ReflectiveOperationException ignored) {}
+            }
+        }
+
+        private Object doAddAttachment(Object self, Object[] args, int argc) {
+            org.bukkit.permissions.PermissibleBase base = readBasePermissible(self);
+            if (base == null) return null;
+            if (argc >= 1 && args[0] instanceof org.bukkit.plugin.Plugin plugin) {
+                if (argc >= 3 && args[1] instanceof String name && args[2] instanceof Boolean val) {
+                    return base.addAttachment(plugin, name, val);
+                }
+                return base.addAttachment(plugin);
+            }
+            return null;
+        }
+
+        private void doRemoveAttachment(Object self, Object[] args) {
+            if (args == null || args.length == 0 || !(args[0] instanceof org.bukkit.permissions.PermissionAttachment att)) return;
+            org.bukkit.permissions.PermissibleBase base = readBasePermissible(self);
+            if (base != null) base.removeAttachment(att);
+        }
+
+        private void doClearPermissions(Object self) {
+            org.bukkit.permissions.PermissibleBase base = readBasePermissible(self);
+            if (base != null) base.clearPermissions();
         }
 
         /** @return LP-injected (or otherwise non-default)
@@ -724,6 +774,21 @@ public final class BukkitPlayer {
                         && perm.getClass() != org.bukkit.permissions.PermissibleBase.class) {
                     return permissible;
                 }
+            } catch (ReflectiveOperationException ignored) {}
+            return null;
+        }
+
+        /** @return the base {@link PermissibleBase} from the inherited
+         *  {@code CraftHumanEntity.perm} field, regardless of whether
+         *  a plugin has replaced it. Used for addAttachment/removeAttachment
+         *  delegation where we need the concrete class. */
+        private org.bukkit.permissions.PermissibleBase readBasePermissible(Object self) {
+            try {
+                java.lang.reflect.Field permField =
+                        org.bukkit.craftbukkit.entity.CraftHumanEntity.class.getDeclaredField("perm");
+                permField.setAccessible(true);
+                Object perm = permField.get(self);
+                if (perm instanceof org.bukkit.permissions.PermissibleBase pb) return pb;
             } catch (ReflectiveOperationException ignored) {}
             return null;
         }
