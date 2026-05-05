@@ -9,6 +9,7 @@ import com.github.martinambrus.rdforward.protocol.packet.Packet;
 import com.github.martinambrus.rdforward.protocol.packet.classic.*;
 import com.github.martinambrus.rdforward.protocol.translation.VersionTranslator;
 import com.github.martinambrus.rdforward.server.api.CommandRegistry;
+import com.github.martinambrus.rdforward.server.api.Scheduler;
 import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import com.github.martinambrus.rdforward.api.event.server.ServerEvents;
 import io.netty.channel.ChannelHandlerContext;
@@ -402,12 +403,15 @@ public class ServerConnectionHandler extends SimpleChannelInboundHandler<Packet>
         // Route commands (messages starting with "/")
         if (message.startsWith("/")) {
             String command = message.substring(1);
-            // Reply sender: sends a private chat message back to the player
-            boolean handled = CommandRegistry.dispatch(command, player.getUsername(), false,
-                    reply -> playerManager.sendChat(player, reply));
-            if (!handled) {
-                playerManager.sendChat(player, "Unknown command: " + command.split("\\s+")[0]);
-            }
+            ConnectedPlayer p = this.player;
+            Scheduler.runLater(0, () -> {
+                if (this.player != p) return;
+                boolean handled = CommandRegistry.dispatch(command, p.getUsername(), false,
+                        reply -> playerManager.sendChat(p, reply));
+                if (!handled) {
+                    playerManager.sendChat(p, "Unknown command: " + command.split("\\s+")[0]);
+                }
+            });
             return;
         }
 

@@ -16,6 +16,7 @@ import com.github.martinambrus.rdforward.protocol.packet.classic.PlayerTeleportP
 import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
 import com.github.martinambrus.rdforward.protocol.packet.netty.*;
 import com.github.martinambrus.rdforward.server.api.CommandRegistry;
+import com.github.martinambrus.rdforward.server.api.Scheduler;
 import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import com.github.martinambrus.rdforward.server.gamemode.GameModeUtil;
 import com.github.martinambrus.rdforward.server.auth.MojangSessionVerifier;
@@ -1757,68 +1758,60 @@ public class NettyConnectionHandler extends SimpleChannelInboundHandler<Packet> 
     }
 
     private void dispatchCommand(String command) {
-        boolean isV766 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_5);
-        boolean isV765 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_3);
-        boolean isV764 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20_2);
-        boolean isV763 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_20);
-        boolean isV762 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_4);
-        boolean isV761 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_3);
-        boolean isV760 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19_1);
-        boolean isV759 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_19);
-        boolean isV735 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_16);
-        boolean isV47 = clientVersion.isAtLeast(ProtocolVersion.RELEASE_1_8);
-        boolean handled = CommandRegistry.dispatch(command, player.getUsername(), false,
-                reply -> {
-                    if (isV765) {
-                        player.sendPacket(new SystemChatPacketV765(reply, false));
-                    } else {
-                        String json = "{\"text\":\"" + reply.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
-                        if (isV764) {
-                            player.sendPacket(new SystemChatPacketV760(json, false));
-                        } else if (isV763) {
-                            player.sendPacket(new SystemChatPacketV760(json, false));
-                        } else if (isV762) {
-                            player.sendPacket(new SystemChatPacketV760(json, false));
-                        } else if (isV761) {
-                            player.sendPacket(new SystemChatPacketV760(json, false));
-                        } else if (isV760) {
-                            player.sendPacket(new SystemChatPacketV760(json, false));
-                        } else if (isV759) {
-                            player.sendPacket(new SystemChatPacketV759(json, 0));
-                        } else if (isV735) {
-                            player.sendPacket(new NettyChatS2CPacketV735(json, (byte) 0, 0L, 0L));
-                        } else if (isV47) {
-                            player.sendPacket(new NettyChatS2CPacketV47(json, (byte) 0));
-                        } else {
-                            player.sendPacket(new NettyChatS2CPacket(json));
-                        }
-                    }
-                });
-        if (!handled) {
-            String unknownMsg = "Unknown command: " + command.split("\\s+")[0];
-            if (isV765) {
-                player.sendPacket(new SystemChatPacketV765(unknownMsg, false));
+        ConnectedPlayer p = this.player;
+        if (p == null) return;
+
+        ProtocolVersion ver = this.clientVersion;
+        boolean isV766 = ver.isAtLeast(ProtocolVersion.RELEASE_1_20_5);
+        boolean isV765 = ver.isAtLeast(ProtocolVersion.RELEASE_1_20_3);
+        boolean isV764 = ver.isAtLeast(ProtocolVersion.RELEASE_1_20_2);
+        boolean isV763 = ver.isAtLeast(ProtocolVersion.RELEASE_1_20);
+        boolean isV762 = ver.isAtLeast(ProtocolVersion.RELEASE_1_19_4);
+        boolean isV761 = ver.isAtLeast(ProtocolVersion.RELEASE_1_19_3);
+        boolean isV760 = ver.isAtLeast(ProtocolVersion.RELEASE_1_19_1);
+        boolean isV759 = ver.isAtLeast(ProtocolVersion.RELEASE_1_19);
+        boolean isV735 = ver.isAtLeast(ProtocolVersion.RELEASE_1_16);
+        boolean isV47 = ver.isAtLeast(ProtocolVersion.RELEASE_1_8);
+
+        // Bukkit plugins require command execution on the main thread.
+        Scheduler.runLater(0, () -> {
+            if (this.player != p) return;
+            boolean handled = CommandRegistry.dispatch(command, p.getUsername(), false,
+                    reply -> sendChatMessage(p, reply, isV765, isV764, isV763, isV762,
+                            isV761, isV760, isV759, isV735, isV47));
+            if (!handled) {
+                sendChatMessage(p, "Unknown command: " + command.split("\\s+")[0],
+                        isV765, isV764, isV763, isV762, isV761, isV760, isV759, isV735, isV47);
+            }
+        });
+    }
+
+    private static void sendChatMessage(ConnectedPlayer player, String text,
+            boolean isV765, boolean isV764, boolean isV763, boolean isV762,
+            boolean isV761, boolean isV760, boolean isV759, boolean isV735,
+            boolean isV47) {
+        if (isV765) {
+            player.sendPacket(new SystemChatPacketV765(text, false));
+        } else {
+            String json = "{\"text\":\"" + text.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}";
+            if (isV764) {
+                player.sendPacket(new SystemChatPacketV760(json, false));
+            } else if (isV763) {
+                player.sendPacket(new SystemChatPacketV760(json, false));
+            } else if (isV762) {
+                player.sendPacket(new SystemChatPacketV760(json, false));
+            } else if (isV761) {
+                player.sendPacket(new SystemChatPacketV760(json, false));
+            } else if (isV760) {
+                player.sendPacket(new SystemChatPacketV760(json, false));
+            } else if (isV759) {
+                player.sendPacket(new SystemChatPacketV759(json, 0));
+            } else if (isV735) {
+                player.sendPacket(new NettyChatS2CPacketV735(json, (byte) 0, 0L, 0L));
+            } else if (isV47) {
+                player.sendPacket(new NettyChatS2CPacketV47(json, (byte) 0));
             } else {
-                String json = "{\"text\":\"" + unknownMsg + "\"}";
-                if (isV764) {
-                    player.sendPacket(new SystemChatPacketV760(json, false));
-                } else if (isV763) {
-                    player.sendPacket(new SystemChatPacketV760(json, false));
-                } else if (isV762) {
-                    player.sendPacket(new SystemChatPacketV760(json, false));
-                } else if (isV761) {
-                    player.sendPacket(new SystemChatPacketV760(json, false));
-                } else if (isV760) {
-                    player.sendPacket(new SystemChatPacketV760(json, false));
-                } else if (isV759) {
-                    player.sendPacket(new SystemChatPacketV759(json, 0));
-                } else if (isV735) {
-                    player.sendPacket(new NettyChatS2CPacketV735(json, (byte) 0, 0L, 0L));
-                } else if (isV47) {
-                    player.sendPacket(new NettyChatS2CPacketV47(json, (byte) 0));
-                } else {
-                    player.sendPacket(new NettyChatS2CPacket(json));
-                }
+                player.sendPacket(new NettyChatS2CPacket(json));
             }
         }
     }

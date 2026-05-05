@@ -12,6 +12,7 @@ import com.github.martinambrus.rdforward.protocol.packet.alpha.*;
 import com.github.martinambrus.rdforward.protocol.packet.classic.PlayerTeleportPacket;
 import com.github.martinambrus.rdforward.protocol.packet.classic.SetBlockServerPacket;
 import com.github.martinambrus.rdforward.server.api.CommandRegistry;
+import com.github.martinambrus.rdforward.server.api.Scheduler;
 import com.github.martinambrus.rdforward.server.api.ServerProperties;
 import com.github.martinambrus.rdforward.server.gamemode.GameModeUtil;
 import com.github.martinambrus.rdforward.server.auth.MojangSessionVerifier;
@@ -1430,11 +1431,15 @@ public class AlphaConnectionHandler extends SimpleChannelInboundHandler<Packet> 
         // Route commands
         if (message.startsWith("/")) {
             String command = message.substring(1);
-            boolean handled = CommandRegistry.dispatch(command, player.getUsername(), false,
-                    reply -> playerManager.sendChat(player, reply));
-            if (!handled) {
-                playerManager.sendChat(player, "Unknown command: " + command.split("\\s+")[0]);
-            }
+            ConnectedPlayer p = this.player;
+            Scheduler.runLater(0, () -> {
+                if (this.player != p) return;
+                boolean handled = CommandRegistry.dispatch(command, p.getUsername(), false,
+                        reply -> playerManager.sendChat(p, reply));
+                if (!handled) {
+                    playerManager.sendChat(p, "Unknown command: " + command.split("\\s+")[0]);
+                }
+            });
             return;
         }
 

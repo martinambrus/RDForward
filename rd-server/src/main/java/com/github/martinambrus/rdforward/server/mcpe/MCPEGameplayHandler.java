@@ -314,12 +314,16 @@ public class MCPEGameplayHandler {
 
         if (message.startsWith("/")) {
             String command = message.substring(1);
-            boolean handled = com.github.martinambrus.rdforward.server.api.CommandRegistry.dispatch(
-                    command, player.getUsername(), false,
-                    reply -> playerManager.sendChat(player, reply));
-            if (!handled) {
-                playerManager.sendChat(player, "Unknown command: " + command.split("\\s+")[0]);
-            }
+            ConnectedPlayer p = this.player;
+            com.github.martinambrus.rdforward.server.api.Scheduler.runLater(0, () -> {
+                if (this.player != p) return;
+                boolean handled = com.github.martinambrus.rdforward.server.api.CommandRegistry.dispatch(
+                        command, p.getUsername(), false,
+                        reply -> playerManager.sendChat(p, reply));
+                if (!handled) {
+                    playerManager.sendChat(p, "Unknown command: " + command.split("\\s+")[0]);
+                }
+            });
             return;
         }
 
