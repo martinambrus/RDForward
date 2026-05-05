@@ -312,4 +312,11 @@ public interface Server {
     default boolean addRecipe(org.bukkit.inventory.Recipe recipe) {
         return true;
     }
+
+    /**
+     * @return the name of the update folder. CFBanner's {@code Updater}
+     *         reads this to locate plugin JARs staged for hot-swap.
+     *         Real Bukkit defaults to {@code "update"}.
+     */
+    default String getUpdateFolder() { return "update"; }
 }

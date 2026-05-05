@@ -344,6 +344,7 @@ public final class BukkitBridge {
         @Override public PluginManager getPluginManager() { return pluginManager; }
         @Override public BukkitScheduler getScheduler() { return scheduler; }
         @Override public ConsoleCommandSender getConsoleSender() { return console; }
+        @Override public String getUpdateFolder() { return "update"; }
 
         @Override
         public Player getPlayer(String name) {
