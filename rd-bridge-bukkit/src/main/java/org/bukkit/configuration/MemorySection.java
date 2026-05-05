@@ -190,8 +190,19 @@ public class MemorySection implements ConfigurationSection {
         return v != null ? v : def;
     }
 
-    public ConfigurationSection createSection(String path) { return null; }
-    public ConfigurationSection createSection(String path, Map map) { return null; }
+    public ConfigurationSection createSection(String path) {
+        String full = resolve(path);
+        return new MemorySection(this, full);
+    }
+    public ConfigurationSection createSection(String path, Map map) {
+        String full = resolve(path);
+        String dotPfx = full + ".";
+        for (Object entry : ((Map<?,?>) map).entrySet()) {
+            Map.Entry<?,?> e = (Map.Entry<?,?>) entry;
+            values.put(dotPfx + e.getKey(), e.getValue());
+        }
+        return new MemorySection(this, full);
+    }
 
     public String getString(String path) {
         Object o = get(path);
@@ -361,7 +372,8 @@ public class MemorySection implements ConfigurationSection {
      *  to enumerate per-tool subtrees and NPE'd on the previous null
      *  stub. */
     public ConfigurationSection getConfigurationSection(String path) {
-        if (path == null || path.isEmpty()) return null;
+        if (path == null) return null;
+        if (path.isEmpty()) return this;
         String full = resolve(path);
         String dotPfx = full + ".";
         for (String key : values.keySet()) {
@@ -374,10 +386,18 @@ public class MemorySection implements ConfigurationSection {
                 return new MemorySection(this, full);
             }
         }
-        return null;
+        // Return an empty section view instead of null. Many plugins
+        // (Sortal, etc.) skip the null-check and call .getKeys() directly;
+        // an empty view returns an empty Set and avoids the NPE.
+        return new MemorySection(this, full);
     }
     public boolean isConfigurationSection(String path) {
-        return getConfigurationSection(path) != null;
+        String key = resolve(path);
+        if (values.containsKey(key) || defaults.containsKey(key)) return true;
+        String dotPfx = key + ".";
+        for (String k : values.keySet()) if (k.startsWith(dotPfx)) return true;
+        for (String k : defaults.keySet()) if (k.startsWith(dotPfx)) return true;
+        return false;
     }
 
     protected boolean isPrimitiveWrapper(Object value) {
