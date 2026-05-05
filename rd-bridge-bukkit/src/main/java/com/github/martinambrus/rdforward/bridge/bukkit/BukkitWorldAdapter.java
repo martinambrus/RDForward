@@ -1,6 +1,7 @@
 // @rdforward:preserve - hand-tuned facade, do not regenerate
 package com.github.martinambrus.rdforward.bridge.bukkit;
 
+import com.github.martinambrus.rdforward.server.ConnectedPlayer;
 import com.github.martinambrus.rdforward.server.PlayerManager;
 import com.github.martinambrus.rdforward.server.RDServer;
 import com.github.martinambrus.rdforward.server.ServerWorld;
@@ -320,6 +321,18 @@ public final class BukkitWorldAdapter implements World, RegionAccessor {
         return World.super.getHighestBlockYAt(x, z);
     }
     @Override public java.util.List getEntities() { return World.super.getEntities(); }
+
+    @Override
+    public java.util.List<org.bukkit.entity.Player> getPlayers() {
+        PlayerManager pm = playerManager();
+        if (pm == null) return java.util.Collections.emptyList();
+        java.util.List<org.bukkit.entity.Player> out = new java.util.ArrayList<>();
+        for (ConnectedPlayer cp : pm.getAllPlayers()) {
+            org.bukkit.entity.Player wrapped = BukkitPlayer.create(cp.getUsername());
+            if (wrapped != null) out.add(wrapped);
+        }
+        return out;
+    }
     @Override public org.bukkit.entity.Entity spawnEntity(Location loc, org.bukkit.entity.EntityType type, boolean random) {
         return World.super.spawnEntity(loc, type, random);
     }

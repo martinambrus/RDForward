@@ -310,6 +310,35 @@ public interface World {
         return false;
     }
 
+    /** XcraftGate's {@code DataWorld.setAllowPvP} calls this during
+     *  world init. RDForward has no PvP flag — no-op + log once. */
+    default void setPVP(boolean pvp) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.setPVP(Z)V");
+    }
+
+    /** XcraftGate's {@code DataWorld.setParameters} calls this to
+     *  toggle monster/animal spawning. RDForward has no spawn flags —
+     *  no-op + log once. */
+    default void setSpawnFlags(boolean allowMonsters, boolean allowAnimals) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.setSpawnFlags(ZZ)V");
+    }
+
+    /** XcraftGate's {@code DataWorld.setParameters} sets per-world
+     *  difficulty. RDForward uses server-wide difficulty — no-op + log. */
+    default void setDifficulty(Difficulty difficulty) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null,
+                "org.bukkit.World.setDifficulty(Lorg/bukkit/Difficulty;)V");
+    }
+
+    default Difficulty getDifficulty() {
+        return Difficulty.NORMAL;
+    }
+
     /** @return cumulative world age in ticks. Bukkit defines
      *  {@link #getTime()} as the day-cycle time (modulo 24000) and
      *  {@code getFullTime()} as the monotonic world age. RDForward
@@ -490,6 +519,14 @@ public interface World {
      *  delayed bat-cleanup iterates this; an empty list lets the
      *  cleanup loop run as a no-op instead of NPE-ing on null. */
     default java.util.List<org.bukkit.entity.Entity> getEntities() {
+        return java.util.Collections.emptyList();
+    }
+
+    /** @return players currently in this world. XcraftGate's
+     *  {@code DataWorld.checkInactive} reads this every tick to decide
+     *  whether to unload an empty world. Default returns empty list;
+     *  adapters backed by a live server override with real player list. */
+    default java.util.List<org.bukkit.entity.Player> getPlayers() {
         return java.util.Collections.emptyList();
     }
 
