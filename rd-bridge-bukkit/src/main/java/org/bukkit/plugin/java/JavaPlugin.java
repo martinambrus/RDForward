@@ -339,8 +339,8 @@ public abstract class JavaPlugin extends PluginBase implements CommandExecutor {
     /** Returns the EbeanServer for this plugin. Real Bukkit/CraftBukkit
      *  initialises an embedded Ebean ORM when {@code plugin.yml} declares
      *  {@code database: true}. RDForward has no embedded database, so this
-     *  returns a no-op stub whose methods throw {@code UnsupportedOperationException}.
-     *  Plugins that use Ebean (HomeSpawnPlus, dynmap) can catch those exceptions
+     *  returns a no-op stub whose methods throw {@code PersistenceException}.
+     *  Plugins that use Ebean (HomeSpawnPlus, dynmap) can catch that exception
      *  and fall back to YAML or file-based storage. */
     public EbeanServer getDatabase() {
         return new NoOpEbeanServer();

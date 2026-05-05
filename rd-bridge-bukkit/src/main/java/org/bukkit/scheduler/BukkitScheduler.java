@@ -78,6 +78,13 @@ public interface BukkitScheduler {
      *  that we don't actually track ids; the call is a no-op. */
     default void cancelTask(int taskId) {}
 
+    /** Legacy check — always returns {@code false} since RDForward
+     *  does not track tasks by integer id. */
+    default boolean isQueued(int taskId) { return false; }
+
+    /** Legacy check — always returns {@code false}. */
+    default boolean isCurrentlyRunning(int taskId) { return false; }
+
     /**
      * Calls the given {@link java.util.concurrent.Callable} on the next
      * server tick and returns a {@link java.util.concurrent.Future} with

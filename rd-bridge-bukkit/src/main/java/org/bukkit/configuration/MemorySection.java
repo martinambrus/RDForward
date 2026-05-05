@@ -438,7 +438,8 @@ public class MemorySection implements ConfigurationSection {
      */
     public static void flattenInto(Map<String, Object> source, String prefix, Map<String, Object> dest) {
         for (Map.Entry<String, Object> e : source.entrySet()) {
-            String key = prefix.isEmpty() ? e.getKey() : prefix + "." + e.getKey();
+            String rawKey = String.valueOf(e.getKey());
+            String key = prefix.isEmpty() ? rawKey : prefix + "." + rawKey;
             Object val = e.getValue();
             if (val instanceof Map) {
                 flattenInto((Map<String, Object>) val, key, dest);
