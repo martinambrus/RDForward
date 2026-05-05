@@ -131,7 +131,13 @@ public class ItemStack implements java.lang.Cloneable, org.bukkit.configuration.
         return false;
     }
     public org.bukkit.inventory.ItemStack clone() {
-        return null;
+        ItemStack copy = new ItemStack();
+        copy.material = this.material;
+        copy.legacyId = this.legacyId;
+        copy.amount = this.amount;
+        copy.durability = this.durability;
+        copy.meta = this.meta == null ? null : this.meta.clone();
+        return copy;
     }
     public int hashCode() {
         return 0;
