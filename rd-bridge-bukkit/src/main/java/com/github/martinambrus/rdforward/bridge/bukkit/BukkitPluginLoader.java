@@ -2,6 +2,7 @@
 package com.github.martinambrus.rdforward.bridge.bukkit;
 
 import com.github.martinambrus.rdforward.api.mod.ModDescriptor;
+import com.github.martinambrus.rdforward.bridge.bukkit.compat.PluginLibraryResolver;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.PluginDescriptionFile;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -51,6 +52,16 @@ public final class BukkitPluginLoader {
                 throw new IOException("plugin.yml missing from " + jarPath);
             }
             bukkit = BukkitPluginParser.parse(in);
+        }
+        // Resolve Paper-style libraries declared in plugin.yml.
+        // Download from Maven Central on first use, cache in libraries/ dir.
+        URL[] libUrls = PluginLibraryResolver.resolve(bukkit.libraries());
+        if (libUrls.length > 0) {
+            classLoader.close();
+            URL[] merged = new URL[1 + libUrls.length];
+            merged[0] = jarPath.toUri().toURL();
+            System.arraycopy(libUrls, 0, merged, 1, libUrls.length);
+            classLoader = new com.github.martinambrus.rdforward.bridge.bukkit.compat.LegacyPluginClassLoader(merged, parent);
         }
         com.github.martinambrus.rdforward.api.stub.StubCallLog
                 .registerPluginLoader(classLoader, bukkit.name());

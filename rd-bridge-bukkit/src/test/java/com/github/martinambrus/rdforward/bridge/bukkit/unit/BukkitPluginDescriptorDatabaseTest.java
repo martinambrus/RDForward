@@ -27,7 +27,7 @@ class BukkitPluginDescriptorDatabaseTest {
     void descriptorDatabaseTrueWhenProvided() {
         BukkitPluginDescriptor desc = new BukkitPluginDescriptor("Test", "1.0", "com.test.Main",
                 java.util.Collections.emptyList(), java.util.Collections.emptyList(),
-                Map.of(), true);
+                Map.of(), true, java.util.Collections.emptyList());
         assertTrue(desc.database());
     }
 

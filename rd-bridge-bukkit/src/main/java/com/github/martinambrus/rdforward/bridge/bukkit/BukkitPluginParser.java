@@ -29,8 +29,9 @@ public final class BukkitPluginParser {
         List<String> softdepend = readStringList(root.get("softdepend"));
         Map<String, BukkitPluginDescriptor.CommandSpec> commands = parseCommands(root.get("commands"));
         boolean database = Boolean.TRUE.equals(root.get("database"));
+        List<String> libraries = readStringList(root.get("libraries"));
         return new BukkitPluginDescriptor(name, version, main,
-                List.copyOf(depend), List.copyOf(softdepend), commands, database);
+                List.copyOf(depend), List.copyOf(softdepend), commands, database, List.copyOf(libraries));
     }
 
     /** Pull a list-of-strings field, accepting both YAML list shape

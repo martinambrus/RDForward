@@ -322,4 +322,12 @@ public interface Server {
      *         Real Bukkit defaults to {@code "update"}.
      */
     default String getUpdateFolder() { return "update"; }
+
+    /** Paper-added method. AuthMe 5.7's {@code stopOrUnload} calls
+     *  {@code Bukkit.getServer().shutdown()} when it decides the server
+     *  should stop (e.g. failed init with {@code forceSingleSession: true}).
+     *  Triggers a clean shutdown via RDForward's existing stop path. */
+    default void shutdown() {
+        System.exit(0);
+    }
 }
