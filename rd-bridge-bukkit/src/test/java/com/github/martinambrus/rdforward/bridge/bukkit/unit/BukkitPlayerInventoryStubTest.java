@@ -88,6 +88,15 @@ class BukkitPlayerInventoryStubTest {
                 "getInventory should return the same stub instance");
     }
 
+    @Test
+    void containsLegacyIntOverloads() {
+        PlayerInventory inv = newPlayer().getInventory();
+        // Stub inventory is empty — contains must return false for any material/amount.
+        assertTrue(!inv.contains(1), "contains(int) returns false for empty stub");
+        assertTrue(!inv.contains(1, 1), "contains(int, int) returns false for empty stub");
+        assertTrue(!inv.contains(-1, 5), "contains(int, int) returns false for unknown id");
+    }
+
     private static Player newPlayer() {
         com.github.martinambrus.rdforward.api.world.Location loc =
                 new com.github.martinambrus.rdforward.api.world.Location("stub", 0, 0, 0, 0f, 0f);
