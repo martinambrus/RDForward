@@ -17,6 +17,10 @@ public interface PlayerInventory extends org.bukkit.inventory.Inventory {
         org.bukkit.Material mat = org.bukkit.Material.getMaterial(materialId);
         return mat != null && contains(mat);
     }
+    default boolean contains(int materialId, int amount) {
+        org.bukkit.Material mat = org.bukkit.Material.getMaterial(materialId);
+        return mat != null && contains(mat, amount);
+    }
     org.bukkit.inventory.ItemStack[] getArmorContents();
     org.bukkit.inventory.ItemStack[] getExtraContents();
     org.bukkit.inventory.ItemStack getHelmet();
