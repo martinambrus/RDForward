@@ -39,6 +39,12 @@ public interface CommandSender extends org.bukkit.permissions.Permissible {
         sendMessage(message);
     }
 
+    /** @return the server instance. AuthMe's {@code LogoutCommand.onCommand}
+     *  calls {@code sender.getServer()} to reach plugin manager. */
+    default org.bukkit.Server getServer() {
+        return org.bukkit.Bukkit.getServer();
+    }
+
     /** @return true if this sender has operator privileges. */
     boolean isOp();
 

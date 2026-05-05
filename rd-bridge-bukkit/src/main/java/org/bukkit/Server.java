@@ -23,6 +23,9 @@ import java.util.logging.Logger;
 public interface Server {
 
     String getName();
+    /** Paper-added alias for {@link #getName()}. AuthMe's
+     *  {@code replaceAllInfos} calls this during login. */
+    default String getServerName() { return getName(); }
     String getVersion();
     String getBukkitVersion();
 

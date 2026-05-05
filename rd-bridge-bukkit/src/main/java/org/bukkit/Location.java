@@ -60,6 +60,14 @@ public class Location implements Cloneable {
         return world.getBlockAt(getBlockX(), getBlockY(), getBlockZ());
     }
 
+    /** @return the chunk at this location. AuthMe's
+     *  {@code ProcessSyncronousPlayerLogin.teleportBackFromSpawn} calls
+     *  {@code location.getChunk()} during post-login teleport. */
+    public Chunk getChunk() {
+        if (world == null) return null;
+        return world.getChunkAt(getBlockX() >> 4, getBlockZ() >> 4);
+    }
+
     /** Snapshot of the (x,y,z) coordinates as a fresh {@link org.bukkit.util.Vector}.
      *  SimpleLogin's {@code LoginListener.onMove} compares vector deltas to
      *  detect movement after auth — it must not return {@code null}. */

@@ -37,6 +37,12 @@ public final class Bukkit {
         return server == null ? "RDForward" : server.getName();
     }
 
+    /** Static delegate for {@link Server#getServerName()}.
+     *  AuthMe calls {@code Bukkit.getServerName()} during login. */
+    public static String getServerName() {
+        return server == null ? "RDForward" : server.getServerName();
+    }
+
     public static String getVersion() {
         return server == null ? "unknown" : server.getVersion();
     }
@@ -85,6 +91,17 @@ public final class Bukkit {
      *  every join. Delegates to {@link Server#getPlayer(java.util.UUID)}. */
     public static Player getPlayer(java.util.UUID id) {
         return server == null ? null : server.getPlayer(id);
+    }
+
+    /** AuthMe's {@code API.getPlayerRealName} calls
+     *  {@code Bukkit.getOfflinePlayer(name)} to resolve casing —
+     *  {@link NoSuchMethodError} without this delegate. */
+    public static OfflinePlayer getOfflinePlayer(String name) {
+        return server == null ? null : server.getOfflinePlayer(name);
+    }
+
+    public static OfflinePlayer getOfflinePlayer(java.util.UUID id) {
+        return server == null ? null : server.getOfflinePlayer(id);
     }
 
     public static Collection<Player> getOnlinePlayers() {
