@@ -123,7 +123,6 @@ public interface Entity extends org.bukkit.metadata.Metadatable, org.bukkit.comm
     org.bukkit.entity.EntitySnapshot createSnapshot();
     org.bukkit.entity.Entity copy();
     org.bukkit.entity.Entity copy(org.bukkit.Location arg0);
-    org.bukkit.entity.Entity$Spigot spigot();
     net.kyori.adventure.text.Component teamDisplayName();
     default net.kyori.adventure.text.event.HoverEvent asHoverEvent(java.util.function.UnaryOperator arg0) {
         com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.entity.Entity.asHoverEvent(Ljava/util/function/UnaryOperator;)Lnet/kyori/adventure/text/event/HoverEvent;");
@@ -168,4 +167,8 @@ public interface Entity extends org.bukkit.metadata.Metadatable, org.bukkit.comm
     io.papermc.paper.threadedregions.scheduler.EntityScheduler getScheduler();
     java.lang.String getScoreboardEntryName();
     void broadcastHurtAnimation(java.util.Collection arg0);
+
+    default org.bukkit.entity.Entity$Spigot spigot() {
+        return new org.bukkit.entity.Entity$Spigot();
+    }
 }

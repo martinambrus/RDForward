@@ -577,4 +577,27 @@ public interface World {
         com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
                 null, "org.bukkit.World.setAmbientSpawnLimit(I)V");
     }
+
+    /* ---- Game rules. BuildPaste calls setGameRuleValue to disable
+     *  commandFeedback. RDForward has no gamerule system — no-op stub. ---- */
+
+    default boolean setGameRuleValue(String rule, String value) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null, "org.bukkit.World.setGameRuleValue(Ljava/lang/String;Ljava/lang/String;)Z");
+        return true;
+    }
+
+    default String getGameRuleValue(String rule) {
+        com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(
+                null, "org.bukkit.World.getGameRuleValue(Ljava/lang/String;)Ljava/lang/String;");
+        return "";
+    }
+
+    default boolean isGameRule(String rule) {
+        return false;
+    }
+
+    default String[] getGameRules() {
+        return new String[0];
+    }
 }

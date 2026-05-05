@@ -458,7 +458,11 @@ public interface Player extends org.bukkit.entity.HumanEntity, org.bukkit.conver
         return false;
     }
     boolean isChunkSent(long arg0);
-    org.bukkit.entity.Player$Spigot spigot();
+    /** Returns a Spigot instance for rich-chat messaging. Delegates to the
+     *  auto-generated Player$Spigot stub which logs once via StubCallLog. */
+    default org.bukkit.entity.Player$Spigot spigot() {
+        return new org.bukkit.entity.Player$Spigot();
+    }
     void sendEntityEffect(org.bukkit.EntityEffect arg0, org.bukkit.entity.Entity arg1);
     default io.papermc.paper.entity.PlayerGiveResult give(org.bukkit.inventory.ItemStack[] arg0) {
         com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.entity.Player.give([Lorg/bukkit/inventory/ItemStack;)Lio/papermc/paper/entity/PlayerGiveResult;");
