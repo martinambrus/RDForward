@@ -459,9 +459,44 @@ public interface Player extends org.bukkit.entity.HumanEntity, org.bukkit.conver
     }
     boolean isChunkSent(long arg0);
     /** Returns a Spigot instance for rich-chat messaging. Delegates to the
-     *  auto-generated Player$Spigot stub which logs once via StubCallLog. */
-    default org.bukkit.entity.Player$Spigot spigot() {
-        return new org.bukkit.entity.Player$Spigot();
+     *  Player.Spigot inner class which logs once via StubCallLog. */
+    default org.bukkit.entity.Player.Spigot spigot() {
+        return new org.bukkit.entity.Player.Spigot();
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes", "unused"})
+    class Spigot extends org.bukkit.entity.Entity.Spigot {
+        public Spigot() {}
+        public java.net.InetSocketAddress getRawAddress() {
+            return null;
+        }
+        public void respawn() {
+            com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.entity.Player$Spigot.respawn()V");
+        }
+        public java.util.Set getHiddenPlayers() {
+            return java.util.Collections.emptySet();
+        }
+        public void sendMessage(net.md_5.bungee.api.chat.BaseComponent arg0) {
+            com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.entity.Player$Spigot.sendMessage(Lnet/md_5/bungee/api/chat/BaseComponent;)V");
+        }
+        public void sendMessage(net.md_5.bungee.api.chat.BaseComponent[] arg0) {
+            com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.entity.Player$Spigot.sendMessage([Lnet/md_5/bungee/api/chat/BaseComponent;)V");
+        }
+        public void sendMessage(net.md_5.bungee.api.ChatMessageType arg0, net.md_5.bungee.api.chat.BaseComponent arg1) {
+            com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.entity.Player$Spigot.sendMessage(Lnet/md_5/bungee/api/ChatMessageType;Lnet/md_5/bungee/api/chat/BaseComponent;)V");
+        }
+        public void sendMessage(net.md_5.bungee.api.ChatMessageType arg0, net.md_5.bungee.api.chat.BaseComponent[] arg1) {
+            com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.entity.Player$Spigot.sendMessage(Lnet/md_5/bungee/api/ChatMessageType;[Lnet/md_5/bungee/api/chat/BaseComponent;)V");
+        }
+        public void sendMessage(net.md_5.bungee.api.ChatMessageType arg0, java.util.UUID arg1, net.md_5.bungee.api.chat.BaseComponent arg2) {
+            com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.entity.Player$Spigot.sendMessage(Lnet/md_5/bungee/api/ChatMessageType;Ljava/util/UUID;Lnet/md_5/bungee/api/chat/BaseComponent;)V");
+        }
+        public void sendMessage(net.md_5.bungee.api.ChatMessageType arg0, java.util.UUID arg1, net.md_5.bungee.api.chat.BaseComponent[] arg2) {
+            com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.entity.Player$Spigot.sendMessage(Lnet/md_5/bungee/api/ChatMessageType;Ljava/util/UUID;[Lnet/md_5/bungee/api/chat/BaseComponent;)V");
+        }
+        public int getPing() {
+            return 0;
+        }
     }
     void sendEntityEffect(org.bukkit.EntityEffect arg0, org.bukkit.entity.Entity arg1);
     default io.papermc.paper.entity.PlayerGiveResult give(org.bukkit.inventory.ItemStack[] arg0) {

@@ -168,7 +168,12 @@ public interface Entity extends org.bukkit.metadata.Metadatable, org.bukkit.comm
     java.lang.String getScoreboardEntryName();
     void broadcastHurtAnimation(java.util.Collection arg0);
 
-    default org.bukkit.entity.Entity$Spigot spigot() {
-        return new org.bukkit.entity.Entity$Spigot();
+    default org.bukkit.entity.Entity.Spigot spigot() {
+        return new org.bukkit.entity.Entity.Spigot();
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes", "unused"})
+    class Spigot extends org.bukkit.command.CommandSender.Spigot {
+        public Spigot() {}
     }
 }

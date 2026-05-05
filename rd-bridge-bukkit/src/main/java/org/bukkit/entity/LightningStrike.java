@@ -10,7 +10,15 @@ public interface LightningStrike extends org.bukkit.entity.Entity {
     void setLifeTicks(int arg0);
     org.bukkit.entity.Player getCausingPlayer();
     void setCausingPlayer(org.bukkit.entity.Player arg0);
-    org.bukkit.entity.LightningStrike$Spigot spigot();
+    org.bukkit.entity.LightningStrike.Spigot spigot();
+
+    @SuppressWarnings({"unchecked", "rawtypes", "unused"})
+    class Spigot extends org.bukkit.entity.Entity.Spigot {
+        public Spigot() {}
+        public boolean isSilent() {
+            return false;
+        }
+    }
     int getFlashCount();
     void setFlashCount(int arg0);
     org.bukkit.entity.Entity getCausingEntity();

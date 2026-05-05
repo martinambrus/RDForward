@@ -48,4 +48,18 @@ public interface Plugin {
     default org.bukkit.configuration.file.FileConfiguration getConfig() {
         return new org.bukkit.configuration.file.YamlConfiguration();
     }
+
+    /** Persist the current in-memory configuration to
+     *  {@code <dataFolder>/config.yml}. JavaPlugin overrides with the real
+     *  save; CS-CoreLib's {@code PluginUtils.setupConfig} calls this through
+     *  the {@code Plugin} interface. */
+    default void saveConfig() {}
+
+    /** Copy the bundled {@code config.yml} from the plugin jar to the data
+     *  folder when not yet present. JavaPlugin overrides. */
+    default void saveDefaultConfig() {}
+
+    /** Reload {@code config.yml} from disk and re-apply bundled defaults.
+     *  JavaPlugin overrides. */
+    default void reloadConfig() {}
 }

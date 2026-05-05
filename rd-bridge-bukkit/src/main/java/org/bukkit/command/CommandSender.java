@@ -41,4 +41,23 @@ public interface CommandSender extends org.bukkit.permissions.Permissible {
 
     /** @return true if this sender has operator privileges. */
     boolean isOp();
+
+    /** Spigot inner class for rich-chat messaging. Plugins call
+     *  {@code sender.spigot().sendMessage(BaseComponent)}. */
+    @SuppressWarnings({"unchecked", "rawtypes", "unused"})
+    class Spigot {
+        public Spigot() {}
+        public void sendMessage(net.md_5.bungee.api.chat.BaseComponent arg0) {
+            com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.command.CommandSender$Spigot.sendMessage(Lnet/md_5/bungee/api/chat/BaseComponent;)V");
+        }
+        public void sendMessage(net.md_5.bungee.api.chat.BaseComponent[] arg0) {
+            com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.command.CommandSender$Spigot.sendMessage([Lnet/md_5/bungee/api/chat/BaseComponent;)V");
+        }
+        public void sendMessage(java.util.UUID arg0, net.md_5.bungee.api.chat.BaseComponent arg1) {
+            com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.command.CommandSender$Spigot.sendMessage(Ljava/util/UUID;Lnet/md_5/bungee/api/chat/BaseComponent;)V");
+        }
+        public void sendMessage(java.util.UUID arg0, net.md_5.bungee.api.chat.BaseComponent[] arg1) {
+            com.github.martinambrus.rdforward.api.stub.StubCallLog.logOnce(null, "org.bukkit.command.CommandSender$Spigot.sendMessage(Ljava/util/UUID;[Lnet/md_5/bungee/api/chat/BaseComponent;)V");
+        }
+    }
 }

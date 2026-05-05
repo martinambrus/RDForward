@@ -68,7 +68,7 @@ public interface MessageCommandSender extends org.bukkit.command.CommandSender {
     default java.util.Set getEffectivePermissions() {
         return java.util.Collections.emptySet();
     }
-    default org.bukkit.command.CommandSender$Spigot spigot() {
+    default org.bukkit.command.CommandSender.Spigot spigot() {
         return null;
     }
 }
