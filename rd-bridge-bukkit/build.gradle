@@ -146,6 +146,8 @@ dependencies {
     implementation 'org.ow2.asm:asm:9.9.1'
     implementation 'org.ow2.asm:asm-tree:9.9.1'
     implementation 'org.ow2.asm:asm-commons:9.9.1'
+    // Maven Resolver for Paper-style plugin library loading (transitive deps).
+    implementation 'org.apache.maven.resolver:maven-resolver-supplier:1.9.22'
 
     // compileOnly: libraries referenced in paper-api signatures that the
     // runtime server ships itself. Bundling them here would duplicate state

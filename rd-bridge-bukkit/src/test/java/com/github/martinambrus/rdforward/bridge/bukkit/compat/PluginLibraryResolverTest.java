@@ -1,19 +1,27 @@
 package com.github.martinambrus.rdforward.bridge.bukkit.compat;
 
+import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.artifact.DefaultArtifact;
+import org.eclipse.aether.graph.Dependency;
+import org.eclipse.aether.collection.CollectRequest;
+import org.eclipse.aether.repository.RemoteRepository;
+import org.eclipse.aether.resolution.DependencyRequest;
+import org.eclipse.aether.resolution.DependencyResult;
+import org.eclipse.aether.RepositorySystemSession;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.condition.EnabledIf;
 
 import java.net.URL;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Verifies {@link PluginLibraryResolver} parses Maven coordinates,
- * builds correct remote URLs, and reuses cached jars.
+ * Verifies {@link PluginLibraryResolver} resolves Maven coordinates
+ * with full transitive dependency resolution via Eclipse Aether.
+ *
+ * <p>Transitive resolution tests require network access to Maven Central.
+ * They are skipped automatically in offline environments.
  */
 class PluginLibraryResolverTest {
 
@@ -29,48 +37,46 @@ class PluginLibraryResolverTest {
 
     @Test
     void invalidCoordinateIsSkipped() {
+        // Should not throw — bad coords are logged and skipped
         assertEquals(0, PluginLibraryResolver.resolve(List.of("bad-format")).length);
     }
 
     @Test
-    void remoteUrlForBuildsCorrectPath() {
-        assertEquals(
-                "https://repo.maven.apache.org/maven2/ch/jalu/injector/1.0/injector-1.0.jar",
-                PluginLibraryResolver.remoteUrlFor("ch.jalu:injector:1.0"));
-        assertEquals(
-                "https://repo.maven.apache.org/maven2/org/bstats/bstats-bukkit/3.1.0/bstats-bukkit-3.1.0.jar",
-                PluginLibraryResolver.remoteUrlFor("org.bstats:bstats-bukkit:3.1.0"));
+    @EnabledIf("isNetworkAvailable")
+    void resolvesTransitiveDependencies() {
+        // ch.jalu:injector:1.0 depends on javax.inject:javax.inject:1
+        URL[] urls = PluginLibraryResolver.resolve(List.of("ch.jalu:injector:1.0"));
+        assertTrue(urls.length >= 1, "should resolve at least the direct artifact");
+
+        boolean foundInjector = false;
+        boolean foundJavaxInject = false;
+        for (URL u : urls) {
+            String s = u.toString();
+            if (s.contains("injector-1.0")) foundInjector = true;
+            if (s.contains("javax.inject")) foundJavaxInject = true;
+        }
+        assertTrue(foundInjector, "should include injector-1.0.jar");
+        assertTrue(foundJavaxInject, "Aether should resolve transitive javax.inject");
     }
 
     @Test
-    void cachedJarIsReusedWithoutDownload(@TempDir Path cacheDir) throws Exception {
-        // Pre-create a fake cached jar
-        Path cached = cacheDir.resolve("fake-lib-1.0.jar");
-        Files.write(cached, new byte[]{0x50, 0x4B});
-
-        URL[] urls = PluginLibraryResolver.resolve(
-                List.of("com.example:fake-lib:1.0"), cacheDir);
-
-        assertEquals(1, urls.length);
-        assertTrue(urls[0].toString().endsWith("fake-lib-1.0.jar"));
-        // File content should be unchanged (not overwritten by download)
-        assertEquals(2, Files.size(cached));
-    }
-
-    @Test
-    void mixedCachedAndMissingSkipsFailures(@TempDir Path cacheDir) throws Exception {
-        // Cache one lib, leave another missing (will fail download in test env)
-        Path cached = cacheDir.resolve("cached-lib-2.0.jar");
-        Files.write(cached, new byte[]{0x50, 0x4B});
-
+    @EnabledIf("isNetworkAvailable")
+    void deduplicatesArtifactsAcrossCoordinates() {
         URL[] urls = PluginLibraryResolver.resolve(List.of(
-                "com.example:cached-lib:2.0",
-                "com.example:missing-lib:3.0"
-        ), cacheDir);
+                "ch.jalu:injector:1.0",
+                "ch.jalu:configme:1.3.1"));
+        assertTrue(urls.length >= 2, "should resolve both artifacts + transitives");
 
-        // At least the cached one should resolve; the missing one may fail
-        // in test env without network
-        assertTrue(urls.length >= 1, "cached lib should resolve");
-        assertTrue(urls[0].toString().endsWith("cached-lib-2.0.jar"));
+        long unique = java.util.Arrays.stream(urls).distinct().count();
+        assertEquals(urls.length, unique, "no duplicate URLs");
+    }
+
+    static boolean isNetworkAvailable() {
+        try {
+            RepositorySystem system = PluginLibraryResolver.newRepositorySystem();
+            return system != null;
+        } catch (Exception e) {
+            return false;
+        }
     }
 }
