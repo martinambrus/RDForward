@@ -132,6 +132,11 @@ public final class LegacyPluginClassLoader extends URLClassLoader {
         } catch (IOException e) {
             return null;
         } catch (LinkageError e) {
+            // Log the real cause — a dependency of this class likely can't be
+            // resolved. Without logging the chain is invisible.
+            java.util.logging.Logger.getLogger("RDForward/PluginClassLoader")
+                    .log(java.util.logging.Level.WARNING,
+                            "LinkageError loading " + name + " from plugin jar", e);
             return findLoadedClass(name);
         }
     }

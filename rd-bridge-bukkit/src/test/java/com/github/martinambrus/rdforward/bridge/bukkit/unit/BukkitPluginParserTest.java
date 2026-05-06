@@ -250,4 +250,46 @@ class BukkitPluginParserTest {
         assertNull(ping.permission());
         assertTrue(ping.aliases().isEmpty());
     }
+
+    @Test
+    void librariesDefaultsToEmptyList() {
+        String yml = """
+                name: Demo
+                version: '1.0'
+                main: com.example.Demo
+                """;
+        BukkitPluginDescriptor d = parse(yml);
+        assertTrue(d.libraries().isEmpty(), "libraries defaults to empty");
+    }
+
+    @Test
+    void parsesLibrariesList() {
+        String yml = """
+                name: AuthMe
+                version: '5.7.0'
+                main: fr.xephi.authme.AuthMe
+                libraries:
+                  - ch.jalu:injector:1.0
+                  - com.maxmind.geoip2:geoip2:4.3.0
+                  - com.zaxxer:HikariCP:6.3.0
+                """;
+        BukkitPluginDescriptor d = parse(yml);
+        assertEquals(3, d.libraries().size());
+        assertEquals("ch.jalu:injector:1.0", d.libraries().get(0));
+        assertEquals("com.maxmind.geoip2:geoip2:4.3.0", d.libraries().get(1));
+        assertEquals("com.zaxxer:HikariCP:6.3.0", d.libraries().get(2));
+    }
+
+    @Test
+    void parsesSingleLibraryAsBareString() {
+        String yml = """
+                name: Demo
+                version: '1.0'
+                main: com.example.Demo
+                libraries: ch.jalu:injector:1.0
+                """;
+        BukkitPluginDescriptor d = parse(yml);
+        assertEquals(1, d.libraries().size());
+        assertEquals("ch.jalu:injector:1.0", d.libraries().get(0));
+    }
 }

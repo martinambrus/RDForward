@@ -1,13 +1,6 @@
 package com.github.martinambrus.rdforward.bridge.bukkit.compat;
 
 import org.eclipse.aether.RepositorySystem;
-import org.eclipse.aether.artifact.DefaultArtifact;
-import org.eclipse.aether.graph.Dependency;
-import org.eclipse.aether.collection.CollectRequest;
-import org.eclipse.aether.repository.RemoteRepository;
-import org.eclipse.aether.resolution.DependencyRequest;
-import org.eclipse.aether.resolution.DependencyResult;
-import org.eclipse.aether.RepositorySystemSession;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
 
@@ -20,8 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Verifies {@link PluginLibraryResolver} resolves Maven coordinates
  * with full transitive dependency resolution via Eclipse Aether.
  *
- * <p>Transitive resolution tests require network access to Maven Central.
- * They are skipped automatically in offline environments.
+ * <p>Network-dependent tests are skipped automatically in offline environments.
  */
 class PluginLibraryResolverTest {
 
@@ -37,14 +29,12 @@ class PluginLibraryResolverTest {
 
     @Test
     void invalidCoordinateIsSkipped() {
-        // Should not throw — bad coords are logged and skipped
         assertEquals(0, PluginLibraryResolver.resolve(List.of("bad-format")).length);
     }
 
     @Test
     @EnabledIf("isNetworkAvailable")
     void resolvesTransitiveDependencies() {
-        // ch.jalu:injector:1.0 depends on javax.inject:javax.inject:1
         URL[] urls = PluginLibraryResolver.resolve(List.of("ch.jalu:injector:1.0"));
         assertTrue(urls.length >= 1, "should resolve at least the direct artifact");
 
@@ -61,6 +51,18 @@ class PluginLibraryResolverTest {
 
     @Test
     @EnabledIf("isNetworkAvailable")
+    void excludesTestScopedJars() {
+        // injector:1.0 has junit as a test dependency
+        URL[] urls = PluginLibraryResolver.resolve(List.of("ch.jalu:injector:1.0"));
+        for (URL u : urls) {
+            String s = u.toString();
+            assertFalse(s.contains("junit"), "test-scoped junit should be excluded: " + s);
+            assertFalse(s.contains("mockito"), "test-scoped mockito should be excluded: " + s);
+        }
+    }
+
+    @Test
+    @EnabledIf("isNetworkAvailable")
     void deduplicatesArtifactsAcrossCoordinates() {
         URL[] urls = PluginLibraryResolver.resolve(List.of(
                 "ch.jalu:injector:1.0",
@@ -69,6 +71,17 @@ class PluginLibraryResolverTest {
 
         long unique = java.util.Arrays.stream(urls).distinct().count();
         assertEquals(urls.length, unique, "no duplicate URLs");
+    }
+
+    @Test
+    @EnabledIf("isNetworkAvailable")
+    void cachesAndReusesOnSecondCall() {
+        // First call downloads, second should use cache
+        URL[] first = PluginLibraryResolver.resolve(List.of("ch.jalu:injector:1.0"));
+        assertTrue(first.length >= 1);
+
+        URL[] second = PluginLibraryResolver.resolve(List.of("ch.jalu:injector:1.0"));
+        assertEquals(first.length, second.length, "cache should return same artifacts");
     }
 
     static boolean isNetworkAvailable() {

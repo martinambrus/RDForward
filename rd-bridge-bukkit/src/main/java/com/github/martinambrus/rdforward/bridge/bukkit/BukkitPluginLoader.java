@@ -43,26 +43,24 @@ public final class BukkitPluginLoader {
      * @param parent  parent classloader; should expose rd-api + Bukkit stubs
      */
     public static LoadedPlugin load(Path jarPath, ClassLoader parent) throws IOException, ReflectiveOperationException {
-        URL[] urls = { jarPath.toUri().toURL() };
-        URLClassLoader classLoader = new com.github.martinambrus.rdforward.bridge.bukkit.compat.LegacyPluginClassLoader(urls, parent);
+        // Parse plugin.yml directly from the jar without creating a classloader,
+        // so we can resolve libraries and build a single URL array up front.
+        // This avoids the close-and-recreate dance that breaks on Windows
+        // (jar file handles not released before the new classloader opens them).
         BukkitPluginDescriptor bukkit;
-        try (InputStream in = classLoader.getResourceAsStream("plugin.yml")) {
-            if (in == null) {
-                classLoader.close();
-                throw new IOException("plugin.yml missing from " + jarPath);
+        try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(jarPath.toFile())) {
+            java.util.zip.ZipEntry entry = zf.getEntry("plugin.yml");
+            if (entry == null) throw new IOException("plugin.yml missing from " + jarPath);
+            try (InputStream in = zf.getInputStream(entry)) {
+                bukkit = BukkitPluginParser.parse(in);
             }
-            bukkit = BukkitPluginParser.parse(in);
         }
         // Resolve Paper-style libraries declared in plugin.yml.
-        // Download from Maven Central on first use, cache in libraries/ dir.
         URL[] libUrls = PluginLibraryResolver.resolve(bukkit.libraries());
-        if (libUrls.length > 0) {
-            classLoader.close();
-            URL[] merged = new URL[1 + libUrls.length];
-            merged[0] = jarPath.toUri().toURL();
-            System.arraycopy(libUrls, 0, merged, 1, libUrls.length);
-            classLoader = new com.github.martinambrus.rdforward.bridge.bukkit.compat.LegacyPluginClassLoader(merged, parent);
-        }
+        URL[] urls = new URL[1 + libUrls.length];
+        urls[0] = jarPath.toUri().toURL();
+        System.arraycopy(libUrls, 0, urls, 1, libUrls.length);
+        URLClassLoader classLoader = new com.github.martinambrus.rdforward.bridge.bukkit.compat.LegacyPluginClassLoader(urls, parent);
         com.github.martinambrus.rdforward.api.stub.StubCallLog
                 .registerPluginLoader(classLoader, bukkit.name());
         // Set data dir BEFORE loading any classes so NullFileParentTransformer
