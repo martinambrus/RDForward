@@ -416,6 +416,25 @@ class BukkitBridgeIntegrationTest {
     }
 
     @Test
+    void installedServerExposesUpdateFolderFileForPluginUpdaters() {
+        // FarmProtect 1.9.0's Updater calls Server.getUpdateFolderFile()
+        // during onEnable to stage hot-swap jars; the Paper-added accessor
+        // throws NoSuchMethodError if the bridge facade doesn't expose it.
+        StubRdServer rd = new StubRdServer();
+        BukkitBridge.install(rd);
+        try {
+            org.bukkit.Server server = Bukkit.getServer();
+            assertNotNull(server);
+            java.io.File update = server.getUpdateFolderFile();
+            assertNotNull(update);
+            assertEquals("plugins" + java.io.File.separator + "update", update.getPath());
+            assertEquals("update", server.getUpdateFolder());
+        } finally {
+            BukkitBridge.uninstall();
+        }
+    }
+
+    @Test
     void bukkitWorldAdapterBridgesBlockReadWriteThroughMaterialMapper() {
         StubRdServer rd = new StubRdServer();
         BukkitBridge.install(rd);

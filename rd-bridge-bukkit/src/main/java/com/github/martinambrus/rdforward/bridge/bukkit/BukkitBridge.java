@@ -350,6 +350,9 @@ public final class BukkitBridge {
         @Override public BukkitScheduler getScheduler() { return scheduler; }
         @Override public ConsoleCommandSender getConsoleSender() { return console; }
         @Override public String getUpdateFolder() { return "update"; }
+        @Override public java.io.File getUpdateFolderFile() {
+            return new java.io.File("plugins" + java.io.File.separator + "update");
+        }
 
         @Override
         public Player getPlayer(String name) {

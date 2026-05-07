@@ -323,6 +323,13 @@ public interface Server {
      */
     default String getUpdateFolder() { return "update"; }
 
+    /** Paper-added accessor returning the update folder as a {@link java.io.File}.
+     *  FarmProtect 1.9.0's {@code Updater} calls this to stage hot-swap jars.
+     *  Real Bukkit returns {@code new File(getPluginsFolder(), getUpdateFolder())}. */
+    default java.io.File getUpdateFolderFile() {
+        return new java.io.File("plugins" + java.io.File.separator + getUpdateFolder());
+    }
+
     /** Paper-added method. AuthMe 5.7's {@code stopOrUnload} calls
      *  {@code Bukkit.getServer().shutdown()} when it decides the server
      *  should stop (e.g. failed init with {@code forceSingleSession: true}).
