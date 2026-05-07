@@ -96,6 +96,7 @@ public final class BukkitPluginWrapper implements ServerMod {
             // .getPlugin(name) or getPlugins().
             if (!keepRegistered) {
                 BukkitBridge.unregisterPlugin(pluginName);
+                PluginMCVersionResolver.unregister(plugin.getClassLoader());
             }
             org.bukkit.Bukkit.INSIDE_PLUGIN_LIFECYCLE.remove();
         }
@@ -115,6 +116,7 @@ public final class BukkitPluginWrapper implements ServerMod {
             }
         } finally {
             BukkitBridge.unregisterPlugin(pluginName);
+            PluginMCVersionResolver.unregister(plugin.getClassLoader());
             org.bukkit.Bukkit.INSIDE_PLUGIN_LIFECYCLE.remove();
         }
     }

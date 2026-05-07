@@ -30,8 +30,18 @@ public final class BukkitPluginParser {
         Map<String, BukkitPluginDescriptor.CommandSpec> commands = parseCommands(root.get("commands"));
         boolean database = Boolean.TRUE.equals(root.get("database"));
         List<String> libraries = readStringList(root.get("libraries"));
+        String apiVersion = readApiVersion(root.get("api-version"));
         return new BukkitPluginDescriptor(name, version, main,
-                List.copyOf(depend), List.copyOf(softdepend), commands, database, List.copyOf(libraries));
+                List.copyOf(depend), List.copyOf(softdepend), commands, database, List.copyOf(libraries), apiVersion);
+    }
+
+    /** Read the {@code api-version} key. SnakeYAML parses unquoted
+     *  {@code 1.21} as Double — coerce via {@link String#valueOf}.
+     *  Absent or blank → null. */
+    private static String readApiVersion(Object raw) {
+        if (raw == null) return null;
+        String s = String.valueOf(raw).trim();
+        return s.isEmpty() ? null : s;
     }
 
     /** Pull a list-of-strings field, accepting both YAML list shape

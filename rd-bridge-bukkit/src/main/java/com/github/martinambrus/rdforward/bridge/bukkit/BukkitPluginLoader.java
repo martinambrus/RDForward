@@ -63,6 +63,7 @@ public final class BukkitPluginLoader {
         URLClassLoader classLoader = new com.github.martinambrus.rdforward.bridge.bukkit.compat.LegacyPluginClassLoader(urls, parent);
         com.github.martinambrus.rdforward.api.stub.StubCallLog
                 .registerPluginLoader(classLoader, bukkit.name());
+        PluginMCVersionResolver.register(classLoader, bukkit.name(), bukkit.apiVersion());
         // Set data dir BEFORE loading any classes so NullFileParentTransformer
         // can bake the path into File(File,String) / File(String,String) calls.
         ((com.github.martinambrus.rdforward.bridge.bukkit.compat.LegacyPluginClassLoader) classLoader)
@@ -70,6 +71,7 @@ public final class BukkitPluginLoader {
         Class<?> mainCls = Class.forName(bukkit.main(), true, classLoader);
         if (!JavaPlugin.class.isAssignableFrom(mainCls)) {
             com.github.martinambrus.rdforward.api.stub.StubCallLog.unregisterPluginLoader(classLoader);
+            PluginMCVersionResolver.unregister(classLoader);
             classLoader.close();
             throw new ReflectiveOperationException(
                     bukkit.main() + " does not extend org.bukkit.plugin.java.JavaPlugin");

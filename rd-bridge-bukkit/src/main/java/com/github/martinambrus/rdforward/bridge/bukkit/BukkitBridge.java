@@ -116,6 +116,11 @@ public final class BukkitBridge {
     /** Install a Bukkit server facade backed by {@code rdServer}. */
     public static synchronized void install(Server rdServer) {
         if (installed != null) return;
+        // Load per-plugin MC version overrides from the file next to
+        // server.properties so old plugins (Citizens 2.0.13 hardcoded
+        // to MC 1.7.9, etc.) can be pinned without affecting modern
+        // plugins. Missing file is a silent no-op.
+        PluginMCVersionResolver.loadOverrides(java.nio.file.Path.of("plugin-mc-version-overrides.yml"));
         // Instantiate via the NMS-shaped subclass so that
         // Bukkit.getServer().getClass().getPackage().getName() resolves to
         // "org.bukkit.craftbukkit.v1_21_R1". Essentials's ReflUtil and
@@ -331,8 +336,8 @@ public final class BukkitBridge {
         }
 
         @Override public String getName() { return "RDForward"; }
-        @Override public String getVersion() { return "bridge-1.0"; }
-        @Override public String getBukkitVersion() { return "26.1.2-R0.1"; }
+        @Override public String getVersion() { return PluginMCVersionResolver.currentGetVersion(); }
+        @Override public String getBukkitVersion() { return PluginMCVersionResolver.currentGetBukkitVersion(); }
         @Override public Logger getLogger() { return LOG; }
 
         @Override

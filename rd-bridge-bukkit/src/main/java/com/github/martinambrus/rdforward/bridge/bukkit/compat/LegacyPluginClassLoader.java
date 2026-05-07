@@ -114,6 +114,11 @@ public final class LegacyPluginClassLoader extends URLClassLoader {
             } catch (Throwable t) {
                 // leave whatever we had after the previous pass
             }
+            try {
+                transformed = LegacyEnumArrayTransformer.transform(transformed);
+            } catch (Throwable t) {
+                // leave whatever we had after the previous pass
+            }
             if (pluginDataDir != null) {
                 try {
                     transformed = NullFileParentTransformer.transform(transformed, pluginDataDir);

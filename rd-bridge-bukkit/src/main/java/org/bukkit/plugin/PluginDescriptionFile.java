@@ -70,6 +70,31 @@ public class PluginDescriptionFile {
     /** Bukkit exposes {@code getFullName()} as {@code name + " v" + version}. */
     public String getFullName() { return name + " v" + version; }
 
+    /** Plugin's declared website URL from plugin.yml. The bridge does
+     *  not currently parse the {@code website:} field so this stub
+     *  returns the empty string — Citizens 2.x prints it in its
+     *  {@code /citizens} info banner and an empty value renders as
+     *  no extra line, which is acceptable. Returning {@code null}
+     *  would NPE inside Citizens' formatter. */
+    public String getWebsite() { return ""; }
+
+    /** Plugin's declared author prefix (e.g. {@code [Essentials] }).
+     *  Real Bukkit pulls this from {@code prefix:} in plugin.yml.
+     *  Empty string is a safe default that keeps log formatters
+     *  from NPE'ing. */
+    public String getPrefix() { return ""; }
+
+    /** Plugin's soft-depend list. Bridge surfaces hard {@code depend}
+     *  via {@link #getDepend()}; soft depends are honoured by the
+     *  loader for ordering but are not currently re-exposed on this
+     *  description. Empty list keeps callers from NPE'ing. */
+    public List<String> getSoftDepend() { return Collections.emptyList(); }
+
+    /** Plugin's {@code load-before} list — same rationale as
+     *  {@link #getSoftDepend()}: bridge does not currently expose it
+     *  here, so an empty list keeps consumers safe. */
+    public List<String> getLoadBefore() { return Collections.emptyList(); }
+
     /** Whether plugin.yml declared {@code database: true}, signalling that
      *  the plugin uses Bukkit's built-in Ebean ORM support. Plugins such as
      *  HomeSpawnPlus check this flag and call {@code getDatabase()} to obtain
